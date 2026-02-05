@@ -1,0 +1,618 @@
+/* Import BPMN-JS styles - must be first */
+@import 'bpmn-js/dist/assets/diagram-js.css';
+@import 'bpmn-js/dist/assets/bpmn-js.css';
+@import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global Styles */
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #f8fafc;
+}
+
+/* ============================================
+   BPMN COLORFUL THEME - Fyness
+   ============================================ */
+
+/* Canvas Background */
+.bjs-container {
+  height: 100%;
+  width: 100%;
+  background: #ffffff !important;
+}
+
+/* Grid Pattern - Miro Style (Dotted) */
+.bjs-container.grid-enabled {
+  background-color: #f8fafc !important;
+  background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px) !important;
+  background-size: 20px 20px !important;
+}
+
+.bjs-powered-by {
+  display: none !important;
+}
+
+/* ========== TASKS - Colorful ========== */
+
+/* Generic Task - Blue */
+.djs-shape[data-element-id*="Task"] .djs-visual > rect,
+.bpmn-icon-task {
+  fill: #dbeafe !important;
+  stroke: #3b82f6 !important;
+  stroke-width: 2px !important;
+}
+
+/* User Task - Purple */
+.djs-shape[data-element-id*="Demo"] .djs-visual > rect,
+.djs-shape[data-element-id*="Downsell"] .djs-visual > rect {
+  fill: #ede9fe !important;
+  stroke: #8b5cf6 !important;
+  stroke-width: 2px !important;
+}
+
+/* Service Task - Green */
+.djs-shape[data-element-id*="Split"] .djs-visual > rect,
+.djs-shape[data-element-id*="Antecipacao"] .djs-visual > rect,
+.djs-shape[data-element-id*="Processamento"] .djs-visual > rect {
+  fill: #dcfce7 !important;
+  stroke: #22c55e !important;
+  stroke-width: 2px !important;
+}
+
+/* Vitrine Task - Cyan */
+.djs-shape[data-element-id*="Vitrine"] .djs-visual > rect {
+  fill: #cffafe !important;
+  stroke: #06b6d4 !important;
+  stroke-width: 2px !important;
+}
+
+/* Retaguarda Task - Orange */
+.djs-shape[data-element-id*="Retaguarda"] .djs-visual > rect {
+  fill: #ffedd5 !important;
+  stroke: #f97316 !important;
+  stroke-width: 2px !important;
+}
+
+/* Onboarding Task - Teal */
+.djs-shape[data-element-id*="Onboarding"] .djs-visual > rect {
+  fill: #ccfbf1 !important;
+  stroke: #14b8a6 !important;
+  stroke-width: 2px !important;
+}
+
+/* Recebimento Task - Indigo */
+.djs-shape[data-element-id*="Recebimento"] .djs-visual > rect {
+  fill: #e0e7ff !important;
+  stroke: #6366f1 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== EVENTS ========== */
+
+/* Start Events - Green */
+.djs-shape[data-element-id*="Start"] .djs-visual > circle {
+  fill: #dcfce7 !important;
+  stroke: #22c55e !important;
+  stroke-width: 3px !important;
+}
+
+/* Timer Events - Amber */
+.djs-shape[data-element-id*="Timer"] .djs-visual > circle {
+  fill: #fef3c7 !important;
+  stroke: #f59e0b !important;
+  stroke-width: 2px !important;
+}
+
+/* End Events - Red/Pink */
+.djs-shape[data-element-id*="End"] .djs-visual > circle {
+  fill: #fecaca !important;
+  stroke: #ef4444 !important;
+  stroke-width: 3px !important;
+}
+
+/* End Event Nurture - Gray */
+.djs-shape[data-element-id*="Nurture"] .djs-visual > circle {
+  fill: #f1f5f9 !important;
+  stroke: #64748b !important;
+  stroke-width: 3px !important;
+}
+
+/* End Event Cliente Ativo - Emerald */
+.djs-shape[data-element-id*="ClienteAtivo"] .djs-visual > circle {
+  fill: #d1fae5 !important;
+  stroke: #10b981 !important;
+  stroke-width: 4px !important;
+}
+
+/* ========== GATEWAYS ========== */
+
+/* Exclusive Gateway - Amber/Yellow */
+.djs-shape[data-element-id*="Gateway"] .djs-visual > polygon {
+  fill: #fef3c7 !important;
+  stroke: #f59e0b !important;
+  stroke-width: 2px !important;
+}
+
+/* Gateway Pagamento - Special Orange */
+.djs-shape[data-element-id*="Pagamento"] .djs-visual > polygon {
+  fill: #ffedd5 !important;
+  stroke: #ea580c !important;
+  stroke-width: 3px !important;
+}
+
+/* Gateway Qualificacao - Purple */
+.djs-shape[data-element-id*="Qualificacao"] .djs-visual > polygon {
+  fill: #ede9fe !important;
+  stroke: #7c3aed !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== POOLS & LANES ========== */
+
+/* Pool Header */
+.djs-shape[data-element-id*="Pool"] .djs-visual > rect:first-child {
+  fill: #1e293b !important;
+  stroke: #1e293b !important;
+}
+
+/* Lane - Marketing */
+.djs-shape[data-element-id*="Marketing"] .djs-visual > rect {
+  fill: #fef3c7 !important;
+  stroke: #f59e0b !important;
+  stroke-width: 1px !important;
+}
+
+/* Lane - Vendas */
+.djs-shape[data-element-id*="Vendas"] .djs-visual > rect {
+  fill: #ede9fe !important;
+  stroke: #8b5cf6 !important;
+  stroke-width: 1px !important;
+}
+
+/* Lane - Sistema */
+.djs-shape[data-element-id*="Sistema"] .djs-visual > rect {
+  fill: #dbeafe !important;
+  stroke: #3b82f6 !important;
+  stroke-width: 1px !important;
+}
+
+/* Lane - Financeiro */
+.djs-shape[data-element-id*="Financeiro"] .djs-visual > rect {
+  fill: #dcfce7 !important;
+  stroke: #22c55e !important;
+  stroke-width: 1px !important;
+}
+
+/* Lane - Parceiro */
+.djs-shape[data-element-id*="Parceiro"]:not([data-element-id*="Start"]) .djs-visual > rect {
+  fill: #e0e7ff !important;
+  stroke: #6366f1 !important;
+  stroke-width: 1px !important;
+}
+
+/* ========== SEQUENCE FLOWS ========== */
+
+/* Default Flow */
+.djs-connection .djs-visual > path {
+  stroke: #475569 !important;
+  stroke-width: 2px !important;
+}
+
+/* Success Flow */
+.djs-connection[data-element-id*="Flow_12"] .djs-visual > path {
+  stroke: #22c55e !important;
+  stroke-width: 2.5px !important;
+}
+
+/* Error/Retry Flows */
+.djs-connection[data-element-id*="Flow_13"] .djs-visual > path,
+.djs-connection[data-element-id*="Flow_14"] .djs-visual > path {
+  stroke: #f97316 !important;
+  stroke-width: 2px !important;
+}
+
+/* Ceticismo Flow */
+.djs-connection[data-element-id*="Flow_16"] .djs-visual > path,
+.djs-connection[data-element-id*="Flow_15"] .djs-visual > path {
+  stroke: #a855f7 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== LABELS ========== */
+
+.djs-label {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 500 !important;
+  fill: #1e293b !important;
+}
+
+/* ========== SELECTION & HOVER ========== */
+
+.djs-shape.selected .djs-outline,
+.djs-connection.selected .djs-outline {
+  stroke: #6366f1 !important;
+  stroke-width: 3px !important;
+}
+
+.djs-shape:hover .djs-visual > rect,
+.djs-shape:hover .djs-visual > circle,
+.djs-shape:hover .djs-visual > polygon {
+  filter: brightness(0.95);
+}
+
+/* ========== PALETTE ========== */
+
+.djs-palette {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px -2px rgb(0 0 0 / 0.1), 0 2px 8px -2px rgb(0 0 0 / 0.06) !important;
+  top: 20px !important;
+  left: 20px !important;
+  width: auto !important;
+  max-height: calc(100vh - 120px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+}
+
+.djs-palette .djs-palette-toggle {
+  display: none !important;
+}
+
+.djs-palette.two-column {
+  width: auto !important;
+}
+
+.djs-palette .group {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 6px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+.djs-palette .group:last-child {
+  border-bottom: none !important;
+}
+
+.djs-palette-entries {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  padding: 4px !important;
+  width: 52px !important;
+}
+
+.djs-palette .entry {
+  width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 8px !important;
+  margin: 2px 0 !important;
+  transition: all 0.15s ease !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+}
+
+.djs-palette .entry:hover {
+  background: #f1f5f9 !important;
+  transform: scale(1.05) !important;
+}
+
+.djs-palette .entry.active {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+}
+
+.djs-palette .entry.active img,
+.djs-palette .entry.active svg {
+  filter: brightness(0) invert(1) !important;
+}
+
+.djs-palette .separator {
+  margin: 6px 8px !important;
+  width: calc(100% - 16px) !important;
+  height: 1px !important;
+  background: #e2e8f0 !important;
+  border: none !important;
+  flex-shrink: 0 !important;
+}
+
+/* Palette icons */
+.djs-palette .entry img,
+.djs-palette .entry svg {
+  width: 20px !important;
+  height: 20px !important;
+  opacity: 0.7 !important;
+  transition: opacity 0.15s ease !important;
+}
+
+.djs-palette .entry:hover img,
+.djs-palette .entry:hover svg {
+  opacity: 1 !important;
+}
+
+/* Palette scrollbar */
+.djs-palette::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+.djs-palette::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.djs-palette::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+  border-radius: 2px !important;
+}
+
+.djs-palette::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
+}
+
+/* ========== CONTEXT PAD ========== */
+
+.djs-context-pad {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px -2px rgb(0 0 0 / 0.15), 0 2px 8px -2px rgb(0 0 0 / 0.1) !important;
+  padding: 6px !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.djs-context-pad .entry {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 2px !important;
+  transition: all 0.15s ease !important;
+}
+
+.djs-context-pad .entry:hover {
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) !important;
+  transform: scale(1.1) !important;
+}
+
+.djs-context-pad .entry img,
+.djs-context-pad .entry svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Tooltips são gerados via JavaScript no BpmnEditor */
+
+/* ========== POPUP MENU ========== */
+
+.djs-popup {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 40px -10px rgb(0 0 0 / 0.2) !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ========== IMAGE ELEMENTS ========== */
+
+/* Esconder visual padrão de Tasks que são imagens */
+.djs-shape[data-image-element="true"] .djs-visual > rect {
+  fill: transparent !important;
+  stroke: transparent !important;
+}
+
+/* Esconder ícone e texto da Task para imagens */
+.djs-shape[data-image-element="true"] .djs-visual > path,
+.djs-shape[data-image-element="true"] .djs-visual > text,
+.djs-shape[data-image-element="true"] .djs-visual text,
+.djs-shape[data-image-element="true"] text {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Esconder label externa de elementos de imagem */
+.djs-label[data-element-id*="Activity"],
+.djs-direct-editing-content {
+  /* Só esconder se for label de imagem - controlado por JS */
+}
+
+/* Forçar esconder qualquer texto dentro de shapes de imagem */
+[data-image-element="true"] tspan,
+[data-image-element="true"] .djs-label {
+  display: none !important;
+}
+
+/* Esconder texto durante arraste/drag de imagens */
+.djs-drag-group [data-image-element="true"] text,
+.djs-drag-group [data-image-element="true"] tspan,
+.djs-dragging [data-image-element="true"] text,
+.djs-dragging [data-image-element="true"] tspan {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Esconder label em elementos sendo arrastados que são imagens */
+.djs-element.djs-dragging text,
+.djs-frame text {
+  /* Esconder apenas para imagens via JS */
+}
+
+/* Seleção do elemento imagem - borda verde */
+.djs-shape[data-image-element="true"].selected .djs-outline {
+  stroke: #22c55e !important;
+  stroke-width: 3px !important;
+}
+
+/* Hover na imagem */
+.djs-shape[data-image-element="true"]:hover .djs-outline {
+  stroke: #86efac !important;
+  stroke-width: 2px !important;
+}
+
+/* Resize handles para elementos de imagem */
+.djs-shape[data-image-element="true"] .djs-resizer {
+  background: #22c55e !important;
+  border-radius: 50% !important;
+  width: 14px !important;
+  height: 14px !important;
+  border: 2px solid white !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+  cursor: nwse-resize !important;
+  z-index: 9999 !important;
+}
+
+/* Garantir que resizers fiquem visíveis acima de tudo */
+.djs-resizer {
+  z-index: 9999 !important;
+  pointer-events: all !important;
+}
+
+.djs-shape.selected .djs-resizer {
+  display: block !important;
+  visibility: visible !important;
+}
+
+/* Overlay de imagem */
+.bpmn-image-overlay {
+  background: white;
+  transition: box-shadow 0.2s ease;
+  pointer-events: none !important;
+}
+
+/* Garantir que overlays de imagem não bloqueiam interação com o elemento */
+.djs-overlay-container .bpmn-image-overlay,
+.djs-overlay-container .bpmn-image-overlay * {
+  pointer-events: none !important;
+}
+
+/* Container do overlay de imagem - permitir cliques passarem */
+.djs-overlays .djs-overlay:has(.bpmn-image-overlay) {
+  pointer-events: none !important;
+}
+
+/* Forçar elemento de imagem a receber eventos */
+.djs-shape[data-image-element="true"] {
+  pointer-events: all !important;
+  cursor: move !important;
+}
+
+.djs-shape[data-image-element="true"] .djs-visual {
+  pointer-events: all !important;
+}
+
+.djs-shape[data-image-element="true"] .djs-hit {
+  pointer-events: all !important;
+  fill: transparent !important;
+  stroke: none !important;
+}
+
+/* ========== ÍCONE DE ROBÔ PARA TAREFAS AUTOMATIZADAS ========== */
+
+/* Marcar ServiceTask como automatizado - controlado por JS via data-attribute */
+.djs-shape[data-robot-task="true"] .djs-visual > path:first-of-type {
+  /* Esconder o ícone de engrenagem padrão */
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Container do ícone de robô */
+.robot-icon-overlay {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Estilo para tarefas automatizadas (ServiceTask com robô) */
+.djs-shape[data-robot-task="true"] {
+  /* Borda especial para destacar automação */
+}
+
+.djs-shape[data-robot-task="true"] .djs-visual > rect {
+  stroke: #8b5cf6 !important;
+  stroke-width: 2px !important;
+}
+
+/* Hover em tarefas automatizadas */
+.djs-shape[data-robot-task="true"]:hover .djs-visual > rect {
+  stroke: #7c3aed !important;
+  stroke-width: 2.5px !important;
+}
+
+/* Seleção de tarefas automatizadas */
+.djs-shape[data-robot-task="true"].selected .djs-outline {
+  stroke: #8b5cf6 !important;
+  stroke-width: 3px !important;
+}
+
+/* Animation for toast */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* ========== ÍCONE DE ROBÔ NO MENU "CHANGE ELEMENT" ========== */
+
+/* Adicionar ícone de robô para a opção customizada de Tarefa Automatizada */
+.djs-popup .entry[data-action="replace-with-robot-task"] .robot-menu-icon::before,
+.djs-popup-body .entry[data-action="replace-with-robot-task"] .robot-menu-icon::before {
+  content: "🤖" !important;
+  font-size: 18px !important;
+  line-height: 24px !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
+  display: inline-block !important;
+  width: 24px !important;
+  height: 24px !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+}
