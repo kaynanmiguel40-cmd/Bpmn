@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHand
 import BpmnJS from 'bpmn-js/lib/Modeler';
 import translateModule, { customTranslate } from '../utils/bpmnTranslations';
 import customResizeModule from '../utils/customResizeProvider';
-import { COMERCIAL_DIAGRAM_XML } from '../utils/comercialTemplate';
+import connectionCrossingsModule from '../utils/connectionCrossings';
+import { COMERCIAL_DIAGRAM_XML } from '../utils/comercialTemplate'; // Usa V8 automaticamente
+import { indicacoesTemplate } from '../utils/indicacoesTemplate';
+// import { highlightLinkCatch } from '../utils/linkEvents'; // Será usado futuramente
 
 // Dicionário completo de traduções para tooltips
 const tooltipTranslations = {
@@ -92,6 +95,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [showAddRaiaMenu, setShowAddRaiaMenu] = useState(false);
 
   // Expor métodos para o componente pai
   useImperativeHandle(ref, () => ({
@@ -634,6 +638,303 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
     }
   }, []);
 
+  // Função para adicionar raia de indicações (usada pelo botão)
+  const handleAddIndicacoesRaia = useCallback(async () => {
+    if (!modelerRef.current) {
+      console.error('modelerRef.current não disponível');
+      return;
+    }
+
+    console.log('=== INICIANDO ADIÇÃO DE RAIA INDICAÇÕES ===');
+
+    try {
+      // Obter o XML atual
+      const { xml: currentXml } = await modelerRef.current.saveXML({ format: true });
+      console.log('XML atual obtido, tamanho:', currentXml.length);
+
+      // Parser para manipular XML
+      const parser = new DOMParser();
+      const serializer = new XMLSerializer();
+
+      // Parsear XML atual
+      const currentDoc = parser.parseFromString(currentXml, 'text/xml');
+
+      // Verificar erros de parsing
+      const parseError = currentDoc.querySelector('parsererror');
+      if (parseError) {
+        console.error('Erro ao parsear XML atual:', parseError.textContent);
+        alert('Erro ao processar diagrama atual');
+        return;
+      }
+
+      // Parsear XML das indicações
+      console.log('Template indicações tamanho:', indicacoesTemplate.length);
+      const indicacoesDoc = parser.parseFromString(indicacoesTemplate, 'text/xml');
+
+      const indicacoesParseError = indicacoesDoc.querySelector('parsererror');
+      if (indicacoesParseError) {
+        console.error('Erro ao parsear template indicações:', indicacoesParseError.textContent);
+        alert('Erro no template de indicações');
+        return;
+      }
+
+      // Encontrar o processo principal no XML atual (com ou sem namespace)
+      let currentProcess = currentDoc.querySelector('process');
+      if (!currentProcess) currentProcess = currentDoc.getElementsByTagName('bpmn2:process')[0];
+      if (!currentProcess) currentProcess = currentDoc.getElementsByTagName('bpmn:process')[0];
+
+      let currentLaneSet = currentDoc.querySelector('laneSet');
+      if (!currentLaneSet) currentLaneSet = currentDoc.getElementsByTagName('bpmn2:laneSet')[0];
+      if (!currentLaneSet) currentLaneSet = currentDoc.getElementsByTagName('bpmn:laneSet')[0];
+
+      let currentDiagram = currentDoc.querySelector('BPMNPlane');
+      if (!currentDiagram) currentDiagram = currentDoc.getElementsByTagName('bpmndi:BPMNPlane')[0];
+
+      console.log('Elementos encontrados no diagrama atual:', {
+        process: !!currentProcess,
+        laneSet: !!currentLaneSet,
+        diagram: !!currentDiagram
+      });
+
+      if (!currentProcess || !currentLaneSet || !currentDiagram) {
+        alert('Por favor, carregue um diagrama com Lanes primeiro (ex: Comercial)');
+        return;
+      }
+
+      // Encontrar elementos das indicações
+      let indicacoesProcess = indicacoesDoc.querySelector('process');
+      if (!indicacoesProcess) indicacoesProcess = indicacoesDoc.getElementsByTagName('bpmn2:process')[0];
+
+      let indicacoesLane = indicacoesDoc.querySelector('lane');
+      if (!indicacoesLane) indicacoesLane = indicacoesDoc.getElementsByTagName('bpmn2:lane')[0];
+
+      let indicacoesDiagram = indicacoesDoc.querySelector('BPMNPlane');
+      if (!indicacoesDiagram) indicacoesDiagram = indicacoesDoc.getElementsByTagName('bpmndi:BPMNPlane')[0];
+
+      console.log('Elementos encontrados no template indicações:', {
+        process: !!indicacoesProcess,
+        lane: !!indicacoesLane,
+        diagram: !!indicacoesDiagram
+      });
+
+      if (!indicacoesLane || !indicacoesProcess || !indicacoesDiagram) {
+        console.error('Elementos de indicações não encontrados');
+        alert('Erro: template de indicações inválido');
+        return;
+      }
+
+      // Calcular offset Y para a nova raia (colocar abaixo das existentes)
+      let maxY = 0;
+      const allShapes = Array.from(currentDiagram.childNodes).filter(n =>
+        n.nodeName && (n.nodeName.includes('BPMNShape') || n.nodeName === 'bpmndi:BPMNShape')
+      );
+
+      console.log('Shapes existentes encontrados:', allShapes.length);
+
+      allShapes.forEach(shape => {
+        const bounds = shape.querySelector('Bounds') ||
+                      shape.getElementsByTagName('dc:Bounds')[0] ||
+                      shape.getElementsByTagName('Bounds')[0];
+        if (bounds) {
+          const y = parseFloat(bounds.getAttribute('y')) || 0;
+          const height = parseFloat(bounds.getAttribute('height')) || 0;
+          if (y + height > maxY) {
+            maxY = y + height;
+          }
+        }
+      });
+
+      console.log('MaxY calculado:', maxY);
+      const offsetY = maxY + 80;
+      console.log('OffsetY para nova raia:', offsetY);
+
+      // PASSO 1: Copiar a Lane de indicações para o LaneSet atual
+      console.log('Copiando Lane para LaneSet...');
+      const newLane = currentDoc.importNode(indicacoesLane, true);
+      currentLaneSet.appendChild(newLane);
+      console.log('Lane adicionada ao LaneSet');
+
+      // PASSO 2: Separar elementos por tipo (não-flows primeiro, flows depois)
+      const nonFlowElements = [];
+      const flowElements = [];
+
+      const processChildren = Array.from(indicacoesProcess.childNodes).filter(n => n.nodeType === 1);
+      console.log('Filhos do processo de indicações:', processChildren.length);
+
+      processChildren.forEach(element => {
+        const tagName = (element.tagName || element.nodeName || '').toLowerCase();
+        if (tagName.includes('laneset')) {
+          // Pular laneSet
+          return;
+        }
+        if (tagName.includes('sequenceflow')) {
+          flowElements.push(element);
+        } else {
+          nonFlowElements.push(element);
+        }
+      });
+
+      console.log('Elementos não-flow:', nonFlowElements.length);
+      console.log('Elementos flow:', flowElements.length);
+
+      // Adicionar elementos não-flow primeiro (tasks, gateways, events)
+      nonFlowElements.forEach(element => {
+        const imported = currentDoc.importNode(element, true);
+        currentProcess.appendChild(imported);
+      });
+      console.log('Elementos não-flow adicionados');
+
+      // Adicionar flows por último
+      flowElements.forEach(element => {
+        const imported = currentDoc.importNode(element, true);
+        currentProcess.appendChild(imported);
+      });
+      console.log('Elementos flow adicionados');
+
+      // PASSO 3: Separar shapes e edges do diagrama
+      const indicacoesShapesNodes = Array.from(indicacoesDiagram.childNodes).filter(n =>
+        n.nodeName && (n.nodeName.includes('BPMNShape') || n.nodeName === 'bpmndi:BPMNShape')
+      );
+      const indicacoesEdgesNodes = Array.from(indicacoesDiagram.childNodes).filter(n =>
+        n.nodeName && (n.nodeName.includes('BPMNEdge') || n.nodeName === 'bpmndi:BPMNEdge')
+      );
+
+      console.log('Shapes no template indicações:', indicacoesShapesNodes.length);
+      console.log('Edges no template indicações:', indicacoesEdgesNodes.length);
+
+      // Encontrar a posição do primeiro edge existente para inserir shapes ANTES dele
+      const existingEdgesNodes = Array.from(currentDiagram.childNodes).filter(n =>
+        n.nodeName && (n.nodeName.includes('BPMNEdge') || n.nodeName === 'bpmndi:BPMNEdge')
+      );
+      const firstExistingEdge = existingEdgesNodes.length > 0 ? existingEdgesNodes[0] : null;
+      console.log('Edges existentes:', existingEdgesNodes.length);
+
+      // Adicionar shape da Lane de indicações PRIMEIRO
+      const laneShape = currentDoc.createElementNS('http://www.omg.org/spec/BPMN/20100524/DI', 'bpmndi:BPMNShape');
+      laneShape.setAttribute('id', 'Shape_Lane_Indicacoes_Added');
+      laneShape.setAttribute('bpmnElement', 'Lane_Indicacoes');
+      laneShape.setAttribute('isHorizontal', 'true');
+
+      const laneBounds = currentDoc.createElementNS('http://www.omg.org/spec/DD/20100524/DC', 'dc:Bounds');
+      laneBounds.setAttribute('x', '150');
+      laneBounds.setAttribute('y', String(offsetY));
+      laneBounds.setAttribute('width', '2570');
+      laneBounds.setAttribute('height', '520');
+      laneShape.appendChild(laneBounds);
+
+      // Inserir antes do primeiro edge, ou no final se não houver edges
+      if (firstExistingEdge) {
+        currentDiagram.insertBefore(laneShape, firstExistingEdge);
+      } else {
+        currentDiagram.appendChild(laneShape);
+      }
+
+      // Copiar shapes com offset Y (antes dos edges existentes)
+      let shapesAdded = 0;
+      indicacoesShapesNodes.forEach(shape => {
+        const bpmnElement = shape.getAttribute('bpmnElement');
+        // Pular participant e lane shapes do template (já criamos o lane shape)
+        if (bpmnElement && !bpmnElement.includes('Participant') && !bpmnElement.includes('Lane')) {
+          const newShape = currentDoc.importNode(shape, true);
+          const bounds = newShape.querySelector('Bounds') ||
+                        newShape.getElementsByTagName('dc:Bounds')[0];
+          if (bounds) {
+            const currentY = parseFloat(bounds.getAttribute('y')) || 0;
+            bounds.setAttribute('y', String(currentY + offsetY));
+          }
+          // Inserir antes dos edges existentes
+          if (firstExistingEdge) {
+            currentDiagram.insertBefore(newShape, firstExistingEdge);
+          } else {
+            currentDiagram.appendChild(newShape);
+          }
+          shapesAdded++;
+        }
+      });
+      console.log('Shapes adicionados ao diagrama:', shapesAdded);
+
+      // Copiar edges com offset Y nos waypoints (no final do diagrama)
+      let edgesAdded = 0;
+      indicacoesEdgesNodes.forEach(edge => {
+        const newEdge = currentDoc.importNode(edge, true);
+        const waypoints = Array.from(newEdge.childNodes).filter(n =>
+          n.nodeName && (n.nodeName.includes('waypoint') || n.nodeName === 'di:waypoint')
+        );
+        waypoints.forEach(wp => {
+          const currentY = parseFloat(wp.getAttribute('y')) || 0;
+          wp.setAttribute('y', String(currentY + offsetY));
+        });
+        currentDiagram.appendChild(newEdge);
+        edgesAdded++;
+      });
+      console.log('Edges adicionados ao diagrama:', edgesAdded);
+
+      // PASSO 4: Atualizar o Participant para incluir a nova altura
+      const allDiagramShapes = Array.from(currentDiagram.childNodes).filter(n =>
+        n.nodeName && (n.nodeName.includes('BPMNShape') || n.nodeName === 'bpmndi:BPMNShape')
+      );
+      const participantShape = allDiagramShapes.find(s =>
+        s.getAttribute && s.getAttribute('bpmnElement')?.includes('Participant')
+      );
+
+      if (participantShape) {
+        const pBounds = participantShape.querySelector('Bounds') ||
+                       participantShape.getElementsByTagName('dc:Bounds')[0];
+        if (pBounds) {
+          const currentHeight = parseFloat(pBounds.getAttribute('height')) || 2000;
+          const newHeight = currentHeight + 600;
+          pBounds.setAttribute('height', String(newHeight));
+          console.log('Altura do Participant atualizada:', currentHeight, '->', newHeight);
+        }
+      } else {
+        console.warn('Participant shape não encontrado');
+      }
+
+      // Serializar o XML modificado
+      let mergedXml = serializer.serializeToString(currentDoc);
+      console.log('XML serializado, tamanho:', mergedXml.length);
+
+      // Limpar declarações de namespace duplicadas que podem causar problemas
+      mergedXml = mergedXml.replace(/xmlns:ns\d+="[^"]*"/g, '');
+      mergedXml = mergedXml.replace(/ns\d+:/g, '');
+
+      console.log('XML mesclado gerado, importando...');
+      console.log('Primeiros 500 chars do XML:', mergedXml.substring(0, 500));
+
+      // Importar o XML mesclado
+      try {
+        const result = await modelerRef.current.importXML(mergedXml);
+
+        if (result.warnings && result.warnings.length > 0) {
+          console.warn('Warnings ao importar:', result.warnings);
+        }
+
+        console.log('XML importado com sucesso!');
+
+        // Fazer zoom out e centralizar
+        const canvas = modelerRef.current.get('canvas');
+        canvas.zoom(0.4);
+
+        // Notificar mudança de XML
+        const { xml: finalXml } = await modelerRef.current.saveXML({ format: true });
+        if (onXmlChange) onXmlChange(finalXml);
+
+        console.log('=== RAIA INDICAÇÕES ADICIONADA COM SUCESSO ===');
+        alert('Raia de Indicações adicionada com sucesso!');
+      } catch (importError) {
+        console.error('Erro ao importar XML:', importError);
+        console.error('Mensagem:', importError.message);
+        // Log mais detalhes do XML para debug
+        console.log('XML completo para debug (primeiros 2000 chars):', mergedXml.substring(0, 2000));
+        alert('Erro ao importar diagrama: ' + importError.message);
+      }
+    } catch (e) {
+      console.error('Erro ao adicionar raia de indicações:', e);
+      console.error('Stack:', e.stack);
+      alert('Erro ao adicionar raia: ' + e.message);
+    }
+  }, [onXmlChange]);
+
   // Aplicar/remover grid no canvas
   useEffect(() => {
     const container = containerRef.current;
@@ -648,6 +949,17 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
       }
     }
   }, [showGrid]);
+
+  // Fechar dropdown de adicionar raia ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showAddRaiaMenu && !e.target.closest('[data-raia-menu]')) {
+        setShowAddRaiaMenu(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showAddRaiaMenu]);
 
   // Inicializar modeler APENAS uma vez
   useEffect(() => {
@@ -666,7 +978,8 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
           },
           additionalModules: [
             translateModule,
-            customResizeModule
+            customResizeModule,
+            connectionCrossingsModule
           ]
         });
 
@@ -713,6 +1026,95 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
         }
 
         setZoomLevel(100);
+
+        // Aplicar cores às lanes (método direto no SVG) - V9 Completo
+        const applyLaneColors = () => {
+          const laneColors = {
+            'Participant_Educacao': { stroke: '#51cf66', fill: '#e0ffe0' },      // Verde (6 Meses Grátis)
+            'Participant_Indicacao': { stroke: '#ff6b6b', fill: '#ffe0e0' },     // Vermelho (Parceiro)
+            'Participant_Conteudo': { stroke: '#9775fa', fill: '#f0e0ff' },      // Roxo (Instagram)
+            'Participant_Prospeccao': { stroke: '#fa5252', fill: '#ffe0e0' },    // Vermelho escuro (Redes Sociais)
+            'Participant_Google': { stroke: '#4dabf7', fill: '#e0f0ff' },        // Azul
+            'Participant_Meta': { stroke: '#cc5de8', fill: '#f3e0ff' },          // Roxo Meta
+            'Participant_Nucleo': { stroke: '#868e96', fill: '#f0f0f0' }         // Cinza
+          };
+
+          // Aguardar um pouco para o SVG estar totalmente renderizado
+          setTimeout(() => {
+            Object.keys(laneColors).forEach(laneId => {
+              // Buscar o elemento SVG da lane
+              const laneElement = containerRef.current?.querySelector(`[data-element-id="${laneId}"]`);
+
+              if (laneElement) {
+                // Buscar o rect dentro da lane
+                const rect = laneElement.querySelector('rect');
+                if (rect) {
+                  rect.setAttribute('fill', laneColors[laneId].fill);
+                  rect.setAttribute('stroke', laneColors[laneId].stroke);
+                  rect.setAttribute('stroke-width', '2');
+                  console.log(`✅ Cor SVG aplicada à lane: ${laneId}`, laneColors[laneId]);
+                } else {
+                  console.warn(`⚠️ Rect não encontrado para lane: ${laneId}`);
+                }
+              } else {
+                console.warn(`⚠️ Elemento não encontrado para lane: ${laneId}`);
+              }
+            });
+          }, 500);
+        };
+
+        // Aplicar cores após o diagrama carregar
+        applyLaneColors();
+
+        // Forçar renderização das labels das lanes
+        const applyLaneLabels = () => {
+          const laneNames = {
+            'Participant_Educacao': '🎓 EDUCAÇÃO - Alunos (6 Meses Grátis)',
+            'Participant_Indicacao': '🤝 INDICAÇÃO - Parceiro (Ativo + Passivo)',
+            'Participant_Conteudo': '📱 PRODUÇÃO CONTEÚDO - Instagram',
+            'Participant_Prospeccao': '🎯 PROSPECÇÃO ATIVA - Redes Sociais',
+            'Participant_Google': '🔍 GOOGLE ADS - Alta Intenção',
+            'Participant_Meta': '📘 META ADS - Descoberta',
+            'Participant_Nucleo': '💰 NÚCLEO FINANCEIRO - Gateway Asaas'
+          };
+
+          setTimeout(() => {
+            Object.keys(laneNames).forEach(laneId => {
+              const laneElement = containerRef.current?.querySelector(`[data-element-id="${laneId}"]`);
+
+              if (laneElement) {
+                // Buscar ou criar o grupo de label
+                let labelGroup = laneElement.querySelector('.djs-label');
+
+                if (!labelGroup) {
+                  // Criar grupo de label se não existir
+                  labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                  labelGroup.setAttribute('class', 'djs-label');
+                  laneElement.appendChild(labelGroup);
+                }
+
+                // Criar ou atualizar o texto
+                let textElement = labelGroup.querySelector('text');
+                if (!textElement) {
+                  textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                  labelGroup.appendChild(textElement);
+                }
+
+                // Configurar atributos do texto
+                textElement.setAttribute('x', '10');
+                textElement.setAttribute('y', '20');
+                textElement.setAttribute('style', 'font-family: Inter, sans-serif; font-size: 13px; font-weight: 700; fill: #1e293b; writing-mode: tb; text-orientation: upright;');
+                textElement.textContent = laneNames[laneId];
+
+                console.log(`✅ Label aplicada à lane: ${laneId}`);
+              } else {
+                console.warn(`⚠️ Lane não encontrada: ${laneId}`);
+              }
+            });
+          }, 600);
+        };
+
+        applyLaneLabels();
 
         // Restaurar overlays de imagens salvas
         const restoreImageOverlays = () => {
@@ -937,11 +1339,17 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
 
         // Re-aplicar quando elementos são adicionados/modificados
         const eventBus = modeler.get('eventBus');
-        eventBus.on('shape.added', () => {
-          setTimeout(applyRobotIcons, 100);
+        eventBus.on('shape.added', ({ element }) => {
+          // Aplicar apenas se o elemento TEM [ROBO], não em todos
+          if (element.businessObject?.name?.includes('[ROBO]')) {
+            setTimeout(applyRobotIcons, 50);
+          }
         });
-        eventBus.on('shape.changed', () => {
-          setTimeout(applyRobotIcons, 100);
+        eventBus.on('shape.changed', ({ element }) => {
+          // Aplicar apenas se o elemento TEM [ROBO], não em todos
+          if (element.businessObject?.name?.includes('[ROBO]')) {
+            setTimeout(applyRobotIcons, 50);
+          }
         });
 
         // Aplicar grid inicial
@@ -961,16 +1369,23 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
           // Verificar se já existe a opção (evitar duplicação)
           if (document.querySelector('[data-action="replace-with-robot-task"]')) return;
 
-          // Procurar onde está o "Service task" para adicionar logo depois
-          const serviceTaskEntry = Array.from(popupBody.querySelectorAll('.entry')).find(
-            entry => entry.textContent.includes('Service task')
+          // Verificar se é um menu de replace (tem várias entries)
+          const entries = popupBody.querySelectorAll('.entry');
+          if (entries.length === 0) return;
+
+          console.log('🤖 Adicionando opção "Tarefa Automatizada" ao menu...');
+
+          // Pegar o elemento selecionado
+          const selection = modeler.get('selection').get()[0];
+          if (!selection) return;
+
+          // Verificar se é um tipo de Task
+          const isTask = selection.type && (
+            selection.type.includes('Task') ||
+            selection.type === 'bpmn:Task'
           );
 
-          if (serviceTaskEntry) {
-            console.log('🤖 Adicionando opção "Tarefa Automatizada" ao menu...');
-
-            // Pegar o elemento selecionado
-            const selection = modeler.get('selection').get()[0];
+          if (isTask) {
 
             // Criar nova opção "Tarefa Automatizada"
             const robotEntry = document.createElement('div');
@@ -1019,8 +1434,8 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
               if (popup) popup.remove();
             });
 
-            // Inserir logo após o Service task
-            serviceTaskEntry.parentNode.insertBefore(robotEntry, serviceTaskEntry.nextSibling);
+            // Adicionar no final da lista de entries
+            popupBody.appendChild(robotEntry);
           }
         });
 
@@ -1563,13 +1978,49 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
             </button>
             <button
               onClick={onGridToggle}
-              className={`px-3 py-2 hover:bg-slate-100 transition-colors ${showGrid ? 'bg-indigo-50' : ''}`}
+              className={`px-3 py-2 hover:bg-slate-100 transition-colors border-r border-slate-200 ${showGrid ? 'bg-indigo-50' : ''}`}
               title={showGrid ? "Desativar grade" : "Ativar grade"}
             >
               <svg className={`w-5 h-5 ${showGrid ? 'text-indigo-600' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
               </svg>
             </button>
+            {/* Botão Adicionar Raia com Dropdown */}
+            <div className="relative" data-raia-menu>
+              <button
+                onClick={() => setShowAddRaiaMenu(!showAddRaiaMenu)}
+                className={`px-3 py-2 hover:bg-slate-100 transition-colors flex items-center gap-1 ${showAddRaiaMenu ? 'bg-emerald-50' : ''}`}
+                title="Adicionar Raia"
+              >
+                <svg className={`w-5 h-5 ${showAddRaiaMenu ? 'text-emerald-600' : 'text-slate-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                <span className={`text-xs font-medium ${showAddRaiaMenu ? 'text-emerald-600' : 'text-slate-600'}`}>Raia</span>
+              </button>
+              {showAddRaiaMenu && (
+                <div className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-xl border border-slate-200 py-1 min-w-[180px] z-50">
+                  <button
+                    onClick={async () => {
+                      setShowAddRaiaMenu(false);
+                      await handleAddIndicacoesRaia();
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-emerald-50 flex items-center gap-2 text-sm"
+                  >
+                    <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <div>
+                      <div className="font-medium text-slate-700">Indicações</div>
+                      <div className="text-xs text-slate-500">Funil da Confiança</div>
+                    </div>
+                  </button>
+                  <div className="border-t border-slate-100 my-1"></div>
+                  <div className="px-4 py-2 text-xs text-slate-400 italic">
+                    Mais raias em breve...
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

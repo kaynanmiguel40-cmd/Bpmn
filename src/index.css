@@ -616,3 +616,232 @@ body {
   text-align: center !important;
   vertical-align: middle !important;
 }
+
+/* ========== OCULTAR BADGE/ÍCONE DA SUPABASE ========== */
+/* Classe específica para elementos marcados como supabase */
+.hide-supabase-badge,
+div:has(a[href*="supabase"]),
+a[href*="supabase"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ========== LINK EVENTS - DESTAQUE ========== */
+.link-highlight .djs-visual > circle,
+.link-highlight .djs-visual > rect {
+  stroke: #ff6b6b !important;
+  stroke-width: 4px !important;
+  animation: link-pulse 1.5s infinite;
+}
+
+@keyframes link-pulse {
+  0%, 100% {
+    stroke-opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(255, 107, 107, 0.8));
+  }
+  50% {
+    stroke-opacity: 0.6;
+    filter: drop-shadow(0 0 16px rgba(255, 107, 107, 1));
+  }
+}
+
+/* Estilo para Link Throw (saída) */
+.bpmn-link-throw .djs-visual > circle {
+  fill: #4dabf7 !important;
+  stroke: #1971c2 !important;
+  stroke-width: 2px !important;
+}
+
+/* Estilo para Link Catch (entrada) */
+.bpmn-link-catch .djs-visual > circle {
+  fill: #51cf66 !important;
+  stroke: #2f9e44 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== CORES DAS RAIAS BPMN ========== */
+/* Lane Outbound - Vermelho */
+[data-element-id="Lane_Outbound"] .djs-visual > rect {
+  fill: #ffe0e0 !important;
+  
+  stroke: #ff6b6b !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Alunos/Educação - Verde */
+[data-element-id="Lane_Alunos"] .djs-visual > rect {
+  fill: #e0ffe0 !important;
+  
+  stroke: #51cf66 !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Google - Azul */
+[data-element-id="Lane_Google"] .djs-visual > rect {
+  fill: #e0f0ff !important;
+  
+  stroke: #4dabf7 !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Meta - Roxo */
+[data-element-id="Lane_Meta"] .djs-visual > rect {
+  fill: #f0e0ff !important;
+  
+  stroke: #9775fa !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Núcleo - Cinza */
+[data-element-id="Lane_Nucleo"] .djs-visual > rect {
+  fill: #f0f0f0 !important;
+  
+  stroke: #868e96 !important;
+  stroke-width: 2px !important;
+}
+
+/* Alternativa: pegar lanes por classe djs-shape + data-element-id */
+.djs-shape[data-element-id="Lane_Outbound"] > .djs-visual > rect {
+  fill: #ffe0e0 !important;
+  stroke: #ff6b6b !important;
+}
+
+.djs-shape[data-element-id="Lane_Alunos"] > .djs-visual > rect {
+  fill: #e0ffe0 !important;
+  stroke: #51cf66 !important;
+}
+
+.djs-shape[data-element-id="Lane_Google"] > .djs-visual > rect {
+  fill: #e0f0ff !important;
+  stroke: #4dabf7 !important;
+}
+
+.djs-shape[data-element-id="Lane_Meta"] > .djs-visual > rect {
+  fill: #f0e0ff !important;
+  stroke: #9775fa !important;
+}
+
+.djs-shape[data-element-id="Lane_Nucleo"] > .djs-visual > rect {
+  fill: #f0f0f0 !important;
+  stroke: #868e96 !important;
+}
+
+/* Terceira alternativa: pegar diretamente por SVG g element */
+g[data-element-id="Lane_Outbound"] rect {
+  fill: #ffe0e0 !important;
+  
+  stroke: #ff6b6b !important;
+  stroke-width: 2px !important;
+}
+
+g[data-element-id="Lane_Alunos"] rect {
+  fill: #e0ffe0 !important;
+  
+  stroke: #51cf66 !important;
+  stroke-width: 2px !important;
+}
+
+g[data-element-id="Lane_Google"] rect {
+  fill: #e0f0ff !important;
+  
+  stroke: #4dabf7 !important;
+  stroke-width: 2px !important;
+}
+
+g[data-element-id="Lane_Meta"] rect {
+  fill: #f0e0ff !important;
+  
+  stroke: #9775fa !important;
+  stroke-width: 2px !important;
+}
+
+g[data-element-id="Lane_Nucleo"] rect {
+  fill: #f0f0f0 !important;
+
+  stroke: #868e96 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== LANES V9 - TEMPLATE COMPLETO ENXUTO ========== */
+/* Lane Educação - Verde (6 Meses Grátis) */
+[data-element-id="Lane_Educacao"] .djs-visual > rect,
+.djs-shape[data-element-id="Lane_Educacao"] > .djs-visual > rect,
+g[data-element-id="Lane_Educacao"] rect {
+  fill: #e0ffe0 !important;
+  stroke: #51cf66 !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Indicação - Vermelho (Parceiro Ativo/Passivo) */
+[data-element-id="Lane_Indicacao"] .djs-visual > rect,
+.djs-shape[data-element-id="Lane_Indicacao"] > .djs-visual > rect,
+g[data-element-id="Lane_Indicacao"] rect {
+  fill: #ffe0e0 !important;
+  stroke: #ff6b6b !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Conteúdo - Roxo (Instagram SaaS + Perfis) */
+[data-element-id="Lane_Conteudo"] .djs-visual > rect,
+.djs-shape[data-element-id="Lane_Conteudo"] > .djs-visual > rect,
+g[data-element-id="Lane_Conteudo"] rect {
+  fill: #f0e0ff !important;
+  stroke: #9775fa !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Prospecção - Vermelho escuro (Redes Sociais) */
+[data-element-id="Lane_Prospeccao"] .djs-visual > rect,
+.djs-shape[data-element-id="Lane_Prospeccao"] > .djs-visual > rect,
+g[data-element-id="Lane_Prospeccao"] rect {
+  fill: #ffe0e0 !important;
+  stroke: #fa5252 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== LABELS DAS LANES - GARANTIR VISIBILIDADE ========== */
+/* Garantir que os labels das lanes fiquem visíveis por cima das cores */
+[data-element-id^="Lane_"] .djs-label tspan {
+  fill: #1e293b !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  text-shadow: 0 0 3px white, 0 0 3px white, 0 0 3px white !important;
+}
+
+[data-element-id^="Lane_"] text {
+  fill: #1e293b !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+}
+
+/* Alternativa: usar outline no texto */
+g[data-element-id^="Lane_"] text {
+  fill: #0f172a !important;
+  stroke: white !important;
+  stroke-width: 0.5px !important;
+  paint-order: stroke fill !important;
+  font-weight: 700 !important;
+}
+
+/* ========== FORÇAR LABELS POR CIMA (Z-INDEX) ========== */
+/* Labels das lanes devem ficar acima de tudo */
+.djs-label[data-element-id^="Lane_"] {
+  position: relative !important;
+  z-index: 9999 !important;
+}
+
+/* Forçar elementos text dentro de lanes a ficarem visíveis */
+g[data-element-id^="Lane_"] > g.djs-label {
+  position: relative !important;
+  z-index: 9999 !important;
+  pointer-events: auto !important;
+}
+
+/* Usar transform para trazer labels para frente no SVG */
+g[data-element-id^="Lane_"] text,
+g[data-element-id^="Lane_"] tspan {
+  transform: translateZ(1000px) !important;
+  -webkit-transform: translateZ(1000px) !important;
+}

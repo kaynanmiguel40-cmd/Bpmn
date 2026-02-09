@@ -111,10 +111,23 @@ export default function Dashboard() {
 
   useEffect(() => {
     const timer = setTimeout(updateCardPositions, 100);
+    const resizeTimer = setTimeout(updateCardPositions, 400); // Aguarda animação da sidebar
     window.addEventListener('resize', updateCardPositions);
+
+    // Observer para mudanças no layout
+    const observer = new ResizeObserver(() => {
+      updateCardPositions();
+    });
+
+    if (document.querySelector('aside')) {
+      observer.observe(document.querySelector('aside'));
+    }
+
     return () => {
       clearTimeout(timer);
+      clearTimeout(resizeTimer);
       window.removeEventListener('resize', updateCardPositions);
+      observer.disconnect();
     };
   }, [projects, companies, updateCardPositions]);
 
@@ -492,7 +505,7 @@ export default function Dashboard() {
                     ) : (
                       <div ref={el => gridRefs.current[company.id] = el} className="relative">
                         {/* SVG Layer for Connections */}
-                        <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" style={{ overflow: 'visible' }}>
+                        <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" style={{ overflow: 'visible' }}>
                           <defs>
                             {[0, 1, 2, 3, 4].map(level => (
                               <marker
@@ -549,14 +562,14 @@ export default function Dashboard() {
                         </svg>
 
                         {/* Cards Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 relative z-10">
                           {companyProjects.map((project) => {
                             const levelColor = getLevelColor(project.level || 0);
                             return (
                               <div
                                 key={project.id}
                                 ref={el => cardRefs.current[project.id] = el}
-                                className={`bg-white rounded-lg border hover:shadow-md transition-all overflow-hidden group relative ${levelColor.border} hover:border-slate-400`}
+                                className={`bg-white rounded-lg border hover:shadow-md transition-all overflow-hidden group relative z-20 ${levelColor.border} hover:border-slate-400`}
                               >
                                 <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${levelColor.gradient}`} />
 

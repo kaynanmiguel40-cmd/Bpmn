@@ -128,7 +128,7 @@ export default function Editor() {
     }
   }, [currentXml]);
 
-  // Auto-save com debounce de 2 segundos
+  // Auto-save com debounce de 500ms (salva rapido para nao perder edicoes)
   useEffect(() => {
     if (!currentXml || !hasChanges || !project) return;
 
@@ -149,7 +149,7 @@ export default function Editor() {
       } finally {
         setIsSaving(false);
       }
-    }, 2000); // 2 segundos de debounce
+    }, 500); // 500ms de debounce (mais rapido)
 
     return () => clearTimeout(autoSaveTimer);
   }, [currentXml, hasChanges, project, projectName]);
