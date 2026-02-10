@@ -1,22 +1,7 @@
 /**
  * Template BPMN - JORNADA COMERCIAL FYNESS V9 (COMPLETO ENXUTO)
  * Template com TODAS as 7 POOLS SEPARADAS - Versão reestruturada
- * SINCRONIZADO COM SUPABASE em Tue Feb 10 09:33:01 -03 2026
- *
- * POOLS (PARTICIPANTS):
- * 1. EDUCAÇÃO - Alunos (6 Meses Grátis)
- * 2. INDICAÇÃO - Parceiro (Ativo + Passivo)
- * 3. PRODUÇÃO CONTEÚDO - Instagram
- * 4. PROSPECÇÃO ATIVA - Redes Sociais
- * 5. GOOGLE ADS - Alta Intenção
- * 6. META ADS - Descoberta
- * 7. NÚCLEO FINANCEIRO - Gateway Asaas
- *
- * ESTRUTURA:
- * - 7 Pools separadas (ao invés de 1 pool com 7 lanes)
- * - 7 Processos independentes
- * - 5 Message Flows conectando pools ao Núcleo Financeiro
- * - Pools empilhadas verticalmente no diagrama
+ * SINCRONIZADO COM SUPABASE em Tue Feb 10 09:52:28 -03 2026
  */
 
 export const COMERCIAL_V9_COMPLETE_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -24,11 +9,11 @@ export const COMERCIAL_V9_COMPLETE_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <bpmn2:collaboration id="Collaboration_Comercial">
     <bpmn2:participant id="Participant_Educacao" name="EDUCAÇÃO" processRef="Process_Educacao" />
     <bpmn2:participant id="Participant_Indicacao" name="INDICAÇÃO" processRef="Process_Indicacao" />
-    <bpmn2:participant id="Participant_Conteudo" name="PRODUÇÃO DE CONTEÚDO" processRef="Process_Conteudo" />
+    <bpmn2:participant id="Participant_Conteudo" name="PRODUÇÃO De CONTEÚDO" processRef="Process_Conteudo" />
     <bpmn2:participant id="Participant_Prospeccao" name="🎯 PROSPECÇÃO ATIVA - Redes Sociais" processRef="Process_Prospeccao" />
-    <bpmn2:participant id="Participant_Google" name="🔍 GOOGLE ADS - Alta Intenção" processRef="Process_Google" />
-    <bpmn2:participant id="Participant_Meta" name="📘 META ADS - Descoberta" processRef="Process_Meta" />
-    <bpmn2:participant id="Participant_Nucleo" name="💰 NÚCLEO FINANCEIRO - Gateway Asaas" processRef="Process_Nucleo" />
+    <bpmn2:participant id="Participant_Google" name="GOOGLE" processRef="Process_Google" />
+    <bpmn2:participant id="Participant_Nucleo" name="Gateway Asaas" processRef="Process_Nucleo" />
+    <bpmn2:participant id="Participant_Meta" name="META ADS" processRef="Process_Meta" />
     <bpmn2:textAnnotation id="TextAnnotation_0576fl5">
       <bpmn2:text>colocar em grupo de nutricao</bpmn2:text>
     </bpmn2:textAnnotation>
@@ -478,6 +463,7 @@ Se tiver mais alguém sofrendo com planilha, manda pra cá."
 POR QUE ISSO É VITAL?
 - Valida o ego do parceiro
 - Estimula novas indicações</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Ind_Sim</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Ind_Aviso</bpmn2:outgoing>
     </bpmn2:sendTask>
     <bpmn2:userTask id="Task_QuebraGelo_Ativo" name="WhatsApp Áudio - Script Ativo">
@@ -664,6 +650,7 @@ Sistema detecta se houve 0 lançamentos em 48h.</bpmn2:documentation>
     <bpmn2:sequenceFlow id="Flow_Ind_D1" sourceRef="Task_D1_Lembrete" targetRef="Task_D3_ProvaSocial" />
     <bpmn2:sequenceFlow id="Flow_Ind_D3" sourceRef="Task_D3_ProvaSocial" targetRef="Task_D5_Ultimato" />
     <bpmn2:sequenceFlow id="Flow_Ind_D5" sourceRef="Task_D5_Ultimato" targetRef="Gateway_Converteu_Indicacao" />
+    <bpmn2:sequenceFlow id="Flow_Ind_Sim" name="Sim" sourceRef="Gateway_Converteu_Indicacao" targetRef="Task_AvisaParceiro" />
     <bpmn2:sequenceFlow id="Flow_Ind_Aviso" sourceRef="Task_AvisaParceiro" targetRef="LinkThrow_Indicacao" />
     <bpmn2:sequenceFlow id="Flow_Ind_Nao" name="Não" sourceRef="Gateway_Converteu_Indicacao" targetRef="Task_GrupoNurturing_Indicacao" />
     <bpmn2:sequenceFlow id="Flow_Ind_Nurturing" sourceRef="Task_GrupoNurturing_Indicacao" targetRef="End_Bloqueio_Indicacao" />
@@ -687,7 +674,7 @@ Sistema detecta se houve 0 lançamentos em 48h.</bpmn2:documentation>
     <bpmn2:sequenceFlow id="Flow_1kc5wwv" name="Sim" sourceRef="Gateway_Converteu_D0_Indicacao" targetRef="Gateway_Merge_D0_Indicacao" />
   </bpmn2:process>
   <bpmn2:process id="Process_Conteudo" isExecutable="false">
-    <bpmn2:startEvent id="Start_Conteudo_Pessoal" name="Instagram Pessoal">
+    <bpmn2:startEvent id="Start_Conteudo_Pessoal" name="Pessoal">
       <bpmn2:documentation>ENTRADA: Lead comenta/interage no story de um SÓCIO/PARCEIRO.
 
 CONTEXTO: É um seguidor do perfil pessoal que confia no indivíduo, não na marca.
@@ -695,7 +682,7 @@ CONTEXTO: É um seguidor do perfil pessoal que confia no indivíduo, não na mar
 GATILHO MENTAL: Autoridade emprestada do líder.</bpmn2:documentation>
       <bpmn2:outgoing>Flow_Cont_Pessoal_1</bpmn2:outgoing>
     </bpmn2:startEvent>
-    <bpmn2:startEvent id="Start_Conteudo_Empresa" name="Instagram SaaS">
+    <bpmn2:startEvent id="Start_Conteudo_Empresa" name="Fyness">
       <bpmn2:documentation>ENTRADA: Lead comenta/envia direct no perfil OFICIAL da Fyness.
 
 CONTEXTO: É um seguidor frio que busca PRODUTO, não pessoa.
@@ -709,7 +696,7 @@ GATILHO MENTAL: Solução de problema (dor funcional).</bpmn2:documentation>
     <bpmn2:endEvent id="End_Perdido_Conteudo" name="Lost (Motivo Registrado)">
       <bpmn2:incoming>Flow_Cont_Motivo</bpmn2:incoming>
     </bpmn2:endEvent>
-    <bpmn2:serviceTask id="Task_ManyChat_Pessoal" name="ManyChat: Responde Comentário + Pede Zap">
+    <bpmn2:serviceTask id="Task_ManyChat_Pessoal" name="Responde Comentário + Pede Zap">
       <bpmn2:documentation>AUTOMAÇÃO MANYCHAT:
 1. Detecta comentário no story do sócio
 2. Responde automaticamente via Direct:
@@ -734,7 +721,7 @@ CRM ACTION: Tag [NURTURING: CONTEÚDO]</bpmn2:documentation>
       <bpmn2:incoming>Flow_Cont_Respondeu_Sim</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Cont_Nurturing</bpmn2:outgoing>
     </bpmn2:serviceTask>
-    <bpmn2:userTask id="Task_WhatsApp_Pessoal" name="D0 - WhatsApp - Autoridade Emprestada do Sócio">
+    <bpmn2:userTask id="Task_WhatsApp_Pessoal" name="D0 - WhatsApp - Autoridade">
       <bpmn2:documentation>SCRIPT - AUTORIDADE EMPRESTADA:
 "Fala [Nome]! Aqui é o [Vendedor] da equipe do [Nome do Sócio].
 
@@ -750,7 +737,7 @@ PRÓXIMO PASSO:
       <bpmn2:incoming>Flow_Cont_Pessoal_2</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Cont_Pessoal_3</bpmn2:outgoing>
     </bpmn2:userTask>
-    <bpmn2:userTask id="Task_FlashDemo_Pessoal" name="D0 - Flash Demo - Bastidor (Espelho)">
+    <bpmn2:userTask id="Task_FlashDemo_Pessoal" name="D0 - Demo - Bastidor (Espelho)">
       <bpmn2:documentation>ABORDAGEM: ESPELHO DO SÓCIO.
 
 SCRIPT VISUAL (Vídeo/Áudio):
@@ -762,7 +749,7 @@ IMPORTANTE: Não mostra todos os recursos. Mostra apenas o QUE O SÓCIO USA.</bp
       <bpmn2:incoming>Flow_Cont_Pessoal_3</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Cont_Pessoal_Merge</bpmn2:outgoing>
     </bpmn2:userTask>
-    <bpmn2:userTask id="Task_SDR_Empresa" name="SDR: Qualifica Manual no Direct">
+    <bpmn2:userTask id="Task_SDR_Empresa" name="Qualificacao via dm">
       <bpmn2:documentation>QUALIFICAÇÃO MANUAL:
 SDR responde manualmente no Direct para QUALIFICAR antes de passar pro Zap.
 
@@ -792,7 +779,7 @@ PRÓXIMO PASSO: Flash Demo focada na DOR.</bpmn2:documentation>
       <bpmn2:incoming>Flow_Cont_Empresa_2</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Cont_Empresa_3</bpmn2:outgoing>
     </bpmn2:userTask>
-    <bpmn2:userTask id="Task_FlashDemo_Empresa" name="D0 - Flash Demo - Função (Dor)">
+    <bpmn2:userTask id="Task_FlashDemo_Empresa" name="D0 - Demo - Função (Dor)">
       <bpmn2:documentation>ABORDAGEM: SOLUÇÃO DE DOR.
 
 SCRIPT VISUAL (Vídeo/Áudio):
@@ -849,7 +836,7 @@ GATILHO MENTAL:
 - Exclusividade (bônus VIP)
 - Elegância (não culpa o lead)</bpmn2:documentation>
       <bpmn2:incoming>Flow_Cont_D3</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Cont_D7</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_1un3847</bpmn2:outgoing>
     </bpmn2:userTask>
     <bpmn2:userTask id="Task_SelecaoMotivo_Conteudo" name="CRM: Selecionar Motivo da Perda">
       <bpmn2:documentation>📊 MARCAR COMO PERDIDO (LOST):
@@ -871,7 +858,7 @@ IMPORTANTE: Dados vão para análise de performance de conteúdo.</bpmn2:documen
       <bpmn2:incoming>Flow_Cont_Respondeu_Nao</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Cont_Motivo</bpmn2:outgoing>
     </bpmn2:userTask>
-    <bpmn2:exclusiveGateway id="Gateway_Merge_Conteudo" name="Merge dos Caminhos">
+    <bpmn2:exclusiveGateway id="Gateway_Merge_Conteudo">
       <bpmn2:incoming>Flow_Cont_Pessoal_Merge</bpmn2:incoming>
       <bpmn2:incoming>Flow_Cont_Empresa_Merge</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Cont_Merged</bpmn2:outgoing>
@@ -882,15 +869,15 @@ IMPORTANTE: Dados vão para análise de performance de conteúdo.</bpmn2:documen
 SIM → Checkout
 NÃO → Cadência de follow-up (D1, D3, D7)</bpmn2:documentation>
       <bpmn2:incoming>Flow_Cont_Merged</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Cont_Imediato_Sim</bpmn2:outgoing>
       <bpmn2:outgoing>Flow_Cont_Imediato_Nao</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_0c7r836</bpmn2:outgoing>
     </bpmn2:exclusiveGateway>
     <bpmn2:exclusiveGateway id="Gateway_Converteu_Conteudo" name="Converteu?">
       <bpmn2:documentation>DECISÃO: Lead converteu após cadência D1-D3-D7?
 
 SIM → Checkout
 NÃO → Break-up (24h para responder)</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Cont_D7</bpmn2:incoming>
+      <bpmn2:incoming>Flow_1un3847</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Cont_Converteu_Sim</bpmn2:outgoing>
       <bpmn2:outgoing>Flow_Cont_Converteu_Nao</bpmn2:outgoing>
     </bpmn2:exclusiveGateway>
@@ -913,7 +900,6 @@ Aguarda 24h para ver se o lead responde ao ultimato elegante do D7.</bpmn2:docum
       </bpmn2:timerEventDefinition>
     </bpmn2:intermediateCatchEvent>
     <bpmn2:intermediateThrowEvent id="LinkThrow_Conteudo" name="→ Checkout">
-      <bpmn2:incoming>Flow_Cont_Imediato_Sim</bpmn2:incoming>
       <bpmn2:incoming>Flow_Cont_Converteu_Sim</bpmn2:incoming>
       <bpmn2:linkEventDefinition name="Link_Checkout" />
     </bpmn2:intermediateThrowEvent>
@@ -926,11 +912,9 @@ Aguarda 24h para ver se o lead responde ao ultimato elegante do D7.</bpmn2:docum
     <bpmn2:sequenceFlow id="Flow_Cont_Empresa_3" sourceRef="Task_WhatsApp_Empresa" targetRef="Task_FlashDemo_Empresa" />
     <bpmn2:sequenceFlow id="Flow_Cont_Empresa_Merge" sourceRef="Task_FlashDemo_Empresa" targetRef="Gateway_Merge_Conteudo" />
     <bpmn2:sequenceFlow id="Flow_Cont_Merged" sourceRef="Gateway_Merge_Conteudo" targetRef="Gateway_Converteu_Imediato_Conteudo" />
-    <bpmn2:sequenceFlow id="Flow_Cont_Imediato_Sim" name="Sim" sourceRef="Gateway_Converteu_Imediato_Conteudo" targetRef="LinkThrow_Conteudo" />
     <bpmn2:sequenceFlow id="Flow_Cont_Imediato_Nao" name="Não" sourceRef="Gateway_Converteu_Imediato_Conteudo" targetRef="Task_D1_Repost_Conteudo" />
     <bpmn2:sequenceFlow id="Flow_Cont_D1" sourceRef="Task_D1_Repost_Conteudo" targetRef="Task_D3_Prova_Conteudo" />
     <bpmn2:sequenceFlow id="Flow_Cont_D3" sourceRef="Task_D3_Prova_Conteudo" targetRef="Task_D7_Fechamento_Conteudo" />
-    <bpmn2:sequenceFlow id="Flow_Cont_D7" sourceRef="Task_D7_Fechamento_Conteudo" targetRef="Gateway_Converteu_Conteudo" />
     <bpmn2:sequenceFlow id="Flow_Cont_Converteu_Sim" name="Sim" sourceRef="Gateway_Converteu_Conteudo" targetRef="LinkThrow_Conteudo" />
     <bpmn2:sequenceFlow id="Flow_Cont_Converteu_Nao" name="Não" sourceRef="Gateway_Converteu_Conteudo" targetRef="IntermediateTimer_24h_Conteudo" />
     <bpmn2:sequenceFlow id="Flow_Cont_Timer" sourceRef="IntermediateTimer_24h_Conteudo" targetRef="Gateway_Respondeu_Conteudo" />
@@ -938,6 +922,12 @@ Aguarda 24h para ver se o lead responde ao ultimato elegante do D7.</bpmn2:docum
     <bpmn2:sequenceFlow id="Flow_Cont_Nurturing" sourceRef="Task_GrupoNurturing_Conteudo" targetRef="End_Bloqueio_Conteudo" />
     <bpmn2:sequenceFlow id="Flow_Cont_Respondeu_Nao" name="Não" sourceRef="Gateway_Respondeu_Conteudo" targetRef="Task_SelecaoMotivo_Conteudo" />
     <bpmn2:sequenceFlow id="Flow_Cont_Motivo" sourceRef="Task_SelecaoMotivo_Conteudo" targetRef="End_Perdido_Conteudo" />
+    <bpmn2:sequenceFlow id="Flow_1un3847" sourceRef="Task_D7_Fechamento_Conteudo" targetRef="Gateway_Converteu_Conteudo" />
+    <bpmn2:intermediateThrowEvent id="Event_1iw749o" name="→ Checkout">
+      <bpmn2:incoming>Flow_0c7r836</bpmn2:incoming>
+      <bpmn2:linkEventDefinition id="LinkEventDefinition_1xn0hg8" name="Link_Checkout" />
+    </bpmn2:intermediateThrowEvent>
+    <bpmn2:sequenceFlow id="Flow_0c7r836" name="SIM" sourceRef="Gateway_Converteu_Imediato_Conteudo" targetRef="Event_1iw749o" />
   </bpmn2:process>
   <bpmn2:process id="Process_Prospeccao" isExecutable="false">
     <bpmn2:startEvent id="Start_Prospeccao" name="Prospecção">
@@ -1220,7 +1210,7 @@ CTA na LP: "Falar com Especialista"</bpmn2:documentation>
       <bpmn2:incoming>Flow_Goo_Zap</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Goo_Zap_1</bpmn2:outgoing>
     </bpmn2:userTask>
-    <bpmn2:userTask id="Task_SpeedToLead_Google" name="Speed to Lead &#60; 5 min">
+    <bpmn2:userTask id="Task_SpeedToLead_Google" name="Responsta &#60; 5 min">
       <bpmn2:documentation>REGRA DE OURO: Vendedor responde em &lt; 5 minutos.
 
 SCRIPT ABERTURA:
@@ -1230,35 +1220,6 @@ OBJETIVO: Qualificar rapidamente a dor.</bpmn2:documentation>
       <bpmn2:incoming>Flow_Goo_Zap_1</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Goo_Zap_2</bpmn2:outgoing>
     </bpmn2:userTask>
-    <bpmn2:userTask id="Task_FlashDemo_Google" name="Flash Demo (Áudio + Print)">
-      <bpmn2:documentation>A PROVA REAL:
-Para matar objeção "será que funciona?", vendedor faz a mágica.
-
-AÇÃO:
-Manda áudio simulando gasto do nicho dele + Print do relatório pronto.
-
-SCRIPT:
-"Olha a mágica: eu mandei esse áudio de 3s e o sistema já gerou o DRE. É essa liberdade que você quer?"
-
-GATILHO MENTAL: Prova social + Facilidade.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Goo_Zap_2</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Goo_Zap_3</bpmn2:outgoing>
-    </bpmn2:userTask>
-    <bpmn2:userTask id="Task_OfertaTrial_Google" name="Oferta Trial 7d">
-      <bpmn2:documentation>O GANCHO:
-
-SCRIPT:
-"Vou liberar 7 dias grátis pra você brincar. Se a IA não te economizar 2 horas na semana, você nem precisa assinar."
-
-OBJEÇÃO ELIMINADA: "E se não der certo?" → Risco zero.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Goo_Zap_3</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Goo_ToGatewayTrial</bpmn2:outgoing>
-    </bpmn2:userTask>
-    <bpmn2:exclusiveGateway id="Gateway_AceitouTrial_Google" name="Aceitou Trial?">
-      <bpmn2:incoming>Flow_Goo_ToGatewayTrial</bpmn2:incoming>
-      <bpmn2:incoming>Flow_Goo_Recuperacao</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Goo_Trial_Nao</bpmn2:outgoing>
-    </bpmn2:exclusiveGateway>
     <bpmn2:userTask id="Task_SelecaoMotivo_Google" name="CRM: Selecionar Motivo da Perda">
       <bpmn2:documentation>📊 MARCAR COMO PERDIDO (LOST):
 Vendedor deve selecionar o motivo real da perda:
@@ -1465,239 +1426,35 @@ CONSIDERADO PERDIDO: Apenas se descadastrar/bloquear</bpmn2:documentation>
     <bpmn2:endEvent id="End_Bloqueio_Google" name="Descadastrou/Bloqueou">
       <bpmn2:incoming>Flow_Goo_Nurturing</bpmn2:incoming>
     </bpmn2:endEvent>
-  </bpmn2:process>
-  <bpmn2:process id="Process_Meta" isExecutable="false">
-    <bpmn2:startEvent id="Start_Meta" name="Meta Ads">
-      <bpmn2:outgoing>Flow_Meta_Start</bpmn2:outgoing>
-    </bpmn2:startEvent>
-    <bpmn2:endEvent id="End_Perdido_Meta" name="Lost (Motivo Registrado)">
-      <bpmn2:incoming>Flow_Meta_Motivo</bpmn2:incoming>
-    </bpmn2:endEvent>
-    <bpmn2:endEvent id="End_Bloqueio_Meta" name="Descadastrou/Bloqueou">
-      <bpmn2:incoming>Flow_Meta_Nurturing</bpmn2:incoming>
-    </bpmn2:endEvent>
-    <bpmn2:serviceTask id="Task_GrupoNurturing_Meta" name="Grupo de Nurturing">
-      <bpmn2:documentation>📢 NURTURING - LISTA DE AQUECIMENTO:
+    <bpmn2:exclusiveGateway id="Gateway_AceitouTrial_Google" name="Aceitou Trial?">
+      <bpmn2:incoming>Flow_Goo_ToGatewayTrial</bpmn2:incoming>
+      <bpmn2:incoming>Flow_Goo_Recuperacao</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Goo_Trial_Nao</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
+    <bpmn2:userTask id="Task_FlashDemo_Google" name="Flash Demo (Áudio + Print)">
+      <bpmn2:documentation>A PROVA REAL:
+Para matar objeção "será que funciona?", vendedor faz a mágica.
 
-Lead Meta que não converteu mas respondeu vai para:
-- Lista de e-mail marketing
-- Grupo de promoções no WhatsApp
-- Campanhas de remarketing Meta Ads
+AÇÃO:
+Manda áudio simulando gasto do nicho dele + Print do relatório pronto.
 
-CONSIDERADO PERDIDO: Apenas se bloquear ou descadastrar.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_Respondeu_Sim</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_Nurturing</bpmn2:outgoing>
-    </bpmn2:serviceTask>
-    <bpmn2:sendTask id="Task_WhatsApp_D0_Meta" name="D0 - WhatsApp (Min 0-5) - Abordagem Ativa">
-      <bpmn2:documentation>⚡ SPEED TO LEAD - META ADS (0-5 MINUTOS):
+SCRIPT:
+"Olha a mágica: eu mandei esse áudio de 3s e o sistema já gerou o DRE. É essa liberdade que você quer?"
 
-MENSAGEM INICIAL:
-"Oi [Nome]! Vi que você acabou de preencher o formulário sobre gestão financeira.
-
-Trabalha com [Segmento] mesmo? 🤔"
-
-OBJETIVO: Quebra de gelo e confirmação de interesse real.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_Filtro</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_D0_Zap</bpmn2:outgoing>
-    </bpmn2:sendTask>
-    <bpmn2:sendTask id="Task_FlashDemo_D0_Meta" name="D0 - Flash Demo - Áudio + Print">
-      <bpmn2:documentation>🎬 FLASH DEMO - PROVA IMEDIATA:
-
-MENSAGEM (após resposta ou 15min):
-"Olha só que demais. Você manda um áudio falando o que precisa lançar e a IA já organiza tudo.
-
-[Áudio Flash Demo 20s]
-[Print de resultado]
-
-Testou algo parecido antes ou é a primeira vez vendo isso?"
-
-OBJETIVO: Mostrar o produto funcionando antes de qualquer pitch.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_D0_Zap</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_FlashDemo</bpmn2:outgoing>
-    </bpmn2:sendTask>
-    <bpmn2:sendTask id="Task_D1_WhatsApp_Meta" name="D1 - WhatsApp (Manhã) - A Curiosidade">
-      <bpmn2:documentation>🧠 DIA 1 - A CURIOSIDADE:
-
-Lead Meta é frio. Precisa de nutrição antes de venda.
-
-MENSAGEM:
-"Bom dia [Nome]!
-
-Você usa planilha, caderno ou já tem algum sistema hoje pra controlar o caixa?"
-
-OBJETIVO: Entender a dor atual e gerar engajamento através da pergunta.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_Fechou_Nao</bpmn2:incoming>
-      <bpmn2:incoming>Flow_Meta_Interessado_Nao</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_D1</bpmn2:outgoing>
-    </bpmn2:sendTask>
-    <bpmn2:sendTask id="Task_D3_WhatsApp_Meta" name="D3 - WhatsApp (Tarde) - A Prova Social">
-      <bpmn2:documentation>👥 DIA 3 - PROVA SOCIAL:
-
-MENSAGEM:
-"[Nome], lembrei de você hoje.
-
-Esse cliente aqui é do ramo de [Segmento] também. Olha o antes e depois dele em 7 dias:
-
-[Print de Depoimento/Resultado]
-
-Muita gente do seu ramo tá usando. Você já organizou aí ou continua no improviso?"
-
-OBJETIVO: Mostrar que o nicho dele já usa e tem resultados.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_D1</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_D3</bpmn2:outgoing>
-    </bpmn2:sendTask>
-    <bpmn2:sendTask id="Task_D6_WhatsApp_Meta" name="D6 - WhatsApp (Manhã) - Conteúdo Educativo">
-      <bpmn2:documentation>📚 DIA 6 - EDUCAÇÃO (Soft Touch):
-
-Lead ainda não comprou. Hora de educar sem vender.
-
-MENSAGEM:
-"Bom dia [Nome]!
-
-Fiz esse vídeo rápido mostrando os 3 erros que TODO dono de [Segmento] comete no controle financeiro (e como evitar):
-
-[Link para Vídeo Curto 2-3min]
-
-Vale a pena assistir. Abraço!"
-
-OBJETIVO: Gerar valor sem pedir nada em troca. Construir autoridade.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_D3</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_D6</bpmn2:outgoing>
-    </bpmn2:sendTask>
-    <bpmn2:sendTask id="Task_D9_WhatsApp_Meta" name="D9 - WhatsApp (Tarde) - Oferta Irresistível">
-      <bpmn2:documentation>💰 DIA 9 - A OFERTA IRRESISTÍVEL:
-
-Hora de fazer a oferta com escassez.
-
-MENSAGEM:
-"E aí [Nome], vou te fazer uma proposta:
-
-Tô com 5 vagas essa semana pra liberar teste de 7 dias GRÁTIS + Onboarding personalizado (valor R$ 497) sem custo.
-
-Mas só até sexta.
-
-Se organizar o financeiro é prioridade, me confirma que eu separo uma vaga pra você. Se não for, sem problema, a gente se fala mais pra frente.
-
-Bora?"
-
-OBJETIVO: Criar senso de urgência e oportunidade limitada.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_D6</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_D9</bpmn2:outgoing>
-    </bpmn2:sendTask>
-    <bpmn2:sendTask id="Task_D14_WhatsApp_Meta" name="D14 - WhatsApp - Break-up Elegante">
-      <bpmn2:documentation>👋 DIA 14 - BREAK-UP ELEGANTE:
-
-Técnica de "take away" sem queimar a ponte.
-
-MENSAGEM:
-"Fala [Nome]!
-
-Como não tivemos retorno, vou assumir que organizar o financeiro não é prioridade agora ou você já resolveu de outra forma.
-
-Vou parar de te cutucar por aqui pra não incomodar 😅
-
-Mas fica o meu contato. Se um dia o caos voltar (e ele sempre volta haha), é só chamar.
-
-Sucesso aí! 🚀"
-
-OBJETIVO: Dar a última chance de resposta ou encerrar educadamente.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_D9</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_D14</bpmn2:outgoing>
-    </bpmn2:sendTask>
-    <bpmn2:userTask id="Task_PaginaFiltro_Meta" name="Página de Filtro + Formulário">
-      <bpmn2:documentation>🎯 PÁGINA DE FILTRO META ADS:
-
-Lead vem de anúncio de descoberta (topo de funil).
-
-LANDING PAGE:
-- Título: "Transforme áudios em organização financeira"
-- Filtro de qualificação: "Você é dono/gestor?"
-- Formulário: Nome, WhatsApp, Segmento
-
-OBJETIVO: Capturar contato qualificado antes da abordagem.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_Start</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_Filtro</bpmn2:outgoing>
+GATILHO MENTAL: Prova social + Facilidade.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Goo_Zap_2</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Goo_Zap_3</bpmn2:outgoing>
     </bpmn2:userTask>
-    <bpmn2:userTask id="Task_SelecaoMotivo_Meta" name="CRM: Selecionar Motivo da Perda">
-      <bpmn2:documentation>📊 MARCAR COMO PERDIDO (LOST):
+    <bpmn2:userTask id="Task_OfertaTrial_Google" name="Oferta Trial 7d">
+      <bpmn2:documentation>O GANCHO:
 
-MOTIVOS OBRIGATÓRIOS:
-□ Sem Contato (Ghosting) - Nunca respondeu
-□ Preço - Achou caro
-□ Não é Público-Alvo - Curioso/Estudante
-□ Concorrência - Fechou com outro
-□ Timing - "Não é o momento"
-□ Outro - Especificar
+SCRIPT:
+"Vou liberar 7 dias grátis pra você brincar. Se a IA não te economizar 2 horas na semana, você nem precisa assinar."
 
-CRM ACTION: Marcar lead como LOST com motivo.
-
-MÉTRICA: Taxa de conversão Meta Ads por motivo de perda.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_Respondeu_Nao</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_Motivo</bpmn2:outgoing>
+OBJEÇÃO ELIMINADA: "E se não der certo?" → Risco zero.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Goo_Zap_3</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Goo_ToGatewayTrial</bpmn2:outgoing>
     </bpmn2:userTask>
-    <bpmn2:exclusiveGateway id="Gateway_Interessado_D0_Meta" name="Interessado?">
-      <bpmn2:incoming>Flow_Meta_FlashDemo</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_Interessado_Sim</bpmn2:outgoing>
-      <bpmn2:outgoing>Flow_Meta_Interessado_Nao</bpmn2:outgoing>
-    </bpmn2:exclusiveGateway>
-    <bpmn2:exclusiveGateway id="Gateway_Converteu_Imediato_Meta" name="Fechou na hora?">
-      <bpmn2:incoming>Flow_Meta_Interessado_Sim</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_Fechou_Sim</bpmn2:outgoing>
-      <bpmn2:outgoing>Flow_Meta_Fechou_Nao</bpmn2:outgoing>
-    </bpmn2:exclusiveGateway>
-    <bpmn2:exclusiveGateway id="Gateway_Converteu_Meta" name="Converteu?">
-      <bpmn2:incoming>Flow_Meta_D14</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_Converteu_Sim</bpmn2:outgoing>
-      <bpmn2:outgoing>Flow_Meta_Converteu_Nao</bpmn2:outgoing>
-    </bpmn2:exclusiveGateway>
-    <bpmn2:exclusiveGateway id="Gateway_Respondeu_Meta" name="Respondeu?">
-      <bpmn2:incoming>Flow_Meta_Timer24h</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_Respondeu_Sim</bpmn2:outgoing>
-      <bpmn2:outgoing>Flow_Meta_Respondeu_Nao</bpmn2:outgoing>
-    </bpmn2:exclusiveGateway>
-    <bpmn2:intermediateCatchEvent id="IntermediateTimer_24h_Meta" name="24h">
-      <bpmn2:documentation>⏰ TIMER PÓS-BREAKUP:
-Aguarda 24h para ver se o lead responde ao ultimato.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Meta_Converteu_Nao</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Meta_Timer24h</bpmn2:outgoing>
-      <bpmn2:timerEventDefinition>
-        <bpmn2:timeDuration>PT24H</bpmn2:timeDuration>
-      </bpmn2:timerEventDefinition>
-    </bpmn2:intermediateCatchEvent>
-    <bpmn2:intermediateThrowEvent id="LinkThrow_Meta" name="→ Checkout">
-      <bpmn2:incoming>Flow_Meta_Fechou_Sim</bpmn2:incoming>
-      <bpmn2:incoming>Flow_Meta_Converteu_Sim</bpmn2:incoming>
-      <bpmn2:linkEventDefinition name="Link_Checkout" />
-    </bpmn2:intermediateThrowEvent>
-    <bpmn2:sequenceFlow id="Flow_Meta_Start" sourceRef="Start_Meta" targetRef="Task_PaginaFiltro_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Filtro" sourceRef="Task_PaginaFiltro_Meta" targetRef="Task_WhatsApp_D0_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_D0_Zap" sourceRef="Task_WhatsApp_D0_Meta" targetRef="Task_FlashDemo_D0_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_FlashDemo" sourceRef="Task_FlashDemo_D0_Meta" targetRef="Gateway_Interessado_D0_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Interessado_Sim" name="Sim" sourceRef="Gateway_Interessado_D0_Meta" targetRef="Gateway_Converteu_Imediato_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Interessado_Nao" name="Não" sourceRef="Gateway_Interessado_D0_Meta" targetRef="Task_D1_WhatsApp_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Fechou_Sim" name="Sim" sourceRef="Gateway_Converteu_Imediato_Meta" targetRef="LinkThrow_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Fechou_Nao" name="Não" sourceRef="Gateway_Converteu_Imediato_Meta" targetRef="Task_D1_WhatsApp_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_D1" sourceRef="Task_D1_WhatsApp_Meta" targetRef="Task_D3_WhatsApp_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_D3" sourceRef="Task_D3_WhatsApp_Meta" targetRef="Task_D6_WhatsApp_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_D6" sourceRef="Task_D6_WhatsApp_Meta" targetRef="Task_D9_WhatsApp_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_D9" sourceRef="Task_D9_WhatsApp_Meta" targetRef="Task_D14_WhatsApp_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_D14" sourceRef="Task_D14_WhatsApp_Meta" targetRef="Gateway_Converteu_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Converteu_Sim" name="Sim" sourceRef="Gateway_Converteu_Meta" targetRef="LinkThrow_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Converteu_Nao" name="Não" sourceRef="Gateway_Converteu_Meta" targetRef="IntermediateTimer_24h_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Timer24h" sourceRef="IntermediateTimer_24h_Meta" targetRef="Gateway_Respondeu_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Respondeu_Sim" name="Sim" sourceRef="Gateway_Respondeu_Meta" targetRef="Task_GrupoNurturing_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Respondeu_Nao" name="Não" sourceRef="Gateway_Respondeu_Meta" targetRef="Task_SelecaoMotivo_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Nurturing" sourceRef="Task_GrupoNurturing_Meta" targetRef="End_Bloqueio_Meta" />
-    <bpmn2:sequenceFlow id="Flow_Meta_Motivo" sourceRef="Task_SelecaoMotivo_Meta" targetRef="End_Perdido_Meta" />
-    <bpmn2:intermediateCatchEvent id="LinkCatch_Merge" name="← Checkout (Todas as Fontes)">
-      <bpmn2:documentation>CONVERGÊNCIA DE 5 CANAIS:
-- Indicação (Ativo + Passivo)
-- Conteúdo (Perfil Pessoal + Empresa)
-- Prospecção (Redes Sociais)
-- Google Ads (Alta Intenção)
-- Meta Ads (Funil Frio)</bpmn2:documentation>
-      <bpmn2:linkEventDefinition name="Link_Checkout" />
-    </bpmn2:intermediateCatchEvent>
   </bpmn2:process>
   <bpmn2:process id="Process_Nucleo" isExecutable="false">
     <bpmn2:endEvent id="End_Cliente_Ativo" name="✅ Cliente Ativo">
@@ -1749,7 +1506,7 @@ Nota: Apenas para leads vindos de Lane_Indicacao</bpmn2:documentation>
 Timing: Imediato (webhook pós-pagamento)</bpmn2:documentation>
       <bpmn2:incoming>Flow_Split_Para_Onboarding</bpmn2:incoming>
       <bpmn2:incoming>Flow_Semestral_Aprovado</bpmn2:incoming>
-      <bpmn2:incoming>Flow_Trimestral_Aprovado</bpmn2:incoming>
+      <bpmn2:incoming>Flow_0na0lv9</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Para_Cliente_Ativo</bpmn2:outgoing>
     </bpmn2:task>
     <bpmn2:task id="Task_Webhook_Falha" name="Webhook: Detecta Falha no Pagamento">
@@ -1790,7 +1547,7 @@ Nota: NÃO fica exposto no site principal</bpmn2:documentation>
       <bpmn2:incoming>Flow_WhatsApp_Para_Semestral</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Semestral_Para_Gateway</bpmn2:outgoing>
     </bpmn2:task>
-    <bpmn2:task id="Task_Vendedor_Trimestral" name="Vendedor: Oferta Manual Trimestral">
+    <bpmn2:task id="Task_Vendedor_Trimestral" name="Vendedor: Oferta Trimestral">
       <bpmn2:documentation>DEGRAU 3: CARTA NA MANGA DO VENDEDOR
 Timing: D+2 após falha do Semestral
 Responsável: SDR/Closer
@@ -1822,6 +1579,7 @@ Uso: Apenas para recuperação manual via vendedor</bpmn2:documentation>
     </bpmn2:task>
     <bpmn2:exclusiveGateway id="Gateway_Checkout_Merge" name="Direciona Checkout">
       <bpmn2:outgoing>Flow_Para_Anual</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_0m1sjfy</bpmn2:outgoing>
     </bpmn2:exclusiveGateway>
     <bpmn2:exclusiveGateway id="Gateway_Pagamento_Anual" name="Pagamento Anual Aprovado?">
       <bpmn2:incoming>Flow_Anual_Para_Gateway</bpmn2:incoming>
@@ -1835,8 +1593,8 @@ Uso: Apenas para recuperação manual via vendedor</bpmn2:documentation>
     </bpmn2:exclusiveGateway>
     <bpmn2:exclusiveGateway id="Gateway_Pagamento_Trimestral" name="Pagamento Trimestral Aprovado?">
       <bpmn2:incoming>Flow_Trimestral_Para_Gateway</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Trimestral_Aprovado</bpmn2:outgoing>
       <bpmn2:outgoing>Flow_Trimestral_Recusado</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_0na0lv9</bpmn2:outgoing>
     </bpmn2:exclusiveGateway>
     <bpmn2:intermediateCatchEvent id="IntermediateTimer_D2" name="⏱ Timer: 48h">
       <bpmn2:documentation>COOLING OFF PERIOD
@@ -1849,22 +1607,259 @@ Evita spam excessivo</bpmn2:documentation>
         <bpmn2:timeDuration>PT48H</bpmn2:timeDuration>
       </bpmn2:timerEventDefinition>
     </bpmn2:intermediateCatchEvent>
+    <bpmn2:sequenceFlow id="Flow_Para_Cliente_Ativo" sourceRef="Task_Onboarding_Pago" targetRef="End_Cliente_Ativo" />
+    <bpmn2:sequenceFlow id="Flow_Trimestral_Recusado" name="NÃO" sourceRef="Gateway_Pagamento_Trimestral" targetRef="End_Pagamento_Falhou" />
     <bpmn2:sequenceFlow id="Flow_Para_Anual" sourceRef="Gateway_Checkout_Merge" targetRef="Task_Checkout_Anual" />
     <bpmn2:sequenceFlow id="Flow_Anual_Para_Gateway" sourceRef="Task_Checkout_Anual" targetRef="Gateway_Pagamento_Anual" />
     <bpmn2:sequenceFlow id="Flow_Anual_Aprovado" name="SIM" sourceRef="Gateway_Pagamento_Anual" targetRef="Task_Split_Parceiro" />
-    <bpmn2:sequenceFlow id="Flow_Anual_Recusado" name="NÃO" sourceRef="Gateway_Pagamento_Anual" targetRef="Task_Webhook_Falha" />
     <bpmn2:sequenceFlow id="Flow_Split_Para_Onboarding" sourceRef="Task_Split_Parceiro" targetRef="Task_Onboarding_Pago" />
-    <bpmn2:sequenceFlow id="Flow_Para_Cliente_Ativo" sourceRef="Task_Onboarding_Pago" targetRef="End_Cliente_Ativo" />
+    <bpmn2:sequenceFlow id="Flow_Semestral_Aprovado" name="SIM" sourceRef="Gateway_Pagamento_Semestral" targetRef="Task_Onboarding_Pago" />
+    <bpmn2:sequenceFlow id="Flow_Anual_Recusado" name="NÃO" sourceRef="Gateway_Pagamento_Anual" targetRef="Task_Webhook_Falha" />
     <bpmn2:sequenceFlow id="Flow_Falha_Para_WhatsApp" sourceRef="Task_Webhook_Falha" targetRef="Task_WhatsApp_5min" />
     <bpmn2:sequenceFlow id="Flow_WhatsApp_Para_Semestral" sourceRef="Task_WhatsApp_5min" targetRef="Task_Checkout_Semestral" />
     <bpmn2:sequenceFlow id="Flow_Semestral_Para_Gateway" sourceRef="Task_Checkout_Semestral" targetRef="Gateway_Pagamento_Semestral" />
-    <bpmn2:sequenceFlow id="Flow_Semestral_Aprovado" name="SIM" sourceRef="Gateway_Pagamento_Semestral" targetRef="Task_Onboarding_Pago" />
-    <bpmn2:sequenceFlow id="Flow_Semestral_Recusado" name="NÃO" sourceRef="Gateway_Pagamento_Semestral" targetRef="IntermediateTimer_D2" />
     <bpmn2:sequenceFlow id="Flow_Timer_Para_Vendedor" sourceRef="IntermediateTimer_D2" targetRef="Task_Vendedor_Trimestral" />
     <bpmn2:sequenceFlow id="Flow_Vendedor_Para_Trimestral" sourceRef="Task_Vendedor_Trimestral" targetRef="Task_Checkout_Trimestral" />
     <bpmn2:sequenceFlow id="Flow_Trimestral_Para_Gateway" sourceRef="Task_Checkout_Trimestral" targetRef="Gateway_Pagamento_Trimestral" />
-    <bpmn2:sequenceFlow id="Flow_Trimestral_Aprovado" name="SIM" sourceRef="Gateway_Pagamento_Trimestral" targetRef="Task_Onboarding_Pago" />
-    <bpmn2:sequenceFlow id="Flow_Trimestral_Recusado" name="NÃO" sourceRef="Gateway_Pagamento_Trimestral" targetRef="End_Pagamento_Falhou" />
+    <bpmn2:sequenceFlow id="Flow_Semestral_Recusado" name="NÃO" sourceRef="Gateway_Pagamento_Semestral" targetRef="IntermediateTimer_D2" />
+    <bpmn2:intermediateThrowEvent id="Event_0u9h6ak">
+      <bpmn2:incoming>Flow_0m1sjfy</bpmn2:incoming>
+      <bpmn2:linkEventDefinition id="LinkEventDefinition_0jv44ni" name="Link_Checkout" />
+    </bpmn2:intermediateThrowEvent>
+    <bpmn2:sequenceFlow id="Flow_0m1sjfy" sourceRef="Gateway_Checkout_Merge" targetRef="Event_0u9h6ak" />
+    <bpmn2:sequenceFlow id="Flow_0na0lv9" name="sim" sourceRef="Gateway_Pagamento_Trimestral" targetRef="Task_Onboarding_Pago" />
+  </bpmn2:process>
+  <bpmn2:process id="Process_Meta" isExecutable="false">
+    <bpmn2:intermediateThrowEvent id="Event_1q9m63q" name="→ Checkout">
+      <bpmn2:incoming>Flow_0lfarjy</bpmn2:incoming>
+      <bpmn2:linkEventDefinition id="LinkEventDefinition_1cr0lzg" name="Link_Checkout" />
+    </bpmn2:intermediateThrowEvent>
+    <bpmn2:intermediateCatchEvent id="Event_1qdcr1f" name="Grupo de nutricao">
+      <bpmn2:incoming>Flow_0fm6hqw</bpmn2:incoming>
+      <bpmn2:conditionalEventDefinition id="ConditionalEventDefinition_028jq8q">
+        <bpmn2:condition xsi:type="bpmn2:tFormalExpression" />
+      </bpmn2:conditionalEventDefinition>
+    </bpmn2:intermediateCatchEvent>
+    <bpmn2:intermediateThrowEvent id="LinkThrow_Meta" name="→ Checkout">
+      <bpmn2:incoming>Flow_Meta_Converteu_Sim</bpmn2:incoming>
+      <bpmn2:linkEventDefinition name="Link_Checkout" />
+    </bpmn2:intermediateThrowEvent>
+    <bpmn2:intermediateCatchEvent id="IntermediateTimer_24h_Meta" name="24h">
+      <bpmn2:documentation>⏰ TIMER PÓS-BREAKUP:
+Aguarda 24h para ver se o lead responde ao ultimato.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_Converteu_Nao</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_Timer24h</bpmn2:outgoing>
+      <bpmn2:timerEventDefinition>
+        <bpmn2:timeDuration>PT24H</bpmn2:timeDuration>
+      </bpmn2:timerEventDefinition>
+    </bpmn2:intermediateCatchEvent>
+    <bpmn2:exclusiveGateway id="Gateway_Respondeu_Meta" name="Respondeu?">
+      <bpmn2:incoming>Flow_Meta_Timer24h</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_Respondeu_Nao</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_Meta_Respondeu_Sim</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
+    <bpmn2:sequenceFlow id="Flow_Meta_Timer24h" sourceRef="IntermediateTimer_24h_Meta" targetRef="Gateway_Respondeu_Meta" />
+    <bpmn2:exclusiveGateway id="Gateway_Converteu_Meta" name="Converteu?">
+      <bpmn2:incoming>Flow_Meta_D14</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_Converteu_Nao</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_Meta_Converteu_Sim</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
+    <bpmn2:sequenceFlow id="Flow_Meta_Converteu_Nao" name="Não" sourceRef="Gateway_Converteu_Meta" targetRef="IntermediateTimer_24h_Meta" />
+    <bpmn2:sequenceFlow id="Flow_Meta_Converteu_Sim" name="Sim" sourceRef="Gateway_Converteu_Meta" targetRef="LinkThrow_Meta" />
+    <bpmn2:exclusiveGateway id="Gateway_Converteu_Imediato_Meta" name="Fechou na hora?">
+      <bpmn2:incoming>Flow_Meta_Interessado_Sim</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_0lfarjy</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_1qdoel0</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
+    <bpmn2:sequenceFlow id="Flow_0lfarjy" sourceRef="Gateway_Converteu_Imediato_Meta" targetRef="Event_1q9m63q" />
+    <bpmn2:sequenceFlow id="Flow_1qdoel0" name="nao" sourceRef="Gateway_Converteu_Imediato_Meta" targetRef="Task_D1_WhatsApp_Meta" />
+    <bpmn2:exclusiveGateway id="Gateway_Interessado_D0_Meta" name="Interessado?">
+      <bpmn2:incoming>Flow_Meta_FlashDemo</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_0fm6hqw</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_Meta_Interessado_Sim</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
+    <bpmn2:sequenceFlow id="Flow_0fm6hqw" name="Nao" sourceRef="Gateway_Interessado_D0_Meta" targetRef="Event_1qdcr1f" />
+    <bpmn2:sequenceFlow id="Flow_Meta_Interessado_Sim" name="Sim" sourceRef="Gateway_Interessado_D0_Meta" targetRef="Gateway_Converteu_Imediato_Meta" />
+    <bpmn2:userTask id="Task_SelecaoMotivo_Meta" name="CRM: Selecionar Motivo da Perda">
+      <bpmn2:documentation>📊 MARCAR COMO PERDIDO (LOST):
+
+MOTIVOS OBRIGATÓRIOS:
+□ Sem Contato (Ghosting) - Nunca respondeu
+□ Preço - Achou caro
+□ Não é Público-Alvo - Curioso/Estudante
+□ Concorrência - Fechou com outro
+□ Timing - "Não é o momento"
+□ Outro - Especificar
+
+CRM ACTION: Marcar lead como LOST com motivo.
+
+MÉTRICA: Taxa de conversão Meta Ads por motivo de perda.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_Respondeu_Nao</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_Motivo</bpmn2:outgoing>
+    </bpmn2:userTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_Respondeu_Nao" name="Não" sourceRef="Gateway_Respondeu_Meta" targetRef="Task_SelecaoMotivo_Meta" />
+    <bpmn2:userTask id="Task_PaginaFiltro_Meta" name="Página Captura">
+      <bpmn2:documentation>🎯 PÁGINA DE FILTRO META ADS:
+
+Lead vem de anúncio de descoberta (topo de funil).
+
+LANDING PAGE:
+- Título: "Transforme áudios em organização financeira"
+- Filtro de qualificação: "Você é dono/gestor?"
+- Formulário: Nome, WhatsApp, Segmento
+
+OBJETIVO: Capturar contato qualificado antes da abordagem.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_Start</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_Filtro</bpmn2:outgoing>
+    </bpmn2:userTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_Filtro" sourceRef="Task_PaginaFiltro_Meta" targetRef="Task_WhatsApp_D0_Meta" />
+    <bpmn2:sendTask id="Task_D14_WhatsApp_Meta" name="D14 - WhatsApp - Break-up">
+      <bpmn2:documentation>👋 DIA 14 - BREAK-UP ELEGANTE:
+
+Técnica de "take away" sem queimar a ponte.
+
+MENSAGEM:
+"Fala [Nome]!
+
+Como não tivemos retorno, vou assumir que organizar o financeiro não é prioridade agora ou você já resolveu de outra forma.
+
+Vou parar de te cutucar por aqui pra não incomodar 😅
+
+Mas fica o meu contato. Se um dia o caos voltar (e ele sempre volta haha), é só chamar.
+
+Sucesso aí! 🚀"
+
+OBJETIVO: Dar a última chance de resposta ou encerrar educadamente.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_D9</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_D14</bpmn2:outgoing>
+    </bpmn2:sendTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_D14" sourceRef="Task_D14_WhatsApp_Meta" targetRef="Gateway_Converteu_Meta" />
+    <bpmn2:sendTask id="Task_D9_WhatsApp_Meta" name="D9 - WhatsApp (Tarde) - Oferta Irresistível">
+      <bpmn2:documentation>💰 DIA 9 - A OFERTA IRRESISTÍVEL:
+
+Hora de fazer a oferta com escassez.
+
+MENSAGEM:
+"E aí [Nome], vou te fazer uma proposta:
+
+Tô com 5 vagas essa semana pra liberar teste de 7 dias GRÁTIS + Onboarding personalizado (valor R$ 497) sem custo.
+
+Mas só até sexta.
+
+Se organizar o financeiro é prioridade, me confirma que eu separo uma vaga pra você. Se não for, sem problema, a gente se fala mais pra frente.
+
+Bora?"
+
+OBJETIVO: Criar senso de urgência e oportunidade limitada.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_D6</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_D9</bpmn2:outgoing>
+    </bpmn2:sendTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_D9" sourceRef="Task_D9_WhatsApp_Meta" targetRef="Task_D14_WhatsApp_Meta" />
+    <bpmn2:sendTask id="Task_D6_WhatsApp_Meta" name="D6 - WhatsApp (Manhã) - Conteúdo Educativo">
+      <bpmn2:documentation>📚 DIA 6 - EDUCAÇÃO (Soft Touch):
+
+Lead ainda não comprou. Hora de educar sem vender.
+
+MENSAGEM:
+"Bom dia [Nome]!
+
+Fiz esse vídeo rápido mostrando os 3 erros que TODO dono de [Segmento] comete no controle financeiro (e como evitar):
+
+[Link para Vídeo Curto 2-3min]
+
+Vale a pena assistir. Abraço!"
+
+OBJETIVO: Gerar valor sem pedir nada em troca. Construir autoridade.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_D3</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_D6</bpmn2:outgoing>
+    </bpmn2:sendTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_D6" sourceRef="Task_D6_WhatsApp_Meta" targetRef="Task_D9_WhatsApp_Meta" />
+    <bpmn2:sendTask id="Task_D3_WhatsApp_Meta" name="D3 - WhatsApp (Tarde) - A Prova Social">
+      <bpmn2:documentation>👥 DIA 3 - PROVA SOCIAL:
+
+MENSAGEM:
+"[Nome], lembrei de você hoje.
+
+Esse cliente aqui é do ramo de [Segmento] também. Olha o antes e depois dele em 7 dias:
+
+[Print de Depoimento/Resultado]
+
+Muita gente do seu ramo tá usando. Você já organizou aí ou continua no improviso?"
+
+OBJETIVO: Mostrar que o nicho dele já usa e tem resultados.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_D1</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_D3</bpmn2:outgoing>
+    </bpmn2:sendTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_D3" sourceRef="Task_D3_WhatsApp_Meta" targetRef="Task_D6_WhatsApp_Meta" />
+    <bpmn2:sendTask id="Task_D1_WhatsApp_Meta" name="D1 - WhatsApp (Manhã) - A Curiosidade">
+      <bpmn2:documentation>🧠 DIA 1 - A CURIOSIDADE:
+
+Lead Meta é frio. Precisa de nutrição antes de venda.
+
+MENSAGEM:
+"Bom dia [Nome]!
+
+Você usa planilha, caderno ou já tem algum sistema hoje pra controlar o caixa?"
+
+OBJETIVO: Entender a dor atual e gerar engajamento através da pergunta.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_1qdoel0</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_D1</bpmn2:outgoing>
+    </bpmn2:sendTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_D1" sourceRef="Task_D1_WhatsApp_Meta" targetRef="Task_D3_WhatsApp_Meta" />
+    <bpmn2:sendTask id="Task_FlashDemo_D0_Meta" name="D0 - Demo - Áudio + Print">
+      <bpmn2:documentation>🎬 FLASH DEMO - PROVA IMEDIATA:
+
+MENSAGEM (após resposta ou 15min):
+"Olha só que demais. Você manda um áudio falando o que precisa lançar e a IA já organiza tudo.
+
+[Áudio Flash Demo 20s]
+[Print de resultado]
+
+Testou algo parecido antes ou é a primeira vez vendo isso?"
+
+OBJETIVO: Mostrar o produto funcionando antes de qualquer pitch.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_D0_Zap</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_FlashDemo</bpmn2:outgoing>
+    </bpmn2:sendTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_FlashDemo" sourceRef="Task_FlashDemo_D0_Meta" targetRef="Gateway_Interessado_D0_Meta" />
+    <bpmn2:sendTask id="Task_WhatsApp_D0_Meta" name="D0 - WhatsApp (Min 0-5) - Abordagem Ativa">
+      <bpmn2:documentation>⚡ SPEED TO LEAD - META ADS (0-5 MINUTOS):
+
+MENSAGEM INICIAL:
+"Oi [Nome]! Vi que você acabou de preencher o formulário sobre gestão financeira.
+
+Trabalha com [Segmento] mesmo? 🤔"
+
+OBJETIVO: Quebra de gelo e confirmação de interesse real.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_Filtro</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_D0_Zap</bpmn2:outgoing>
+    </bpmn2:sendTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_D0_Zap" sourceRef="Task_WhatsApp_D0_Meta" targetRef="Task_FlashDemo_D0_Meta" />
+    <bpmn2:serviceTask id="Task_GrupoNurturing_Meta" name="Grupo de Nurturing">
+      <bpmn2:documentation>📢 NURTURING - LISTA DE AQUECIMENTO:
+
+Lead Meta que não converteu mas respondeu vai para:
+- Lista de e-mail marketing
+- Grupo de promoções no WhatsApp
+- Campanhas de remarketing Meta Ads
+
+CONSIDERADO PERDIDO: Apenas se bloquear ou descadastrar.</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Meta_Respondeu_Sim</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Meta_Nurturing</bpmn2:outgoing>
+    </bpmn2:serviceTask>
+    <bpmn2:sequenceFlow id="Flow_Meta_Respondeu_Sim" name="Sim" sourceRef="Gateway_Respondeu_Meta" targetRef="Task_GrupoNurturing_Meta" />
+    <bpmn2:endEvent id="End_Bloqueio_Meta" name="Descadastrou/Bloqueou">
+      <bpmn2:incoming>Flow_Meta_Nurturing</bpmn2:incoming>
+    </bpmn2:endEvent>
+    <bpmn2:sequenceFlow id="Flow_Meta_Nurturing" sourceRef="Task_GrupoNurturing_Meta" targetRef="End_Bloqueio_Meta" />
+    <bpmn2:endEvent id="End_Perdido_Meta" name="Lost (Motivo Registrado)">
+      <bpmn2:incoming>Flow_Meta_Motivo</bpmn2:incoming>
+    </bpmn2:endEvent>
+    <bpmn2:sequenceFlow id="Flow_Meta_Motivo" sourceRef="Task_SelecaoMotivo_Meta" targetRef="End_Perdido_Meta" />
+    <bpmn2:startEvent id="Start_Meta" name="Meta Ads">
+      <bpmn2:outgoing>Flow_Meta_Start</bpmn2:outgoing>
+    </bpmn2:startEvent>
+    <bpmn2:sequenceFlow id="Flow_Meta_Start" sourceRef="Start_Meta" targetRef="Task_PaginaFiltro_Meta" />
   </bpmn2:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_Comercial">
@@ -2207,9 +2202,6 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_LinkThrow_Indicacao" bpmnElement="LinkThrow_Indicacao">
         <dc:Bounds x="2557" y="792" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="2599" y="803" width="61" height="14" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Ativo_1" bpmnElement="Flow_Ind_Ativo_1">
         <di:waypoint x="268" y="700" />
@@ -2280,6 +2272,10 @@ Evita spam excessivo</bpmn2:documentation>
         <di:waypoint x="2340" y="1030" />
         <di:waypoint x="2420" y="1030" />
         <di:waypoint x="2420" y="835" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Ind_Sim" bpmnElement="Flow_Ind_Sim">
+        <di:waypoint x="2445" y="810" />
+        <di:waypoint x="2680" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Aviso" bpmnElement="Flow_Ind_Aviso">
         <di:waypoint x="2730" y="850" />
@@ -2370,9 +2366,6 @@ Evita spam excessivo</bpmn2:documentation>
         <di:waypoint x="2630" y="1140" />
         <di:waypoint x="2630" y="1030" />
         <di:waypoint x="2680" y="1030" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="2636" y="1013" width="19" height="14" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1kc5wwv_di" bpmnElement="Flow_1kc5wwv">
         <di:waypoint x="1360" y="810" />
@@ -2387,9 +2380,15 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Start_Conteudo_Pessoal" bpmnElement="Start_Conteudo_Pessoal">
         <dc:Bounds x="232" y="1582" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="231" y="1618" width="40" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Start_Conteudo_Empresa" bpmnElement="Start_Conteudo_Empresa">
         <dc:Bounds x="232" y="1362" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="233" y="1398" width="36" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_End_Bloqueio_Conteudo" bpmnElement="End_Bloqueio_Conteudo">
         <dc:Bounds x="2092" y="1692" width="36" height="36" />
@@ -2399,24 +2398,29 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_ManyChat_Pessoal" bpmnElement="Task_ManyChat_Pessoal">
         <dc:Bounds x="355" y="1560" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_GrupoNurturing_Conteudo" bpmnElement="Task_GrupoNurturing_Conteudo">
         <dc:Bounds x="1905" y="1670" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_WhatsApp_Pessoal" bpmnElement="Task_WhatsApp_Pessoal">
         <dc:Bounds x="510" y="1560" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_FlashDemo_Pessoal" bpmnElement="Task_FlashDemo_Pessoal">
         <dc:Bounds x="665" y="1560" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_SDR_Empresa" bpmnElement="Task_SDR_Empresa">
         <dc:Bounds x="355" y="1340" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_WhatsApp_Empresa" bpmnElement="Task_WhatsApp_Empresa">
         <dc:Bounds x="510" y="1340" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_FlashDemo_Empresa" bpmnElement="Task_FlashDemo_Empresa">
         <dc:Bounds x="665" y="1340" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_D1_Repost_Conteudo" bpmnElement="Task_D1_Repost_Conteudo">
         <dc:Bounds x="1130" y="1450" width="100" height="80" />
@@ -2435,9 +2439,15 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Imediato_Conteudo" bpmnElement="Gateway_Converteu_Imediato_Conteudo" isMarkerVisible="true">
         <dc:Bounds x="1000" y="1465" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="983" y="1441" width="84" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Conteudo" bpmnElement="Gateway_Converteu_Conteudo" isMarkerVisible="true">
         <dc:Bounds x="1620" y="1465" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1616" y="1441" width="57" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Respondeu_Conteudo" bpmnElement="Gateway_Respondeu_Conteudo" isMarkerVisible="true">
         <dc:Bounds x="1775" y="1685" width="50" height="50" />
@@ -2447,6 +2457,12 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_LinkThrow_Conteudo" bpmnElement="LinkThrow_Conteudo">
         <dc:Bounds x="1782" y="1472" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1em5f2z" bpmnElement="Event_1iw749o">
+        <dc:Bounds x="1007" y="1622" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="995" y="1658" width="61" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Pessoal_1" bpmnElement="Flow_Cont_Pessoal_1">
         <di:waypoint x="268" y="1600" />
@@ -2488,10 +2504,6 @@ Evita spam excessivo</bpmn2:documentation>
         <di:waypoint x="895" y="1490" />
         <di:waypoint x="1000" y="1490" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Cont_Imediato_Sim" bpmnElement="Flow_Cont_Imediato_Sim">
-        <di:waypoint x="1050" y="1490" />
-        <di:waypoint x="1782" y="1490" />
-      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Imediato_Nao" bpmnElement="Flow_Cont_Imediato_Nao">
         <di:waypoint x="1050" y="1490" />
         <di:waypoint x="1130" y="1490" />
@@ -2503,10 +2515,6 @@ Evita spam excessivo</bpmn2:documentation>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_D3" bpmnElement="Flow_Cont_D3">
         <di:waypoint x="1385" y="1490" />
         <di:waypoint x="1440" y="1490" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Cont_D7" bpmnElement="Flow_Cont_D7">
-        <di:waypoint x="1540" y="1490" />
-        <di:waypoint x="1620" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Converteu_Sim" bpmnElement="Flow_Cont_Converteu_Sim">
         <di:waypoint x="1670" y="1490" />
@@ -2538,6 +2546,17 @@ Evita spam excessivo</bpmn2:documentation>
         <di:waypoint x="2005" y="1600" />
         <di:waypoint x="2092" y="1600" />
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1un3847_di" bpmnElement="Flow_1un3847">
+        <di:waypoint x="1540" y="1490" />
+        <di:waypoint x="1620" y="1490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0c7r836_di" bpmnElement="Flow_0c7r836">
+        <di:waypoint x="1025" y="1515" />
+        <di:waypoint x="1025" y="1622" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1030" y="1566" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="Shape_Participant_Prospeccao" bpmnElement="Participant_Prospeccao" isHorizontal="true" bioc:stroke="#fa5252" bioc:fill="#ffe0e0">
         <dc:Bounds x="160" y="1900" width="4400" height="160" />
       </bpmndi:BPMNShape>
@@ -2560,6 +2579,7 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="Shape_Participant_Google" bpmnElement="Participant_Google" isHorizontal="true" bioc:stroke="#4dabf7" bioc:fill="#e0f0ff">
         <dc:Bounds x="160" y="2110" width="4400" height="660" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Start_Google_di" bpmnElement="Start_Google">
         <dc:Bounds x="250" y="2302" width="36" height="36" />
@@ -2575,6 +2595,18 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_RecuperacaoCarrinho_di" bpmnElement="Task_RecuperacaoCarrinho">
         <dc:Bounds x="870" y="2500" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_AceitouTrial_Google_di" bpmnElement="Gateway_AceitouTrial_Google" isMarkerVisible="true">
+        <dc:Bounds x="1105" y="2405" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1096" y="2381" width="67" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_FlashDemo_Google_di" bpmnElement="Task_FlashDemo_Google">
+        <dc:Bounds x="820" y="2390" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_OfertaTrial_Google_di" bpmnElement="Task_OfertaTrial_Google">
+        <dc:Bounds x="960" y="2390" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="SubProcess_Trial_Google_di" bpmnElement="SubProcess_Trial_Google" isExpanded="true" bioc:stroke="#4dabf7" bioc:fill="#e0f0ff">
         <dc:Bounds x="1010" y="2490" width="1540" height="220" />
@@ -2757,18 +2789,7 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_SpeedToLead_Google_di" bpmnElement="Task_SpeedToLead_Google">
         <dc:Bounds x="640" y="2390" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Task_FlashDemo_Google_di" bpmnElement="Task_FlashDemo_Google">
-        <dc:Bounds x="780" y="2390" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Task_OfertaTrial_Google_di" bpmnElement="Task_OfertaTrial_Google">
-        <dc:Bounds x="920" y="2390" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Gateway_AceitouTrial_Google_di" bpmnElement="Gateway_AceitouTrial_Google" isMarkerVisible="true">
-        <dc:Bounds x="1050" y="2405" width="50" height="50" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="1041" y="2381" width="67" height="14" />
-        </bpmndi:BPMNLabel>
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_SelecaoMotivo_Google_di" bpmnElement="Task_SelecaoMotivo_Google">
         <dc:Bounds x="3140" y="2500" width="100" height="80" />
@@ -2853,6 +2874,9 @@ Evita spam excessivo</bpmn2:documentation>
         <di:waypoint x="395" y="2295" />
         <di:waypoint x="395" y="2210" />
         <di:waypoint x="500" y="2210" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="400" y="2173" width="79" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_Goo_Self_1_di" bpmnElement="Flow_Goo_Self_1">
         <di:waypoint x="600" y="2210" />
@@ -2880,8 +2904,8 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_Goo_Recuperacao_di" bpmnElement="Flow_Goo_Recuperacao">
         <di:waypoint x="970" y="2540" />
-        <di:waypoint x="1075" y="2540" />
-        <di:waypoint x="1075" y="2455" />
+        <di:waypoint x="1130" y="2540" />
+        <di:waypoint x="1130" y="2455" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_Goo_Check24h_di" bpmnElement="Flow_Goo_Check24h">
         <di:waypoint x="1046" y="2210" />
@@ -2905,6 +2929,9 @@ Evita spam excessivo</bpmn2:documentation>
         <di:waypoint x="395" y="2345" />
         <di:waypoint x="395" y="2430" />
         <di:waypoint x="500" y="2430" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="404" y="2433" width="51" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_Goo_Zap_1_di" bpmnElement="Flow_Goo_Zap_1">
         <di:waypoint x="600" y="2430" />
@@ -2912,15 +2939,15 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_Goo_Zap_2_di" bpmnElement="Flow_Goo_Zap_2">
         <di:waypoint x="740" y="2430" />
-        <di:waypoint x="780" y="2430" />
+        <di:waypoint x="820" y="2430" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_Goo_Zap_3_di" bpmnElement="Flow_Goo_Zap_3">
-        <di:waypoint x="880" y="2430" />
         <di:waypoint x="920" y="2430" />
+        <di:waypoint x="960" y="2430" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_Goo_ToGatewayTrial_di" bpmnElement="Flow_Goo_ToGatewayTrial">
-        <di:waypoint x="1020" y="2430" />
-        <di:waypoint x="1050" y="2430" />
+        <di:waypoint x="1060" y="2430" />
+        <di:waypoint x="1105" y="2430" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_Goo_Trial_End_di" bpmnElement="Flow_Goo_Trial_End">
         <di:waypoint x="2550" y="2600" />
@@ -2940,7 +2967,7 @@ Evita spam excessivo</bpmn2:documentation>
         <di:waypoint x="3282" y="2540" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_Goo_Trial_Nao_di" bpmnElement="Flow_Goo_Trial_Nao">
-        <di:waypoint x="1100" y="2430" />
+        <di:waypoint x="1155" y="2430" />
         <di:waypoint x="1200" y="2430" />
         <di:waypoint x="1200" y="2320" />
         <di:waypoint x="1750" y="2320" />
@@ -3012,15 +3039,25 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="Shape_Participant_Meta" bpmnElement="Participant_Meta" isHorizontal="true" bioc:stroke="#cc5de8" bioc:fill="#f3e0ff">
         <dc:Bounds x="160" y="2820" width="4400" height="410" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Start_Meta" bpmnElement="Start_Meta">
         <dc:Bounds x="232" y="2852" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="227" y="2888" width="46" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_End_Perdido_Meta" bpmnElement="End_Perdido_Meta">
         <dc:Bounds x="2402" y="3072" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2390" y="3108" width="60" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_End_Bloqueio_Meta" bpmnElement="End_Bloqueio_Meta">
         <dc:Bounds x="2402" y="2962" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2380" y="2998" width="81" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_GrupoNurturing_Meta" bpmnElement="Task_GrupoNurturing_Meta">
         <dc:Bounds x="2215" y="2940" width="100" height="80" />
@@ -3030,6 +3067,7 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_FlashDemo_D0_Meta" bpmnElement="Task_FlashDemo_D0_Meta">
         <dc:Bounds x="665" y="2830" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_D1_WhatsApp_Meta" bpmnElement="Task_D1_WhatsApp_Meta">
         <dc:Bounds x="1130" y="2830" width="100" height="80" />
@@ -3045,35 +3083,61 @@ Evita spam excessivo</bpmn2:documentation>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_D14_WhatsApp_Meta" bpmnElement="Task_D14_WhatsApp_Meta">
         <dc:Bounds x="1750" y="2830" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_PaginaFiltro_Meta" bpmnElement="Task_PaginaFiltro_Meta">
         <dc:Bounds x="355" y="2830" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_SelecaoMotivo_Meta" bpmnElement="Task_SelecaoMotivo_Meta">
         <dc:Bounds x="2215" y="3050" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Interessado_D0_Meta" bpmnElement="Gateway_Interessado_D0_Meta" isMarkerVisible="true">
         <dc:Bounds x="845" y="2845" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="838" y="2821" width="64" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Imediato_Meta" bpmnElement="Gateway_Converteu_Imediato_Meta" isMarkerVisible="true">
         <dc:Bounds x="1000" y="2845" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="983" y="2821" width="84" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Meta" bpmnElement="Gateway_Converteu_Meta" isMarkerVisible="true">
         <dc:Bounds x="1930" y="2845" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1927" y="2895" width="57" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Respondeu_Meta" bpmnElement="Gateway_Respondeu_Meta" isMarkerVisible="true">
         <dc:Bounds x="2085" y="2955" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2079" y="3005" width="63" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_IntermediateTimer_24h_Meta" bpmnElement="IntermediateTimer_24h_Meta">
         <dc:Bounds x="1937" y="2962" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1946" y="2998" width="19" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_LinkThrow_Meta" bpmnElement="LinkThrow_Meta">
         <dc:Bounds x="2092" y="2852" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_LinkCatch_Merge" bpmnElement="LinkCatch_Merge">
-        <dc:Bounds x="272" y="3172" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="246" y="3208" width="89" height="27" />
+          <dc:Bounds x="2080" y="2888" width="61" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0ck18uw_di" bpmnElement="Event_1qdcr1f">
+        <dc:Bounds x="852" y="2982" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="826" y="3018" width="89" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0vgh499" bpmnElement="Event_1q9m63q">
+        <dc:Bounds x="1007" y="2982" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="995" y="3018" width="61" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Edge_Flow_Meta_Start" bpmnElement="Flow_Meta_Start">
@@ -3095,18 +3159,9 @@ Evita spam excessivo</bpmn2:documentation>
       <bpmndi:BPMNEdge id="Edge_Flow_Meta_Interessado_Sim" bpmnElement="Flow_Meta_Interessado_Sim">
         <di:waypoint x="895" y="2870" />
         <di:waypoint x="1000" y="2870" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Interessado_Nao" bpmnElement="Flow_Meta_Interessado_Nao">
-        <di:waypoint x="895" y="2870" />
-        <di:waypoint x="1130" y="2870" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Fechou_Sim" bpmnElement="Flow_Meta_Fechou_Sim">
-        <di:waypoint x="1050" y="2870" />
-        <di:waypoint x="2092" y="2870" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Fechou_Nao" bpmnElement="Flow_Meta_Fechou_Nao">
-        <di:waypoint x="1050" y="2870" />
-        <di:waypoint x="1130" y="2870" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="938" y="2845" width="19" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Meta_D1" bpmnElement="Flow_Meta_D1">
         <di:waypoint x="1230" y="2870" />
@@ -3131,10 +3186,16 @@ Evita spam excessivo</bpmn2:documentation>
       <bpmndi:BPMNEdge id="Edge_Flow_Meta_Converteu_Sim" bpmnElement="Flow_Meta_Converteu_Sim">
         <di:waypoint x="1980" y="2870" />
         <di:waypoint x="2092" y="2870" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2027" y="2845" width="19" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Meta_Converteu_Nao" bpmnElement="Flow_Meta_Converteu_Nao">
         <di:waypoint x="1955" y="2895" />
         <di:waypoint x="1955" y="2962" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1960" y="2919" width="21" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Meta_Timer24h" bpmnElement="Flow_Meta_Timer24h">
         <di:waypoint x="1973" y="2980" />
@@ -3143,12 +3204,18 @@ Evita spam excessivo</bpmn2:documentation>
       <bpmndi:BPMNEdge id="Edge_Flow_Meta_Respondeu_Sim" bpmnElement="Flow_Meta_Respondeu_Sim">
         <di:waypoint x="2135" y="2980" />
         <di:waypoint x="2215" y="2980" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2166" y="2955" width="19" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Meta_Respondeu_Nao" bpmnElement="Flow_Meta_Respondeu_Nao">
         <di:waypoint x="2135" y="2980" />
         <di:waypoint x="2165" y="2980" />
         <di:waypoint x="2165" y="3090" />
         <di:waypoint x="2215" y="3090" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2170" y="3025" width="21" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Meta_Nurturing" bpmnElement="Flow_Meta_Nurturing">
         <di:waypoint x="2315" y="2980" />
@@ -3158,121 +3225,189 @@ Evita spam excessivo</bpmn2:documentation>
         <di:waypoint x="2315" y="3090" />
         <di:waypoint x="2402" y="3090" />
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0fm6hqw_di" bpmnElement="Flow_0fm6hqw">
+        <di:waypoint x="870" y="2895" />
+        <di:waypoint x="870" y="2982" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="875" y="2936" width="21" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1qdoel0_di" bpmnElement="Flow_1qdoel0">
+        <di:waypoint x="1050" y="2870" />
+        <di:waypoint x="1130" y="2870" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1081" y="2852" width="19" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0lfarjy_di" bpmnElement="Flow_0lfarjy">
+        <di:waypoint x="1025" y="2895" />
+        <di:waypoint x="1025" y="2982" />
+      </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="Shape_Participant_Nucleo" bpmnElement="Participant_Nucleo" isHorizontal="true" bioc:stroke="#868e96" bioc:fill="#f0f0f0">
         <dc:Bounds x="160" y="3280" width="4400" height="410" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_End_Cliente_Ativo" bpmnElement="End_Cliente_Ativo">
-        <dc:Bounds x="1162" y="3172" width="36" height="36" />
+        <dc:Bounds x="1187" y="3352" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1167" y="3388" width="76" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_End_Pagamento_Falhou" bpmnElement="End_Pagamento_Falhou">
-        <dc:Bounds x="1782" y="3392" width="36" height="36" />
+        <dc:Bounds x="1807" y="3572" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1790" y="3608" width="71" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Checkout_Anual" bpmnElement="Task_Checkout_Anual">
-        <dc:Bounds x="510" y="3150" width="100" height="80" />
+        <dc:Bounds x="535" y="3330" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Split_Parceiro" bpmnElement="Task_Split_Parceiro">
-        <dc:Bounds x="820" y="3150" width="100" height="80" />
+        <dc:Bounds x="845" y="3330" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Onboarding_Pago" bpmnElement="Task_Onboarding_Pago">
-        <dc:Bounds x="975" y="3150" width="100" height="80" />
+        <dc:Bounds x="1000" y="3330" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Webhook_Falha" bpmnElement="Task_Webhook_Falha">
-        <dc:Bounds x="665" y="3260" width="100" height="80" />
+        <dc:Bounds x="690" y="3440" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_WhatsApp_5min" bpmnElement="Task_WhatsApp_5min">
-        <dc:Bounds x="820" y="3260" width="100" height="80" />
+        <dc:Bounds x="845" y="3440" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Checkout_Semestral" bpmnElement="Task_Checkout_Semestral">
-        <dc:Bounds x="975" y="3260" width="100" height="80" />
+        <dc:Bounds x="1000" y="3440" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Vendedor_Trimestral" bpmnElement="Task_Vendedor_Trimestral">
-        <dc:Bounds x="1285" y="3370" width="100" height="80" />
+        <dc:Bounds x="1310" y="3550" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Checkout_Trimestral" bpmnElement="Task_Checkout_Trimestral">
-        <dc:Bounds x="1440" y="3370" width="100" height="80" />
+        <dc:Bounds x="1465" y="3550" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Checkout_Merge" bpmnElement="Gateway_Checkout_Merge" isMarkerVisible="true">
-        <dc:Bounds x="380" y="3165" width="50" height="50" />
+        <dc:Bounds x="405" y="3345" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="407" y="3395" width="47" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Anual" bpmnElement="Gateway_Pagamento_Anual" isMarkerVisible="true">
-        <dc:Bounds x="690" y="3165" width="50" height="50" />
+        <dc:Bounds x="715" y="3345" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="656" y="3316" width="87" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Semestral" bpmnElement="Gateway_Pagamento_Semestral" isMarkerVisible="true">
-        <dc:Bounds x="1155" y="3275" width="50" height="50" />
+        <dc:Bounds x="1180" y="3455" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1241" y="3450" width="57" height="40" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Trimestral" bpmnElement="Gateway_Pagamento_Trimestral" isMarkerVisible="true">
-        <dc:Bounds x="1620" y="3385" width="50" height="50" />
+        <dc:Bounds x="1645" y="3565" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1642" y="3615" width="57" height="40" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_IntermediateTimer_D2" bpmnElement="IntermediateTimer_D2">
-        <dc:Bounds x="1162" y="3392" width="36" height="36" />
+        <dc:Bounds x="1187" y="3572" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1172" y="3608" width="67" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="Edge_Flow_Para_Anual" bpmnElement="Flow_Para_Anual">
-        <di:waypoint x="430" y="3190" />
-        <di:waypoint x="510" y="3190" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Para_Gateway" bpmnElement="Flow_Anual_Para_Gateway">
-        <di:waypoint x="610" y="3190" />
-        <di:waypoint x="690" y="3190" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Aprovado" bpmnElement="Flow_Anual_Aprovado">
-        <di:waypoint x="740" y="3190" />
-        <di:waypoint x="820" y="3190" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Recusado" bpmnElement="Flow_Anual_Recusado">
-        <di:waypoint x="715" y="3215" />
-        <di:waypoint x="715" y="3260" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Split_Para_Onboarding" bpmnElement="Flow_Split_Para_Onboarding">
-        <di:waypoint x="920" y="3190" />
-        <di:waypoint x="975" y="3190" />
-      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="BPMNShape_1hfrp4l" bpmnElement="Event_0u9h6ak">
+        <dc:Bounds x="302" y="3352" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="290" y="3388" width="61" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Edge_Flow_Para_Cliente_Ativo" bpmnElement="Flow_Para_Cliente_Ativo">
-        <di:waypoint x="1075" y="3190" />
-        <di:waypoint x="1162" y="3190" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Falha_Para_WhatsApp" bpmnElement="Flow_Falha_Para_WhatsApp">
-        <di:waypoint x="765" y="3300" />
-        <di:waypoint x="820" y="3300" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_WhatsApp_Para_Semestral" bpmnElement="Flow_WhatsApp_Para_Semestral">
-        <di:waypoint x="920" y="3300" />
-        <di:waypoint x="975" y="3300" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Semestral_Para_Gateway" bpmnElement="Flow_Semestral_Para_Gateway">
-        <di:waypoint x="1075" y="3300" />
-        <di:waypoint x="1155" y="3300" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Semestral_Aprovado" bpmnElement="Flow_Semestral_Aprovado">
-        <di:waypoint x="1180" y="3275" />
-        <di:waypoint x="1180" y="3239" />
-        <di:waypoint x="1025" y="3239" />
-        <di:waypoint x="1025" y="3230" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Semestral_Recusado" bpmnElement="Flow_Semestral_Recusado">
-        <di:waypoint x="1180" y="3325" />
-        <di:waypoint x="1180" y="3392" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Timer_Para_Vendedor" bpmnElement="Flow_Timer_Para_Vendedor">
-        <di:waypoint x="1198" y="3410" />
-        <di:waypoint x="1285" y="3410" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Vendedor_Para_Trimestral" bpmnElement="Flow_Vendedor_Para_Trimestral">
-        <di:waypoint x="1385" y="3410" />
-        <di:waypoint x="1440" y="3410" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Trimestral_Para_Gateway" bpmnElement="Flow_Trimestral_Para_Gateway">
-        <di:waypoint x="1540" y="3410" />
-        <di:waypoint x="1620" y="3410" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Trimestral_Aprovado" bpmnElement="Flow_Trimestral_Aprovado">
-        <di:waypoint x="1645" y="3385" />
-        <di:waypoint x="1645" y="3349" />
-        <di:waypoint x="1025" y="3349" />
-        <di:waypoint x="1025" y="3230" />
+        <di:waypoint x="1100" y="3370" />
+        <di:waypoint x="1187" y="3370" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Trimestral_Recusado" bpmnElement="Flow_Trimestral_Recusado">
-        <di:waypoint x="1670" y="3410" />
-        <di:waypoint x="1782" y="3410" />
+        <di:waypoint x="1695" y="3590" />
+        <di:waypoint x="1807" y="3590" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1739" y="3565" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Para_Anual" bpmnElement="Flow_Para_Anual">
+        <di:waypoint x="455" y="3370" />
+        <di:waypoint x="535" y="3370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Para_Gateway" bpmnElement="Flow_Anual_Para_Gateway">
+        <di:waypoint x="635" y="3370" />
+        <di:waypoint x="715" y="3370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Aprovado" bpmnElement="Flow_Anual_Aprovado">
+        <di:waypoint x="765" y="3370" />
+        <di:waypoint x="845" y="3370" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="795" y="3345" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Split_Para_Onboarding" bpmnElement="Flow_Split_Para_Onboarding">
+        <di:waypoint x="945" y="3370" />
+        <di:waypoint x="1000" y="3370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Semestral_Aprovado" bpmnElement="Flow_Semestral_Aprovado">
+        <di:waypoint x="1205" y="3455" />
+        <di:waypoint x="1205" y="3419" />
+        <di:waypoint x="1050" y="3419" />
+        <di:waypoint x="1050" y="3410" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1118" y="3394" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Recusado" bpmnElement="Flow_Anual_Recusado">
+        <di:waypoint x="740" y="3395" />
+        <di:waypoint x="740" y="3440" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="743" y="3408" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Falha_Para_WhatsApp" bpmnElement="Flow_Falha_Para_WhatsApp">
+        <di:waypoint x="790" y="3480" />
+        <di:waypoint x="845" y="3480" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_WhatsApp_Para_Semestral" bpmnElement="Flow_WhatsApp_Para_Semestral">
+        <di:waypoint x="945" y="3480" />
+        <di:waypoint x="1000" y="3480" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Semestral_Para_Gateway" bpmnElement="Flow_Semestral_Para_Gateway">
+        <di:waypoint x="1100" y="3480" />
+        <di:waypoint x="1180" y="3480" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Timer_Para_Vendedor" bpmnElement="Flow_Timer_Para_Vendedor">
+        <di:waypoint x="1223" y="3590" />
+        <di:waypoint x="1310" y="3590" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Vendedor_Para_Trimestral" bpmnElement="Flow_Vendedor_Para_Trimestral">
+        <di:waypoint x="1410" y="3590" />
+        <di:waypoint x="1465" y="3590" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Trimestral_Para_Gateway" bpmnElement="Flow_Trimestral_Para_Gateway">
+        <di:waypoint x="1565" y="3590" />
+        <di:waypoint x="1645" y="3590" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Semestral_Recusado" bpmnElement="Flow_Semestral_Recusado">
+        <di:waypoint x="1205" y="3505" />
+        <di:waypoint x="1205" y="3572" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1208" y="3529" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0m1sjfy_di" bpmnElement="Flow_0m1sjfy">
+        <di:waypoint x="405" y="3370" />
+        <di:waypoint x="338" y="3370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0na0lv9_di" bpmnElement="Flow_0na0lv9">
+        <di:waypoint x="1670" y="3565" />
+        <di:waypoint x="1670" y="3340" />
+        <di:waypoint x="1100" y="3340" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1676" y="3450" width="18" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="TextAnnotation_0576fl5_di" bpmnElement="TextAnnotation_0576fl5">
         <dc:Bounds x="3060" y="360" width="99.99156545209178" height="55.330634278002705" />
