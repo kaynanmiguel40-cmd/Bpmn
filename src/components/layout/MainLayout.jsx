@@ -7,7 +7,8 @@
  * - Main (conteudo da pagina)
  */
 
-import { Outlet, useLocation } from 'react-router-dom';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 // Auth desabilitado temporariamente
 // import { useAuth } from '../../contexts/AuthContext';
@@ -19,7 +20,7 @@ const routeTitles = {
   '/sales/editor': 'Editor de Fluxo',
   '/routine': 'Minha Rotina',
   '/agenda': 'Agenda',
-  '/financial': 'Gestao Financeira',
+  '/financial': 'Ordens de Servico',
   '/settings': 'Configuracoes'
 };
 
@@ -37,10 +38,77 @@ const SearchIcon = () => (
   </svg>
 );
 
+function searchLocalStorage(query) {
+  if (!query || query.length < 2) return [];
+  const q = query.toLowerCase();
+  const results = [];
+
+  // Buscar em O.S.
+  try {
+    const orders = JSON.parse(localStorage.getItem('os_orders') || '[]');
+    orders.forEach(o => {
+      if (
+        (o.title && o.title.toLowerCase().includes(q)) ||
+        (o.client && o.client.toLowerCase().includes(q)) ||
+        (o.description && o.description.toLowerCase().includes(q)) ||
+        (o.number && String(o.number).includes(q))
+      ) {
+        results.push({ type: 'os', label: `O.S. #${o.number} - ${o.title}`, sub: o.client || 'Sem cliente', route: '/financial', id: o.id });
+      }
+    });
+  } catch {}
+
+  // Buscar em Agenda
+  try {
+    const events = JSON.parse(localStorage.getItem('agenda_events') || '[]');
+    events.forEach(e => {
+      if (
+        (e.title && e.title.toLowerCase().includes(q)) ||
+        (e.description && e.description.toLowerCase().includes(q))
+      ) {
+        results.push({ type: 'event', label: e.title, sub: e.description || '', route: '/agenda', id: e.id });
+      }
+    });
+  } catch {}
+
+  return results.slice(0, 8);
+}
+
 function Header() {
   const location = useLocation();
-  // Auth desabilitado temporariamente
-  // const { profile } = useAuth();
+  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showResults, setShowResults] = useState(false);
+  const searchRef = useRef(null);
+
+  const handleSearch = useCallback((value) => {
+    setSearchQuery(value);
+    if (value.length >= 2) {
+      setSearchResults(searchLocalStorage(value));
+      setShowResults(true);
+    } else {
+      setSearchResults([]);
+      setShowResults(false);
+    }
+  }, []);
+
+  const handleResultClick = (result) => {
+    setSearchQuery('');
+    setShowResults(false);
+    navigate(result.route);
+  };
+
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Determinar titulo baseado na rota
   const getTitle = () => {
@@ -85,25 +153,45 @@ function Header() {
       {/* Actions */}
       <div className="flex items-center gap-4">
         {/* Search */}
-        <div className="relative hidden md:block">
+        <div className="relative hidden md:block" ref={searchRef}>
           <input
             type="text"
-            placeholder="Buscar..."
+            placeholder="Buscar O.S., eventos..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            onFocus={() => { if (searchQuery.length >= 2) setShowResults(true); }}
             className="w-64 pl-10 pr-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
           />
-          <SearchIcon />
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
             <SearchIcon />
           </div>
+
+          {/* Dropdown de resultados */}
+          {showResults && (
+            <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+              {searchResults.length === 0 ? (
+                <div className="px-4 py-3 text-sm text-slate-400 text-center">Nenhum resultado para &ldquo;{searchQuery}&rdquo;</div>
+              ) : (
+                searchResults.map((r, i) => (
+                  <button
+                    key={`${r.type}-${r.id}-${i}`}
+                    onClick={() => handleResultClick(r)}
+                    className="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100 last:border-b-0"
+                  >
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${r.type === 'os' ? 'bg-fyness-primary' : 'bg-amber-500'}`}>
+                      {r.type === 'os' ? 'OS' : 'AG'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-slate-800 truncate">{r.label}</div>
+                      <div className="text-[11px] text-slate-400 truncate">{r.sub}</div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Quick Actions */}
-        <button className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Nova O.S.
-        </button>
       </div>
     </header>
   );

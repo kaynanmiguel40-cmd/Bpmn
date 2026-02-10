@@ -4,11 +4,10 @@
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
-// Auth desabilitado temporariamente
+// TODO: Reativar quando auth e tabelas tasks/events estiverem prontos
+// import { supabase } from '../../lib/supabase';
 // import { useAuth } from '../../contexts/AuthContext';
 // import { usePermissions } from '../../contexts/PermissionContext';
-// Auth desabilitado - ProtectCost removido
 // import { ProtectCost } from '../../components/auth/Protect';
 
 // Formatadores
@@ -107,65 +106,10 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   // Carregar dados
+  // TODO: Reativar queries quando tabelas tasks/events existirem e auth estiver habilitado
   useEffect(() => {
-    const loadDashboardData = async () => {
-      try {
-        // Buscar tasks do usuario
-        const { data: tasks } = await supabase
-          .from('tasks')
-          .select('*')
-          .or(`assigned_to.eq.${profile?.id},created_by.eq.${profile?.id}`)
-          .order('updated_at', { ascending: false })
-          .limit(5);
-
-        // Buscar eventos de hoje
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-
-        const { data: events } = await supabase
-          .from('events')
-          .select(`
-            *,
-            event_participants (
-              user_id,
-              cost_contribution
-            )
-          `)
-          .gte('start_datetime', today.toISOString())
-          .lt('start_datetime', tomorrow.toISOString())
-          .order('start_datetime', { ascending: true });
-
-        // Calcular estatisticas
-        const tasksInProgress = tasks?.filter(t => t.status === 'doing').length || 0;
-        const tasksDone = tasks?.filter(t => t.status === 'done').length || 0;
-        const hoursWorked = tasks?.reduce((acc, t) => acc + (t.actual_time || 0), 0) || 0;
-        const totalCost = tasks?.reduce((acc, t) => acc + parseFloat(t.actual_cost || 0), 0) || 0;
-        const meetingCostToday = events?.reduce((acc, e) => acc + parseFloat(e.total_cost || 0), 0) || 0;
-
-        setStats({
-          tasksInProgress,
-          tasksDone,
-          hoursWorked,
-          totalCost,
-          eventsToday: events?.length || 0,
-          meetingCostToday
-        });
-
-        setRecentTasks(tasks || []);
-        setTodayEvents(events || []);
-      } catch (err) {
-        console.error('Erro ao carregar dashboard:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (profile?.id) {
-      loadDashboardData();
-    }
-  }, [profile?.id]);
+    setLoading(false);
+  }, []);
 
   if (loading) {
     return (

@@ -599,7 +599,7 @@ SCRIPT VISUAL:
 "Olha [Nome], o [Parceiro] gosta disso aqui ó: ele manda o áudio 'Gastei 100 reais no almoço' e a IA já lança. É essa agilidade que você busca?"
 
 NÃO mostre demo genérica. Mostre o que o PARCEIRO gosta.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Ind_Merged</bpmn2:incoming>
+      <bpmn2:incoming>Flow_Ind_D0_Converteu_Nao</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Ind_Demo</bpmn2:outgoing>
     </bpmn2:userTask>
 
@@ -658,7 +658,6 @@ ESCASSEZ + ELEGÂNCIA.</bpmn2:documentation>
     </bpmn2:exclusiveGateway>
 
     <bpmn2:exclusiveGateway id="Gateway_Merge_D0_Indicacao" name="Merge D0">
-      <bpmn2:incoming>Flow_Ind_D0_Converteu_Nao</bpmn2:incoming>
       <bpmn2:incoming>Flow_Ind_D0_Insta</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Ind_D0_Merge</bpmn2:outgoing>
     </bpmn2:exclusiveGateway>
@@ -744,7 +743,7 @@ Sistema detecta se houve 0 lançamentos em 48h.</bpmn2:documentation>
     <bpmn2:sequenceFlow id="Flow_Ind_D0_NaoAtendeu" name="Não" sourceRef="Gateway_Atendeu_D0_Indicacao" targetRef="Task_D0_WhatsApp1_Indicacao" />
     <bpmn2:sequenceFlow id="Flow_Ind_D0_Check" sourceRef="Task_D0_Qualifica_Indicacao" targetRef="Gateway_Converteu_D0_Indicacao" />
     <bpmn2:sequenceFlow id="Flow_Ind_D0_Converteu_Sim" name="Sim" sourceRef="Gateway_Converteu_D0_Indicacao" targetRef="LinkThrow_Indicacao" />
-    <bpmn2:sequenceFlow id="Flow_Ind_D0_Converteu_Nao" name="Não" sourceRef="Gateway_Converteu_D0_Indicacao" targetRef="Gateway_Merge_D0_Indicacao" />
+    <bpmn2:sequenceFlow id="Flow_Ind_D0_Converteu_Nao" name="Não" sourceRef="Gateway_Converteu_D0_Indicacao" targetRef="Task_FlashDemo_Indicacao" />
     <bpmn2:sequenceFlow id="Flow_Ind_D0_Zap1" sourceRef="Task_D0_WhatsApp1_Indicacao" targetRef="Task_D0_Instagram_Indicacao" />
     <bpmn2:sequenceFlow id="Flow_Ind_D0_Insta" sourceRef="Task_D0_Instagram_Indicacao" targetRef="Gateway_Merge_D0_Indicacao" />
     <bpmn2:sequenceFlow id="Flow_Ind_D0_Merge" sourceRef="Gateway_Merge_D0_Indicacao" targetRef="Task_D1_WhatsApp2_Indicacao" />
@@ -1075,6 +1074,11 @@ Alta intenção de compra.</bpmn2:documentation>
       <bpmn2:incoming>Flow_Goo_Motivo</bpmn2:incoming>
     </bpmn2:endEvent>
 
+    <bpmn2:endEvent id="End_Pago_Google" name="✓ Pagou (Ativo)">
+      <bpmn2:incoming>Flow_Goo_Mandou</bpmn2:incoming>
+      <bpmn2:incoming>Flow_Goo_Alerta</bpmn2:incoming>
+    </bpmn2:endEvent>
+
     <bpmn2:serviceTask id="Task_AutomacaoBoasVindas" name="Automação D0 - Boas-vindas">
       <bpmn2:documentation>AUTOMAÇÃO IMEDIATA (D0):
 1. Criação da conta no sistema
@@ -1104,16 +1108,213 @@ DOWNSELL: Anual → Semestral → Trimestral</bpmn2:documentation>
       <bpmn2:outgoing>Flow_Goo_Recuperacao</bpmn2:outgoing>
     </bpmn2:serviceTask>
 
-    <bpmn2:serviceTask id="Task_Trial7d_Google" name="Trial 7 Dias Ativo (Paralelo)">
-      <bpmn2:documentation>MONITORAMENTO TRIAL (PARALELO AO FOLLOW-UP):
-Sistema monitora em background durante os 7 dias:
-- Frequência de uso (lançamentos por dia)
-- Última atividade
-- Engagement score
+    <bpmn2:subProcess id="SubProcess_Trial_Google" name="Trial 7 Dias - Cadência de Ativação">
+      <bpmn2:documentation>SUB-PROCESSO TRIAL 7 DIAS:
+Cadência de nurturing ativa durante o período trial.
+Objetivo: garantir o "aha moment" nos primeiros 2-3 dias
+e maximizar conversão ao fim dos 7 dias.
 
-NOTA: O follow-up D0-D7 acontece independente do uso.
-O vendedor é notificado se o uso cair a zero.</bpmn2:documentation>
-    </bpmn2:serviceTask>
+CADÊNCIA INTERNA:
+D0: Boas-vindas + Guia Rápido (primeiro valor em 5 min)
+D1: Check de uso + Dica feature-chave (ativar aha moment)
+D2: Case de sucesso de cliente similar (prova social)
+D3: Check 48h de uso profundo (ponto de decisão)
+D5: "Faltam 2 dias" + suporte (urgência)
+D6: Oferta de conversão (incentivo final)
+D7: Expiração → merge com fechamento principal</bpmn2:documentation>
+      <bpmn2:incoming>Flow_Goo_Trial_Sim</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Goo_Trial_End</bpmn2:outgoing>
+
+      <bpmn2:startEvent id="Start_Trial" name="Trial Ativado">
+        <bpmn2:outgoing>Flow_Trial_D0</bpmn2:outgoing>
+      </bpmn2:startEvent>
+
+      <bpmn2:serviceTask id="Task_Trial_D0_BoasVindas" name="D0 - Boas-vindas + Guia Rápido">
+        <bpmn2:documentation>ONBOARDING IMEDIATO:
+- E-mail/WhatsApp de boas-vindas com vídeo de 2 min
+- Guia rápido: "3 passos para seu primeiro lançamento"
+- CTA: "Faça seu primeiro lançamento agora"
+
+OBJETIVO: Primeiro valor em menos de 5 minutos.</bpmn2:documentation>
+        <bpmn2:incoming>Flow_Trial_D0</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D0_D1</bpmn2:outgoing>
+      </bpmn2:serviceTask>
+
+      <bpmn2:intermediateCatchEvent id="Timer_Trial_24h" name="24h">
+        <bpmn2:incoming>Flow_Trial_D0_D1</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D1_Check</bpmn2:outgoing>
+        <bpmn2:timerEventDefinition>
+          <bpmn2:timeDuration>PT24H</bpmn2:timeDuration>
+        </bpmn2:timerEventDefinition>
+      </bpmn2:intermediateCatchEvent>
+
+      <bpmn2:exclusiveGateway id="Gateway_Trial_D1_Uso" name="Usou D0?">
+        <bpmn2:incoming>Flow_Trial_D1_Check</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D1_Sim</bpmn2:outgoing>
+        <bpmn2:outgoing>Flow_Trial_D1_Nao</bpmn2:outgoing>
+      </bpmn2:exclusiveGateway>
+
+      <bpmn2:sendTask id="Task_Trial_D1_Dica" name="D1 - Dica Feature-Chave">
+        <bpmn2:documentation>SE USOU:
+"Vi que você já fez seu primeiro lançamento! 🎉
+Agora experimenta [feature-chave] — é onde a mágica acontece."
+
+SE NÃO USOU:
+"Ainda não testou? Normal, a rotina engole. Olha só como é rápido: [vídeo 60s]
+Leva 2 minutos pra sentir a diferença."</bpmn2:documentation>
+        <bpmn2:incoming>Flow_Trial_D1_Sim</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D1_Merge</bpmn2:outgoing>
+      </bpmn2:sendTask>
+
+      <bpmn2:sendTask id="Task_Trial_D1_Reengajamento" name="D1 - Reengajamento (Não Usou)">
+        <bpmn2:documentation>REENGAJAMENTO SUAVE:
+"Ainda não testou? Normal, a rotina engole.
+Olha só como é rápido: [vídeo 60s]
+Leva 2 minutos pra sentir a diferença."
+
+INCLUI: Link direto para primeiro lançamento.</bpmn2:documentation>
+        <bpmn2:incoming>Flow_Trial_D1_Nao</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D1_Merge2</bpmn2:outgoing>
+      </bpmn2:sendTask>
+
+      <bpmn2:exclusiveGateway id="Gateway_Trial_D1_Merge" name="Merge D1">
+        <bpmn2:incoming>Flow_Trial_D1_Merge</bpmn2:incoming>
+        <bpmn2:incoming>Flow_Trial_D1_Merge2</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D1_D2</bpmn2:outgoing>
+      </bpmn2:exclusiveGateway>
+
+      <bpmn2:intermediateCatchEvent id="Timer_Trial_D2" name="24h">
+        <bpmn2:incoming>Flow_Trial_D1_D2</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D2_Start</bpmn2:outgoing>
+        <bpmn2:timerEventDefinition>
+          <bpmn2:timeDuration>PT24H</bpmn2:timeDuration>
+        </bpmn2:timerEventDefinition>
+      </bpmn2:intermediateCatchEvent>
+
+      <bpmn2:sendTask id="Task_Trial_D2_Case" name="D2 - Case de Sucesso">
+        <bpmn2:documentation>PROVA SOCIAL:
+"O [Cliente X] do mesmo ramo que você economizou 4h/semana
+no primeiro mês. Olha o depoimento dele: [link/print]
+
+Você tá no caminho certo. Qualquer dúvida, me chama!"</bpmn2:documentation>
+        <bpmn2:incoming>Flow_Trial_D2_Start</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D2_D3</bpmn2:outgoing>
+      </bpmn2:sendTask>
+
+      <bpmn2:intermediateCatchEvent id="Timer_Trial_D3" name="24h">
+        <bpmn2:incoming>Flow_Trial_D2_D3</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D3_Check</bpmn2:outgoing>
+        <bpmn2:timerEventDefinition>
+          <bpmn2:timeDuration>PT24H</bpmn2:timeDuration>
+        </bpmn2:timerEventDefinition>
+      </bpmn2:intermediateCatchEvent>
+
+      <bpmn2:exclusiveGateway id="Gateway_Trial_D3_Uso" name="Usou em 48h?">
+        <bpmn2:incoming>Flow_Trial_D3_Check</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D3_Sim</bpmn2:outgoing>
+        <bpmn2:outgoing>Flow_Trial_D3_Nao</bpmn2:outgoing>
+      </bpmn2:exclusiveGateway>
+
+      <bpmn2:sendTask id="Task_Trial_D3_Parabens" name="D3 - Parabéns + Próximo Nível">
+        <bpmn2:documentation>REFORÇO POSITIVO (SE USOU):
+"Show! Vi que você já tá usando [feature X]. 💪
+Agora experimenta [feature Y] — os clientes que usam convertem 2x mais."</bpmn2:documentation>
+        <bpmn2:incoming>Flow_Trial_D3_Sim</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D3_Merge1</bpmn2:outgoing>
+      </bpmn2:sendTask>
+
+      <bpmn2:userTask id="Task_Trial_D3_Resgate" name="D3 - Ligação de Resgate">
+        <bpmn2:documentation>AÇÃO HUMANA (SE NÃO USOU EM 48H):
+"Você buscou no Google porque tinha um problema urgente.
+O problema sumiu ou a rotina te engoliu?
+Vamos lançar o primeiro gasto agora na linha?"
+
+OBJETIVO: Resgatar antes de perder. Se não ativar até D3,
+a chance de conversão cai drasticamente.</bpmn2:documentation>
+        <bpmn2:incoming>Flow_Trial_D3_Nao</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D3_Merge2</bpmn2:outgoing>
+      </bpmn2:userTask>
+
+      <bpmn2:exclusiveGateway id="Gateway_Trial_D3_Merge" name="Merge D3">
+        <bpmn2:incoming>Flow_Trial_D3_Merge1</bpmn2:incoming>
+        <bpmn2:incoming>Flow_Trial_D3_Merge2</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D3_D5</bpmn2:outgoing>
+      </bpmn2:exclusiveGateway>
+
+      <bpmn2:intermediateCatchEvent id="Timer_Trial_D5" name="48h">
+        <bpmn2:incoming>Flow_Trial_D3_D5</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D5_Start</bpmn2:outgoing>
+        <bpmn2:timerEventDefinition>
+          <bpmn2:timeDuration>PT48H</bpmn2:timeDuration>
+        </bpmn2:timerEventDefinition>
+      </bpmn2:intermediateCatchEvent>
+
+      <bpmn2:sendTask id="Task_Trial_D5_Urgencia" name="D5 - Faltam 2 Dias + Suporte">
+        <bpmn2:documentation>URGÊNCIA + SUPORTE:
+"Seu trial expira em 2 dias! ⏰
+Quer que eu te ajude a configurar algo específico antes?
+Agenda 15 min comigo e resolvo qualquer dúvida: [link agenda]"
+
+OBJETIVO: Criar senso de urgência + oferecer ajuda genuína.</bpmn2:documentation>
+        <bpmn2:incoming>Flow_Trial_D5_Start</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D5_D6</bpmn2:outgoing>
+      </bpmn2:sendTask>
+
+      <bpmn2:intermediateCatchEvent id="Timer_Trial_D6" name="24h">
+        <bpmn2:incoming>Flow_Trial_D5_D6</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D6_Start</bpmn2:outgoing>
+        <bpmn2:timerEventDefinition>
+          <bpmn2:timeDuration>PT24H</bpmn2:timeDuration>
+        </bpmn2:timerEventDefinition>
+      </bpmn2:intermediateCatchEvent>
+
+      <bpmn2:sendTask id="Task_Trial_D6_Oferta" name="D6 - Oferta de Conversão">
+        <bpmn2:documentation>INCENTIVO FINAL:
+"Amanhã seu trial acaba. Pra quem converte ANTES de expirar,
+tenho uma condição especial:
+🎁 20% OFF no primeiro trimestre + Onboarding VIP grátis.
+
+Esse desconto some amanhã às 23:59. Bora?"
+
+INCLUI: Link direto para checkout com cupom aplicado.</bpmn2:documentation>
+        <bpmn2:incoming>Flow_Trial_D6_Start</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D6_D7</bpmn2:outgoing>
+      </bpmn2:sendTask>
+
+      <bpmn2:intermediateCatchEvent id="Timer_Trial_D7" name="24h">
+        <bpmn2:incoming>Flow_Trial_D6_D7</bpmn2:incoming>
+        <bpmn2:outgoing>Flow_Trial_D7_End</bpmn2:outgoing>
+        <bpmn2:timerEventDefinition>
+          <bpmn2:timeDuration>PT24H</bpmn2:timeDuration>
+        </bpmn2:timerEventDefinition>
+      </bpmn2:intermediateCatchEvent>
+
+      <bpmn2:endEvent id="End_Trial" name="Trial Expirado">
+        <bpmn2:incoming>Flow_Trial_D7_End</bpmn2:incoming>
+      </bpmn2:endEvent>
+
+      <bpmn2:sequenceFlow id="Flow_Trial_D0" sourceRef="Start_Trial" targetRef="Task_Trial_D0_BoasVindas" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D0_D1" sourceRef="Task_Trial_D0_BoasVindas" targetRef="Timer_Trial_24h" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D1_Check" sourceRef="Timer_Trial_24h" targetRef="Gateway_Trial_D1_Uso" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D1_Sim" name="Sim" sourceRef="Gateway_Trial_D1_Uso" targetRef="Task_Trial_D1_Dica" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D1_Nao" name="Não" sourceRef="Gateway_Trial_D1_Uso" targetRef="Task_Trial_D1_Reengajamento" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D1_Merge" sourceRef="Task_Trial_D1_Dica" targetRef="Gateway_Trial_D1_Merge" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D1_Merge2" sourceRef="Task_Trial_D1_Reengajamento" targetRef="Gateway_Trial_D1_Merge" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D1_D2" sourceRef="Gateway_Trial_D1_Merge" targetRef="Timer_Trial_D2" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D2_Start" sourceRef="Timer_Trial_D2" targetRef="Task_Trial_D2_Case" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D2_D3" sourceRef="Task_Trial_D2_Case" targetRef="Timer_Trial_D3" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D3_Check" sourceRef="Timer_Trial_D3" targetRef="Gateway_Trial_D3_Uso" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D3_Sim" name="Sim" sourceRef="Gateway_Trial_D3_Uso" targetRef="Task_Trial_D3_Parabens" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D3_Nao" name="Não" sourceRef="Gateway_Trial_D3_Uso" targetRef="Task_Trial_D3_Resgate" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D3_Merge1" sourceRef="Task_Trial_D3_Parabens" targetRef="Gateway_Trial_D3_Merge" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D3_Merge2" sourceRef="Task_Trial_D3_Resgate" targetRef="Gateway_Trial_D3_Merge" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D3_D5" sourceRef="Gateway_Trial_D3_Merge" targetRef="Timer_Trial_D5" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D5_Start" sourceRef="Timer_Trial_D5" targetRef="Task_Trial_D5_Urgencia" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D5_D6" sourceRef="Task_Trial_D5_Urgencia" targetRef="Timer_Trial_D6" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D6_Start" sourceRef="Timer_Trial_D6" targetRef="Task_Trial_D6_Oferta" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D6_D7" sourceRef="Task_Trial_D6_Oferta" targetRef="Timer_Trial_D7" />
+      <bpmn2:sequenceFlow id="Flow_Trial_D7_End" sourceRef="Timer_Trial_D7" targetRef="End_Trial" />
+    </bpmn2:subProcess>
 
     <bpmn2:serviceTask id="Task_GrupoNurturing_Google" name="Grupo Promoções + Remarketing">
       <bpmn2:documentation>NURTURING - LISTA PROMOÇÕES:
@@ -1123,7 +1324,7 @@ Lead Google que não converteu vai para lista de:
 - WhatsApp com ofertas relâmpago
 
 CONSIDERADO PERDIDO: Apenas se descadastrar/bloquear</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Goo_Converteu_Nao</bpmn2:incoming>
+      <bpmn2:incoming>Flow_Goo_Respondeu_Sim</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Goo_Nurturing</bpmn2:outgoing>
     </bpmn2:serviceTask>
 
@@ -1281,23 +1482,14 @@ SCRIPT:
 
 OBJEÇÃO ELIMINADA: "E se não der certo?" → Risco zero.</bpmn2:documentation>
       <bpmn2:incoming>Flow_Goo_Zap_3</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Goo_Zap_4</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_Goo_ToGatewayTrial</bpmn2:outgoing>
     </bpmn2:userTask>
 
-    <bpmn2:userTask id="Task_LigacaoResgate_Google" name="Ligação de Resgate">
-      <bpmn2:documentation>AÇÃO HUMANA:
-
-GATILHO: 0 lançamentos nos últimos 2 dias.
-
-SCRIPT:
-"Você buscou no Google porque tinha um problema urgente. O problema sumiu ou a rotina te engoliu?
-
-Vamos lançar o primeiro gasto agora na linha?"
-
-OBJETIVO: Resgatar antes de perder.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Goo_NaoUsou48h</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Goo_Resgate</bpmn2:outgoing>
-    </bpmn2:userTask>
+    <bpmn2:exclusiveGateway id="Gateway_AceitouTrial_Google" name="Aceitou Trial?">
+      <bpmn2:incoming>Flow_Goo_ToGatewayTrial</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_Goo_Trial_Sim</bpmn2:outgoing>
+      <bpmn2:outgoing>Flow_Goo_Trial_Nao</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
 
     <bpmn2:userTask id="Task_D7_Fechamento_Google" name="D7 - Fechamento (Escada Downsell)">
       <bpmn2:documentation>O FECHAMENTO BINÁRIO (D7 - FINAL DO TRIAL):
@@ -1315,8 +1507,8 @@ Tentativa 3 (Misericórdia): Plano Trimestral (R$ 561)
 - Argumento: "Faz o seguinte: não casa comigo. Namora por 3 meses. É um teste pago pra você organizar a casa."
 
 OBJETIVO: Não perder o cliente. Se ele não pode pagar o ideal, ele paga o possível.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Goo_Usou48h</bpmn2:incoming>
-      <bpmn2:incoming>Flow_Goo_Resgate</bpmn2:incoming>
+      <bpmn2:incoming>Flow_Goo_D5_Lig3</bpmn2:incoming>
+      <bpmn2:incoming>Flow_Goo_Trial_End</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Goo_D7</bpmn2:outgoing>
     </bpmn2:userTask>
 
@@ -1330,7 +1522,7 @@ SCRIPT:
 "[Nome], aqui é o [Vendedor] da Fyness. Vi que você acabou de preencher o cadastro. Tá na frente do computador agora?"
 
 OBJETIVO: Qualificar a dor e agendar demo se atender.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Goo_MergeTrial</bpmn2:incoming>
+      <bpmn2:incoming>Flow_Goo_Recuperacao</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Goo_D0_Lig1</bpmn2:outgoing>
     </bpmn2:userTask>
 
@@ -1408,19 +1600,6 @@ MÉTRICA CRÍTICA: Taxa de conversão por motivo de perda.</bpmn2:documentation>
       <bpmn2:outgoing>Flow_Goo_Mandou</bpmn2:outgoing>
     </bpmn2:exclusiveGateway>
 
-    <bpmn2:exclusiveGateway id="Gateway_MergeTrial" name="Merge Trial">
-      <bpmn2:incoming>Flow_Goo_Mandou</bpmn2:incoming>
-      <bpmn2:incoming>Flow_Goo_Alerta</bpmn2:incoming>
-      <bpmn2:incoming>Flow_Goo_Zap_4</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Goo_MergeTrial</bpmn2:outgoing>
-    </bpmn2:exclusiveGateway>
-
-    <bpmn2:exclusiveGateway id="Gateway_UsouEm48h_Google" name="Usou?">
-      <bpmn2:incoming>Flow_Goo_Check48h</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Goo_NaoUsou48h</bpmn2:outgoing>
-      <bpmn2:outgoing>Flow_Goo_Usou48h</bpmn2:outgoing>
-    </bpmn2:exclusiveGateway>
-
     <bpmn2:exclusiveGateway id="Gateway_Converteu_Google" name="Converteu?">
       <bpmn2:incoming>Flow_Goo_D7</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Goo_Converteu_Sim</bpmn2:outgoing>
@@ -1436,6 +1615,7 @@ MÉTRICA CRÍTICA: Taxa de conversão por motivo de perda.</bpmn2:documentation>
     <bpmn2:exclusiveGateway id="Gateway_Merge_D0_Google" name="Merge D0">
       <bpmn2:incoming>Flow_Goo_D0_Qualificou</bpmn2:incoming>
       <bpmn2:incoming>Flow_Goo_D0_Zap2</bpmn2:incoming>
+      <bpmn2:incoming>Flow_Goo_Trial_Nao</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Goo_D0_Merge</bpmn2:outgoing>
     </bpmn2:exclusiveGateway>
 
@@ -1449,20 +1629,9 @@ MÉTRICA CRÍTICA: Taxa de conversão por motivo de perda.</bpmn2:documentation>
       <bpmn2:documentation>O GUARDIÃO DE ATIVAÇÃO:
 Monitora se cliente pagou mas NÃO usou em 24h.</bpmn2:documentation>
       <bpmn2:incoming>Flow_Goo_BoasVindas</bpmn2:incoming>
-      <bpmn2:incoming>Flow_Goo_Recuperacao</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Goo_Check24h</bpmn2:outgoing>
       <bpmn2:timerEventDefinition>
         <bpmn2:timeDuration>PT24H</bpmn2:timeDuration>
-      </bpmn2:timerEventDefinition>
-    </bpmn2:intermediateCatchEvent>
-
-    <bpmn2:intermediateCatchEvent id="IntermediateTimer_48h_Google" name="48h">
-      <bpmn2:documentation>GUARDIÃO DE RETENÇÃO:
-Se 0 lançamentos em 48h durante o trial, dispara alerta.</bpmn2:documentation>
-      <bpmn2:incoming>Flow_Goo_Trial</bpmn2:incoming>
-      <bpmn2:outgoing>Flow_Goo_Check48h</bpmn2:outgoing>
-      <bpmn2:timerEventDefinition>
-        <bpmn2:timeDuration>PT48H</bpmn2:timeDuration>
       </bpmn2:timerEventDefinition>
     </bpmn2:intermediateCatchEvent>
 
@@ -1488,25 +1657,22 @@ Aguarda 24h para ver se o lead responde ao ultimato.</bpmn2:documentation>
     <bpmn2:sequenceFlow id="Flow_Goo_Sucesso" name="Sucesso" sourceRef="Gateway_Pagamento_Self" targetRef="Task_AutomacaoBoasVindas" />
     <bpmn2:sequenceFlow id="Flow_Goo_Falha" name="Falha/Abandono" sourceRef="Gateway_Pagamento_Self" targetRef="Task_RecuperacaoCarrinho" />
     <bpmn2:sequenceFlow id="Flow_Goo_BoasVindas" sourceRef="Task_AutomacaoBoasVindas" targetRef="IntermediateTimer_24h_Google" />
-    <bpmn2:sequenceFlow id="Flow_Goo_Recuperacao" sourceRef="Task_RecuperacaoCarrinho" targetRef="IntermediateTimer_24h_Google" />
+    <bpmn2:sequenceFlow id="Flow_Goo_Recuperacao" sourceRef="Task_RecuperacaoCarrinho" targetRef="Task_D0_Ligacao1_Google" />
     <bpmn2:sequenceFlow id="Flow_Goo_Check24h" sourceRef="IntermediateTimer_24h_Google" targetRef="Gateway_PrimeiroAudio" />
     <bpmn2:sequenceFlow id="Flow_Goo_NaoMandou" name="Não" sourceRef="Gateway_PrimeiroAudio" targetRef="Task_AlertaHumano_Google" />
-    <bpmn2:sequenceFlow id="Flow_Goo_Mandou" name="Sim" sourceRef="Gateway_PrimeiroAudio" targetRef="Gateway_MergeTrial" />
-    <bpmn2:sequenceFlow id="Flow_Goo_Alerta" sourceRef="Task_AlertaHumano_Google" targetRef="Gateway_MergeTrial" />
+    <bpmn2:sequenceFlow id="Flow_Goo_Mandou" name="Sim" sourceRef="Gateway_PrimeiroAudio" targetRef="End_Pago_Google" />
+    <bpmn2:sequenceFlow id="Flow_Goo_Alerta" sourceRef="Task_AlertaHumano_Google" targetRef="End_Pago_Google" />
     <bpmn2:sequenceFlow id="Flow_Goo_Zap" name="WhatsApp" sourceRef="Gateway_CaminhoGoogle" targetRef="Task_ClickWhatsApp" />
     <bpmn2:sequenceFlow id="Flow_Goo_Zap_1" sourceRef="Task_ClickWhatsApp" targetRef="Task_SpeedToLead_Google" />
     <bpmn2:sequenceFlow id="Flow_Goo_Zap_2" sourceRef="Task_SpeedToLead_Google" targetRef="Task_FlashDemo_Google" />
     <bpmn2:sequenceFlow id="Flow_Goo_Zap_3" sourceRef="Task_FlashDemo_Google" targetRef="Task_OfertaTrial_Google" />
-    <bpmn2:sequenceFlow id="Flow_Goo_Zap_4" sourceRef="Task_OfertaTrial_Google" targetRef="Gateway_MergeTrial" />
-    <bpmn2:sequenceFlow id="Flow_Goo_MergeTrial" sourceRef="Gateway_MergeTrial" targetRef="Task_D0_Ligacao1_Google" />
-    <bpmn2:sequenceFlow id="Flow_Goo_Trial" sourceRef="Task_Trial7d_Google" targetRef="IntermediateTimer_48h_Google" />
-    <bpmn2:sequenceFlow id="Flow_Goo_Check48h" sourceRef="IntermediateTimer_48h_Google" targetRef="Gateway_UsouEm48h_Google" />
-    <bpmn2:sequenceFlow id="Flow_Goo_NaoUsou48h" name="Não" sourceRef="Gateway_UsouEm48h_Google" targetRef="Task_LigacaoResgate_Google" />
-    <bpmn2:sequenceFlow id="Flow_Goo_Usou48h" name="Sim" sourceRef="Gateway_UsouEm48h_Google" targetRef="Task_D7_Fechamento_Google" />
-    <bpmn2:sequenceFlow id="Flow_Goo_Resgate" sourceRef="Task_LigacaoResgate_Google" targetRef="Task_D7_Fechamento_Google" />
+    <bpmn2:sequenceFlow id="Flow_Goo_ToGatewayTrial" sourceRef="Task_OfertaTrial_Google" targetRef="Gateway_AceitouTrial_Google" />
+    <bpmn2:sequenceFlow id="Flow_Goo_Trial_Sim" name="Sim (Aceitou)" sourceRef="Gateway_AceitouTrial_Google" targetRef="SubProcess_Trial_Google" />
+    <bpmn2:sequenceFlow id="Flow_Goo_Trial_Nao" name="Não (Recusou)" sourceRef="Gateway_AceitouTrial_Google" targetRef="Gateway_Merge_D0_Google" />
+    <bpmn2:sequenceFlow id="Flow_Goo_Trial_End" sourceRef="SubProcess_Trial_Google" targetRef="Task_D7_Fechamento_Google" />
     <bpmn2:sequenceFlow id="Flow_Goo_D7" sourceRef="Task_D7_Fechamento_Google" targetRef="Gateway_Converteu_Google" />
     <bpmn2:sequenceFlow id="Flow_Goo_Converteu_Sim" name="Sim" sourceRef="Gateway_Converteu_Google" targetRef="LinkThrow_Google" />
-    <bpmn2:sequenceFlow id="Flow_Goo_Converteu_Nao" name="Não" sourceRef="Gateway_Converteu_Google" targetRef="Task_GrupoNurturing_Google" />
+    <bpmn2:sequenceFlow id="Flow_Goo_Converteu_Nao" name="Não" sourceRef="Gateway_Converteu_Google" targetRef="Task_D7_WhatsApp6_Breakup_Google" />
     <bpmn2:sequenceFlow id="Flow_Goo_Nurturing" sourceRef="Task_GrupoNurturing_Google" targetRef="End_Bloqueio_Google" />
     <bpmn2:sequenceFlow id="Flow_Goo_D0_Lig1" sourceRef="Task_D0_Ligacao1_Google" targetRef="Gateway_Atendeu_D0_Google" />
     <bpmn2:sequenceFlow id="Flow_Goo_D0_Atendeu" name="Sim" sourceRef="Gateway_Atendeu_D0_Google" targetRef="Task_D0_Qualifica_Google" />
@@ -1972,1378 +2138,1424 @@ Evita spam excessivo</bpmn2:documentation>
 
   </bpmn2:process>
 
-    <!-- DIAGRAMA (Posições) -->
+
+    <!-- DIAGRAMA (Posições - Gerado automaticamente) -->
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_Comercial">
 
+      <!-- Pool Shapes -->
       <bpmndi:BPMNShape id="Shape_Participant_Educacao" bpmnElement="Participant_Educacao" isHorizontal="true" bioc:stroke="#51cf66" bioc:fill="#e0ffe0">
-        <dc:Bounds x="150" y="80" width="3730" height="390" />
+        <dc:Bounds x="160" y="80" width="4400" height="520" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="Shape_Participant_Indicacao" bpmnElement="Participant_Indicacao" isHorizontal="true" bioc:stroke="#ff6b6b" bioc:fill="#ffe0e0">
-        <dc:Bounds x="150" y="520" width="3730" height="390" />
+        <dc:Bounds x="160" y="650" width="4400" height="630" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="Shape_Participant_Conteudo" bpmnElement="Participant_Conteudo" isHorizontal="true" bioc:stroke="#9775fa" bioc:fill="#f0e0ff">
-        <dc:Bounds x="150" y="960" width="3730" height="280" />
+        <dc:Bounds x="160" y="1330" width="4400" height="520" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="Shape_Participant_Prospeccao" bpmnElement="Participant_Prospeccao" isHorizontal="true" bioc:stroke="#fa5252" bioc:fill="#ffe0e0">
-        <dc:Bounds x="150" y="1290" width="3730" height="200" />
+        <dc:Bounds x="160" y="1900" width="4400" height="160" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="Shape_Participant_Google" bpmnElement="Participant_Google" isHorizontal="true" bioc:stroke="#4dabf7" bioc:fill="#e0f0ff">
-        <dc:Bounds x="150" y="1540" width="3730" height="500" />
+        <dc:Bounds x="160" y="2110" width="4400" height="660" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="Shape_Participant_Meta" bpmnElement="Participant_Meta" isHorizontal="true" bioc:stroke="#cc5de8" bioc:fill="#f3e0ff">
-        <dc:Bounds x="150" y="2090" width="3730" height="280" />
+        <dc:Bounds x="160" y="2820" width="4400" height="410" />
       </bpmndi:BPMNShape>
 
       <bpmndi:BPMNShape id="Shape_Participant_Nucleo" bpmnElement="Participant_Nucleo" isHorizontal="true" bioc:stroke="#868e96" bioc:fill="#f0f0f0">
-        <dc:Bounds x="150" y="2420" width="3730" height="280" />
+        <dc:Bounds x="160" y="3280" width="4400" height="410" />
       </bpmndi:BPMNShape>
 
-      <!-- Participant_Educacao elements -->
-      <bpmndi:BPMNShape id="Shape_End_Cliente_Ativo_Educacao" bpmnElement="End_Cliente_Ativo_Educacao">
-        <dc:Bounds x="3252" y="242" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_End_Cliente_Perdido_Educacao" bpmnElement="End_Cliente_Perdido_Educacao">
-        <dc:Bounds x="3422" y="132" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Ativou_D7" bpmnElement="Gateway_Ativou_D7">
-        <dc:Bounds x="1375" y="125" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Merge_Ativacao" bpmnElement="Gateway_Merge_Ativacao">
-        <dc:Bounds x="1545" y="235" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Merge_Entrada" bpmnElement="Gateway_Merge_Entrada">
-        <dc:Bounds x="695" y="125" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Recuperou" bpmnElement="Gateway_Recuperou">
-        <dc:Bounds x="3245" y="125" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Renovou" bpmnElement="Gateway_Renovou">
-        <dc:Bounds x="2735" y="125" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Tipo_Renovacao" bpmnElement="Gateway_Tipo_Renovacao">
-        <dc:Bounds x="2905" y="235" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_30d" bpmnElement="IntermediateTimer_30d">
-        <dc:Bounds x="2572" y="132" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_D7" bpmnElement="IntermediateTimer_D7">
-        <dc:Bounds x="1212" y="132" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_M2" bpmnElement="IntermediateTimer_M2">
-        <dc:Bounds x="1892" y="132" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_M5" bpmnElement="IntermediateTimer_M5">
-        <dc:Bounds x="2232" y="132" width="36" height="36" />
-      </bpmndi:BPMNShape>
+      <!-- Educacao elements -->
       <bpmndi:BPMNShape id="Shape_Start_Educacao_Curso" bpmnElement="Start_Educacao_Curso">
-        <dc:Bounds x="362" y="132" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Start_Educacao_Software" bpmnElement="Start_Educacao_Software">
-        <dc:Bounds x="362" y="242" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Aula_Setup" bpmnElement="Task_Aula_Setup">
-        <dc:Bounds x="1010" y="110" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Bloqueio_Leitura" bpmnElement="Task_Bloqueio_Leitura">
-        <dc:Bounds x="2880" y="110" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_CS_Liga_Ativacao" bpmnElement="Task_CS_Liga_Ativacao">
-        <dc:Bounds x="1520" y="110" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_CS_Recuperacao" bpmnElement="Task_CS_Recuperacao">
-        <dc:Bounds x="3050" y="110" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D150_Aviso" bpmnElement="Task_D150_Aviso">
-        <dc:Bounds x="2370" y="110" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Email_BoasVindas" bpmnElement="Task_Email_BoasVindas">
-        <dc:Bounds x="840" y="110" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_M1_Desafio_DRE" bpmnElement="Task_M1_Desafio_DRE">
-        <dc:Bounds x="1690" y="110" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_M3_Checkpoint" bpmnElement="Task_M3_Checkpoint">
-        <dc:Bounds x="2030" y="110" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Renovacao_Anual" bpmnElement="Task_Renovacao_Anual">
-        <dc:Bounds x="3050" y="220" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Renovacao_Mensal" bpmnElement="Task_Renovacao_Mensal">
-        <dc:Bounds x="3050" y="330" width="100" height="80" />
+        <dc:Bounds x="232" y="112" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Tag_Curso" bpmnElement="Task_Tag_Curso">
-        <dc:Bounds x="500" y="110" width="100" height="80" />
+        <dc:Bounds x="355" y="90" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Merge_Entrada" bpmnElement="Gateway_Merge_Entrada">
+        <dc:Bounds x="535" y="215" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Email_BoasVindas" bpmnElement="Task_Email_BoasVindas">
+        <dc:Bounds x="665" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Aula_Setup" bpmnElement="Task_Aula_Setup">
+        <dc:Bounds x="820" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IntermediateTimer_D7" bpmnElement="IntermediateTimer_D7">
+        <dc:Bounds x="1007" y="222" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Ativou_D7" bpmnElement="Gateway_Ativou_D7">
+        <dc:Bounds x="1155" y="215" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Merge_Ativacao" bpmnElement="Gateway_Merge_Ativacao">
+        <dc:Bounds x="1465" y="215" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_M1_Desafio_DRE" bpmnElement="Task_M1_Desafio_DRE">
+        <dc:Bounds x="1595" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IntermediateTimer_M2" bpmnElement="IntermediateTimer_M2">
+        <dc:Bounds x="1782" y="222" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_M3_Checkpoint" bpmnElement="Task_M3_Checkpoint">
+        <dc:Bounds x="1905" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IntermediateTimer_M5" bpmnElement="IntermediateTimer_M5">
+        <dc:Bounds x="2092" y="222" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D150_Aviso" bpmnElement="Task_D150_Aviso">
+        <dc:Bounds x="2215" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IntermediateTimer_30d" bpmnElement="IntermediateTimer_30d">
+        <dc:Bounds x="2402" y="222" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Renovou" bpmnElement="Gateway_Renovou">
+        <dc:Bounds x="2550" y="215" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Tipo_Renovacao" bpmnElement="Gateway_Tipo_Renovacao">
+        <dc:Bounds x="2705" y="215" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Renovacao_Anual" bpmnElement="Task_Renovacao_Anual">
+        <dc:Bounds x="2835" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Cliente_Ativo_Educacao" bpmnElement="End_Cliente_Ativo_Educacao">
+        <dc:Bounds x="3022" y="222" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_Educacao_Software" bpmnElement="Start_Educacao_Software">
+        <dc:Bounds x="232" y="332" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Tag_Software" bpmnElement="Task_Tag_Software">
-        <dc:Bounds x="500" y="220" width="100" height="80" />
+        <dc:Bounds x="355" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_CS_Liga_Ativacao" bpmnElement="Task_CS_Liga_Ativacao">
+        <dc:Bounds x="1285" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Renovacao_Mensal" bpmnElement="Task_Renovacao_Mensal">
+        <dc:Bounds x="2835" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Bloqueio_Leitura" bpmnElement="Task_Bloqueio_Leitura">
+        <dc:Bounds x="2525" y="420" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_CS_Recuperacao" bpmnElement="Task_CS_Recuperacao">
+        <dc:Bounds x="2680" y="420" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Recuperou" bpmnElement="Gateway_Recuperou">
+        <dc:Bounds x="2860" y="435" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Cliente_Perdido_Educacao" bpmnElement="End_Cliente_Perdido_Educacao">
+        <dc:Bounds x="3022" y="442" width="36" height="36" />
       </bpmndi:BPMNShape>
 
-      <!-- Participant_Indicacao elements -->
-      <bpmndi:BPMNShape id="Shape_End_Bloqueio_Indicacao" bpmnElement="End_Bloqueio_Indicacao">
-        <dc:Bounds x="2912" y="682" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_End_Perdido_Motivo_Indicacao" bpmnElement="End_Perdido_Motivo_Indicacao">
-        <dc:Bounds x="3252" y="572" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Atendeu_D0_Indicacao" bpmnElement="Gateway_Atendeu_D0_Indicacao">
-        <dc:Bounds x="1205" y="675" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_D0_Indicacao" bpmnElement="Gateway_Converteu_D0_Indicacao">
-        <dc:Bounds x="1545" y="675" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Indicacao" bpmnElement="Gateway_Converteu_Indicacao">
-        <dc:Bounds x="2565" y="565" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_MergeIndicacao" bpmnElement="Gateway_MergeIndicacao">
-        <dc:Bounds x="865" y="565" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Merge_D0_Indicacao" bpmnElement="Gateway_Merge_D0_Indicacao">
-        <dc:Bounds x="1715" y="565" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Respondeu_Breakup_Indicacao" bpmnElement="Gateway_Respondeu_Breakup_Indicacao">
-        <dc:Bounds x="2905" y="565" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_UsouEm48h" bpmnElement="Gateway_UsouEm48h">
-        <dc:Bounds x="865" y="675" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_24h_Breakup_Indicacao" bpmnElement="IntermediateTimer_24h_Breakup_Indicacao">
-        <dc:Bounds x="2742" y="572" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_48h" bpmnElement="IntermediateTimer_48h">
-        <dc:Bounds x="702" y="572" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_LinkThrow_Indicacao" bpmnElement="LinkThrow_Indicacao">
-        <dc:Bounds x="1722" y="682" width="36" height="36" />
-      </bpmndi:BPMNShape>
+      <!-- Indicacao elements -->
       <bpmndi:BPMNShape id="Shape_Start_Indicacao_Ativo" bpmnElement="Start_Indicacao_Ativo">
-        <dc:Bounds x="362" y="572" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Start_Indicacao_Passivo" bpmnElement="Start_Indicacao_Passivo">
-        <dc:Bounds x="362" y="682" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_AvisaParceiro" bpmnElement="Task_AvisaParceiro">
-        <dc:Bounds x="2710" y="660" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D0_Instagram_Indicacao" bpmnElement="Task_D0_Instagram_Indicacao">
-        <dc:Bounds x="1520" y="550" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D0_Ligacao_Indicacao" bpmnElement="Task_D0_Ligacao_Indicacao">
-        <dc:Bounds x="1010" y="550" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D0_Qualifica_Indicacao" bpmnElement="Task_D0_Qualifica_Indicacao">
-        <dc:Bounds x="1350" y="550" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D0_WhatsApp1_Indicacao" bpmnElement="Task_D0_WhatsApp1_Indicacao">
-        <dc:Bounds x="1350" y="660" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D10_WhatsApp5_Indicacao" bpmnElement="Task_D10_WhatsApp5_Indicacao">
-        <dc:Bounds x="2370" y="550" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D1_Lembrete" bpmnElement="Task_D1_Lembrete">
-        <dc:Bounds x="1010" y="660" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D1_WhatsApp2_Indicacao" bpmnElement="Task_D1_WhatsApp2_Indicacao">
-        <dc:Bounds x="1860" y="550" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D3_ProvaSocial" bpmnElement="Task_D3_ProvaSocial">
-        <dc:Bounds x="1180" y="550" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D3_WhatsApp3_Indicacao" bpmnElement="Task_D3_WhatsApp3_Indicacao">
-        <dc:Bounds x="2030" y="550" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D5_Ultimato" bpmnElement="Task_D5_Ultimato">
-        <dc:Bounds x="1350" y="770" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D6_WhatsApp4_Indicacao" bpmnElement="Task_D6_WhatsApp4_Indicacao">
-        <dc:Bounds x="2200" y="550" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_FlashDemo_Indicacao" bpmnElement="Task_FlashDemo_Indicacao">
-        <dc:Bounds x="330" y="770" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_GrupoNurturing_Indicacao" bpmnElement="Task_GrupoNurturing_Indicacao">
-        <dc:Bounds x="2710" y="770" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_PressaoSocial" bpmnElement="Task_PressaoSocial">
-        <dc:Bounds x="1010" y="770" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_QuebraGelo_Ativo" bpmnElement="Task_QuebraGelo_Ativo">
-        <dc:Bounds x="670" y="660" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_QuebraGelo_Passivo" bpmnElement="Task_QuebraGelo_Passivo">
-        <dc:Bounds x="670" y="770" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_SelecaoMotivo_Indicacao" bpmnElement="Task_SelecaoMotivo_Indicacao">
-        <dc:Bounds x="3050" y="550" width="100" height="80" />
+        <dc:Bounds x="232" y="682" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Tag_Ativo" bpmnElement="Task_Tag_Ativo">
-        <dc:Bounds x="500" y="550" width="100" height="80" />
+        <dc:Bounds x="355" y="660" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_QuebraGelo_Ativo" bpmnElement="Task_QuebraGelo_Ativo">
+        <dc:Bounds x="510" y="660" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_MergeIndicacao" bpmnElement="Gateway_MergeIndicacao">
+        <dc:Bounds x="690" y="785" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D0_Ligacao_Indicacao" bpmnElement="Task_D0_Ligacao_Indicacao">
+        <dc:Bounds x="820" y="770" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Atendeu_D0_Indicacao" bpmnElement="Gateway_Atendeu_D0_Indicacao">
+        <dc:Bounds x="1000" y="785" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D0_Qualifica_Indicacao" bpmnElement="Task_D0_Qualifica_Indicacao">
+        <dc:Bounds x="1130" y="770" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_D0_Indicacao" bpmnElement="Gateway_Converteu_D0_Indicacao">
+        <dc:Bounds x="1310" y="785" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Merge_D0_Indicacao" bpmnElement="Gateway_Merge_D0_Indicacao">
+        <dc:Bounds x="1620" y="785" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D1_WhatsApp2_Indicacao" bpmnElement="Task_D1_WhatsApp2_Indicacao">
+        <dc:Bounds x="1750" y="770" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D3_WhatsApp3_Indicacao" bpmnElement="Task_D3_WhatsApp3_Indicacao">
+        <dc:Bounds x="1905" y="770" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D6_WhatsApp4_Indicacao" bpmnElement="Task_D6_WhatsApp4_Indicacao">
+        <dc:Bounds x="2060" y="770" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D10_WhatsApp5_Indicacao" bpmnElement="Task_D10_WhatsApp5_Indicacao">
+        <dc:Bounds x="2215" y="770" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Indicacao" bpmnElement="Gateway_Converteu_Indicacao">
+        <dc:Bounds x="2395" y="785" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LinkThrow_Indicacao" bpmnElement="LinkThrow_Indicacao">
+        <dc:Bounds x="2557" y="792" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_AvisaParceiro" bpmnElement="Task_AvisaParceiro">
+        <dc:Bounds x="2680" y="770" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_Indicacao_Passivo" bpmnElement="Start_Indicacao_Passivo">
+        <dc:Bounds x="232" y="902" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Tag_Passivo" bpmnElement="Task_Tag_Passivo">
-        <dc:Bounds x="500" y="660" width="100" height="80" />
+        <dc:Bounds x="355" y="880" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_QuebraGelo_Passivo" bpmnElement="Task_QuebraGelo_Passivo">
+        <dc:Bounds x="510" y="880" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D0_WhatsApp1_Indicacao" bpmnElement="Task_D0_WhatsApp1_Indicacao">
+        <dc:Bounds x="975" y="880" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D0_Instagram_Indicacao" bpmnElement="Task_D0_Instagram_Indicacao">
+        <dc:Bounds x="1130" y="880" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_FlashDemo_Indicacao" bpmnElement="Task_FlashDemo_Indicacao">
+        <dc:Bounds x="1440" y="990" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Trial7d_Indicacao" bpmnElement="Task_Trial7d_Indicacao">
-        <dc:Bounds x="500" y="770" width="100" height="80" />
+        <dc:Bounds x="1580" y="990" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IntermediateTimer_48h" bpmnElement="IntermediateTimer_48h">
+        <dc:Bounds x="1702" y="1012" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_UsouEm48h" bpmnElement="Gateway_UsouEm48h">
+        <dc:Bounds x="1820" y="1005" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_PressaoSocial" bpmnElement="Task_PressaoSocial">
+        <dc:Bounds x="1940" y="1100" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D1_Lembrete" bpmnElement="Task_D1_Lembrete">
+        <dc:Bounds x="1960" y="990" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D3_ProvaSocial" bpmnElement="Task_D3_ProvaSocial">
+        <dc:Bounds x="2100" y="990" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D5_Ultimato" bpmnElement="Task_D5_Ultimato">
+        <dc:Bounds x="2240" y="990" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IntermediateTimer_24h_Breakup_Indicacao" bpmnElement="IntermediateTimer_24h_Breakup_Indicacao">
+        <dc:Bounds x="2402" y="1122" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Respondeu_Breakup_Indicacao" bpmnElement="Gateway_Respondeu_Breakup_Indicacao">
+        <dc:Bounds x="2550" y="1115" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SelecaoMotivo_Indicacao" bpmnElement="Task_SelecaoMotivo_Indicacao">
+        <dc:Bounds x="2680" y="1100" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Perdido_Motivo_Indicacao" bpmnElement="End_Perdido_Motivo_Indicacao">
+        <dc:Bounds x="2867" y="1122" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_GrupoNurturing_Indicacao" bpmnElement="Task_GrupoNurturing_Indicacao">
+        <dc:Bounds x="2680" y="990" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Bloqueio_Indicacao" bpmnElement="End_Bloqueio_Indicacao">
+        <dc:Bounds x="2867" y="1012" width="36" height="36" />
       </bpmndi:BPMNShape>
 
-      <!-- Participant_Conteudo elements -->
-      <bpmndi:BPMNShape id="Shape_End_Bloqueio_Conteudo" bpmnElement="End_Bloqueio_Conteudo">
-        <dc:Bounds x="2572" y="1012" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_End_Perdido_Conteudo" bpmnElement="End_Perdido_Conteudo">
-        <dc:Bounds x="2572" y="1122" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Conteudo" bpmnElement="Gateway_Converteu_Conteudo">
-        <dc:Bounds x="1885" y="1005" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Imediato_Conteudo" bpmnElement="Gateway_Converteu_Imediato_Conteudo">
-        <dc:Bounds x="1205" y="1005" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Merge_Conteudo" bpmnElement="Gateway_Merge_Conteudo">
-        <dc:Bounds x="1035" y="1005" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Respondeu_Conteudo" bpmnElement="Gateway_Respondeu_Conteudo">
-        <dc:Bounds x="2225" y="1005" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_24h_Conteudo" bpmnElement="IntermediateTimer_24h_Conteudo">
-        <dc:Bounds x="2062" y="1012" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_LinkThrow_Conteudo" bpmnElement="LinkThrow_Conteudo">
-        <dc:Bounds x="1382" y="1122" width="36" height="36" />
-      </bpmndi:BPMNShape>
+      <!-- Conteudo elements -->
       <bpmndi:BPMNShape id="Shape_Start_Conteudo_Empresa" bpmnElement="Start_Conteudo_Empresa">
-        <dc:Bounds x="362" y="1012" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Start_Conteudo_Pessoal" bpmnElement="Start_Conteudo_Pessoal">
-        <dc:Bounds x="362" y="1122" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D1_Repost_Conteudo" bpmnElement="Task_D1_Repost_Conteudo">
-        <dc:Bounds x="1350" y="990" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D3_Prova_Conteudo" bpmnElement="Task_D3_Prova_Conteudo">
-        <dc:Bounds x="1520" y="990" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D7_Fechamento_Conteudo" bpmnElement="Task_D7_Fechamento_Conteudo">
-        <dc:Bounds x="1690" y="990" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_FlashDemo_Empresa" bpmnElement="Task_FlashDemo_Empresa">
-        <dc:Bounds x="840" y="990" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_FlashDemo_Pessoal" bpmnElement="Task_FlashDemo_Pessoal">
-        <dc:Bounds x="840" y="1100" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_GrupoNurturing_Conteudo" bpmnElement="Task_GrupoNurturing_Conteudo">
-        <dc:Bounds x="2370" y="990" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_ManyChat_Pessoal" bpmnElement="Task_ManyChat_Pessoal">
-        <dc:Bounds x="500" y="990" width="100" height="80" />
+        <dc:Bounds x="232" y="1362" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_SDR_Empresa" bpmnElement="Task_SDR_Empresa">
-        <dc:Bounds x="500" y="1100" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_SelecaoMotivo_Conteudo" bpmnElement="Task_SelecaoMotivo_Conteudo">
-        <dc:Bounds x="2370" y="1100" width="100" height="80" />
+        <dc:Bounds x="355" y="1340" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_WhatsApp_Empresa" bpmnElement="Task_WhatsApp_Empresa">
-        <dc:Bounds x="670" y="990" width="100" height="80" />
+        <dc:Bounds x="510" y="1340" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_FlashDemo_Empresa" bpmnElement="Task_FlashDemo_Empresa">
+        <dc:Bounds x="665" y="1340" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Merge_Conteudo" bpmnElement="Gateway_Merge_Conteudo">
+        <dc:Bounds x="845" y="1465" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Imediato_Conteudo" bpmnElement="Gateway_Converteu_Imediato_Conteudo">
+        <dc:Bounds x="1000" y="1465" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D1_Repost_Conteudo" bpmnElement="Task_D1_Repost_Conteudo">
+        <dc:Bounds x="1130" y="1450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D3_Prova_Conteudo" bpmnElement="Task_D3_Prova_Conteudo">
+        <dc:Bounds x="1285" y="1450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D7_Fechamento_Conteudo" bpmnElement="Task_D7_Fechamento_Conteudo">
+        <dc:Bounds x="1440" y="1450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Conteudo" bpmnElement="Gateway_Converteu_Conteudo">
+        <dc:Bounds x="1620" y="1465" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LinkThrow_Conteudo" bpmnElement="LinkThrow_Conteudo">
+        <dc:Bounds x="1782" y="1472" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_Conteudo_Pessoal" bpmnElement="Start_Conteudo_Pessoal">
+        <dc:Bounds x="232" y="1582" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_ManyChat_Pessoal" bpmnElement="Task_ManyChat_Pessoal">
+        <dc:Bounds x="355" y="1560" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_WhatsApp_Pessoal" bpmnElement="Task_WhatsApp_Pessoal">
-        <dc:Bounds x="670" y="1100" width="100" height="80" />
+        <dc:Bounds x="510" y="1560" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_FlashDemo_Pessoal" bpmnElement="Task_FlashDemo_Pessoal">
+        <dc:Bounds x="665" y="1560" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IntermediateTimer_24h_Conteudo" bpmnElement="IntermediateTimer_24h_Conteudo">
+        <dc:Bounds x="1627" y="1692" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Respondeu_Conteudo" bpmnElement="Gateway_Respondeu_Conteudo">
+        <dc:Bounds x="1775" y="1685" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_GrupoNurturing_Conteudo" bpmnElement="Task_GrupoNurturing_Conteudo">
+        <dc:Bounds x="1905" y="1670" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Bloqueio_Conteudo" bpmnElement="End_Bloqueio_Conteudo">
+        <dc:Bounds x="2092" y="1692" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SelecaoMotivo_Conteudo" bpmnElement="Task_SelecaoMotivo_Conteudo">
+        <dc:Bounds x="1905" y="1560" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Perdido_Conteudo" bpmnElement="End_Perdido_Conteudo">
+        <dc:Bounds x="2092" y="1582" width="36" height="36" />
       </bpmndi:BPMNShape>
 
-      <!-- Participant_Prospeccao elements -->
-      <bpmndi:BPMNShape id="Shape_LinkThrow_Prospeccao" bpmnElement="LinkThrow_Prospeccao">
-        <dc:Bounds x="702" y="1342" width="36" height="36" />
-      </bpmndi:BPMNShape>
+      <!-- Prospeccao elements -->
       <bpmndi:BPMNShape id="Shape_Start_Prospeccao" bpmnElement="Start_Prospeccao">
-        <dc:Bounds x="362" y="1342" width="36" height="36" />
+        <dc:Bounds x="232" y="1932" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Prosp_Placeholder" bpmnElement="Task_Prosp_Placeholder">
-        <dc:Bounds x="500" y="1320" width="100" height="80" />
+        <dc:Bounds x="355" y="1910" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LinkThrow_Prospeccao" bpmnElement="LinkThrow_Prospeccao">
+        <dc:Bounds x="542" y="1932" width="36" height="36" />
       </bpmndi:BPMNShape>
 
-      <!-- Participant_Google elements -->
-      <bpmndi:BPMNShape id="Shape_End_Bloqueio_Google" bpmnElement="End_Bloqueio_Google">
-        <dc:Bounds x="3592" y="1592" width="36" height="36" />
+                  <!-- Google elements -->
+      <bpmndi:BPMNShape id="Task_ClickCheckout_Self_di" bpmnElement="Task_ClickCheckout_Self">
+        <dc:Bounds x="500" y="2170" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_End_Perdido_Motivo_Google" bpmnElement="End_Perdido_Motivo_Google">
-        <dc:Bounds x="1042" y="1812" width="36" height="36" />
+      <bpmndi:BPMNShape id="Task_PreencheDados_Self_di" bpmnElement="Task_PreencheDados_Self">
+        <dc:Bounds x="640" y="2170" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Atendeu_D0_Google" bpmnElement="Gateway_Atendeu_D0_Google">
-        <dc:Bounds x="1715" y="1695" width="50" height="50" />
+      <bpmndi:BPMNShape id="Gateway_Pagamento_Self_di" bpmnElement="Gateway_Pagamento_Self">
+        <dc:Bounds x="780" y="2185" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_CaminhoGoogle" bpmnElement="Gateway_CaminhoGoogle">
-        <dc:Bounds x="525" y="1805" width="50" height="50" />
+      <bpmndi:BPMNShape id="Task_AutomacaoBoasVindas_di" bpmnElement="Task_AutomacaoBoasVindas">
+        <dc:Bounds x="870" y="2170" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Google" bpmnElement="Gateway_Converteu_Google">
-        <dc:Bounds x="3245" y="1585" width="50" height="50" />
+      <bpmndi:BPMNShape id="IntermediateTimer_24h_Google_di" bpmnElement="IntermediateTimer_24h_Google">
+        <dc:Bounds x="1010" y="2192" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_MergeTrial" bpmnElement="Gateway_MergeTrial">
-        <dc:Bounds x="1375" y="1695" width="50" height="50" />
+      <bpmndi:BPMNShape id="Gateway_PrimeiroAudio_di" bpmnElement="Gateway_PrimeiroAudio">
+        <dc:Bounds x="1090" y="2185" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Merge_D0_Google" bpmnElement="Gateway_Merge_D0_Google">
-        <dc:Bounds x="2055" y="1695" width="50" height="50" />
+      <bpmndi:BPMNShape id="Task_AlertaHumano_Google_di" bpmnElement="Task_AlertaHumano_Google">
+        <dc:Bounds x="1180" y="2170" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Self" bpmnElement="Gateway_Pagamento_Self">
-        <dc:Bounds x="1035" y="1695" width="50" height="50" />
+      <bpmndi:BPMNShape id="End_Pago_Google_di" bpmnElement="End_Pago_Google">
+        <dc:Bounds x="1332" y="2192" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_PrimeiroAudio" bpmnElement="Gateway_PrimeiroAudio">
-        <dc:Bounds x="1545" y="1695" width="50" height="50" />
+      <bpmndi:BPMNShape id="Start_Google_di" bpmnElement="Start_Google">
+        <dc:Bounds x="250" y="2302" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Respondeu_Breakup_Google" bpmnElement="Gateway_Respondeu_Breakup_Google">
-        <dc:Bounds x="695" y="1805" width="50" height="50" />
+      <bpmndi:BPMNShape id="Gateway_CaminhoGoogle_di" bpmnElement="Gateway_CaminhoGoogle">
+        <dc:Bounds x="370" y="2295" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_UsouEm48h_Google" bpmnElement="Gateway_UsouEm48h_Google">
-        <dc:Bounds x="695" y="1915" width="50" height="50" />
+      <bpmndi:BPMNShape id="Gateway_MergeTrial_di" bpmnElement="Gateway_MergeTrial">
+        <dc:Bounds x="1100" y="2295" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_24h_Breakup_Google" bpmnElement="IntermediateTimer_24h_Breakup_Google">
-        <dc:Bounds x="532" y="1592" width="36" height="36" />
+      <bpmndi:BPMNShape id="Task_D0_Ligacao1_Google_di" bpmnElement="Task_D0_Ligacao1_Google">
+        <dc:Bounds x="1230" y="2280" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_24h_Google" bpmnElement="IntermediateTimer_24h_Google">
-        <dc:Bounds x="1382" y="1592" width="36" height="36" />
+      <bpmndi:BPMNShape id="Gateway_Atendeu_D0_Google_di" bpmnElement="Gateway_Atendeu_D0_Google">
+        <dc:Bounds x="1380" y="2295" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_48h_Google" bpmnElement="IntermediateTimer_48h_Google">
-        <dc:Bounds x="532" y="1702" width="36" height="36" />
+      <bpmndi:BPMNShape id="Task_D0_Qualifica_Google_di" bpmnElement="Task_D0_Qualifica_Google">
+        <dc:Bounds x="1480" y="2280" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_LinkThrow_Google" bpmnElement="LinkThrow_Google">
-        <dc:Bounds x="3422" y="1702" width="36" height="36" />
+      <bpmndi:BPMNShape id="Gateway_Merge_D0_Google_di" bpmnElement="Gateway_Merge_D0_Google">
+        <dc:Bounds x="1750" y="2295" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Start_Google" bpmnElement="Start_Google">
-        <dc:Bounds x="362" y="1592" width="36" height="36" />
+      <bpmndi:BPMNShape id="Task_D1_WhatsApp3_Diferenca_Google_di" bpmnElement="Task_D1_WhatsApp3_Diferenca_Google">
+        <dc:Bounds x="1880" y="2280" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_AlertaHumano_Google" bpmnElement="Task_AlertaHumano_Google">
-        <dc:Bounds x="1690" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_D1_Ligacao2_Google_di" bpmnElement="Task_D1_Ligacao2_Google">
+        <dc:Bounds x="2020" y="2280" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_AutomacaoBoasVindas" bpmnElement="Task_AutomacaoBoasVindas">
-        <dc:Bounds x="1180" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_D3_WhatsApp4_Case_Google_di" bpmnElement="Task_D3_WhatsApp4_Case_Google">
+        <dc:Bounds x="2160" y="2280" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_ClickCheckout_Self" bpmnElement="Task_ClickCheckout_Self">
-        <dc:Bounds x="670" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_D5_WhatsApp5_Pressao_Google_di" bpmnElement="Task_D5_WhatsApp5_Pressao_Google">
+        <dc:Bounds x="2300" y="2280" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_ClickWhatsApp" bpmnElement="Task_ClickWhatsApp">
-        <dc:Bounds x="670" y="1680" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_D5_Ligacao3_Google_di" bpmnElement="Task_D5_Ligacao3_Google">
+        <dc:Bounds x="2440" y="2280" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D0_Ligacao1_Google" bpmnElement="Task_D0_Ligacao1_Google">
-        <dc:Bounds x="1520" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_D7_Fechamento_Google_di" bpmnElement="Task_D7_Fechamento_Google">
+        <dc:Bounds x="2580" y="2280" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D0_Qualifica_Google" bpmnElement="Task_D0_Qualifica_Google">
-        <dc:Bounds x="1860" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Gateway_Converteu_Google_di" bpmnElement="Gateway_Converteu_Google">
+        <dc:Bounds x="2720" y="2295" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D0_WhatsApp1_Prova_Google" bpmnElement="Task_D0_WhatsApp1_Prova_Google">
-        <dc:Bounds x="1860" y="1680" width="100" height="80" />
+      <bpmndi:BPMNShape id="LinkThrow_Google_di" bpmnElement="LinkThrow_Google">
+        <dc:Bounds x="2830" y="2302" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D0_WhatsApp2_Ajuda_Google" bpmnElement="Task_D0_WhatsApp2_Ajuda_Google">
-        <dc:Bounds x="2030" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_ClickWhatsApp_di" bpmnElement="Task_ClickWhatsApp">
+        <dc:Bounds x="500" y="2390" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D1_Ligacao2_Google" bpmnElement="Task_D1_Ligacao2_Google">
-        <dc:Bounds x="2370" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_SpeedToLead_Google_di" bpmnElement="Task_SpeedToLead_Google">
+        <dc:Bounds x="640" y="2390" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D1_WhatsApp3_Diferenca_Google" bpmnElement="Task_D1_WhatsApp3_Diferenca_Google">
-        <dc:Bounds x="2200" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_FlashDemo_Google_di" bpmnElement="Task_FlashDemo_Google">
+        <dc:Bounds x="780" y="2390" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D3_WhatsApp4_Case_Google" bpmnElement="Task_D3_WhatsApp4_Case_Google">
-        <dc:Bounds x="2540" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_OfertaTrial_Google_di" bpmnElement="Task_OfertaTrial_Google">
+        <dc:Bounds x="920" y="2390" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D5_Ligacao3_Google" bpmnElement="Task_D5_Ligacao3_Google">
-        <dc:Bounds x="2880" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Gateway_AceitouTrial_Google_di" bpmnElement="Gateway_AceitouTrial_Google" isMarkerVisible="true">
+        <dc:Bounds x="1050" y="2405" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D5_WhatsApp5_Pressao_Google" bpmnElement="Task_D5_WhatsApp5_Pressao_Google">
-        <dc:Bounds x="2710" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_D0_WhatsApp1_Prova_Google_di" bpmnElement="Task_D0_WhatsApp1_Prova_Google">
+        <dc:Bounds x="1480" y="2390" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D7_Fechamento_Google" bpmnElement="Task_D7_Fechamento_Google">
-        <dc:Bounds x="3050" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_D0_WhatsApp2_Ajuda_Google_di" bpmnElement="Task_D0_WhatsApp2_Ajuda_Google">
+        <dc:Bounds x="1620" y="2390" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D7_WhatsApp6_Breakup_Google" bpmnElement="Task_D7_WhatsApp6_Breakup_Google">
-        <dc:Bounds x="330" y="1680" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_D7_WhatsApp6_Breakup_Google_di" bpmnElement="Task_D7_WhatsApp6_Breakup_Google">
+        <dc:Bounds x="2830" y="2390" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_FlashDemo_Google" bpmnElement="Task_FlashDemo_Google">
-        <dc:Bounds x="1010" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="IntermediateTimer_24h_Breakup_Google_di" bpmnElement="IntermediateTimer_24h_Breakup_Google">
+        <dc:Bounds x="2972" y="2412" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_GrupoNurturing_Google" bpmnElement="Task_GrupoNurturing_Google">
-        <dc:Bounds x="3390" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Gateway_Respondeu_Breakup_Google_di" bpmnElement="Gateway_Respondeu_Breakup_Google">
+        <dc:Bounds x="3050" y="2405" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_LigacaoResgate_Google" bpmnElement="Task_LigacaoResgate_Google">
-        <dc:Bounds x="840" y="1570" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_GrupoNurturing_Google_di" bpmnElement="Task_GrupoNurturing_Google">
+        <dc:Bounds x="3140" y="2390" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_OfertaTrial_Google" bpmnElement="Task_OfertaTrial_Google">
-        <dc:Bounds x="1180" y="1680" width="100" height="80" />
+      <bpmndi:BPMNShape id="End_Bloqueio_Google_di" bpmnElement="End_Bloqueio_Google">
+        <dc:Bounds x="3282" y="2412" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_PreencheDados_Self" bpmnElement="Task_PreencheDados_Self">
-        <dc:Bounds x="840" y="1680" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_RecuperacaoCarrinho_di" bpmnElement="Task_RecuperacaoCarrinho">
+        <dc:Bounds x="870" y="2500" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_RecuperacaoCarrinho" bpmnElement="Task_RecuperacaoCarrinho">
-        <dc:Bounds x="1180" y="1790" width="100" height="80" />
+      <bpmndi:BPMNShape id="SubProcess_Trial_Google_di" bpmnElement="SubProcess_Trial_Google" isExpanded="true" bioc:stroke="#4dabf7" bioc:fill="#e0f0ff">
+        <dc:Bounds x="1010" y="2490" width="1540" height="220" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_SelecaoMotivo_Google" bpmnElement="Task_SelecaoMotivo_Google">
-        <dc:Bounds x="840" y="1790" width="100" height="80" />
+      <bpmndi:BPMNShape id="Start_Trial_di" bpmnElement="Start_Trial">
+        <dc:Bounds x="1030" y="2582" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_SpeedToLead_Google" bpmnElement="Task_SpeedToLead_Google">
-        <dc:Bounds x="840" y="1900" width="100" height="80" />
+      <bpmndi:BPMNShape id="Task_Trial_D0_BoasVindas_di" bpmnElement="Task_Trial_D0_BoasVindas">
+        <dc:Bounds x="1090" y="2560" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Trial7d_Google" bpmnElement="Task_Trial7d_Google">
-        <dc:Bounds x="330" y="1790" width="100" height="80" />
+      <bpmndi:BPMNShape id="Timer_Trial_24h_di" bpmnElement="Timer_Trial_24h">
+        <dc:Bounds x="1212" y="2582" width="36" height="36" />
       </bpmndi:BPMNShape>
-
-      <!-- Participant_Meta elements -->
-      <bpmndi:BPMNShape id="Shape_End_Bloqueio_Meta" bpmnElement="End_Bloqueio_Meta">
-        <dc:Bounds x="2742" y="2142" width="36" height="36" />
+      <bpmndi:BPMNShape id="Gateway_Trial_D1_Uso_di" bpmnElement="Gateway_Trial_D1_Uso">
+        <dc:Bounds x="1270" y="2575" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_End_Perdido_Meta" bpmnElement="End_Perdido_Meta">
-        <dc:Bounds x="2742" y="2252" width="36" height="36" />
+      <bpmndi:BPMNShape id="Task_Trial_D1_Dica_di" bpmnElement="Task_Trial_D1_Dica">
+        <dc:Bounds x="1345" y="2510" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Imediato_Meta" bpmnElement="Gateway_Converteu_Imediato_Meta">
-        <dc:Bounds x="1205" y="2245" width="50" height="50" />
+      <bpmndi:BPMNShape id="Task_Trial_D1_Reengajamento_di" bpmnElement="Task_Trial_D1_Reengajamento">
+        <dc:Bounds x="1345" y="2620" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Meta" bpmnElement="Gateway_Converteu_Meta">
-        <dc:Bounds x="2055" y="2135" width="50" height="50" />
+      <bpmndi:BPMNShape id="Gateway_Trial_D1_Merge_di" bpmnElement="Gateway_Trial_D1_Merge">
+        <dc:Bounds x="1470" y="2575" width="50" height="50" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Interessado_D0_Meta" bpmnElement="Gateway_Interessado_D0_Meta">
-        <dc:Bounds x="1035" y="2135" width="50" height="50" />
+      <bpmndi:BPMNShape id="Timer_Trial_D2_di" bpmnElement="Timer_Trial_D2">
+        <dc:Bounds x="1542" y="2582" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Respondeu_Meta" bpmnElement="Gateway_Respondeu_Meta">
-        <dc:Bounds x="2395" y="2135" width="50" height="50" />
+      <bpmndi:BPMNShape id="Task_Trial_D2_Case_di" bpmnElement="Task_Trial_D2_Case">
+        <dc:Bounds x="1600" y="2560" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_24h_Meta" bpmnElement="IntermediateTimer_24h_Meta">
-        <dc:Bounds x="2232" y="2142" width="36" height="36" />
+      <bpmndi:BPMNShape id="Timer_Trial_D3_di" bpmnElement="Timer_Trial_D3">
+        <dc:Bounds x="1722" y="2582" width="36" height="36" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_LinkThrow_Meta" bpmnElement="LinkThrow_Meta">
-        <dc:Bounds x="1382" y="2252" width="36" height="36" />
+      <bpmndi:BPMNShape id="Gateway_Trial_D3_Uso_di" bpmnElement="Gateway_Trial_D3_Uso">
+        <dc:Bounds x="1780" y="2575" width="50" height="50" />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Trial_D3_Parabens_di" bpmnElement="Task_Trial_D3_Parabens">
+        <dc:Bounds x="1855" y="2510" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Trial_D3_Resgate_di" bpmnElement="Task_Trial_D3_Resgate">
+        <dc:Bounds x="1855" y="2620" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Trial_D3_Merge_di" bpmnElement="Gateway_Trial_D3_Merge">
+        <dc:Bounds x="1980" y="2575" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Timer_Trial_D5_di" bpmnElement="Timer_Trial_D5">
+        <dc:Bounds x="2052" y="2582" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Trial_D5_Urgencia_di" bpmnElement="Task_Trial_D5_Urgencia">
+        <dc:Bounds x="2110" y="2560" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Timer_Trial_D6_di" bpmnElement="Timer_Trial_D6">
+        <dc:Bounds x="2232" y="2582" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Trial_D6_Oferta_di" bpmnElement="Task_Trial_D6_Oferta">
+        <dc:Bounds x="2290" y="2560" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Timer_Trial_D7_di" bpmnElement="Timer_Trial_D7">
+        <dc:Bounds x="2412" y="2582" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Trial_di" bpmnElement="End_Trial">
+        <dc:Bounds x="2472" y="2582" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SelecaoMotivo_Google_di" bpmnElement="Task_SelecaoMotivo_Google">
+        <dc:Bounds x="3140" y="2500" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Perdido_Motivo_Google_di" bpmnElement="End_Perdido_Motivo_Google">
+        <dc:Bounds x="3282" y="2522" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <!-- Meta elements -->
       <bpmndi:BPMNShape id="Shape_Start_Meta" bpmnElement="Start_Meta">
-        <dc:Bounds x="362" y="2142" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D14_WhatsApp_Meta" bpmnElement="Task_D14_WhatsApp_Meta">
-        <dc:Bounds x="1860" y="2120" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D1_WhatsApp_Meta" bpmnElement="Task_D1_WhatsApp_Meta">
-        <dc:Bounds x="1180" y="2120" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D3_WhatsApp_Meta" bpmnElement="Task_D3_WhatsApp_Meta">
-        <dc:Bounds x="1350" y="2120" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D6_WhatsApp_Meta" bpmnElement="Task_D6_WhatsApp_Meta">
-        <dc:Bounds x="1520" y="2120" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_D9_WhatsApp_Meta" bpmnElement="Task_D9_WhatsApp_Meta">
-        <dc:Bounds x="1690" y="2120" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_FlashDemo_D0_Meta" bpmnElement="Task_FlashDemo_D0_Meta">
-        <dc:Bounds x="840" y="2120" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_GrupoNurturing_Meta" bpmnElement="Task_GrupoNurturing_Meta">
-        <dc:Bounds x="2540" y="2120" width="100" height="80" />
+        <dc:Bounds x="232" y="2852" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_PaginaFiltro_Meta" bpmnElement="Task_PaginaFiltro_Meta">
-        <dc:Bounds x="500" y="2120" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_SelecaoMotivo_Meta" bpmnElement="Task_SelecaoMotivo_Meta">
-        <dc:Bounds x="2540" y="2230" width="100" height="80" />
+        <dc:Bounds x="355" y="2830" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_WhatsApp_D0_Meta" bpmnElement="Task_WhatsApp_D0_Meta">
-        <dc:Bounds x="670" y="2120" width="100" height="80" />
+        <dc:Bounds x="510" y="2830" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_FlashDemo_D0_Meta" bpmnElement="Task_FlashDemo_D0_Meta">
+        <dc:Bounds x="665" y="2830" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Interessado_D0_Meta" bpmnElement="Gateway_Interessado_D0_Meta">
+        <dc:Bounds x="845" y="2845" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Imediato_Meta" bpmnElement="Gateway_Converteu_Imediato_Meta">
+        <dc:Bounds x="1000" y="2845" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D1_WhatsApp_Meta" bpmnElement="Task_D1_WhatsApp_Meta">
+        <dc:Bounds x="1130" y="2830" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D3_WhatsApp_Meta" bpmnElement="Task_D3_WhatsApp_Meta">
+        <dc:Bounds x="1285" y="2830" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D6_WhatsApp_Meta" bpmnElement="Task_D6_WhatsApp_Meta">
+        <dc:Bounds x="1440" y="2830" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D9_WhatsApp_Meta" bpmnElement="Task_D9_WhatsApp_Meta">
+        <dc:Bounds x="1595" y="2830" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_D14_WhatsApp_Meta" bpmnElement="Task_D14_WhatsApp_Meta">
+        <dc:Bounds x="1750" y="2830" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Converteu_Meta" bpmnElement="Gateway_Converteu_Meta">
+        <dc:Bounds x="1930" y="2845" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LinkThrow_Meta" bpmnElement="LinkThrow_Meta">
+        <dc:Bounds x="2092" y="2852" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IntermediateTimer_24h_Meta" bpmnElement="IntermediateTimer_24h_Meta">
+        <dc:Bounds x="1937" y="2962" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Respondeu_Meta" bpmnElement="Gateway_Respondeu_Meta">
+        <dc:Bounds x="2085" y="2955" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_GrupoNurturing_Meta" bpmnElement="Task_GrupoNurturing_Meta">
+        <dc:Bounds x="2215" y="2940" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Bloqueio_Meta" bpmnElement="End_Bloqueio_Meta">
+        <dc:Bounds x="2402" y="2962" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SelecaoMotivo_Meta" bpmnElement="Task_SelecaoMotivo_Meta">
+        <dc:Bounds x="2215" y="3050" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Perdido_Meta" bpmnElement="End_Perdido_Meta">
+        <dc:Bounds x="2402" y="3072" width="36" height="36" />
       </bpmndi:BPMNShape>
 
-      <!-- Participant_Nucleo elements -->
-      <bpmndi:BPMNShape id="Shape_End_Cliente_Ativo" bpmnElement="End_Cliente_Ativo">
-        <dc:Bounds x="1382" y="2582" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_End_Pagamento_Falhou" bpmnElement="End_Pagamento_Falhou">
-        <dc:Bounds x="2402" y="2472" width="36" height="36" />
+      <!-- Nucleo elements -->
+      <bpmndi:BPMNShape id="Shape_LinkCatch_Merge" bpmnElement="LinkCatch_Merge">
+        <dc:Bounds x="232" y="3172" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Gateway_Checkout_Merge" bpmnElement="Gateway_Checkout_Merge">
-        <dc:Bounds x="525" y="2465" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Anual" bpmnElement="Gateway_Pagamento_Anual">
-        <dc:Bounds x="865" y="2465" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Semestral" bpmnElement="Gateway_Pagamento_Semestral">
-        <dc:Bounds x="1545" y="2465" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Trimestral" bpmnElement="Gateway_Pagamento_Trimestral">
-        <dc:Bounds x="2225" y="2465" width="50" height="50" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_IntermediateTimer_D2" bpmnElement="IntermediateTimer_D2">
-        <dc:Bounds x="1722" y="2472" width="36" height="36" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_LinkCatch_Merge" bpmnElement="LinkCatch_Merge">
-        <dc:Bounds x="362" y="2472" width="36" height="36" />
+        <dc:Bounds x="380" y="3165" width="50" height="50" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Checkout_Anual" bpmnElement="Task_Checkout_Anual">
-        <dc:Bounds x="670" y="2450" width="100" height="80" />
+        <dc:Bounds x="510" y="3150" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Checkout_Semestral" bpmnElement="Task_Checkout_Semestral">
-        <dc:Bounds x="1350" y="2450" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Checkout_Trimestral" bpmnElement="Task_Checkout_Trimestral">
-        <dc:Bounds x="2030" y="2450" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Onboarding_Pago" bpmnElement="Task_Onboarding_Pago">
-        <dc:Bounds x="1180" y="2450" width="100" height="80" />
+      <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Anual" bpmnElement="Gateway_Pagamento_Anual">
+        <dc:Bounds x="690" y="3165" width="50" height="50" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Split_Parceiro" bpmnElement="Task_Split_Parceiro">
-        <dc:Bounds x="1010" y="2450" width="100" height="80" />
+        <dc:Bounds x="820" y="3150" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Shape_Task_Vendedor_Trimestral" bpmnElement="Task_Vendedor_Trimestral">
-        <dc:Bounds x="1860" y="2450" width="100" height="80" />
+      <bpmndi:BPMNShape id="Shape_Task_Onboarding_Pago" bpmnElement="Task_Onboarding_Pago">
+        <dc:Bounds x="975" y="3150" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Cliente_Ativo" bpmnElement="End_Cliente_Ativo">
+        <dc:Bounds x="1162" y="3172" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_Webhook_Falha" bpmnElement="Task_Webhook_Falha">
-        <dc:Bounds x="1010" y="2560" width="100" height="80" />
+        <dc:Bounds x="665" y="3260" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Shape_Task_WhatsApp_5min" bpmnElement="Task_WhatsApp_5min">
-        <dc:Bounds x="1180" y="2560" width="100" height="80" />
+        <dc:Bounds x="820" y="3260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Checkout_Semestral" bpmnElement="Task_Checkout_Semestral">
+        <dc:Bounds x="975" y="3260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Semestral" bpmnElement="Gateway_Pagamento_Semestral">
+        <dc:Bounds x="1155" y="3275" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IntermediateTimer_D2" bpmnElement="IntermediateTimer_D2">
+        <dc:Bounds x="1162" y="3392" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Vendedor_Trimestral" bpmnElement="Task_Vendedor_Trimestral">
+        <dc:Bounds x="1285" y="3370" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Checkout_Trimestral" bpmnElement="Task_Checkout_Trimestral">
+        <dc:Bounds x="1440" y="3370" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Pagamento_Trimestral" bpmnElement="Gateway_Pagamento_Trimestral">
+        <dc:Bounds x="1620" y="3385" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Pagamento_Falhou" bpmnElement="End_Pagamento_Falhou">
+        <dc:Bounds x="1782" y="3392" width="36" height="36" />
       </bpmndi:BPMNShape>
 
-      <!-- Participant_Educacao edges -->
+      <!-- Educacao edges -->
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Soft_1" bpmnElement="Flow_Edu_Soft_1">
-        <di:waypoint x="398" y="260" />
-        <di:waypoint x="500" y="260" />
+        <di:waypoint x="268" y="350" />
+        <di:waypoint x="355" y="350" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Soft_2" bpmnElement="Flow_Edu_Soft_2">
-        <di:waypoint x="600" y="260" />
-        <di:waypoint x="648" y="260" />
-        <di:waypoint x="648" y="150" />
-        <di:waypoint x="695" y="150" />
+        <di:waypoint x="455" y="350" />
+        <di:waypoint x="485" y="350" />
+        <di:waypoint x="485" y="240" />
+        <di:waypoint x="535" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Curso_1" bpmnElement="Flow_Edu_Curso_1">
-        <di:waypoint x="398" y="150" />
-        <di:waypoint x="500" y="150" />
+        <di:waypoint x="268" y="130" />
+        <di:waypoint x="355" y="130" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Curso_2" bpmnElement="Flow_Edu_Curso_2">
-        <di:waypoint x="600" y="150" />
-        <di:waypoint x="695" y="150" />
+        <di:waypoint x="455" y="130" />
+        <di:waypoint x="485" y="130" />
+        <di:waypoint x="485" y="240" />
+        <di:waypoint x="535" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Merge_1" bpmnElement="Flow_Edu_Merge_1">
-        <di:waypoint x="745" y="150" />
-        <di:waypoint x="840" y="150" />
+        <di:waypoint x="585" y="240" />
+        <di:waypoint x="665" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Email_1" bpmnElement="Flow_Edu_Email_1">
-        <di:waypoint x="940" y="150" />
-        <di:waypoint x="1010" y="150" />
+        <di:waypoint x="765" y="240" />
+        <di:waypoint x="820" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Setup_1" bpmnElement="Flow_Edu_Setup_1">
-        <di:waypoint x="1110" y="150" />
-        <di:waypoint x="1212" y="150" />
+        <di:waypoint x="920" y="240" />
+        <di:waypoint x="1007" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Timer_D7" bpmnElement="Flow_Edu_Timer_D7">
-        <di:waypoint x="1248" y="150" />
-        <di:waypoint x="1375" y="150" />
+        <di:waypoint x="1043" y="240" />
+        <di:waypoint x="1155" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Ativou_Nao" bpmnElement="Flow_Edu_Ativou_Nao">
-        <di:waypoint x="1425" y="150" />
-        <di:waypoint x="1520" y="150" />
+        <di:waypoint x="1205" y="240" />
+        <di:waypoint x="1235" y="240" />
+        <di:waypoint x="1235" y="350" />
+        <di:waypoint x="1285" y="350" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Ativou_Sim" bpmnElement="Flow_Edu_Ativou_Sim">
-        <di:waypoint x="1425" y="150" />
-        <di:waypoint x="1485" y="150" />
-        <di:waypoint x="1485" y="260" />
-        <di:waypoint x="1545" y="260" />
+        <di:waypoint x="1205" y="240" />
+        <di:waypoint x="1465" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_CS_Ativa" bpmnElement="Flow_Edu_CS_Ativa">
-        <di:waypoint x="1620" y="150" />
-        <di:waypoint x="1545" y="260" />
+        <di:waypoint x="1385" y="350" />
+        <di:waypoint x="1415" y="350" />
+        <di:waypoint x="1415" y="240" />
+        <di:waypoint x="1465" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Merge_Ativa" bpmnElement="Flow_Edu_Merge_Ativa">
-        <di:waypoint x="1595" y="260" />
-        <di:waypoint x="1642" y="260" />
-        <di:waypoint x="1642" y="150" />
-        <di:waypoint x="1690" y="150" />
+        <di:waypoint x="1515" y="240" />
+        <di:waypoint x="1595" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_M1" bpmnElement="Flow_Edu_M1">
-        <di:waypoint x="1790" y="150" />
-        <di:waypoint x="1892" y="150" />
+        <di:waypoint x="1695" y="240" />
+        <di:waypoint x="1782" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_M2" bpmnElement="Flow_Edu_M2">
-        <di:waypoint x="1928" y="150" />
-        <di:waypoint x="2030" y="150" />
+        <di:waypoint x="1818" y="240" />
+        <di:waypoint x="1905" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_M3" bpmnElement="Flow_Edu_M3">
-        <di:waypoint x="2130" y="150" />
-        <di:waypoint x="2232" y="150" />
+        <di:waypoint x="2005" y="240" />
+        <di:waypoint x="2092" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_M5" bpmnElement="Flow_Edu_M5">
-        <di:waypoint x="2268" y="150" />
-        <di:waypoint x="2370" y="150" />
+        <di:waypoint x="2128" y="240" />
+        <di:waypoint x="2215" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_D150" bpmnElement="Flow_Edu_D150">
-        <di:waypoint x="2470" y="150" />
-        <di:waypoint x="2572" y="150" />
+        <di:waypoint x="2315" y="240" />
+        <di:waypoint x="2402" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_30d" bpmnElement="Flow_Edu_30d">
-        <di:waypoint x="2608" y="150" />
-        <di:waypoint x="2735" y="150" />
+        <di:waypoint x="2438" y="240" />
+        <di:waypoint x="2550" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Renovou_Sim" bpmnElement="Flow_Edu_Renovou_Sim">
-        <di:waypoint x="2785" y="150" />
-        <di:waypoint x="2845" y="150" />
-        <di:waypoint x="2845" y="260" />
-        <di:waypoint x="2905" y="260" />
+        <di:waypoint x="2600" y="240" />
+        <di:waypoint x="2705" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Renovou_Nao" bpmnElement="Flow_Edu_Renovou_Nao">
-        <di:waypoint x="2785" y="150" />
-        <di:waypoint x="2880" y="150" />
+        <di:waypoint x="2575" y="265" />
+        <di:waypoint x="2575" y="420" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Tipo_Anual" bpmnElement="Flow_Edu_Tipo_Anual">
-        <di:waypoint x="2955" y="260" />
-        <di:waypoint x="3050" y="260" />
+        <di:waypoint x="2755" y="240" />
+        <di:waypoint x="2835" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Tipo_Mensal" bpmnElement="Flow_Edu_Tipo_Mensal">
-        <di:waypoint x="2955" y="260" />
-        <di:waypoint x="3002" y="260" />
-        <di:waypoint x="3002" y="370" />
-        <di:waypoint x="3050" y="370" />
+        <di:waypoint x="2755" y="240" />
+        <di:waypoint x="2785" y="240" />
+        <di:waypoint x="2785" y="350" />
+        <di:waypoint x="2835" y="350" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Renov_Anual" bpmnElement="Flow_Edu_Renov_Anual">
-        <di:waypoint x="3150" y="260" />
-        <di:waypoint x="3252" y="260" />
+        <di:waypoint x="2935" y="240" />
+        <di:waypoint x="3022" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Renov_Mensal" bpmnElement="Flow_Edu_Renov_Mensal">
-        <di:waypoint x="3150" y="370" />
-        <di:waypoint x="3201" y="370" />
-        <di:waypoint x="3201" y="260" />
-        <di:waypoint x="3252" y="260" />
+        <di:waypoint x="2935" y="350" />
+        <di:waypoint x="2965" y="350" />
+        <di:waypoint x="2965" y="240" />
+        <di:waypoint x="3022" y="240" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Bloqueio" bpmnElement="Flow_Edu_Bloqueio">
-        <di:waypoint x="2980" y="150" />
-        <di:waypoint x="3050" y="150" />
+        <di:waypoint x="2625" y="460" />
+        <di:waypoint x="2680" y="460" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_CS_Recovery" bpmnElement="Flow_Edu_CS_Recovery">
-        <di:waypoint x="3150" y="150" />
-        <di:waypoint x="3245" y="150" />
+        <di:waypoint x="2780" y="460" />
+        <di:waypoint x="2860" y="460" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Recuperou_Sim" bpmnElement="Flow_Edu_Recuperou_Sim">
-        <di:waypoint x="3270" y="175" />
-        <di:waypoint x="3270" y="315" />
-        <di:waypoint x="2975" y="315" />
-        <di:waypoint x="2975" y="260" />
-        <di:waypoint x="2955" y="260" />
+        <di:waypoint x="2885" y="435" />
+        <di:waypoint x="2885" y="399" />
+        <di:waypoint x="2730" y="399" />
+        <di:waypoint x="2730" y="265" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Edu_Recuperou_Nao" bpmnElement="Flow_Edu_Recuperou_Nao">
-        <di:waypoint x="3295" y="150" />
-        <di:waypoint x="3422" y="150" />
+        <di:waypoint x="2910" y="460" />
+        <di:waypoint x="3022" y="460" />
       </bpmndi:BPMNEdge>
 
-      <!-- Participant_Indicacao edges -->
+      <!-- Indicacao edges -->
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Ativo_1" bpmnElement="Flow_Ind_Ativo_1">
-        <di:waypoint x="398" y="590" />
-        <di:waypoint x="500" y="590" />
+        <di:waypoint x="268" y="700" />
+        <di:waypoint x="355" y="700" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Ativo_2" bpmnElement="Flow_Ind_Ativo_2">
-        <di:waypoint x="600" y="590" />
-        <di:waypoint x="635" y="590" />
-        <di:waypoint x="635" y="700" />
-        <di:waypoint x="670" y="700" />
+        <di:waypoint x="455" y="700" />
+        <di:waypoint x="510" y="700" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Ativo_3" bpmnElement="Flow_Ind_Ativo_3">
-        <di:waypoint x="770" y="700" />
-        <di:waypoint x="818" y="700" />
-        <di:waypoint x="818" y="590" />
-        <di:waypoint x="865" y="590" />
+        <di:waypoint x="610" y="700" />
+        <di:waypoint x="640" y="700" />
+        <di:waypoint x="640" y="810" />
+        <di:waypoint x="690" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Passivo_1" bpmnElement="Flow_Ind_Passivo_1">
-        <di:waypoint x="398" y="700" />
-        <di:waypoint x="500" y="700" />
+        <di:waypoint x="268" y="920" />
+        <di:waypoint x="355" y="920" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Passivo_2" bpmnElement="Flow_Ind_Passivo_2">
-        <di:waypoint x="600" y="700" />
-        <di:waypoint x="635" y="700" />
-        <di:waypoint x="635" y="810" />
-        <di:waypoint x="670" y="810" />
+        <di:waypoint x="455" y="920" />
+        <di:waypoint x="510" y="920" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Passivo_3" bpmnElement="Flow_Ind_Passivo_3">
-        <di:waypoint x="770" y="810" />
-        <di:waypoint x="818" y="810" />
-        <di:waypoint x="818" y="590" />
-        <di:waypoint x="865" y="590" />
+        <di:waypoint x="610" y="920" />
+        <di:waypoint x="640" y="920" />
+        <di:waypoint x="640" y="810" />
+        <di:waypoint x="690" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Merged" bpmnElement="Flow_Ind_Merged">
-        <di:waypoint x="915" y="590" />
-        <di:waypoint x="1010" y="590" />
+        <di:waypoint x="740" y="810" />
+        <di:waypoint x="820" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Demo" bpmnElement="Flow_Ind_Demo">
-        <di:waypoint x="430" y="810" />
-        <di:waypoint x="500" y="810" />
+        <di:waypoint x="1540" y="1030" />
+        <di:waypoint x="1580" y="1030" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Trial" bpmnElement="Flow_Ind_Trial">
-        <di:waypoint x="600" y="810" />
-        <di:waypoint x="651" y="810" />
-        <di:waypoint x="651" y="590" />
-        <di:waypoint x="702" y="590" />
+        <di:waypoint x="1680" y="1030" />
+        <di:waypoint x="1702" y="1030" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Timer_Check" bpmnElement="Flow_Ind_Timer_Check">
-        <di:waypoint x="738" y="590" />
-        <di:waypoint x="802" y="590" />
-        <di:waypoint x="802" y="700" />
-        <di:waypoint x="865" y="700" />
+        <di:waypoint x="1738" y="1030" />
+        <di:waypoint x="1820" y="1030" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_NaoUsou" bpmnElement="Flow_Ind_NaoUsou">
-        <di:waypoint x="915" y="700" />
-        <di:waypoint x="962" y="700" />
-        <di:waypoint x="962" y="810" />
-        <di:waypoint x="1010" y="810" />
+        <di:waypoint x="1845" y="1055" />
+        <di:waypoint x="1845" y="1140" />
+        <di:waypoint x="1940" y="1140" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Usou" bpmnElement="Flow_Ind_Usou">
-        <di:waypoint x="915" y="700" />
-        <di:waypoint x="1010" y="700" />
+        <di:waypoint x="1870" y="1030" />
+        <di:waypoint x="1960" y="1030" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Pressao" bpmnElement="Flow_Ind_Pressao">
-        <di:waypoint x="1110" y="810" />
-        <di:waypoint x="1010" y="700" />
+        <di:waypoint x="2010" y="1100" />
+        <di:waypoint x="2010" y="1070" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D1" bpmnElement="Flow_Ind_D1">
-        <di:waypoint x="1110" y="700" />
-        <di:waypoint x="1145" y="700" />
-        <di:waypoint x="1145" y="590" />
-        <di:waypoint x="1180" y="590" />
+        <di:waypoint x="2060" y="1030" />
+        <di:waypoint x="2100" y="1030" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D3" bpmnElement="Flow_Ind_D3">
-        <di:waypoint x="1280" y="590" />
-        <di:waypoint x="1315" y="590" />
-        <di:waypoint x="1315" y="810" />
-        <di:waypoint x="1350" y="810" />
+        <di:waypoint x="2200" y="1030" />
+        <di:waypoint x="2240" y="1030" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D5" bpmnElement="Flow_Ind_D5">
-        <di:waypoint x="1450" y="810" />
-        <di:waypoint x="2008" y="810" />
-        <di:waypoint x="2008" y="590" />
-        <di:waypoint x="2565" y="590" />
+        <di:waypoint x="2340" y="1030" />
+        <di:waypoint x="2420" y="1030" />
+        <di:waypoint x="2420" y="810" />
+        <di:waypoint x="2395" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Sim" bpmnElement="Flow_Ind_Sim">
-        <di:waypoint x="2615" y="590" />
-        <di:waypoint x="2662" y="590" />
-        <di:waypoint x="2662" y="700" />
-        <di:waypoint x="2710" y="700" />
+        <di:waypoint x="2445" y="810" />
+        <di:waypoint x="2680" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Aviso" bpmnElement="Flow_Ind_Aviso">
-        <di:waypoint x="2710" y="700" />
-        <di:waypoint x="2710" y="770" />
-        <di:waypoint x="1758" y="770" />
-        <di:waypoint x="1758" y="700" />
+        <di:waypoint x="2730" y="850" />
+        <di:waypoint x="2730" y="870" />
+        <di:waypoint x="2575" y="870" />
+        <di:waypoint x="2575" y="828" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Nao" bpmnElement="Flow_Ind_Nao">
-        <di:waypoint x="2615" y="590" />
-        <di:waypoint x="2662" y="590" />
-        <di:waypoint x="2662" y="810" />
-        <di:waypoint x="2710" y="810" />
+        <di:waypoint x="2445" y="810" />
+        <di:waypoint x="2475" y="810" />
+        <di:waypoint x="2475" y="1030" />
+        <di:waypoint x="2680" y="1030" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Nurturing" bpmnElement="Flow_Ind_Nurturing">
-        <di:waypoint x="2810" y="810" />
-        <di:waypoint x="2861" y="810" />
-        <di:waypoint x="2861" y="700" />
-        <di:waypoint x="2912" y="700" />
+        <di:waypoint x="2780" y="1030" />
+        <di:waypoint x="2867" y="1030" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D0_Lig" bpmnElement="Flow_Ind_D0_Lig">
-        <di:waypoint x="1110" y="590" />
-        <di:waypoint x="1158" y="590" />
-        <di:waypoint x="1158" y="700" />
-        <di:waypoint x="1205" y="700" />
+        <di:waypoint x="920" y="810" />
+        <di:waypoint x="1000" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D0_Atendeu" bpmnElement="Flow_Ind_D0_Atendeu">
-        <di:waypoint x="1255" y="700" />
-        <di:waypoint x="1302" y="700" />
-        <di:waypoint x="1302" y="590" />
-        <di:waypoint x="1350" y="590" />
+        <di:waypoint x="1050" y="810" />
+        <di:waypoint x="1130" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D0_NaoAtendeu" bpmnElement="Flow_Ind_D0_NaoAtendeu">
-        <di:waypoint x="1255" y="700" />
-        <di:waypoint x="1350" y="700" />
+        <di:waypoint x="1025" y="835" />
+        <di:waypoint x="1025" y="880" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D0_Check" bpmnElement="Flow_Ind_D0_Check">
-        <di:waypoint x="1450" y="590" />
-        <di:waypoint x="1498" y="590" />
-        <di:waypoint x="1498" y="700" />
-        <di:waypoint x="1545" y="700" />
+        <di:waypoint x="1230" y="810" />
+        <di:waypoint x="1310" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D0_Converteu_Sim" bpmnElement="Flow_Ind_D0_Converteu_Sim">
-        <di:waypoint x="1595" y="700" />
-        <di:waypoint x="1722" y="700" />
+        <di:waypoint x="1360" y="810" />
+        <di:waypoint x="2557" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D0_Converteu_Nao" bpmnElement="Flow_Ind_D0_Converteu_Nao">
-        <di:waypoint x="1595" y="700" />
-        <di:waypoint x="1655" y="700" />
-        <di:waypoint x="1655" y="590" />
-        <di:waypoint x="1715" y="590" />
+        <di:waypoint x="1335" y="835" />
+        <di:waypoint x="1335" y="1030" />
+        <di:waypoint x="1440" y="1030" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D0_Zap1" bpmnElement="Flow_Ind_D0_Zap1">
-        <di:waypoint x="1450" y="700" />
-        <di:waypoint x="1485" y="700" />
-        <di:waypoint x="1485" y="590" />
-        <di:waypoint x="1520" y="590" />
+        <di:waypoint x="1075" y="920" />
+        <di:waypoint x="1130" y="920" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D0_Insta" bpmnElement="Flow_Ind_D0_Insta">
-        <di:waypoint x="1620" y="590" />
-        <di:waypoint x="1715" y="590" />
+        <di:waypoint x="1230" y="920" />
+        <di:waypoint x="1260" y="920" />
+        <di:waypoint x="1260" y="810" />
+        <di:waypoint x="1620" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D0_Merge" bpmnElement="Flow_Ind_D0_Merge">
-        <di:waypoint x="1765" y="590" />
-        <di:waypoint x="1860" y="590" />
+        <di:waypoint x="1670" y="810" />
+        <di:waypoint x="1750" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D1_Zap2" bpmnElement="Flow_Ind_D1_Zap2">
-        <di:waypoint x="1960" y="590" />
-        <di:waypoint x="2030" y="590" />
+        <di:waypoint x="1850" y="810" />
+        <di:waypoint x="1905" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D3_Zap3" bpmnElement="Flow_Ind_D3_Zap3">
-        <di:waypoint x="2130" y="590" />
-        <di:waypoint x="2200" y="590" />
+        <di:waypoint x="2005" y="810" />
+        <di:waypoint x="2060" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D6_Zap4" bpmnElement="Flow_Ind_D6_Zap4">
-        <di:waypoint x="2300" y="590" />
-        <di:waypoint x="2370" y="590" />
+        <di:waypoint x="2160" y="810" />
+        <di:waypoint x="2215" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_D10_Check" bpmnElement="Flow_Ind_D10_Check">
-        <di:waypoint x="2470" y="590" />
-        <di:waypoint x="2565" y="590" />
+        <di:waypoint x="2315" y="810" />
+        <di:waypoint x="2395" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Converteu_Sim" bpmnElement="Flow_Ind_Converteu_Sim">
-        <di:waypoint x="2590" y="615" />
-        <di:waypoint x="2590" y="748" />
-        <di:waypoint x="1778" y="748" />
-        <di:waypoint x="1778" y="700" />
-        <di:waypoint x="1758" y="700" />
+        <di:waypoint x="2445" y="810" />
+        <di:waypoint x="2557" y="810" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Converteu_Nao" bpmnElement="Flow_Ind_Converteu_Nao">
-        <di:waypoint x="2615" y="590" />
-        <di:waypoint x="2742" y="590" />
+        <di:waypoint x="2420" y="835" />
+        <di:waypoint x="2420" y="1122" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Check_Breakup" bpmnElement="Flow_Ind_Check_Breakup">
-        <di:waypoint x="2778" y="590" />
-        <di:waypoint x="2905" y="590" />
+        <di:waypoint x="2438" y="1140" />
+        <di:waypoint x="2550" y="1140" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Respondeu_Nao" bpmnElement="Flow_Ind_Respondeu_Nao">
-        <di:waypoint x="2955" y="590" />
-        <di:waypoint x="3050" y="590" />
+        <di:waypoint x="2600" y="1140" />
+        <di:waypoint x="2680" y="1140" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Motivo" bpmnElement="Flow_Ind_Motivo">
-        <di:waypoint x="3150" y="590" />
-        <di:waypoint x="3252" y="590" />
+        <di:waypoint x="2780" y="1140" />
+        <di:waypoint x="2867" y="1140" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Ind_Respondeu_Sim" bpmnElement="Flow_Ind_Respondeu_Sim">
-        <di:waypoint x="2930" y="615" />
-        <di:waypoint x="2930" y="880" />
-        <di:waypoint x="2830" y="880" />
-        <di:waypoint x="2830" y="810" />
-        <di:waypoint x="2810" y="810" />
+        <di:waypoint x="2600" y="1140" />
+        <di:waypoint x="2630" y="1140" />
+        <di:waypoint x="2630" y="1030" />
+        <di:waypoint x="2680" y="1030" />
       </bpmndi:BPMNEdge>
 
-      <!-- Participant_Conteudo edges -->
+      <!-- Conteudo edges -->
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Pessoal_1" bpmnElement="Flow_Cont_Pessoal_1">
-        <di:waypoint x="398" y="1140" />
-        <di:waypoint x="449" y="1140" />
-        <di:waypoint x="449" y="1030" />
-        <di:waypoint x="500" y="1030" />
+        <di:waypoint x="268" y="1600" />
+        <di:waypoint x="355" y="1600" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Pessoal_2" bpmnElement="Flow_Cont_Pessoal_2">
-        <di:waypoint x="600" y="1030" />
-        <di:waypoint x="635" y="1030" />
-        <di:waypoint x="635" y="1140" />
-        <di:waypoint x="670" y="1140" />
+        <di:waypoint x="455" y="1600" />
+        <di:waypoint x="510" y="1600" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Pessoal_3" bpmnElement="Flow_Cont_Pessoal_3">
-        <di:waypoint x="770" y="1140" />
-        <di:waypoint x="840" y="1140" />
+        <di:waypoint x="610" y="1600" />
+        <di:waypoint x="665" y="1600" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Pessoal_Merge" bpmnElement="Flow_Cont_Pessoal_Merge">
-        <di:waypoint x="940" y="1140" />
-        <di:waypoint x="988" y="1140" />
-        <di:waypoint x="988" y="1030" />
-        <di:waypoint x="1035" y="1030" />
+        <di:waypoint x="765" y="1600" />
+        <di:waypoint x="795" y="1600" />
+        <di:waypoint x="795" y="1490" />
+        <di:waypoint x="845" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Empresa_1" bpmnElement="Flow_Cont_Empresa_1">
-        <di:waypoint x="398" y="1030" />
-        <di:waypoint x="449" y="1030" />
-        <di:waypoint x="449" y="1140" />
-        <di:waypoint x="500" y="1140" />
+        <di:waypoint x="268" y="1380" />
+        <di:waypoint x="355" y="1380" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Empresa_2" bpmnElement="Flow_Cont_Empresa_2">
-        <di:waypoint x="600" y="1140" />
-        <di:waypoint x="635" y="1140" />
-        <di:waypoint x="635" y="1030" />
-        <di:waypoint x="670" y="1030" />
+        <di:waypoint x="455" y="1380" />
+        <di:waypoint x="510" y="1380" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Empresa_3" bpmnElement="Flow_Cont_Empresa_3">
-        <di:waypoint x="770" y="1030" />
-        <di:waypoint x="840" y="1030" />
+        <di:waypoint x="610" y="1380" />
+        <di:waypoint x="665" y="1380" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Empresa_Merge" bpmnElement="Flow_Cont_Empresa_Merge">
-        <di:waypoint x="940" y="1030" />
-        <di:waypoint x="1035" y="1030" />
+        <di:waypoint x="765" y="1380" />
+        <di:waypoint x="795" y="1380" />
+        <di:waypoint x="795" y="1490" />
+        <di:waypoint x="845" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Merged" bpmnElement="Flow_Cont_Merged">
-        <di:waypoint x="1085" y="1030" />
-        <di:waypoint x="1205" y="1030" />
+        <di:waypoint x="895" y="1490" />
+        <di:waypoint x="1000" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Imediato_Sim" bpmnElement="Flow_Cont_Imediato_Sim">
-        <di:waypoint x="1255" y="1030" />
-        <di:waypoint x="1318" y="1030" />
-        <di:waypoint x="1318" y="1140" />
-        <di:waypoint x="1382" y="1140" />
+        <di:waypoint x="1050" y="1490" />
+        <di:waypoint x="1782" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Imediato_Nao" bpmnElement="Flow_Cont_Imediato_Nao">
-        <di:waypoint x="1255" y="1030" />
-        <di:waypoint x="1350" y="1030" />
+        <di:waypoint x="1050" y="1490" />
+        <di:waypoint x="1130" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_D1" bpmnElement="Flow_Cont_D1">
-        <di:waypoint x="1450" y="1030" />
-        <di:waypoint x="1520" y="1030" />
+        <di:waypoint x="1230" y="1490" />
+        <di:waypoint x="1285" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_D3" bpmnElement="Flow_Cont_D3">
-        <di:waypoint x="1620" y="1030" />
-        <di:waypoint x="1690" y="1030" />
+        <di:waypoint x="1385" y="1490" />
+        <di:waypoint x="1440" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_D7" bpmnElement="Flow_Cont_D7">
-        <di:waypoint x="1790" y="1030" />
-        <di:waypoint x="1885" y="1030" />
+        <di:waypoint x="1540" y="1490" />
+        <di:waypoint x="1620" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Converteu_Sim" bpmnElement="Flow_Cont_Converteu_Sim">
-        <di:waypoint x="1910" y="1055" />
-        <di:waypoint x="1910" y="1188" />
-        <di:waypoint x="1438" y="1188" />
-        <di:waypoint x="1438" y="1140" />
-        <di:waypoint x="1418" y="1140" />
+        <di:waypoint x="1670" y="1490" />
+        <di:waypoint x="1782" y="1490" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Converteu_Nao" bpmnElement="Flow_Cont_Converteu_Nao">
-        <di:waypoint x="1935" y="1030" />
-        <di:waypoint x="2062" y="1030" />
+        <di:waypoint x="1645" y="1515" />
+        <di:waypoint x="1645" y="1692" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Timer" bpmnElement="Flow_Cont_Timer">
-        <di:waypoint x="2098" y="1030" />
-        <di:waypoint x="2225" y="1030" />
+        <di:waypoint x="1663" y="1710" />
+        <di:waypoint x="1775" y="1710" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Respondeu_Sim" bpmnElement="Flow_Cont_Respondeu_Sim">
-        <di:waypoint x="2275" y="1030" />
-        <di:waypoint x="2370" y="1030" />
+        <di:waypoint x="1825" y="1710" />
+        <di:waypoint x="1905" y="1710" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Nurturing" bpmnElement="Flow_Cont_Nurturing">
-        <di:waypoint x="2470" y="1030" />
-        <di:waypoint x="2572" y="1030" />
+        <di:waypoint x="2005" y="1710" />
+        <di:waypoint x="2092" y="1710" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Respondeu_Nao" bpmnElement="Flow_Cont_Respondeu_Nao">
-        <di:waypoint x="2275" y="1030" />
-        <di:waypoint x="2322" y="1030" />
-        <di:waypoint x="2322" y="1140" />
-        <di:waypoint x="2370" y="1140" />
+        <di:waypoint x="1825" y="1710" />
+        <di:waypoint x="1855" y="1710" />
+        <di:waypoint x="1855" y="1600" />
+        <di:waypoint x="1905" y="1600" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Cont_Motivo" bpmnElement="Flow_Cont_Motivo">
-        <di:waypoint x="2470" y="1140" />
-        <di:waypoint x="2572" y="1140" />
+        <di:waypoint x="2005" y="1600" />
+        <di:waypoint x="2092" y="1600" />
       </bpmndi:BPMNEdge>
 
-      <!-- Participant_Prospeccao edges -->
+      <!-- Prospeccao edges -->
       <bpmndi:BPMNEdge id="Edge_Flow_Prosp_1" bpmnElement="Flow_Prosp_1">
-        <di:waypoint x="398" y="1360" />
-        <di:waypoint x="500" y="1360" />
+        <di:waypoint x="268" y="1950" />
+        <di:waypoint x="355" y="1950" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Prosp_2" bpmnElement="Flow_Prosp_2">
-        <di:waypoint x="600" y="1360" />
-        <di:waypoint x="702" y="1360" />
+        <di:waypoint x="455" y="1950" />
+        <di:waypoint x="542" y="1950" />
       </bpmndi:BPMNEdge>
 
-      <!-- Participant_Google edges -->
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Start" bpmnElement="Flow_Goo_Start">
-        <di:waypoint x="398" y="1610" />
-        <di:waypoint x="462" y="1610" />
-        <di:waypoint x="462" y="1830" />
-        <di:waypoint x="525" y="1830" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Self" bpmnElement="Flow_Goo_Self">
-        <di:waypoint x="575" y="1830" />
-        <di:waypoint x="622" y="1830" />
-        <di:waypoint x="622" y="1610" />
-        <di:waypoint x="670" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Self_1" bpmnElement="Flow_Goo_Self_1">
-        <di:waypoint x="770" y="1610" />
-        <di:waypoint x="805" y="1610" />
-        <di:waypoint x="805" y="1720" />
-        <di:waypoint x="840" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Self_2" bpmnElement="Flow_Goo_Self_2">
-        <di:waypoint x="940" y="1720" />
-        <di:waypoint x="1035" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Sucesso" bpmnElement="Flow_Goo_Sucesso">
-        <di:waypoint x="1085" y="1720" />
-        <di:waypoint x="1132" y="1720" />
-        <di:waypoint x="1132" y="1610" />
-        <di:waypoint x="1180" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Falha" bpmnElement="Flow_Goo_Falha">
-        <di:waypoint x="1085" y="1720" />
-        <di:waypoint x="1132" y="1720" />
-        <di:waypoint x="1132" y="1830" />
-        <di:waypoint x="1180" y="1830" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_BoasVindas" bpmnElement="Flow_Goo_BoasVindas">
-        <di:waypoint x="1280" y="1610" />
-        <di:waypoint x="1382" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Recuperacao" bpmnElement="Flow_Goo_Recuperacao">
-        <di:waypoint x="1280" y="1830" />
-        <di:waypoint x="1331" y="1830" />
-        <di:waypoint x="1331" y="1610" />
-        <di:waypoint x="1382" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Check24h" bpmnElement="Flow_Goo_Check24h">
-        <di:waypoint x="1418" y="1610" />
-        <di:waypoint x="1482" y="1610" />
-        <di:waypoint x="1482" y="1720" />
-        <di:waypoint x="1545" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_NaoMandou" bpmnElement="Flow_Goo_NaoMandou">
-        <di:waypoint x="1595" y="1720" />
-        <di:waypoint x="1642" y="1720" />
-        <di:waypoint x="1642" y="1610" />
-        <di:waypoint x="1690" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Mandou" bpmnElement="Flow_Goo_Mandou">
-        <di:waypoint x="1545" y="1720" />
-        <di:waypoint x="1545" y="1775" />
-        <di:waypoint x="1425" y="1775" />
-        <di:waypoint x="1425" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Alerta" bpmnElement="Flow_Goo_Alerta">
-        <di:waypoint x="1740" y="1650" />
-        <di:waypoint x="1740" y="1775" />
-        <di:waypoint x="1445" y="1775" />
-        <di:waypoint x="1445" y="1720" />
-        <di:waypoint x="1425" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Zap" bpmnElement="Flow_Goo_Zap">
-        <di:waypoint x="575" y="1830" />
-        <di:waypoint x="622" y="1830" />
-        <di:waypoint x="622" y="1720" />
-        <di:waypoint x="670" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Zap_1" bpmnElement="Flow_Goo_Zap_1">
-        <di:waypoint x="770" y="1720" />
-        <di:waypoint x="805" y="1720" />
-        <di:waypoint x="805" y="1940" />
-        <di:waypoint x="840" y="1940" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Zap_2" bpmnElement="Flow_Goo_Zap_2">
-        <di:waypoint x="940" y="1940" />
-        <di:waypoint x="975" y="1940" />
-        <di:waypoint x="975" y="1610" />
-        <di:waypoint x="1010" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Zap_3" bpmnElement="Flow_Goo_Zap_3">
-        <di:waypoint x="1110" y="1610" />
-        <di:waypoint x="1145" y="1610" />
-        <di:waypoint x="1145" y="1720" />
-        <di:waypoint x="1180" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Zap_4" bpmnElement="Flow_Goo_Zap_4">
-        <di:waypoint x="1280" y="1720" />
-        <di:waypoint x="1375" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_MergeTrial" bpmnElement="Flow_Goo_MergeTrial">
-        <di:waypoint x="1425" y="1720" />
-        <di:waypoint x="1472" y="1720" />
-        <di:waypoint x="1472" y="1610" />
-        <di:waypoint x="1520" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Trial" bpmnElement="Flow_Goo_Trial">
-        <di:waypoint x="430" y="1830" />
-        <di:waypoint x="481" y="1830" />
-        <di:waypoint x="481" y="1720" />
-        <di:waypoint x="532" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Check48h" bpmnElement="Flow_Goo_Check48h">
-        <di:waypoint x="568" y="1720" />
-        <di:waypoint x="632" y="1720" />
-        <di:waypoint x="632" y="1940" />
-        <di:waypoint x="695" y="1940" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_NaoUsou48h" bpmnElement="Flow_Goo_NaoUsou48h">
-        <di:waypoint x="745" y="1940" />
-        <di:waypoint x="792" y="1940" />
-        <di:waypoint x="792" y="1610" />
-        <di:waypoint x="840" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Usou48h" bpmnElement="Flow_Goo_Usou48h">
-        <di:waypoint x="745" y="1940" />
-        <di:waypoint x="1898" y="1940" />
-        <di:waypoint x="1898" y="1610" />
-        <di:waypoint x="3050" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Resgate" bpmnElement="Flow_Goo_Resgate">
-        <di:waypoint x="940" y="1610" />
-        <di:waypoint x="3050" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D7" bpmnElement="Flow_Goo_D7">
-        <di:waypoint x="3150" y="1610" />
-        <di:waypoint x="3245" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Converteu_Sim" bpmnElement="Flow_Goo_Converteu_Sim">
-        <di:waypoint x="3295" y="1610" />
-        <di:waypoint x="3358" y="1610" />
-        <di:waypoint x="3358" y="1720" />
-        <di:waypoint x="3422" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Converteu_Nao" bpmnElement="Flow_Goo_Converteu_Nao">
-        <di:waypoint x="3295" y="1610" />
-        <di:waypoint x="3390" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Nurturing" bpmnElement="Flow_Goo_Nurturing">
-        <di:waypoint x="3490" y="1610" />
-        <di:waypoint x="3592" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D0_Lig1" bpmnElement="Flow_Goo_D0_Lig1">
-        <di:waypoint x="1620" y="1610" />
-        <di:waypoint x="1668" y="1610" />
-        <di:waypoint x="1668" y="1720" />
-        <di:waypoint x="1715" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D0_Atendeu" bpmnElement="Flow_Goo_D0_Atendeu">
-        <di:waypoint x="1765" y="1720" />
-        <di:waypoint x="1812" y="1720" />
-        <di:waypoint x="1812" y="1610" />
-        <di:waypoint x="1860" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D0_NaoAtendeu" bpmnElement="Flow_Goo_D0_NaoAtendeu">
-        <di:waypoint x="1765" y="1720" />
-        <di:waypoint x="1860" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D0_Qualificou" bpmnElement="Flow_Goo_D0_Qualificou">
-        <di:waypoint x="1960" y="1610" />
-        <di:waypoint x="2008" y="1610" />
-        <di:waypoint x="2008" y="1720" />
-        <di:waypoint x="2055" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D0_Zap1" bpmnElement="Flow_Goo_D0_Zap1">
-        <di:waypoint x="1960" y="1720" />
-        <di:waypoint x="1995" y="1720" />
-        <di:waypoint x="1995" y="1610" />
-        <di:waypoint x="2030" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D0_Zap2" bpmnElement="Flow_Goo_D0_Zap2">
-        <di:waypoint x="2130" y="1610" />
-        <di:waypoint x="2055" y="1720" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D0_Merge" bpmnElement="Flow_Goo_D0_Merge">
-        <di:waypoint x="2105" y="1720" />
-        <di:waypoint x="2152" y="1720" />
-        <di:waypoint x="2152" y="1610" />
-        <di:waypoint x="2200" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D1_Zap3" bpmnElement="Flow_Goo_D1_Zap3">
-        <di:waypoint x="2300" y="1610" />
-        <di:waypoint x="2370" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D1_Lig2" bpmnElement="Flow_Goo_D1_Lig2">
-        <di:waypoint x="2470" y="1610" />
-        <di:waypoint x="2540" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D3_Zap4" bpmnElement="Flow_Goo_D3_Zap4">
-        <di:waypoint x="2640" y="1610" />
-        <di:waypoint x="2710" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D5_Zap5" bpmnElement="Flow_Goo_D5_Zap5">
-        <di:waypoint x="2810" y="1610" />
-        <di:waypoint x="2880" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_D5_Lig3" bpmnElement="Flow_Goo_D5_Lig3">
-        <di:waypoint x="2980" y="1610" />
-        <di:waypoint x="3050" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Breakup" bpmnElement="Flow_Goo_Breakup">
-        <di:waypoint x="430" y="1720" />
-        <di:waypoint x="481" y="1720" />
-        <di:waypoint x="481" y="1610" />
-        <di:waypoint x="532" y="1610" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Check_Breakup" bpmnElement="Flow_Goo_Check_Breakup">
-        <di:waypoint x="568" y="1610" />
-        <di:waypoint x="632" y="1610" />
-        <di:waypoint x="632" y="1830" />
-        <di:waypoint x="695" y="1830" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Respondeu_Nao" bpmnElement="Flow_Goo_Respondeu_Nao">
-        <di:waypoint x="745" y="1830" />
-        <di:waypoint x="840" y="1830" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Motivo" bpmnElement="Flow_Goo_Motivo">
-        <di:waypoint x="940" y="1830" />
-        <di:waypoint x="1042" y="1830" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Goo_Respondeu_Sim" bpmnElement="Flow_Goo_Respondeu_Sim">
-        <di:waypoint x="745" y="1830" />
-        <di:waypoint x="2068" y="1830" />
-        <di:waypoint x="2068" y="1610" />
-        <di:waypoint x="3390" y="1610" />
-      </bpmndi:BPMNEdge>
-
-      <!-- Participant_Meta edges -->
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Start" bpmnElement="Flow_Meta_Start">
-        <di:waypoint x="398" y="2160" />
-        <di:waypoint x="500" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Filtro" bpmnElement="Flow_Meta_Filtro">
-        <di:waypoint x="600" y="2160" />
-        <di:waypoint x="670" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D0_Zap" bpmnElement="Flow_Meta_D0_Zap">
-        <di:waypoint x="770" y="2160" />
-        <di:waypoint x="840" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_FlashDemo" bpmnElement="Flow_Meta_FlashDemo">
-        <di:waypoint x="940" y="2160" />
-        <di:waypoint x="1035" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Interessado_Sim" bpmnElement="Flow_Meta_Interessado_Sim">
-        <di:waypoint x="1085" y="2160" />
-        <di:waypoint x="1145" y="2160" />
-        <di:waypoint x="1145" y="2270" />
-        <di:waypoint x="1205" y="2270" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Interessado_Nao" bpmnElement="Flow_Meta_Interessado_Nao">
-        <di:waypoint x="1085" y="2160" />
-        <di:waypoint x="1180" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Fechou_Sim" bpmnElement="Flow_Meta_Fechou_Sim">
-        <di:waypoint x="1255" y="2270" />
-        <di:waypoint x="1382" y="2270" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Fechou_Nao" bpmnElement="Flow_Meta_Fechou_Nao">
-        <di:waypoint x="1255" y="2270" />
-        <di:waypoint x="1180" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D1" bpmnElement="Flow_Meta_D1">
-        <di:waypoint x="1280" y="2160" />
-        <di:waypoint x="1350" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D3" bpmnElement="Flow_Meta_D3">
-        <di:waypoint x="1450" y="2160" />
-        <di:waypoint x="1520" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D6" bpmnElement="Flow_Meta_D6">
-        <di:waypoint x="1620" y="2160" />
-        <di:waypoint x="1690" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D9" bpmnElement="Flow_Meta_D9">
-        <di:waypoint x="1790" y="2160" />
-        <di:waypoint x="1860" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D14" bpmnElement="Flow_Meta_D14">
-        <di:waypoint x="1960" y="2160" />
-        <di:waypoint x="2055" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Converteu_Sim" bpmnElement="Flow_Meta_Converteu_Sim">
-        <di:waypoint x="2080" y="2185" />
-        <di:waypoint x="2080" y="2318" />
-        <di:waypoint x="1438" y="2318" />
-        <di:waypoint x="1438" y="2270" />
-        <di:waypoint x="1418" y="2270" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Converteu_Nao" bpmnElement="Flow_Meta_Converteu_Nao">
-        <di:waypoint x="2105" y="2160" />
-        <di:waypoint x="2232" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Timer24h" bpmnElement="Flow_Meta_Timer24h">
-        <di:waypoint x="2268" y="2160" />
-        <di:waypoint x="2395" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Respondeu_Sim" bpmnElement="Flow_Meta_Respondeu_Sim">
-        <di:waypoint x="2445" y="2160" />
-        <di:waypoint x="2540" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Respondeu_Nao" bpmnElement="Flow_Meta_Respondeu_Nao">
-        <di:waypoint x="2445" y="2160" />
-        <di:waypoint x="2492" y="2160" />
-        <di:waypoint x="2492" y="2270" />
-        <di:waypoint x="2540" y="2270" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Nurturing" bpmnElement="Flow_Meta_Nurturing">
-        <di:waypoint x="2640" y="2160" />
-        <di:waypoint x="2742" y="2160" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Motivo" bpmnElement="Flow_Meta_Motivo">
-        <di:waypoint x="2640" y="2270" />
-        <di:waypoint x="2742" y="2270" />
-      </bpmndi:BPMNEdge>
-
-      <!-- Participant_Nucleo edges -->
-      <bpmndi:BPMNEdge id="Edge_Flow_Nucleo_Entrada" bpmnElement="Flow_Nucleo_Entrada">
-        <di:waypoint x="398" y="2490" />
-        <di:waypoint x="525" y="2490" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Para_Anual" bpmnElement="Flow_Para_Anual">
-        <di:waypoint x="575" y="2490" />
-        <di:waypoint x="670" y="2490" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Para_Gateway" bpmnElement="Flow_Anual_Para_Gateway">
-        <di:waypoint x="770" y="2490" />
-        <di:waypoint x="865" y="2490" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Aprovado" bpmnElement="Flow_Anual_Aprovado">
-        <di:waypoint x="915" y="2490" />
-        <di:waypoint x="1010" y="2490" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Recusado" bpmnElement="Flow_Anual_Recusado">
-        <di:waypoint x="915" y="2490" />
-        <di:waypoint x="962" y="2490" />
-        <di:waypoint x="962" y="2600" />
+                  <!-- Google edges -->
+      <bpmndi:BPMNEdge id="Flow_Goo_Start_di" bpmnElement="Flow_Goo_Start">
+        <di:waypoint x="286" y="2320" />
+        <di:waypoint x="370" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Self_di" bpmnElement="Flow_Goo_Self">
+        <di:waypoint x="395" y="2295" />
+        <di:waypoint x="395" y="2210" />
+        <di:waypoint x="500" y="2210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Self_1_di" bpmnElement="Flow_Goo_Self_1">
+        <di:waypoint x="600" y="2210" />
+        <di:waypoint x="640" y="2210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Self_2_di" bpmnElement="Flow_Goo_Self_2">
+        <di:waypoint x="740" y="2210" />
+        <di:waypoint x="780" y="2210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Sucesso_di" bpmnElement="Flow_Goo_Sucesso">
+        <di:waypoint x="830" y="2210" />
+        <di:waypoint x="870" y="2210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Falha_di" bpmnElement="Flow_Goo_Falha">
+        <di:waypoint x="805" y="2235" />
+        <di:waypoint x="805" y="2540" />
+        <di:waypoint x="870" y="2540" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_BoasVindas_di" bpmnElement="Flow_Goo_BoasVindas">
+        <di:waypoint x="970" y="2210" />
+        <di:waypoint x="1010" y="2210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Recuperacao_di" bpmnElement="Flow_Goo_Recuperacao">
+        <di:waypoint x="970" y="2540" />
+        <di:waypoint x="1070" y="2540" />
+        <di:waypoint x="1070" y="2320" />
+        <di:waypoint x="1100" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Check24h_di" bpmnElement="Flow_Goo_Check24h">
+        <di:waypoint x="1046" y="2210" />
+        <di:waypoint x="1090" y="2210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_NaoMandou_di" bpmnElement="Flow_Goo_NaoMandou">
+        <di:waypoint x="1140" y="2210" />
+        <di:waypoint x="1180" y="2210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Mandou_di" bpmnElement="Flow_Goo_Mandou">
+        <di:waypoint x="1115" y="2185" />
+        <di:waypoint x="1115" y="2155" />
+        <di:waypoint x="1350" y="2155" />
+        <di:waypoint x="1350" y="2192" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Alerta_di" bpmnElement="Flow_Goo_Alerta">
+        <di:waypoint x="1280" y="2210" />
+        <di:waypoint x="1332" y="2210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Zap_di" bpmnElement="Flow_Goo_Zap">
+        <di:waypoint x="395" y="2345" />
+        <di:waypoint x="395" y="2430" />
+        <di:waypoint x="500" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Zap_1_di" bpmnElement="Flow_Goo_Zap_1">
+        <di:waypoint x="600" y="2430" />
+        <di:waypoint x="640" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Zap_2_di" bpmnElement="Flow_Goo_Zap_2">
+        <di:waypoint x="740" y="2430" />
+        <di:waypoint x="780" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Zap_3_di" bpmnElement="Flow_Goo_Zap_3">
+        <di:waypoint x="880" y="2430" />
+        <di:waypoint x="920" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_ToGatewayTrial_di" bpmnElement="Flow_Goo_ToGatewayTrial">
+        <di:waypoint x="1020" y="2430" />
+        <di:waypoint x="1050" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Trial_Sim_di" bpmnElement="Flow_Goo_Trial_Sim">
+        <di:waypoint x="1075" y="2455" />
+        <di:waypoint x="1075" y="2600" />
         <di:waypoint x="1010" y="2600" />
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Trial_Nao_di" bpmnElement="Flow_Goo_Trial_Nao">
+        <di:waypoint x="1100" y="2430" />
+        <di:waypoint x="1200" y="2430" />
+        <di:waypoint x="1200" y="2320" />
+        <di:waypoint x="1750" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Trial_End_di" bpmnElement="Flow_Goo_Trial_End">
+        <di:waypoint x="2550" y="2600" />
+        <di:waypoint x="2570" y="2600" />
+        <di:waypoint x="2570" y="2360" />
+      </bpmndi:BPMNEdge>
+      <!-- Sub-processo Trial edges internas -->
+      <bpmndi:BPMNEdge id="Flow_Trial_D0_di" bpmnElement="Flow_Trial_D0">
+        <di:waypoint x="1066" y="2600" />
+        <di:waypoint x="1090" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D0_D1_di" bpmnElement="Flow_Trial_D0_D1">
+        <di:waypoint x="1190" y="2600" />
+        <di:waypoint x="1212" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D1_Check_di" bpmnElement="Flow_Trial_D1_Check">
+        <di:waypoint x="1248" y="2600" />
+        <di:waypoint x="1270" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D1_Sim_di" bpmnElement="Flow_Trial_D1_Sim">
+        <di:waypoint x="1295" y="2575" />
+        <di:waypoint x="1295" y="2550" />
+        <di:waypoint x="1345" y="2550" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D1_Nao_di" bpmnElement="Flow_Trial_D1_Nao">
+        <di:waypoint x="1295" y="2625" />
+        <di:waypoint x="1295" y="2660" />
+        <di:waypoint x="1345" y="2660" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D1_Merge_di" bpmnElement="Flow_Trial_D1_Merge">
+        <di:waypoint x="1445" y="2550" />
+        <di:waypoint x="1495" y="2550" />
+        <di:waypoint x="1495" y="2575" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D1_Merge2_di" bpmnElement="Flow_Trial_D1_Merge2">
+        <di:waypoint x="1445" y="2660" />
+        <di:waypoint x="1495" y="2660" />
+        <di:waypoint x="1495" y="2625" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D1_D2_di" bpmnElement="Flow_Trial_D1_D2">
+        <di:waypoint x="1520" y="2600" />
+        <di:waypoint x="1542" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D2_Start_di" bpmnElement="Flow_Trial_D2_Start">
+        <di:waypoint x="1578" y="2600" />
+        <di:waypoint x="1600" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D2_D3_di" bpmnElement="Flow_Trial_D2_D3">
+        <di:waypoint x="1700" y="2600" />
+        <di:waypoint x="1722" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D3_Check_di" bpmnElement="Flow_Trial_D3_Check">
+        <di:waypoint x="1758" y="2600" />
+        <di:waypoint x="1780" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D3_Sim_di" bpmnElement="Flow_Trial_D3_Sim">
+        <di:waypoint x="1805" y="2575" />
+        <di:waypoint x="1805" y="2550" />
+        <di:waypoint x="1855" y="2550" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D3_Nao_di" bpmnElement="Flow_Trial_D3_Nao">
+        <di:waypoint x="1805" y="2625" />
+        <di:waypoint x="1805" y="2660" />
+        <di:waypoint x="1855" y="2660" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D3_Merge1_di" bpmnElement="Flow_Trial_D3_Merge1">
+        <di:waypoint x="1955" y="2550" />
+        <di:waypoint x="2005" y="2550" />
+        <di:waypoint x="2005" y="2575" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D3_Merge2_di" bpmnElement="Flow_Trial_D3_Merge2">
+        <di:waypoint x="1955" y="2660" />
+        <di:waypoint x="2005" y="2660" />
+        <di:waypoint x="2005" y="2625" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D3_D5_di" bpmnElement="Flow_Trial_D3_D5">
+        <di:waypoint x="2030" y="2600" />
+        <di:waypoint x="2052" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D5_Start_di" bpmnElement="Flow_Trial_D5_Start">
+        <di:waypoint x="2088" y="2600" />
+        <di:waypoint x="2110" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D5_D6_di" bpmnElement="Flow_Trial_D5_D6">
+        <di:waypoint x="2210" y="2600" />
+        <di:waypoint x="2232" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D6_Start_di" bpmnElement="Flow_Trial_D6_Start">
+        <di:waypoint x="2268" y="2600" />
+        <di:waypoint x="2290" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D6_D7_di" bpmnElement="Flow_Trial_D6_D7">
+        <di:waypoint x="2390" y="2600" />
+        <di:waypoint x="2412" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Trial_D7_End_di" bpmnElement="Flow_Trial_D7_End">
+        <di:waypoint x="2448" y="2600" />
+        <di:waypoint x="2472" y="2600" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D0_Lig1_di" bpmnElement="Flow_Goo_D0_Lig1">
+        <di:waypoint x="1330" y="2320" />
+        <di:waypoint x="1380" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D0_Atendeu_di" bpmnElement="Flow_Goo_D0_Atendeu">
+        <di:waypoint x="1430" y="2320" />
+        <di:waypoint x="1480" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D0_NaoAtendeu_di" bpmnElement="Flow_Goo_D0_NaoAtendeu">
+        <di:waypoint x="1405" y="2345" />
+        <di:waypoint x="1405" y="2430" />
+        <di:waypoint x="1480" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D0_Qualificou_di" bpmnElement="Flow_Goo_D0_Qualificou">
+        <di:waypoint x="1580" y="2320" />
+        <di:waypoint x="1750" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D0_Zap1_di" bpmnElement="Flow_Goo_D0_Zap1">
+        <di:waypoint x="1580" y="2430" />
+        <di:waypoint x="1620" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D0_Zap2_di" bpmnElement="Flow_Goo_D0_Zap2">
+        <di:waypoint x="1720" y="2430" />
+        <di:waypoint x="1740" y="2430" />
+        <di:waypoint x="1740" y="2320" />
+        <di:waypoint x="1750" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D0_Merge_di" bpmnElement="Flow_Goo_D0_Merge">
+        <di:waypoint x="1800" y="2320" />
+        <di:waypoint x="1880" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D1_Zap3_di" bpmnElement="Flow_Goo_D1_Zap3">
+        <di:waypoint x="1980" y="2320" />
+        <di:waypoint x="2020" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D1_Lig2_di" bpmnElement="Flow_Goo_D1_Lig2">
+        <di:waypoint x="2120" y="2320" />
+        <di:waypoint x="2160" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D3_Zap4_di" bpmnElement="Flow_Goo_D3_Zap4">
+        <di:waypoint x="2260" y="2320" />
+        <di:waypoint x="2300" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D5_Zap5_di" bpmnElement="Flow_Goo_D5_Zap5">
+        <di:waypoint x="2400" y="2320" />
+        <di:waypoint x="2440" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D5_Lig3_di" bpmnElement="Flow_Goo_D5_Lig3">
+        <di:waypoint x="2540" y="2320" />
+        <di:waypoint x="2580" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_D7_di" bpmnElement="Flow_Goo_D7">
+        <di:waypoint x="2680" y="2320" />
+        <di:waypoint x="2720" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Converteu_Sim_di" bpmnElement="Flow_Goo_Converteu_Sim">
+        <di:waypoint x="2770" y="2320" />
+        <di:waypoint x="2830" y="2320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Converteu_Nao_di" bpmnElement="Flow_Goo_Converteu_Nao">
+        <di:waypoint x="2745" y="2345" />
+        <di:waypoint x="2745" y="2430" />
+        <di:waypoint x="2830" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Breakup_di" bpmnElement="Flow_Goo_Breakup">
+        <di:waypoint x="2930" y="2430" />
+        <di:waypoint x="2972" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Check_Breakup_di" bpmnElement="Flow_Goo_Check_Breakup">
+        <di:waypoint x="3008" y="2430" />
+        <di:waypoint x="3050" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Respondeu_Sim_di" bpmnElement="Flow_Goo_Respondeu_Sim">
+        <di:waypoint x="3100" y="2430" />
+        <di:waypoint x="3140" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Respondeu_Nao_di" bpmnElement="Flow_Goo_Respondeu_Nao">
+        <di:waypoint x="3075" y="2455" />
+        <di:waypoint x="3075" y="2540" />
+        <di:waypoint x="3140" y="2540" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Nurturing_di" bpmnElement="Flow_Goo_Nurturing">
+        <di:waypoint x="3240" y="2430" />
+        <di:waypoint x="3282" y="2430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Goo_Motivo_di" bpmnElement="Flow_Goo_Motivo">
+        <di:waypoint x="3240" y="2540" />
+        <di:waypoint x="3282" y="2540" />
+      </bpmndi:BPMNEdge>
+      <!-- Meta edges -->
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Start" bpmnElement="Flow_Meta_Start">
+        <di:waypoint x="268" y="2870" />
+        <di:waypoint x="355" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Filtro" bpmnElement="Flow_Meta_Filtro">
+        <di:waypoint x="455" y="2870" />
+        <di:waypoint x="510" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D0_Zap" bpmnElement="Flow_Meta_D0_Zap">
+        <di:waypoint x="610" y="2870" />
+        <di:waypoint x="665" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_FlashDemo" bpmnElement="Flow_Meta_FlashDemo">
+        <di:waypoint x="765" y="2870" />
+        <di:waypoint x="845" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Interessado_Sim" bpmnElement="Flow_Meta_Interessado_Sim">
+        <di:waypoint x="895" y="2870" />
+        <di:waypoint x="1000" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Interessado_Nao" bpmnElement="Flow_Meta_Interessado_Nao">
+        <di:waypoint x="895" y="2870" />
+        <di:waypoint x="1130" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Fechou_Sim" bpmnElement="Flow_Meta_Fechou_Sim">
+        <di:waypoint x="1050" y="2870" />
+        <di:waypoint x="2092" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Fechou_Nao" bpmnElement="Flow_Meta_Fechou_Nao">
+        <di:waypoint x="1050" y="2870" />
+        <di:waypoint x="1130" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D1" bpmnElement="Flow_Meta_D1">
+        <di:waypoint x="1230" y="2870" />
+        <di:waypoint x="1285" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D3" bpmnElement="Flow_Meta_D3">
+        <di:waypoint x="1385" y="2870" />
+        <di:waypoint x="1440" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D6" bpmnElement="Flow_Meta_D6">
+        <di:waypoint x="1540" y="2870" />
+        <di:waypoint x="1595" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D9" bpmnElement="Flow_Meta_D9">
+        <di:waypoint x="1695" y="2870" />
+        <di:waypoint x="1750" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_D14" bpmnElement="Flow_Meta_D14">
+        <di:waypoint x="1850" y="2870" />
+        <di:waypoint x="1930" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Converteu_Sim" bpmnElement="Flow_Meta_Converteu_Sim">
+        <di:waypoint x="1980" y="2870" />
+        <di:waypoint x="2092" y="2870" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Converteu_Nao" bpmnElement="Flow_Meta_Converteu_Nao">
+        <di:waypoint x="1955" y="2895" />
+        <di:waypoint x="1955" y="2962" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Timer24h" bpmnElement="Flow_Meta_Timer24h">
+        <di:waypoint x="1973" y="2980" />
+        <di:waypoint x="2085" y="2980" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Respondeu_Sim" bpmnElement="Flow_Meta_Respondeu_Sim">
+        <di:waypoint x="2135" y="2980" />
+        <di:waypoint x="2215" y="2980" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Respondeu_Nao" bpmnElement="Flow_Meta_Respondeu_Nao">
+        <di:waypoint x="2135" y="2980" />
+        <di:waypoint x="2165" y="2980" />
+        <di:waypoint x="2165" y="3090" />
+        <di:waypoint x="2215" y="3090" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Nurturing" bpmnElement="Flow_Meta_Nurturing">
+        <di:waypoint x="2315" y="2980" />
+        <di:waypoint x="2402" y="2980" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Meta_Motivo" bpmnElement="Flow_Meta_Motivo">
+        <di:waypoint x="2315" y="3090" />
+        <di:waypoint x="2402" y="3090" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Nucleo edges -->
+      <bpmndi:BPMNEdge id="Edge_Flow_Nucleo_Entrada" bpmnElement="Flow_Nucleo_Entrada">
+        <di:waypoint x="268" y="3330" />
+        <di:waypoint x="380" y="3330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Para_Anual" bpmnElement="Flow_Para_Anual">
+        <di:waypoint x="430" y="3190" />
+        <di:waypoint x="510" y="3190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Para_Gateway" bpmnElement="Flow_Anual_Para_Gateway">
+        <di:waypoint x="610" y="3190" />
+        <di:waypoint x="690" y="3190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Aprovado" bpmnElement="Flow_Anual_Aprovado">
+        <di:waypoint x="740" y="3190" />
+        <di:waypoint x="820" y="3190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Anual_Recusado" bpmnElement="Flow_Anual_Recusado">
+        <di:waypoint x="715" y="3215" />
+        <di:waypoint x="715" y="3260" />
+      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Split_Para_Onboarding" bpmnElement="Flow_Split_Para_Onboarding">
-        <di:waypoint x="1110" y="2490" />
-        <di:waypoint x="1180" y="2490" />
+        <di:waypoint x="920" y="3190" />
+        <di:waypoint x="975" y="3190" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Para_Cliente_Ativo" bpmnElement="Flow_Para_Cliente_Ativo">
-        <di:waypoint x="1280" y="2490" />
-        <di:waypoint x="1331" y="2490" />
-        <di:waypoint x="1331" y="2600" />
-        <di:waypoint x="1382" y="2600" />
+        <di:waypoint x="1075" y="3190" />
+        <di:waypoint x="1162" y="3190" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Falha_Para_WhatsApp" bpmnElement="Flow_Falha_Para_WhatsApp">
-        <di:waypoint x="1110" y="2600" />
-        <di:waypoint x="1180" y="2600" />
+        <di:waypoint x="765" y="3300" />
+        <di:waypoint x="820" y="3300" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_WhatsApp_Para_Semestral" bpmnElement="Flow_WhatsApp_Para_Semestral">
-        <di:waypoint x="1280" y="2600" />
-        <di:waypoint x="1315" y="2600" />
-        <di:waypoint x="1315" y="2490" />
-        <di:waypoint x="1350" y="2490" />
+        <di:waypoint x="920" y="3300" />
+        <di:waypoint x="975" y="3300" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Semestral_Para_Gateway" bpmnElement="Flow_Semestral_Para_Gateway">
-        <di:waypoint x="1450" y="2490" />
-        <di:waypoint x="1545" y="2490" />
+        <di:waypoint x="1075" y="3300" />
+        <di:waypoint x="1155" y="3300" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Semestral_Aprovado" bpmnElement="Flow_Semestral_Aprovado">
-        <di:waypoint x="1545" y="2490" />
-        <di:waypoint x="1545" y="2560" />
-        <di:waypoint x="1280" y="2560" />
-        <di:waypoint x="1280" y="2490" />
+        <di:waypoint x="1180" y="3275" />
+        <di:waypoint x="1180" y="3239" />
+        <di:waypoint x="1025" y="3239" />
+        <di:waypoint x="1025" y="3230" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Semestral_Recusado" bpmnElement="Flow_Semestral_Recusado">
-        <di:waypoint x="1595" y="2490" />
-        <di:waypoint x="1722" y="2490" />
+        <di:waypoint x="1180" y="3325" />
+        <di:waypoint x="1180" y="3392" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Timer_Para_Vendedor" bpmnElement="Flow_Timer_Para_Vendedor">
-        <di:waypoint x="1758" y="2490" />
-        <di:waypoint x="1860" y="2490" />
+        <di:waypoint x="1198" y="3410" />
+        <di:waypoint x="1285" y="3410" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Vendedor_Para_Trimestral" bpmnElement="Flow_Vendedor_Para_Trimestral">
-        <di:waypoint x="1960" y="2490" />
-        <di:waypoint x="2030" y="2490" />
+        <di:waypoint x="1385" y="3410" />
+        <di:waypoint x="1440" y="3410" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Trimestral_Para_Gateway" bpmnElement="Flow_Trimestral_Para_Gateway">
-        <di:waypoint x="2130" y="2490" />
-        <di:waypoint x="2225" y="2490" />
+        <di:waypoint x="1540" y="3410" />
+        <di:waypoint x="1620" y="3410" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Trimestral_Aprovado" bpmnElement="Flow_Trimestral_Aprovado">
-        <di:waypoint x="2225" y="2490" />
-        <di:waypoint x="2225" y="2560" />
-        <di:waypoint x="1280" y="2560" />
-        <di:waypoint x="1280" y="2490" />
+        <di:waypoint x="1645" y="3385" />
+        <di:waypoint x="1645" y="3349" />
+        <di:waypoint x="1025" y="3349" />
+        <di:waypoint x="1025" y="3230" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Flow_Trimestral_Recusado" bpmnElement="Flow_Trimestral_Recusado">
-        <di:waypoint x="2275" y="2490" />
-        <di:waypoint x="2402" y="2490" />
+        <di:waypoint x="1670" y="3410" />
+        <di:waypoint x="1782" y="3410" />
       </bpmndi:BPMNEdge>
 
     </bpmndi:BPMNPlane>
