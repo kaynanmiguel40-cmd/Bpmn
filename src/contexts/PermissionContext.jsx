@@ -17,6 +17,31 @@ export function PermissionProvider({ children }) {
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Permissoes padrao por role (fallback quando tabelas nao existem)
+  const DEFAULT_PERMISSIONS = {
+    admin: [
+      { name: '*', module: '*' }
+    ],
+    manager: [
+      { name: 'sales.view', module: 'sales' },
+      { name: 'sales.edit', module: 'sales' },
+      { name: 'financial.view', module: 'financial' },
+      { name: 'financial.view_costs', module: 'financial' },
+      { name: 'agenda.view', module: 'agenda' },
+      { name: 'agenda.edit', module: 'agenda' },
+      { name: 'os.view', module: 'os' },
+      { name: 'os.edit', module: 'os' },
+      { name: 'reports.view', module: 'reports' },
+      { name: 'settings.view', module: 'settings' },
+      { name: 'settings.edit', module: 'settings' },
+    ],
+    member: [
+      { name: 'sales.view', module: 'sales' },
+      { name: 'agenda.view', module: 'agenda' },
+      { name: 'os.view', module: 'os' },
+    ],
+  };
+
   // Buscar permissoes do usuario baseado no role
   const fetchPermissions = useCallback(async () => {
     if (!profile?.role) {
@@ -26,37 +51,16 @@ export function PermissionProvider({ children }) {
     }
 
     try {
-      // Usa a funcao do Supabase para buscar permissoes
       const { data, error } = await supabase.rpc('get_user_permissions');
 
-      if (error) {
-        console.error('Erro ao buscar permissoes via RPC:', error);
-        // Fallback: buscar diretamente
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('role_permissions')
-          .select(`
-            permission_id,
-            permissions:permission_id (
-              name,
-              module
-            )
-          `)
-          .eq('role', profile.role);
-
-        if (fallbackError) throw fallbackError;
-
-        const permissionList = fallbackData?.map(rp => ({
-          name: rp.permissions.name,
-          module: rp.permissions.module
-        })) || [];
-
-        setPermissions(permissionList);
+      if (error || !data || data.length === 0) {
+        // Usar permissoes padrao do role
+        setPermissions(DEFAULT_PERMISSIONS[profile.role] || []);
       } else {
-        setPermissions(data || []);
+        setPermissions(data);
       }
-    } catch (err) {
-      console.error('Erro ao buscar permissoes:', err);
-      setPermissions([]);
+    } catch {
+      setPermissions(DEFAULT_PERMISSIONS[profile.role] || []);
     } finally {
       setLoading(false);
     }

@@ -9,7 +9,6 @@ import {
   getProjectById,
   createProject as createProjectDB,
   updateProject as updateProjectDB,
-  dbToProject
 } from '../lib/supabase';
 
 export default function Editor() {
@@ -38,12 +37,19 @@ export default function Editor() {
   const [showImageModal, setShowImageModal] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [imageFormat, setImageFormat] = useState('square'); // square, rounded, circle
+  const [showErrorToast, setShowErrorToast] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfOrientation, setPdfOrientation] = useState('auto');
+  const [pdfScale, setPdfScale] = useState(2);
 
   // Carregar todos os projetos para o painel de dependências
   useEffect(() => {
     const loadAllProjects = async () => {
       const projectsData = await getProjects();
-      setAllProjects(projectsData.map(dbToProject));
+      setAllProjects(projectsData);
     };
     loadAllProjects();
   }, []);
@@ -95,9 +101,8 @@ export default function Editor() {
       setIsLoading(true);
 
       if (id) {
-        const dbProject = await getProjectById(id);
-        if (dbProject) {
-          const loadedProject = dbToProject(dbProject);
+        const loadedProject = await getProjectById(id);
+        if (loadedProject) {
           setProject(loadedProject);
           setCurrentXml(loadedProject.xml);
           setProjectName(loadedProject.name);
@@ -142,10 +147,17 @@ export default function Editor() {
             setHasChanges(false);
             setShowSaveToast(true);
             setTimeout(() => setShowSaveToast(false), 2000);
+          } else {
+            setErrorMessage('Falha ao salvar automaticamente.');
+            setShowErrorToast(true);
+            setTimeout(() => setShowErrorToast(false), 4000);
           }
         }
       } catch (error) {
         console.error('Erro no auto-save:', error);
+        setErrorMessage('Erro de conexão ao salvar.');
+        setShowErrorToast(true);
+        setTimeout(() => setShowErrorToast(false), 4000);
       } finally {
         setIsSaving(false);
       }
@@ -180,13 +192,12 @@ export default function Editor() {
         }
       } else {
         // Criar novo projeto no Supabase
-        const dbProject = await createProjectDB({
+        const newProject = await createProjectDB({
           name: projectName,
           xml: currentXml,
           isTemplate: false
         });
-        if (dbProject) {
-          const newProject = dbToProject(dbProject);
+        if (newProject) {
           setProject(newProject);
           projectIdRef.current = newProject.id;
           initialXmlRef.current = currentXml;
@@ -201,6 +212,9 @@ export default function Editor() {
       setTimeout(() => setShowSaveToast(false), 2000);
     } catch (error) {
       console.error('Erro ao salvar:', error);
+      setErrorMessage('Erro ao salvar projeto.');
+      setShowErrorToast(true);
+      setTimeout(() => setShowErrorToast(false), 4000);
     } finally {
       setIsSaving(false);
     }
@@ -218,6 +232,38 @@ export default function Editor() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
+
+  // Confirmação ao sair com alterações não salvas (fechar aba/refresh)
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasChanges]);
+
+  // Handler para voltar com confirmação
+  const handleGoBack = useCallback(() => {
+    if (hasChanges) {
+      if (window.confirm('Você tem alterações não salvas. Deseja sair sem salvar?')) {
+        navigate('/');
+      }
+    } else {
+      navigate('/');
+    }
+  }, [hasChanges, navigate]);
+
+  // Handlers de undo/redo
+  const handleUndo = useCallback(() => {
+    if (bpmnEditorRef.current) bpmnEditorRef.current.undo();
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (bpmnEditorRef.current) bpmnEditorRef.current.redo();
+  }, []);
 
   // Renomear projeto
   const handleRename = async () => {
@@ -258,7 +304,7 @@ export default function Editor() {
     if (newProject) {
       // Recarregar lista de projetos
       const projectsData = await getProjects();
-      setAllProjects(projectsData.map(dbToProject));
+      setAllProjects(projectsData);
       setShowNewSubflowModal(false);
       setNewSubflowName('');
     }
@@ -299,7 +345,7 @@ export default function Editor() {
 
         // Recarregar lista de projetos
         const projectsData = await getProjects();
-        setAllProjects(projectsData.map(dbToProject));
+        setAllProjects(projectsData);
       }
     }
   };
@@ -331,7 +377,7 @@ export default function Editor() {
 
       // Recarregar lista de projetos
       const projectsData = await getProjects();
-      setAllProjects(projectsData.map(dbToProject));
+      setAllProjects(projectsData);
     }
   };
 
@@ -350,11 +396,12 @@ export default function Editor() {
     URL.revokeObjectURL(url);
   };
 
-  // Download PDF
-  const handleDownloadPdf = async () => {
+  // Download PDF com opções
+  const handleDownloadPdf = async (orientation = 'auto', scale = 2) => {
     if (!bpmnEditorRef.current) return;
 
     setIsExportingPdf(true);
+    setShowPdfModal(false);
 
     try {
       const svg = await bpmnEditorRef.current.saveSVG();
@@ -362,33 +409,34 @@ export default function Editor() {
         throw new Error('Não foi possível exportar o diagrama');
       }
 
-      // Criar um canvas para converter SVG em imagem
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
 
-      // Criar blob URL do SVG
       const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
       const svgUrl = URL.createObjectURL(svgBlob);
 
       await new Promise((resolve, reject) => {
         img.onload = () => {
-          // Definir tamanho do canvas baseado na imagem
-          const scale = 2; // Maior qualidade
           canvas.width = img.width * scale;
           canvas.height = img.height * scale;
 
-          // Fundo branco
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          // Desenhar a imagem
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-          // Criar PDF
           const imgData = canvas.toDataURL('image/png');
+
+          // Determinar orientação
+          let pdfOrientation;
+          if (orientation === 'auto') {
+            pdfOrientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+          } else {
+            pdfOrientation = orientation;
+          }
+
           const pdf = new jsPDF({
-            orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+            orientation: pdfOrientation,
             unit: 'px',
             format: [canvas.width, canvas.height]
           });
@@ -404,7 +452,9 @@ export default function Editor() {
       });
     } catch (error) {
       console.error('Erro ao exportar PDF:', error);
-      alert('Erro ao gerar PDF. Tente novamente.');
+      setErrorMessage('Erro ao gerar PDF. Tente novamente.');
+      setShowErrorToast(true);
+      setTimeout(() => setShowErrorToast(false), 4000);
     } finally {
       setIsExportingPdf(false);
     }
@@ -429,7 +479,7 @@ export default function Editor() {
           {/* Left: Back + Project Name */}
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate('/')}
+              onClick={handleGoBack}
               className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
               title="Voltar ao Dashboard"
             >
@@ -463,13 +513,37 @@ export default function Editor() {
             </div>
           </div>
 
+          {/* Center: Undo/Redo */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Desfazer (Ctrl+Z)"
+            >
+              <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4" />
+              </svg>
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Refazer (Ctrl+Shift+Z)"
+            >
+              <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a5 5 0 00-5 5v2m15-7l-4-4m4 4l-4 4" />
+              </svg>
+            </button>
+          </div>
+
           {/* Right: Actions */}
           <div className="flex items-center gap-2">
             <button
-              onClick={handleDownloadPdf}
+              onClick={() => setShowPdfModal(true)}
               disabled={isExportingPdf}
               className="flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Baixar PDF"
+              title="Exportar PDF"
             >
               {isExportingPdf ? (
                 <>
@@ -723,17 +797,19 @@ export default function Editor() {
             showGrid={showGrid}
             onGridToggle={() => setShowGrid(!showGrid)}
             onAddImage={() => setShowImageModal(true)}
+            onCommandStackChanged={({ canUndo, canRedo }) => {
+              setCanUndo(canUndo);
+              setCanRedo(canRedo);
+            }}
           />
         </div>
 
-        {/* Properties Panel - só aparece quando há elemento selecionado */}
-        {selectedElement && (
-          <PropertiesPanel
-            element={selectedElement}
-            onUpdate={handleElementUpdate}
-            onColorChange={handleColorChange}
-          />
-        )}
+        {/* Properties Panel - sempre visível */}
+        <PropertiesPanel
+          element={selectedElement}
+          onUpdate={handleElementUpdate}
+          onColorChange={handleColorChange}
+        />
       </div>
 
       {/* Save Toast */}
@@ -743,6 +819,22 @@ export default function Editor() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
           <span>Projeto salvo com sucesso!</span>
+        </div>
+      )}
+
+      {/* Error Toast */}
+      {showErrorToast && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 animate-fade-in">
+          <svg className="w-5 h-5 text-red-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <span>{errorMessage}</span>
+          <button
+            onClick={() => { setShowErrorToast(false); handleSave(); }}
+            className="ml-2 px-2 py-1 bg-white/20 rounded text-xs hover:bg-white/30 transition-colors"
+          >
+            Tentar novamente
+          </button>
         </div>
       )}
 
@@ -891,6 +983,11 @@ export default function Editor() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
+                        if (file.size > 2 * 1024 * 1024) {
+                          alert('Imagem muito grande! Tamanho máximo: 2MB.');
+                          e.target.value = '';
+                          return;
+                        }
                         const reader = new FileReader();
                         reader.onload = (event) => {
                           setImageUrl(event.target.result);
@@ -912,7 +1009,7 @@ export default function Editor() {
                         </svg>
                         <div className="text-center">
                           <p className="text-sm font-medium text-slate-700">Clique para selecionar</p>
-                          <p className="text-xs text-slate-500">PNG, JPG, GIF até 10MB</p>
+                          <p className="text-xs text-slate-500">PNG, JPG, GIF até 2MB</p>
                         </div>
                       </>
                     ) : (
@@ -1022,6 +1119,99 @@ export default function Editor() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
                 Adicionar Imagem
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Export Modal */}
+      {showPdfModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="p-6 border-b border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Exportar PDF</h3>
+                  <p className="text-sm text-slate-500">Configure as opções de exportação</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Orientação */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Orientação</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { value: 'auto', label: 'Auto', icon: 'M4 5h16M4 12h16M4 19h16' },
+                    { value: 'landscape', label: 'Paisagem', icon: 'M3 6h18v12H3z' },
+                    { value: 'portrait', label: 'Retrato', icon: 'M6 3h12v18H6z' }
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setPdfOrientation(opt.value)}
+                      className={`p-3 border-2 rounded-lg flex flex-col items-center gap-2 transition-all ${
+                        pdfOrientation === opt.value
+                          ? 'border-red-500 bg-red-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <svg className="w-8 h-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d={opt.icon} />
+                      </svg>
+                      <span className="text-xs font-medium text-slate-700">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Qualidade */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Qualidade</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { value: 1, label: 'Normal', desc: 'Menor arquivo' },
+                    { value: 2, label: 'Alta', desc: 'Recomendado' },
+                    { value: 3, label: 'Ultra', desc: 'Maior qualidade' }
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setPdfScale(opt.value)}
+                      className={`p-3 border-2 rounded-lg flex flex-col items-center gap-1 transition-all ${
+                        pdfScale === opt.value
+                          ? 'border-red-500 bg-red-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="text-sm font-semibold text-slate-700">{opt.label}</span>
+                      <span className="text-[10px] text-slate-500">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-50 flex gap-3 justify-end">
+              <button
+                onClick={() => setShowPdfModal(false)}
+                className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDownloadPdf(pdfOrientation, pdfScale)}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Exportar PDF
               </button>
             </div>
           </div>

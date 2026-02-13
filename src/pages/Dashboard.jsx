@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom';
 import { FYNESS_TEMPLATE_XML, EMPTY_DIAGRAM_XML } from '../utils/fynessTemplate';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
-  supabase,
   getCompanies,
   createCompany as createCompanyDB,
   updateCompany as updateCompanyDB,
@@ -11,13 +10,11 @@ import {
   createProject as createProjectDB,
   updateProject as updateProjectDB,
   deleteProject as deleteProjectDB,
-  dbToProject,
-  dbToCompany
 } from '../lib/supabase';
 
 // Cores para empresas
 const COMPANY_COLORS = [
-  { bg: 'bg-indigo-500', light: 'bg-indigo-50', border: 'border-indigo-300', text: 'text-indigo-700', gradient: 'from-indigo-500 to-indigo-600' },
+  { bg: 'bg-blue-500', light: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-700', gradient: 'from-blue-500 to-blue-600' },
   { bg: 'bg-emerald-500', light: 'bg-emerald-50', border: 'border-emerald-300', text: 'text-emerald-700', gradient: 'from-emerald-500 to-emerald-600' },
   { bg: 'bg-amber-500', light: 'bg-amber-50', border: 'border-amber-300', text: 'text-amber-700', gradient: 'from-amber-500 to-amber-600' },
   { bg: 'bg-rose-500', light: 'bg-rose-50', border: 'border-rose-300', text: 'text-rose-700', gradient: 'from-rose-500 to-rose-600' },
@@ -44,8 +41,11 @@ export default function Dashboard() {
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [editingCompany, setEditingCompany] = useState(null);
   const [companyName, setCompanyName] = useState('');
+  const [companyColor, setCompanyColor] = useState(0);
+  const [companyImage, setCompanyImage] = useState(null);
   const [selectedCompanyForProject, setSelectedCompanyForProject] = useState(null);
   const [showDeleteCompanyModal, setShowDeleteCompanyModal] = useState(null);
+  const imageInputRef = useRef(null);
 
   // Carregar dados do Supabase
   const loadData = useCallback(async () => {
@@ -57,11 +57,8 @@ export default function Dashboard() {
         getProjects()
       ]);
 
-      const mappedCompanies = companiesData.map(dbToCompany);
-      const mappedProjects = projectsData.map(dbToProject);
-
-      setCompanies(mappedCompanies);
-      setProjects(mappedProjects);
+      setCompanies(companiesData);
+      setProjects(projectsData);
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
       setError('Erro ao carregar dados do banco de dados');
@@ -186,20 +183,42 @@ export default function Dashboard() {
   const handleCreateCompany = async () => {
     const result = await createCompanyDB({
       name: companyName,
-      colorIndex: companies.length % COMPANY_COLORS.length
+      colorIndex: companyColor,
+      image: companyImage
     });
     if (result) {
       await loadData();
     }
     setShowCompanyModal(false);
     setCompanyName('');
+    setCompanyColor(0);
+    setCompanyImage(null);
   };
 
   const handleEditCompany = async () => {
-    await updateCompanyDB(editingCompany.id, { name: companyName });
+    await updateCompanyDB(editingCompany.id, {
+      name: companyName,
+      colorIndex: companyColor,
+      image: companyImage
+    });
     await loadData();
     setEditingCompany(null);
+    setShowCompanyModal(false);
     setCompanyName('');
+    setCompanyColor(0);
+    setCompanyImage(null);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 500 * 1024) {
+      alert('Imagem muito grande. Máximo 500KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => setCompanyImage(reader.result);
+    reader.readAsDataURL(file);
   };
 
   const handleDeleteCompany = async (companyId) => {
@@ -292,7 +311,7 @@ export default function Dashboard() {
   const getLevelColor = (level) => {
     const colors = [
       { gradient: 'from-green-500 to-emerald-600', border: 'border-green-400', bg: 'bg-green-500', light: 'bg-green-50' },
-      { gradient: 'from-blue-500 to-indigo-600', border: 'border-blue-400', bg: 'bg-blue-500', light: 'bg-blue-50' },
+      { gradient: 'from-blue-500 to-blue-600', border: 'border-blue-400', bg: 'bg-blue-500', light: 'bg-blue-50' },
       { gradient: 'from-purple-500 to-violet-600', border: 'border-purple-400', bg: 'bg-purple-500', light: 'bg-purple-50' },
       { gradient: 'from-orange-500 to-amber-600', border: 'border-orange-400', bg: 'bg-orange-500', light: 'bg-orange-50' },
       { gradient: 'from-pink-500 to-rose-600', border: 'border-pink-400', bg: 'bg-pink-500', light: 'bg-pink-50' },
@@ -301,7 +320,7 @@ export default function Dashboard() {
   };
 
   const getConnectionColor = (level) => {
-    const colors = ['#22c55e', '#3b82f6', '#8b5cf6', '#f97316', '#ec4899'];
+    const colors = ['#22c55e', '#3b82f6', '#2563eb', '#f97316', '#ec4899'];
     return colors[(level - 1) % colors.length] || '#64748b';
   };
 
@@ -325,10 +344,10 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-fyness-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-slate-600">Carregando dados...</span>
+          <span className="text-slate-600 dark:text-slate-300">Carregando dados...</span>
         </div>
       </div>
     );
@@ -336,15 +355,15 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950 flex items-center justify-center">
+        <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg dark:shadow-slate-900/50 max-w-md text-center">
+          <div className="w-16 h-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">Erro de Conexão</h2>
-          <p className="text-slate-500 mb-4">{error}</p>
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro de Conexão</h2>
+          <p className="text-slate-500 dark:text-slate-400 mb-4">{error}</p>
           <button
             onClick={loadData}
             className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors"
@@ -357,9 +376,9 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 shadow-sm">
+      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -369,13 +388,13 @@ export default function Dashboard() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-800">BPMN Holding</h1>
-                <p className="text-sm text-slate-500">Gestão de Processos Empresariais</p>
+                <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">BPMN Holding</h1>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Gestão de Processos Empresariais</p>
               </div>
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+              <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 Supabase
               </div>
@@ -392,7 +411,7 @@ export default function Dashboard() {
                 </svg>
                 Nova Empresa
               </button>
-              <span className="text-sm text-slate-500">
+              <span className="text-sm text-slate-500 dark:text-slate-400">
                 {companies.length} empresa{companies.length !== 1 ? 's' : ''} • {projects.length} fluxo{projects.length !== 1 ? 's' : ''}
               </span>
             </div>
@@ -403,12 +422,12 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {companies.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-            <svg className="w-16 h-16 text-slate-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-12 text-center">
+            <svg className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
             </svg>
-            <h2 className="text-lg font-semibold text-slate-700 mb-2">Nenhuma empresa cadastrada</h2>
-            <p className="text-slate-500 mb-4">Crie sua primeira empresa para começar a gerenciar os processos.</p>
+            <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">Nenhuma empresa cadastrada</h2>
+            <p className="text-slate-500 dark:text-slate-400 mb-4">Crie sua primeira empresa para começar a gerenciar os processos.</p>
             <button
               onClick={() => {
                 setEditingCompany(null);
@@ -424,24 +443,28 @@ export default function Dashboard() {
           <>
             {/* Empresas */}
             {companies.map((company) => {
-              const companyColor = COMPANY_COLORS[company.colorIndex % COMPANY_COLORS.length];
+              const colorTheme = COMPANY_COLORS[company.colorIndex % COMPANY_COLORS.length];
               const companyProjects = projectsByCompany[company.id] || [];
               const connections = getConnectionsForCompany(company.id);
 
               return (
                 <div
                   key={company.id}
-                  className={`bg-white rounded-2xl border-2 ${companyColor.border} shadow-sm overflow-hidden`}
+                  className={`bg-white dark:bg-slate-800 rounded-2xl border-2 ${colorTheme.border} shadow-sm overflow-hidden`}
                 >
                   {/* Company Header */}
-                  <div className={`bg-gradient-to-r ${companyColor.gradient} px-6 py-4`}>
+                  <div className={`bg-gradient-to-r ${colorTheme.gradient} px-6 py-4`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                          </svg>
-                        </div>
+                        {company.image ? (
+                          <img src={company.image} alt={company.name} className="w-10 h-10 rounded-lg object-contain bg-white/20 p-1 border-2 border-white/30" />
+                        ) : (
+                          <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                          </div>
+                        )}
                         <div>
                           <h2 className="text-lg font-bold text-white">{company.name}</h2>
                           <p className="text-white/70 text-sm">
@@ -464,6 +487,8 @@ export default function Dashboard() {
                           onClick={() => {
                             setEditingCompany(company);
                             setCompanyName(company.name);
+                            setCompanyColor(company.colorIndex || 0);
+                            setCompanyImage(company.image || null);
                             setShowCompanyModal(true);
                           }}
                           className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
@@ -489,15 +514,15 @@ export default function Dashboard() {
                   {/* Company Content */}
                   <div className="p-6">
                     {companyProjects.length === 0 ? (
-                      <div className={`${companyColor.light} rounded-xl border-2 border-dashed ${companyColor.border} p-8 text-center`}>
-                        <svg className={`w-12 h-12 ${companyColor.text} mx-auto mb-3 opacity-50`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <div className={`${colorTheme.light} rounded-xl border-2 border-dashed ${colorTheme.border} p-8 text-center`}>
+                        <svg className={`w-12 h-12 ${colorTheme.text} mx-auto mb-3 opacity-50`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
                         </svg>
-                        <p className={`${companyColor.text} font-medium mb-1`}>Nenhum fluxo ainda</p>
-                        <p className="text-slate-500 text-sm mb-4">Crie o primeiro fluxo de processos desta empresa</p>
+                        <p className={`${colorTheme.text} font-medium mb-1`}>Nenhum fluxo ainda</p>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">Crie o primeiro fluxo de processos desta empresa</p>
                         <button
                           onClick={() => handleCreateBlank(company.id)}
-                          className={`px-4 py-2 bg-gradient-to-r ${companyColor.gradient} text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium`}
+                          className={`px-4 py-2 bg-gradient-to-r ${colorTheme.gradient} text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium`}
                         >
                           Criar Primeiro Fluxo
                         </button>
@@ -569,15 +594,15 @@ export default function Dashboard() {
                               <div
                                 key={project.id}
                                 ref={el => cardRefs.current[project.id] = el}
-                                className={`bg-white rounded-lg border hover:shadow-md transition-all overflow-hidden group relative z-20 ${levelColor.border} hover:border-slate-400`}
+                                className={`bg-white dark:bg-slate-800 rounded-lg border hover:shadow-md dark:hover:shadow-slate-900/50 transition-all overflow-hidden group relative z-20 ${levelColor.border} hover:border-slate-400 dark:hover:border-slate-500`}
                               >
                                 <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${levelColor.gradient}`} />
 
                                 <div
                                   onClick={() => handleOpenProject(project.id)}
-                                  className="h-14 bg-slate-50 border-b border-slate-200 flex items-center justify-center cursor-pointer relative overflow-hidden"
+                                  className="h-14 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 flex items-center justify-center cursor-pointer relative overflow-hidden"
                                 >
-                                  <svg className="w-6 h-6 text-slate-300 group-hover:opacity-0 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <svg className="w-6 h-6 text-slate-300 dark:text-slate-600 group-hover:opacity-0 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
                                   </svg>
 
@@ -585,7 +610,7 @@ export default function Dashboard() {
                                     {project.level === 0 || project.isRoot ? 'Raiz' : `N${project.level}`}
                                   </div>
 
-                                  <div className="absolute inset-0 bg-white/0 group-hover:bg-white/90 transition-all flex items-center justify-center">
+                                  <div className="absolute inset-0 bg-white/0 group-hover:bg-white/90 dark:group-hover:bg-slate-800/90 transition-all flex items-center justify-center">
                                     <span className="opacity-0 group-hover:opacity-100 transition-opacity text-fyness-primary font-medium text-xs">
                                       Abrir
                                     </span>
@@ -593,13 +618,13 @@ export default function Dashboard() {
                                 </div>
 
                                 <div className="p-2">
-                                  <h3 className="font-semibold text-slate-800 truncate text-xs">{project.name}</h3>
-                                  <p className="text-[9px] text-slate-400 mb-1.5">{formatDate(project.updatedAt)}</p>
+                                  <h3 className="font-semibold text-slate-800 dark:text-slate-100 truncate text-xs">{project.name}</h3>
+                                  <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-1.5">{formatDate(project.updatedAt)}</p>
 
                                   {project.parentId && (
-                                    <div className="mb-1.5 p-1 bg-slate-50 rounded flex items-center gap-1 text-[8px]">
+                                    <div className="mb-1.5 p-1 bg-slate-50 dark:bg-slate-700/50 rounded flex items-center gap-1 text-[8px]">
                                       <div className={`w-1 h-1 rounded-full ${getLevelColor((project.level || 1) - 1).bg}`}></div>
-                                      <span className="text-slate-500 truncate">
+                                      <span className="text-slate-500 dark:text-slate-400 truncate">
                                         ← {getParentName(project.parentId)}
                                       </span>
                                     </div>
@@ -617,7 +642,7 @@ export default function Dashboard() {
                                         setShowDependencyModal(project.id);
                                         setSelectedParent(project.parentId || '');
                                       }}
-                                      className="px-1.5 py-0.5 border border-slate-200 text-slate-500 rounded hover:bg-slate-50 transition-colors"
+                                      className="px-1.5 py-0.5 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
                                       title="Dependência"
                                     >
                                       <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -626,7 +651,7 @@ export default function Dashboard() {
                                     </button>
                                     <button
                                       onClick={() => setShowDeleteModal(project.id)}
-                                      className="px-1.5 py-0.5 border border-red-200 text-red-400 rounded hover:bg-red-50 transition-colors"
+                                      className="px-1.5 py-0.5 border border-red-200 dark:border-red-800 text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                       title="Excluir"
                                     >
                                       <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -646,31 +671,6 @@ export default function Dashboard() {
               );
             })}
 
-            {/* Legend */}
-            <div className="p-4 bg-white rounded-xl border border-slate-200">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Legenda - Relacionamento entre Fluxos</h3>
-              <div className="flex flex-wrap gap-4 text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-gradient-to-r from-green-500 to-emerald-600"></div>
-                  <span className="text-slate-600">Nível 0 - Raiz</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-gradient-to-r from-blue-500 to-indigo-600"></div>
-                  <span className="text-slate-600">Nível 1</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-gradient-to-r from-purple-500 to-violet-600"></div>
-                  <span className="text-slate-600">Nível 2+</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <svg className="w-6 h-3" viewBox="0 0 24 12">
-                    <path d="M0 6 L18 6" stroke="#3b82f6" strokeWidth="2" fill="none" />
-                    <polygon points="16,3 22,6 16,9" fill="#3b82f6" />
-                  </svg>
-                  <span className="text-slate-600">Dependência</span>
-                </div>
-              </div>
-            </div>
           </>
         )}
       </main>
@@ -678,44 +678,115 @@ export default function Dashboard() {
       {/* Company Modal */}
       {showCompanyModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-800">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl dark:shadow-slate-900/50 max-w-md w-full mx-4 overflow-hidden">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {editingCompany ? 'Editar Empresa' : 'Nova Empresa'}
               </h3>
             </div>
 
-            <div className="p-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Nome da Empresa
-              </label>
-              <input
-                type="text"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
-                placeholder="Ex: Empresa de Tecnologia"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && companyName.trim()) {
-                    editingCompany ? handleEditCompany() : handleCreateCompany();
-                  }
-                  if (e.key === 'Escape') {
-                    setShowCompanyModal(false);
-                    setEditingCompany(null);
-                  }
-                }}
-              />
+            <div className="p-6 space-y-5">
+              {/* Nome */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                  Nome da Empresa
+                </label>
+                <input
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent dark:bg-slate-800 dark:text-slate-200"
+                  placeholder="Ex: Empresa de Tecnologia"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && companyName.trim()) {
+                      editingCompany ? handleEditCompany() : handleCreateCompany();
+                    }
+                    if (e.key === 'Escape') {
+                      setShowCompanyModal(false);
+                      setEditingCompany(null);
+                      setCompanyColor(0);
+                      setCompanyImage(null);
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Seletor de Cor */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                  Cor
+                </label>
+                <div className="flex gap-3">
+                  {COMPANY_COLORS.map((color, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCompanyColor(idx)}
+                      className={`w-10 h-10 rounded-full ${color.bg} transition-all ${companyColor === idx ? 'ring-3 ring-offset-2 ring-slate-400 dark:ring-offset-slate-800 scale-110' : 'hover:scale-105 opacity-70 hover:opacity-100'}`}
+                      title={`Cor ${idx + 1}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Upload de Imagem */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                  Logo / Imagem
+                </label>
+                <div className="flex items-center gap-4">
+                  {companyImage ? (
+                    <div className="relative">
+                      <img
+                        src={companyImage}
+                        alt="Logo"
+                        className="w-16 h-16 rounded-xl object-cover border-2 border-slate-200 dark:border-slate-700"
+                      />
+                      <button
+                        onClick={() => setCompanyImage(null)}
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                        title="Remover imagem"
+                      >
+                        x
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-400 dark:text-slate-500">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                  )}
+                  <div>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => imageInputRef.current?.click()}
+                      className="px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                    >
+                      {companyImage ? 'Trocar Imagem' : 'Escolher Imagem'}
+                    </button>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">PNG, JPG. Max 500KB</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="p-6 bg-slate-50 flex gap-3 justify-end">
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex gap-3 justify-end">
               <button
                 onClick={() => {
                   setShowCompanyModal(false);
                   setEditingCompany(null);
                   setCompanyName('');
+                  setCompanyColor(0);
+                  setCompanyImage(null);
                 }}
-                className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+                className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancelar
               </button>
@@ -734,19 +805,19 @@ export default function Dashboard() {
       {/* Dependency Modal */}
       {showDependencyModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-800">Definir Dependência</h3>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl dark:shadow-slate-900/50 max-w-md w-full mx-4 overflow-hidden">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Definir Dependência</h3>
             </div>
 
             <div className="p-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
                 Este fluxo depende de:
               </label>
               <select
                 value={selectedParent}
                 onChange={(e) => setSelectedParent(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+                className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent dark:bg-slate-800 dark:text-slate-200"
               >
                 <option value="">Nenhum (Fluxo Raiz)</option>
                 {getAvailableParents(showDependencyModal, currentProjectForDependency?.companyId).map((p) => (
@@ -757,13 +828,13 @@ export default function Dashboard() {
               </select>
             </div>
 
-            <div className="p-6 bg-slate-50 flex gap-3 justify-end">
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex gap-3 justify-end">
               <button
                 onClick={() => {
                   setShowDependencyModal(null);
                   setSelectedParent('');
                 }}
-                className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+                className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancelar
               </button>
@@ -781,20 +852,20 @@ export default function Dashboard() {
       {/* New Project Modal */}
       {showNewProjectModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-800">Novo Fluxo</h3>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl dark:shadow-slate-900/50 max-w-md w-full mx-4 overflow-hidden">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Novo Fluxo</h3>
             </div>
 
             <div className="p-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
                 Nome do Fluxo
               </label>
               <input
                 type="text"
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+                className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent dark:bg-slate-800 dark:text-slate-200"
                 placeholder="Ex: Processo de Vendas"
                 autoFocus
                 onKeyDown={(e) => {
@@ -804,13 +875,13 @@ export default function Dashboard() {
               />
             </div>
 
-            <div className="p-6 bg-slate-50 flex gap-3 justify-end">
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex gap-3 justify-end">
               <button
                 onClick={() => {
                   setShowNewProjectModal(false);
                   setSelectedCompanyForProject(null);
                 }}
-                className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+                className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancelar
               </button>
@@ -829,25 +900,25 @@ export default function Dashboard() {
       {/* Delete Project Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl dark:shadow-slate-900/50 max-w-sm w-full mx-4 overflow-hidden">
             <div className="p-6">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-slate-800 text-center mb-2">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 text-center mb-2">
                 Excluir Fluxo?
               </h3>
-              <p className="text-sm text-slate-500 text-center">
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
                 Esta ação não pode ser desfeita.
               </p>
             </div>
 
-            <div className="p-6 bg-slate-50 flex gap-3 justify-center">
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex gap-3 justify-center">
               <button
                 onClick={() => setShowDeleteModal(null)}
-                className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+                className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancelar
               </button>
@@ -865,25 +936,25 @@ export default function Dashboard() {
       {/* Delete Company Modal */}
       {showDeleteCompanyModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl dark:shadow-slate-900/50 max-w-sm w-full mx-4 overflow-hidden">
             <div className="p-6">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-slate-800 text-center mb-2">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 text-center mb-2">
                 Excluir Empresa?
               </h3>
-              <p className="text-sm text-slate-500 text-center">
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
                 Todos os fluxos desta empresa serão excluídos.
               </p>
             </div>
 
-            <div className="p-6 bg-slate-50 flex gap-3 justify-center">
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex gap-3 justify-center">
               <button
                 onClick={() => setShowDeleteCompanyModal(null)}
-                className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+                className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancelar
               </button>

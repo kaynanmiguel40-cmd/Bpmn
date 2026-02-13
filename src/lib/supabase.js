@@ -1,229 +1,68 @@
 import { createClient } from '@supabase/supabase-js';
+import { createCRUDService } from './serviceFactory';
 
-const supabaseUrl = 'https://ydiwxlrkrmygpdfacpkt.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkaXd4bHJrcm15Z3BkZmFjcGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwNzAwMTIsImV4cCI6MjA4NTY0NjAxMn0.uMqOpfKiRSpyaG0Da47KZWI5rOm7_Negsd5VU8J8RiI';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// ==================== COMPANIES ====================
+// ==================== CRIAR USUARIO AUTH ====================
 
-export async function getCompanies() {
-  const { data, error } = await supabase
-    .from('companies')
-    .select('*')
-    .order('created_at', { ascending: true });
+/**
+ * Cria um usuario no Supabase Auth sem deslogar o admin atual.
+ * Salva a sessao do admin, cria o usuario, e restaura a sessao.
+ */
+export async function createAuthUser(email, password, fullName) {
+  // 1. Salvar sessao atual do admin
+  const { data: { session: adminSession } } = await supabase.auth.getSession();
 
-  if (error) {
-    console.log('⚠️ Supabase não conectado, usando localStorage');
-    // FALLBACK: localStorage
-    const localCompanies = JSON.parse(localStorage.getItem('bpmn_companies') || '[]');
-    return localCompanies;
-  }
-  return data || [];
-}
+  try {
+    // 2. Criar novo usuario
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: fullName },
+      },
+    });
 
-export async function createCompany(company) {
-  const { data, error } = await supabase
-    .from('companies')
-    .insert([{
-      name: company.name,
-      color_index: company.colorIndex || 0
-    }])
-    .select()
-    .single();
+    if (error) throw error;
 
-  if (error) {
-    console.log('⚠️ Supabase não conectado, criando empresa no localStorage');
-    // FALLBACK: localStorage
-    const localCompanies = JSON.parse(localStorage.getItem('bpmn_companies') || '[]');
-    const newCompany = {
-      id: `local_company_${Date.now()}`,
-      name: company.name,
-      color_index: company.colorIndex || 0,
-      created_at: new Date().toISOString()
-    };
-    localCompanies.push(newCompany);
-    localStorage.setItem('bpmn_companies', JSON.stringify(localCompanies));
-    console.log('✅ Empresa criada no localStorage!');
-    return newCompany;
-  }
-  return data;
-}
+    const newUserId = data.user?.id || null;
 
-export async function updateCompany(id, updates) {
-  const { data, error } = await supabase
-    .from('companies')
-    .update({
-      name: updates.name,
-      color_index: updates.colorIndex,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error updating company:', error);
-    return null;
-  }
-  return data;
-}
-
-export async function deleteCompany(id) {
-  const { error } = await supabase
-    .from('companies')
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    console.error('Error deleting company:', error);
-    return false;
-  }
-  return true;
-}
-
-// ==================== PROJECTS/FLOWS ====================
-
-export async function getProjects() {
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    console.error('Error fetching projects (usando localStorage):', error);
-    // FALLBACK: localStorage
-    const localProjects = JSON.parse(localStorage.getItem('bpmn_projects') || '[]');
-    return localProjects;
-  }
-  return data || [];
-}
-
-export async function getProjectById(id) {
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    console.error('Error fetching project (usando localStorage):', error);
-    // FALLBACK: localStorage
-    const localProjects = JSON.parse(localStorage.getItem('bpmn_projects') || '[]');
-    const project = localProjects.find(p => p.id === id);
-    return project || null;
-  }
-  return data;
-}
-
-export async function createProject(project) {
-  const { data, error } = await supabase
-    .from('projects')
-    .insert([{
-      name: project.name,
-      xml: project.xml,
-      company_id: project.companyId,
-      parent_id: project.parentId || null,
-      level: project.level || 0,
-      is_root: project.isRoot || false,
-      is_template: project.isTemplate || false
-    }])
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error creating project (usando localStorage):', error);
-    // FALLBACK: localStorage
-    const localProjects = JSON.parse(localStorage.getItem('bpmn_projects') || '[]');
-    const newProject = {
-      id: `local_${Date.now()}`,
-      name: project.name,
-      xml: project.xml,
-      company_id: project.companyId,
-      parent_id: project.parentId || null,
-      level: project.level || 0,
-      is_root: project.isRoot || false,
-      is_template: project.isTemplate || false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    localProjects.push(newProject);
-    localStorage.setItem('bpmn_projects', JSON.stringify(localProjects));
-    console.log('✅ Projeto criado no localStorage!');
-    return newProject;
-  }
-  return data;
-}
-
-export async function updateProject(id, updates) {
-  const updateData = {
-    updated_at: new Date().toISOString()
-  };
-
-  if (updates.name !== undefined) updateData.name = updates.name;
-  if (updates.xml !== undefined) updateData.xml = updates.xml;
-  if (updates.companyId !== undefined) updateData.company_id = updates.companyId;
-  if (updates.parentId !== undefined) updateData.parent_id = updates.parentId;
-  if (updates.level !== undefined) updateData.level = updates.level;
-  if (updates.isRoot !== undefined) updateData.is_root = updates.isRoot;
-
-  const { data, error } = await supabase
-    .from('projects')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    console.log('⚠️ Supabase não conectado, usando localStorage como fallback');
-
-    // FALLBACK: localStorage
-    try {
-      const localProjects = JSON.parse(localStorage.getItem('bpmn_projects') || '[]');
-      const projectIndex = localProjects.findIndex(p => p.id === id);
-
-      if (projectIndex >= 0) {
-        // Atualizar projeto existente
-        localProjects[projectIndex] = {
-          ...localProjects[projectIndex],
-          ...updateData,
-          name: updates.name !== undefined ? updates.name : localProjects[projectIndex].name,
-          xml: updates.xml !== undefined ? updates.xml : localProjects[projectIndex].xml,
-          company_id: updates.companyId !== undefined ? updates.companyId : localProjects[projectIndex].company_id,
-          parent_id: updates.parentId !== undefined ? updates.parentId : localProjects[projectIndex].parent_id,
-          level: updates.level !== undefined ? updates.level : localProjects[projectIndex].level,
-          is_root: updates.isRoot !== undefined ? updates.isRoot : localProjects[projectIndex].is_root
-        };
-
-        localStorage.setItem('bpmn_projects', JSON.stringify(localProjects));
-        console.log('✅ Salvo no localStorage!', { id, updates });
-        return localProjects[projectIndex];
-      } else {
-        console.error('Projeto não encontrado no localStorage:', id);
-        return null;
-      }
-    } catch (localError) {
-      console.error('Error salvando no localStorage:', localError);
-      return null;
+    // 3. Restaurar sessao do admin
+    if (adminSession) {
+      await supabase.auth.setSession({
+        access_token: adminSession.access_token,
+        refresh_token: adminSession.refresh_token,
+      });
     }
+
+    return { success: true, userId: newUserId };
+  } catch (err) {
+    // Restaurar sessao do admin mesmo em caso de erro
+    if (adminSession) {
+      await supabase.auth.setSession({
+        access_token: adminSession.access_token,
+        refresh_token: adminSession.refresh_token,
+      });
+    }
+    return { success: false, error: err.message };
   }
-  return data;
 }
 
-export async function deleteProject(id) {
-  const { error } = await supabase
-    .from('projects')
-    .delete()
-    .eq('id', id);
+// ==================== TRANSFORMADORES ====================
 
-  if (error) {
-    console.error('Error deleting project:', error);
-    return false;
-  }
-  return true;
+export function dbToCompany(dbCompany) {
+  if (!dbCompany) return null;
+  return {
+    id: dbCompany.id,
+    name: dbCompany.name,
+    colorIndex: dbCompany.color_index,
+    image: dbCompany.image || null,
+    createdAt: dbCompany.created_at
+  };
 }
-
-// ==================== HELPER TO CONVERT DB FORMAT ====================
 
 export function dbToProject(dbProject) {
   if (!dbProject) return null;
@@ -241,12 +80,45 @@ export function dbToProject(dbProject) {
   };
 }
 
-export function dbToCompany(dbCompany) {
-  if (!dbCompany) return null;
-  return {
-    id: dbCompany.id,
-    name: dbCompany.name,
-    colorIndex: dbCompany.color_index,
-    createdAt: dbCompany.created_at
-  };
-}
+// ==================== COMPANIES (via factory) ====================
+
+const companyService = createCRUDService({
+  table: 'companies',
+  localKey: 'bpmn_companies',
+  idPrefix: 'local_company',
+  transform: dbToCompany,
+  fieldMap: {
+    name: 'name',
+    colorIndex: 'color_index',
+    image: 'image',
+  },
+});
+
+export const getCompanies = companyService.getAll;
+export const createCompany = (company) => companyService.create(company);
+export const updateCompany = (id, updates) => companyService.update(id, updates);
+export const deleteCompany = (id) => companyService.remove(id);
+
+// ==================== PROJECTS (via factory) ====================
+
+const projectService = createCRUDService({
+  table: 'projects',
+  localKey: 'bpmn_projects',
+  idPrefix: 'local',
+  transform: dbToProject,
+  fieldMap: {
+    name: 'name',
+    xml: 'xml',
+    companyId: 'company_id',
+    parentId: 'parent_id',
+    level: 'level',
+    isRoot: 'is_root',
+    isTemplate: 'is_template',
+  },
+});
+
+export const getProjects = projectService.getAll;
+export const getProjectById = (id) => projectService.getById(id);
+export const createProject = (project) => projectService.create(project);
+export const updateProject = (id, updates) => projectService.update(id, updates);
+export const deleteProject = (id) => projectService.remove(id);

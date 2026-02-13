@@ -88,7 +88,7 @@ const tooltipTranslations = {
   'Redo': 'Refazer',
 };
 
-const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementSelect, onFluxosClick, showGrid = true, onGridToggle, onAddImage }, ref) {
+const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementSelect, onFluxosClick, showGrid = true, onGridToggle, onAddImage, onCommandStackChanged }, ref) {
   const containerRef = useRef(null);
   const modelerRef = useRef(null);
   const initialXmlRef = useRef(xml);
@@ -110,6 +110,16 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
         }
       }
       return null;
+    },
+    undo() {
+      if (modelerRef.current) {
+        try { modelerRef.current.get('commandStack').undo(); } catch (e) { console.error('Erro ao desfazer:', e); }
+      }
+    },
+    redo() {
+      if (modelerRef.current) {
+        try { modelerRef.current.get('commandStack').redo(); } catch (e) { console.error('Erro ao refazer:', e); }
+      }
     },
     // Método para mudar cor de um elemento
     setElementColor(element, color) {
@@ -600,12 +610,12 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
               const robotSvg = document.createElement('div');
               robotSvg.className = 'robot-icon-overlay';
               robotSvg.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;">
                   <rect x="3" y="11" width="18" height="10" rx="2" />
                   <circle cx="12" cy="5" r="2" />
                   <line x1="12" y1="7" x2="12" y2="11" />
-                  <line x1="8" y1="16" x2="8" y2="16" stroke-width="3" />
-                  <line x1="16" y1="16" x2="16" y2="16" stroke-width="3" />
+                  <circle cx="8" cy="16" r="1" />
+                  <circle cx="16" cy="16" r="1" />
                 </svg>
               `;
               overlays.add(element.id, 'robot-icon', { position: { top: 5, left: 5 }, html: robotSvg });
@@ -1304,14 +1314,12 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
               const robotSvg = document.createElement('div');
               robotSvg.className = 'robot-icon-overlay';
               robotSvg.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;">
                   <rect x="3" y="11" width="18" height="10" rx="2" />
                   <circle cx="12" cy="5" r="2" />
                   <line x1="12" y1="7" x2="12" y2="11" />
-                  <line x1="8" y1="16" x2="8" y2="16" stroke-width="3" />
-                  <line x1="16" y1="16" x2="16" y2="16" stroke-width="3" />
-                  <path d="M9 21v-1" />
-                  <path d="M15 21v-1" />
+                  <circle cx="8" cy="16" r="1" />
+                  <circle cx="16" cy="16" r="1" />
                 </svg>
               `;
 
@@ -1392,7 +1400,13 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
             robotEntry.className = 'entry';
             robotEntry.setAttribute('data-action', 'replace-with-robot-task');
             robotEntry.innerHTML = `
-              <span class="robot-menu-icon" style="font-size: 20px; margin-right: 8px;">🤖</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px; margin-right: 8px; flex-shrink: 0;">
+                <rect x="3" y="11" width="18" height="10" rx="2" />
+                <circle cx="12" cy="5" r="2" />
+                <line x1="12" y1="7" x2="12" y2="11" />
+                <circle cx="8" cy="16" r="1" />
+                <circle cx="16" cy="16" r="1" />
+              </svg>
               <span>Tarefa Automatizada</span>
             `;
             robotEntry.style.cursor = 'pointer';
@@ -1449,6 +1463,13 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
             if (onXmlChange) onXmlChange(newXml);
           } catch (e) {
             console.error('Erro ao exportar:', e);
+          }
+          // Notificar pai sobre estado de undo/redo
+          if (onCommandStackChanged) {
+            try {
+              const cs = modeler.get('commandStack');
+              onCommandStackChanged({ canUndo: cs.canUndo(), canRedo: cs.canRedo() });
+            } catch (e) {}
           }
         });
 
@@ -1682,7 +1703,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
 
           // Ícone do Fluxos (ícone de pastas/workflow)
           fluxosEntry.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.8;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.8;">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
               <line x1="12" y1="11" x2="12" y2="17"></line>
               <line x1="9" y1="14" x2="15" y2="14"></line>
@@ -1772,18 +1793,18 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
 
           // Ícone de robô
           robotEntry.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.8;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="11" width="18" height="10" rx="2" />
               <circle cx="12" cy="5" r="2" />
               <line x1="12" y1="7" x2="12" y2="11" />
-              <line x1="8" y1="16" x2="8" y2="16" stroke-width="3" />
-              <line x1="16" y1="16" x2="16" y2="16" stroke-width="3" />
+              <circle cx="8" cy="16" r="1" />
+              <circle cx="16" cy="16" r="1" />
             </svg>
           `;
 
           // Hover effects para robô
           robotEntry.addEventListener('mouseenter', (e) => {
-            robotEntry.style.background = '#f5f3ff';
+            robotEntry.style.background = '#f1f5f9';
             robotEntry.style.transform = 'scale(1.05)';
             showTooltip(e);
           });
@@ -1839,11 +1860,11 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
               // Definir nome com prefixo [ROBO] para ativar o ícone
               modeling.updateProperties(shape, { name: '[ROBO] Nova Automação' });
 
-              // Aplicar cor roxa
+              // Aplicar cor neutra
               setTimeout(() => {
                 modeling.setColor([shape], {
-                  fill: '#f5f3ff',
-                  stroke: '#8b5cf6'
+                  fill: '#f8fafc',
+                  stroke: '#475569'
                 });
               }, 100);
 
@@ -1926,7 +1947,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
       {isLoading && (
         <div className="absolute inset-0 bg-white/90 flex items-center justify-center z-10">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
             <span className="text-slate-600">Carregando...</span>
           </div>
         </div>
@@ -1942,85 +1963,99 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
         </div>
       )}
 
-      {/* Toolbar */}
+      {/* Toolbar - Compacto */}
       {!isLoading && !error && (
-        <div className="absolute top-4 right-4 z-20">
-          <div className="bg-white rounded-lg shadow-lg flex items-center border border-slate-200">
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+          {/* Zoom controls */}
+          <div className="bg-white/90 backdrop-blur-sm rounded-full shadow-sm flex items-center px-1 py-0.5 border border-slate-200/60">
             <button
               onClick={zoomOut}
-              className="px-3 py-2 hover:bg-slate-100 border-r border-slate-200"
+              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
               title="Diminuir zoom"
             >
-              <span className="text-xl font-bold text-slate-600">−</span>
+              <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" d="M5 12h14" />
+              </svg>
             </button>
             <button
               onClick={zoomReset}
-              className="px-4 py-2 hover:bg-slate-100 border-r border-slate-200 text-sm font-semibold text-slate-700 min-w-[70px]"
+              className="px-2 h-7 text-[11px] font-medium text-slate-600 hover:bg-slate-100 rounded-full transition-colors min-w-[44px] text-center"
               title="Resetar para 100%"
             >
               {zoomLevel}%
             </button>
             <button
               onClick={zoomIn}
-              className="px-3 py-2 hover:bg-slate-100 border-r border-slate-200"
+              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
               title="Aumentar zoom"
             >
-              <span className="text-xl font-bold text-slate-600">+</span>
+              <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+              </svg>
             </button>
+          </div>
+
+          {/* Fit + Grid */}
+          <div className="bg-white/90 backdrop-blur-sm rounded-full shadow-sm flex items-center px-1 py-0.5 border border-slate-200/60">
             <button
               onClick={zoomFit}
-              className="px-3 py-2 hover:bg-slate-100 border-r border-slate-200"
+              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
               title="Ajustar à tela"
             >
-              <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
               </svg>
             </button>
             <button
               onClick={onGridToggle}
-              className={`px-3 py-2 hover:bg-slate-100 transition-colors border-r border-slate-200 ${showGrid ? 'bg-indigo-50' : ''}`}
+              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${showGrid ? 'bg-blue-100' : 'hover:bg-slate-100'}`}
               title={showGrid ? "Desativar grade" : "Ativar grade"}
             >
-              <svg className={`w-5 h-5 ${showGrid ? 'text-indigo-600' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+              <svg className={`w-3.5 h-3.5 ${showGrid ? 'text-blue-600' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
               </svg>
             </button>
-            {/* Botão Adicionar Raia com Dropdown */}
-            <div className="relative" data-raia-menu>
-              <button
-                onClick={() => setShowAddRaiaMenu(!showAddRaiaMenu)}
-                className={`px-3 py-2 hover:bg-slate-100 transition-colors flex items-center gap-1 ${showAddRaiaMenu ? 'bg-emerald-50' : ''}`}
-                title="Adicionar Raia"
-              >
-                <svg className={`w-5 h-5 ${showAddRaiaMenu ? 'text-emerald-600' : 'text-slate-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                <span className={`text-xs font-medium ${showAddRaiaMenu ? 'text-emerald-600' : 'text-slate-600'}`}>Raia</span>
-              </button>
-              {showAddRaiaMenu && (
-                <div className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-xl border border-slate-200 py-1 min-w-[180px] z-50">
-                  <button
-                    onClick={async () => {
-                      setShowAddRaiaMenu(false);
-                      await handleAddIndicacoesRaia();
-                    }}
-                    className="w-full px-4 py-2 text-left hover:bg-emerald-50 flex items-center gap-2 text-sm"
-                  >
-                    <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    <div>
-                      <div className="font-medium text-slate-700">Indicações</div>
-                      <div className="text-xs text-slate-500">Funil da Confiança</div>
-                    </div>
-                  </button>
-                  <div className="border-t border-slate-100 my-1"></div>
-                  <div className="px-4 py-2 text-xs text-slate-400 italic">
-                    Mais raias em breve...
+          </div>
+
+          {/* Adicionar Raia */}
+          <div className="relative" data-raia-menu>
+            <button
+              onClick={() => setShowAddRaiaMenu(!showAddRaiaMenu)}
+              className={`h-8 px-2.5 rounded-full shadow-sm border flex items-center gap-1.5 transition-colors text-[11px] font-medium ${
+                showAddRaiaMenu
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                  : 'bg-white/90 backdrop-blur-sm border-slate-200/60 text-slate-600 hover:bg-slate-50'
+              }`}
+              title="Adicionar Raia"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+              </svg>
+              Raia
+            </button>
+            {showAddRaiaMenu && (
+              <div className="absolute top-full right-0 mt-1.5 bg-white rounded-lg shadow-xl border border-slate-200 py-1 min-w-[180px] z-50">
+                <button
+                  onClick={async () => {
+                    setShowAddRaiaMenu(false);
+                    await handleAddIndicacoesRaia();
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-emerald-50 flex items-center gap-2 text-sm"
+                >
+                  <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <div>
+                    <div className="font-medium text-slate-700 text-xs">Indicações</div>
+                    <div className="text-[10px] text-slate-500">Funil da Confiança</div>
                   </div>
+                </button>
+                <div className="border-t border-slate-100 my-1"></div>
+                <div className="px-3 py-1.5 text-[10px] text-slate-400 italic">
+                  Mais raias em breve...
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}

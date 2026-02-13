@@ -4,28 +4,26 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { getAgendaEvents, createAgendaEvent, updateAgendaEvent, deleteAgendaEvent } from '../../lib/agendaService';
+import { getTeamMembers, shortName } from '../../lib/teamService';
+import { getProfile } from '../../lib/profileService';
+import { expandRecurrences, toDateKey } from '../../lib/recurrenceUtils';
+import { getOSOrders } from '../../lib/osService';
 
 // ==================== CONSTANTES ====================
 
-const STORAGE_KEY = 'agenda_events';
-
-const TEAM_MEMBERS = [
-  { id: '1', name: 'Admin', color: '#6366f1' },
-  { id: '2', name: 'Operador 1', color: '#22c55e' },
-  { id: '3', name: 'Operador 2', color: '#f97316' },
-  { id: '4', name: 'Operador 3', color: '#ec4899' },
-];
-
 const EVENT_TYPES = [
-  { id: 'meeting', label: 'Reuniao', color: '#6366f1' },
+  { id: 'meeting', label: 'Reuniao', color: '#3b82f6' },
   { id: 'os', label: 'Ordem de Servico', color: '#f97316' },
   { id: 'task', label: 'Tarefa', color: '#22c55e' },
   { id: 'personal', label: 'Pessoal', color: '#64748b' },
 ];
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 7); // 07h - 22h
+const BUSINESS_HOURS = { start: 8, end: 18 }; // Horario comercial: 08h - 18h
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+const DAYS_FULL_PT = ['domingo', 'segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sabado'];
 const MONTHS_PT = [
   'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
@@ -86,82 +84,36 @@ function toLocalDateString(date) {
   return `${y}-${m}-${d}`;
 }
 
-// ==================== SEED DATA ====================
-
-function getSeedEvents() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const d = now.getDate();
-  const dow = now.getDay();
-
-  // Helper para criar datas relativas a hoje
-  const dt = (dayOffset, hour, min = 0) => new Date(y, m, d + dayOffset, hour, min).toISOString();
-
-  return [
-    // HOJE
-    { id: 'seed_1', title: 'Daily Standup', description: 'Alinhamento diario da equipe', startDate: dt(0, 9, 0), endDate: dt(0, 9, 30), assignee: '1', type: 'meeting', color: '#6366f1', createdAt: dt(-1, 8) },
-    { id: 'seed_2', title: 'O.S. #142 - Manutencao Servidor', description: 'Atualizar pacotes e reiniciar servicos', startDate: dt(0, 10, 0), endDate: dt(0, 12, 0), assignee: '2', type: 'os', color: '#f97316', createdAt: dt(-1, 8) },
-    { id: 'seed_3', title: 'Revisar proposta comercial', description: 'Cliente Acme Corp - contrato anual', startDate: dt(0, 14, 0), endDate: dt(0, 15, 0), assignee: '1', type: 'task', color: '#22c55e', createdAt: dt(-1, 8) },
-    { id: 'seed_4', title: 'O.S. #143 - Deploy Frontend', description: 'Deploy da versao 2.1 em producao', startDate: dt(0, 15, 30), endDate: dt(0, 16, 30), assignee: '3', type: 'os', color: '#f97316', createdAt: dt(-1, 8) },
-
-    // AMANHA
-    { id: 'seed_5', title: 'Reuniao com cliente', description: 'Apresentacao do projeto BPMN', startDate: dt(1, 10, 0), endDate: dt(1, 11, 30), assignee: '1', type: 'meeting', color: '#6366f1', createdAt: dt(-1, 8) },
-    { id: 'seed_6', title: 'O.S. #144 - Corrigir bug login', description: 'Bug reportado pelo cliente - tela branca apos login', startDate: dt(1, 13, 0), endDate: dt(1, 15, 0), assignee: '2', type: 'os', color: '#f97316', createdAt: dt(-1, 8) },
-    { id: 'seed_7', title: 'Treino da equipe', description: 'Workshop sobre boas praticas React', startDate: dt(1, 16, 0), endDate: dt(1, 17, 30), assignee: '4', type: 'task', color: '#22c55e', createdAt: dt(-1, 8) },
-
-    // DEPOIS DE AMANHA
-    { id: 'seed_8', title: 'Sprint Planning', description: 'Planejamento da sprint 14', startDate: dt(2, 9, 0), endDate: dt(2, 10, 30), assignee: '1', type: 'meeting', color: '#6366f1', createdAt: dt(-1, 8) },
-    { id: 'seed_9', title: 'O.S. #145 - Configurar backup', description: 'Configurar backup automatico do banco', startDate: dt(2, 11, 0), endDate: dt(2, 13, 0), assignee: '3', type: 'os', color: '#f97316', createdAt: dt(-1, 8) },
-
-    // PROXIMA SEMANA
-    { id: 'seed_10', title: 'Retrospectiva Sprint 13', description: 'O que foi bom, o que melhorar', startDate: dt(5, 14, 0), endDate: dt(5, 15, 0), assignee: '1', type: 'meeting', color: '#6366f1', createdAt: dt(-1, 8) },
-    { id: 'seed_11', title: 'O.S. #146 - Migrar banco de dados', description: 'Migrar tabelas para novo schema', startDate: dt(5, 9, 0), endDate: dt(5, 12, 0), assignee: '2', type: 'os', color: '#f97316', createdAt: dt(-1, 8) },
-    { id: 'seed_12', title: 'Almoco de integracao', description: 'Confraternizacao mensal da equipe', startDate: dt(6, 12, 0), endDate: dt(6, 13, 30), assignee: '4', type: 'personal', color: '#64748b', createdAt: dt(-1, 8) },
-
-    // SEMANA ANTERIOR (historico)
-    { id: 'seed_13', title: 'O.S. #140 - Setup ambiente', description: 'Configurar ambiente de desenvolvimento novo colaborador', startDate: dt(-2, 9, 0), endDate: dt(-2, 11, 0), assignee: '3', type: 'os', color: '#f97316', createdAt: dt(-3, 8) },
-    { id: 'seed_14', title: 'Reuniao de resultados', description: 'Apresentacao de KPIs do mes', startDate: dt(-1, 15, 0), endDate: dt(-1, 16, 0), assignee: '1', type: 'meeting', color: '#6366f1', createdAt: dt(-3, 8) },
-  ];
-}
-
-// ==================== PERSISTENCIA ====================
-
-function loadEvents() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (stored === null) {
-      // Primeiro acesso: carregar dados de exemplo
-      const seed = getSeedEvents();
-      saveEvents(seed);
-      return seed;
-    }
-    return stored;
-  } catch {
-    return [];
-  }
-}
-
-function saveEvents(events) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
-}
-
 // ==================== COMPONENTE PRINCIPAL ====================
 
 export default function AgendaPage() {
   const today = new Date();
   const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(today);
-  const [view, setView] = useState('month');
+  const [view, setView] = useState('day');
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
-  const [activeFilters, setActiveFilters] = useState(TEAM_MEMBERS.map(m => m.id)); // todos ativos por padrao
+  const [quickCreate, setQuickCreate] = useState(null); // { date, startTime, endTime }
+  const [recurrenceAction, setRecurrenceAction] = useState(null); // { event, action: 'edit'|'delete' }
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [profile, setProfile] = useState({});
+  const [osOrders, setOsOrders] = useState([]);
+  const [activeFilters, setActiveFilters] = useState([]); // inicializa vazio, preenche ao carregar
+
+  // Lista completa: membros cadastrados + perfil logado
+  const allMembers = useMemo(() => {
+    if (!profile.name) return teamMembers;
+    const alreadyIn = teamMembers.some(m => m.name.toLowerCase().trim() === profile.name.toLowerCase().trim());
+    if (alreadyIn) return teamMembers;
+    return [{ id: 'profile_self', name: profile.name, role: profile.role || '', color: '#3b82f6' }, ...teamMembers];
+  }, [teamMembers, profile]);
 
   const toggleFilter = (memberId) => {
     setActiveFilters(prev => {
       if (prev.includes(memberId)) {
-        if (prev.length === 1) return TEAM_MEMBERS.map(m => m.id); // se desmarcar o ultimo, reativa todos
+        if (prev.length === 1) return allMembers.map(m => m.id); // se desmarcar o ultimo, reativa todos
         return prev.filter(id => id !== memberId);
       }
       return [...prev, memberId];
@@ -177,39 +129,81 @@ export default function AgendaPage() {
     endDate: toLocalDateString(today),
     endTime: '10:00',
     assignee: '1',
+    attendees: [],
     type: 'task',
+    attended: false,
+    wasLate: false,
+    lateMinutes: 0,
+    recurrenceType: null,
+    recurrenceConfig: { interval: 1 },
+    recurrenceEndType: 'never',
+    recurrenceEndValue: '',
   });
 
-  // Carregar eventos
+  // Carregar eventos, membros, perfil e O.S.
   useEffect(() => {
-    setEvents(loadEvents());
-  }, []);
-
-  // Persistir eventos
-  const updateEvents = useCallback((newEvents) => {
-    setEvents(newEvents);
-    saveEvents(newEvents);
+    (async () => {
+      const [data, members, prof, orders] = await Promise.all([getAgendaEvents(), getTeamMembers(), getProfile(), getOSOrders()]);
+      setEvents(data);
+      setTeamMembers(members);
+      setProfile(prof);
+      setOsOrders(orders);
+      // Filtros: incluir perfil se nao estiver nos membros
+      const profName = prof?.name?.toLowerCase().trim();
+      const profAlreadyIn = profName && members.some(m => m.name.toLowerCase().trim() === profName);
+      const allIds = profAlreadyIn ? members.map(m => m.id) : ['profile_self', ...members.map(m => m.id)];
+      setActiveFilters(allIds);
+      setLoading(false);
+    })();
   }, []);
 
   // ==================== HANDLERS ====================
 
   const openCreateModal = (date) => {
-    const dateStr = date ? toLocalDateString(date) : toLocalDateString(currentDate);
+    const d = date || currentDate;
+    const dateStr = toLocalDateString(d);
+    const hour = d.getHours ? d.getHours() : 9;
+    const startTime = `${String(hour).padStart(2, '0')}:00`;
+    const endTime = `${String(Math.min(hour + 1, 23)).padStart(2, '0')}:00`;
+
     setEditingEvent(null);
     setForm({
       title: '',
       description: '',
       startDate: dateStr,
-      startTime: '09:00',
+      startTime,
       endDate: dateStr,
-      endTime: '10:00',
-      assignee: '1',
+      endTime,
+      assignee: allMembers[0]?.id || '1',
+      attendees: [],
       type: 'task',
+      attended: false,
+      wasLate: false,
+      recurrenceType: null,
+      recurrenceConfig: { interval: 1 },
+      recurrenceEndType: 'never',
+      recurrenceEndValue: '',
     });
+    setQuickCreate({ date: dateStr, startTime, endTime });
+  };
+
+  const openFullModal = () => {
+    setQuickCreate(null);
     setShowEventModal(true);
   };
 
   const openEditModal = (event) => {
+    // O.S. sao somente leitura no calendario
+    if (event._isOS) return;
+    // Se e ocorrencia virtual de evento recorrente, perguntar o que fazer
+    if (event._parentId) {
+      setRecurrenceAction({ event, action: 'edit' });
+      return;
+    }
+    doOpenEditModal(event);
+  };
+
+  const doOpenEditModal = (event) => {
     const start = new Date(event.startDate);
     const end = new Date(event.endDate);
     setEditingEvent(event);
@@ -221,28 +215,186 @@ export default function AgendaPage() {
       endDate: toLocalDateString(end),
       endTime: formatTime(end),
       assignee: event.assignee || '1',
+      attendees: event.attendees || [],
       type: event.type || 'task',
+      attended: event.attended || false,
+      wasLate: event.wasLate || false,
+      lateMinutes: event.lateMinutes || 0,
+      recurrenceType: event.recurrenceType || null,
+      recurrenceConfig: event.recurrenceConfig || { interval: 1 },
+      recurrenceEndType: event.recurrenceEndType || 'never',
+      recurrenceEndValue: event.recurrenceEndValue || '',
     });
     setShowEventModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.title.trim()) return;
+
+    // Se editando apenas esta ocorrencia, salvar como excecao
+    if (editingEvent?._editThisOnly) {
+      await handleSaveThisOnly();
+      return;
+    }
 
     const startDate = new Date(`${form.startDate}T${form.startTime}:00`);
     const endDate = new Date(`${form.endDate}T${form.endTime}:00`);
     const eventType = EVENT_TYPES.find(t => t.id === form.type);
 
+    const eventData = {
+      title: form.title,
+      description: form.description,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      assignee: form.assignee,
+      attendees: form.attendees || [],
+      type: form.type,
+      color: eventType.color,
+      attended: form.attended,
+      wasLate: form.wasLate,
+      lateMinutes: form.wasLate ? (parseInt(form.lateMinutes) || 0) : 0,
+      recurrenceType: form.recurrenceType || null,
+      recurrenceConfig: form.recurrenceConfig || { interval: 1 },
+      recurrenceEndType: form.recurrenceEndType || 'never',
+      recurrenceEndValue: form.recurrenceEndValue || null,
+    };
+
     if (editingEvent) {
-      const updated = events.map(e =>
-        e.id === editingEvent.id
-          ? { ...e, title: form.title, description: form.description, startDate: startDate.toISOString(), endDate: endDate.toISOString(), assignee: form.assignee, type: form.type, color: eventType.color }
-          : e
-      );
-      updateEvents(updated);
+      // Se editando ocorrencia virtual (toda serie), usar ID do pai
+      const realId = editingEvent._parentId || editingEvent.id;
+      const saved = await updateAgendaEvent(realId, eventData);
+      if (saved) setEvents(prev => prev.map(e => e.id === realId ? saved : e));
     } else {
-      const newEvent = {
-        id: `evt_${Date.now()}`,
+      const saved = await createAgendaEvent(eventData);
+      if (saved) setEvents(prev => [...prev, saved]);
+    }
+    setShowEventModal(false);
+    setQuickCreate(null);
+    setRecurrenceAction(null);
+  };
+
+  const handleDelete = async (id) => {
+    // Se editando ocorrencia virtual, perguntar o que fazer
+    if (editingEvent && editingEvent._parentId) {
+      setRecurrenceAction({ event: editingEvent, action: 'delete' });
+      setShowDeleteModal(null);
+      setShowEventModal(false);
+      return;
+    }
+    await deleteAgendaEvent(id);
+    setEvents(prev => prev.filter(e => e.id !== id));
+    setShowDeleteModal(null);
+    setShowEventModal(false);
+    setQuickCreate(null);
+  };
+
+  // Handlers para acoes em eventos recorrentes
+  const handleRecurrenceChoice = async (choice) => {
+    if (!recurrenceAction) return;
+    const { event, action } = recurrenceAction;
+    const parentId = event._parentId;
+    const parentEvent = events.find(e => e.id === parentId);
+    if (!parentEvent) { setRecurrenceAction(null); return; }
+
+    if (choice === 'this') {
+      // Adicionar excecao no evento pai
+      const exceptions = [...(parentEvent.recurrenceExceptions || [])];
+      if (action === 'delete') {
+        exceptions.push({ date: event._occurrenceDate, type: 'deleted' });
+        const saved = await updateAgendaEvent(parentId, { recurrenceExceptions: exceptions });
+        if (saved) setEvents(prev => prev.map(e => e.id === parentId ? saved : e));
+      } else {
+        // Para edicao de "este evento", abrir modal com os dados da ocorrencia
+        // A excecao sera salva quando o usuario salvar o modal
+        setRecurrenceAction(null);
+        doOpenEditModal({ ...event, _editThisOnly: true });
+        return;
+      }
+    } else if (choice === 'all') {
+      if (action === 'delete') {
+        await deleteAgendaEvent(parentId);
+        setEvents(prev => prev.filter(e => e.id !== parentId));
+      } else {
+        // Editar toda a serie: abrir modal com dados do pai
+        setRecurrenceAction(null);
+        doOpenEditModal(parentEvent);
+        return;
+      }
+    } else if (choice === 'future') {
+      if (action === 'delete') {
+        // Terminar a serie antes desta ocorrencia
+        const endDate = new Date(event._occurrenceDate);
+        endDate.setDate(endDate.getDate() - 1);
+        const saved = await updateAgendaEvent(parentId, {
+          recurrenceEndType: 'on_date',
+          recurrenceEndValue: toDateKey(endDate),
+        });
+        if (saved) setEvents(prev => prev.map(e => e.id === parentId ? saved : e));
+      } else {
+        // Terminar serie antes, criar nova serie a partir desta data
+        const endDate = new Date(event._occurrenceDate);
+        endDate.setDate(endDate.getDate() - 1);
+        await updateAgendaEvent(parentId, {
+          recurrenceEndType: 'on_date',
+          recurrenceEndValue: toDateKey(endDate),
+        });
+        // Abrir modal para criar nova serie
+        setRecurrenceAction(null);
+        const start = new Date(event.startDate);
+        const end = new Date(event.endDate);
+        setEditingEvent(null);
+        setForm({
+          title: event.title,
+          description: event.description || '',
+          startDate: toLocalDateString(start),
+          startTime: formatTime(start),
+          endDate: toLocalDateString(end),
+          endTime: formatTime(end),
+          assignee: event.assignee || '1',
+          attendees: event.attendees || [],
+          type: event.type || 'task',
+          attended: false,
+          wasLate: false,
+          lateMinutes: 0,
+          recurrenceType: parentEvent.recurrenceType,
+          recurrenceConfig: parentEvent.recurrenceConfig || { interval: 1 },
+          recurrenceEndType: parentEvent.recurrenceEndType || 'never',
+          recurrenceEndValue: parentEvent.recurrenceEndValue || '',
+        });
+        // Recarregar eventos para refletir a serie cortada
+        const freshEvents = await getAgendaEvents();
+        setEvents(freshEvents);
+        setShowEventModal(true);
+        return;
+      }
+    }
+
+    setRecurrenceAction(null);
+    setShowEventModal(false);
+    setQuickCreate(null);
+  };
+
+  // Salvar excecao "este evento" quando usuario confirma no modal
+  const handleSaveThisOnly = async () => {
+    if (!form.title.trim() || !editingEvent?._parentId) return;
+
+    const parentId = editingEvent._parentId;
+    const parentEvent = events.find(e => e.id === parentId);
+    if (!parentEvent) return;
+
+    const startDate = new Date(`${form.startDate}T${form.startTime}:00`);
+    const endDate = new Date(`${form.endDate}T${form.endTime}:00`);
+    const eventType = EVENT_TYPES.find(t => t.id === form.type);
+
+    const exceptions = [...(parentEvent.recurrenceExceptions || [])];
+    // Remover excecao anterior para esta data, se existir
+    const idx = exceptions.findIndex(e => e.date === editingEvent._occurrenceDate);
+    if (idx >= 0) exceptions.splice(idx, 1);
+
+    exceptions.push({
+      date: editingEvent._occurrenceDate,
+      type: 'modified',
+      overrides: {
         title: form.title,
         description: form.description,
         startDate: startDate.toISOString(),
@@ -250,17 +402,13 @@ export default function AgendaPage() {
         assignee: form.assignee,
         type: form.type,
         color: eventType.color,
-        createdAt: new Date().toISOString(),
-      };
-      updateEvents([...events, newEvent]);
-    }
-    setShowEventModal(false);
-  };
+      },
+    });
 
-  const handleDelete = (id) => {
-    updateEvents(events.filter(e => e.id !== id));
-    setShowDeleteModal(null);
+    const saved = await updateAgendaEvent(parentId, { recurrenceExceptions: exceptions });
+    if (saved) setEvents(prev => prev.map(e => e.id === parentId ? saved : e));
     setShowEventModal(false);
+    setRecurrenceAction(null);
   };
 
   // Navegacao
@@ -274,13 +422,65 @@ export default function AgendaPage() {
 
   const goToday = () => setCurrentDate(new Date());
 
-  // Eventos de um dia (com filtro de pessoa)
+  // O.S. convertidas em eventos do calendario
+  const osCalendarEvents = useMemo(() => {
+    return osOrders
+      .filter(os => os.actualStart && (os.status === 'in_progress' || os.status === 'done'))
+      .map(os => {
+        // Encontrar membro pelo nome do assignee
+        const member = allMembers.find(m => m.name.toLowerCase().trim() === (os.assignee || '').toLowerCase().trim());
+        const start = new Date(os.actualStart);
+        // Se terminou usa actualEnd, senao estima 2h a partir do inicio
+        const end = os.actualEnd ? new Date(os.actualEnd) : new Date(start.getTime() + 2 * 3600000);
+        return {
+          id: `os_cal_${os.id}`,
+          title: `O.S. #${os.number} - ${os.title}`,
+          description: os.client ? `Cliente: ${os.client}` : os.description || '',
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          assignee: member?.id || null,
+          type: 'os',
+          color: '#f97316',
+          _isOS: true,
+          _osId: os.id,
+          _osStatus: os.status,
+          _osPriority: os.priority,
+        };
+      });
+  }, [osOrders, allMembers]);
+
+  // Eventos de um dia (com expansao de recorrencia + O.S. + filtro de pessoa)
   const getEventsForDay = useCallback((date) => {
-    return events.filter(e => {
+    const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const expanded = expandRecurrences(events, dayStart, dayEnd);
+
+    // Incluir O.S. que caem neste dia
+    const osForDay = osCalendarEvents.filter(e => {
       const start = new Date(e.startDate);
-      return isSameDay(start, date) && activeFilters.includes(e.assignee);
+      const end = new Date(e.endDate);
+      return end >= dayStart && start < dayEnd;
     });
-  }, [events, activeFilters]);
+
+    return [...expanded, ...osForDay].filter(e => activeFilters.includes(e.assignee));
+  }, [events, osCalendarEvents, activeFilters]);
+
+  // Horario comercial calculado a partir dos membros filtrados
+  const businessHours = useMemo(() => {
+    const filtered = allMembers.filter(m => activeFilters.includes(m.id));
+    if (filtered.length === 0) return BUSINESS_HOURS; // fallback global
+    let earliest = 23;
+    let latest = 0;
+    for (const m of filtered) {
+      const start = parseInt((m.workStart || '08:00').split(':')[0]);
+      const end = parseInt((m.workEnd || '18:00').split(':')[0]);
+      if (start < earliest) earliest = start;
+      if (end > latest) latest = end;
+    }
+    return { start: earliest, end: latest };
+  }, [allMembers, activeFilters]);
 
   // Titulo do header
   const headerTitle = useMemo(() => {
@@ -299,6 +499,14 @@ export default function AgendaPage() {
 
   // ==================== RENDER ====================
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -315,31 +523,31 @@ export default function AgendaPage() {
           </button>
 
           <div className="flex items-center gap-1">
-            <button onClick={() => navigate(-1)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-              <svg className="w-4 h-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onClick={() => navigate(-1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+              <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <button onClick={goToday} className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
+            <button onClick={goToday} className="px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
               Hoje
             </button>
-            <button onClick={() => navigate(1)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-              <svg className="w-4 h-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onClick={() => navigate(1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+              <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
           </div>
 
-          <h2 className="text-lg font-semibold text-slate-800">{headerTitle}</h2>
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{headerTitle}</h2>
         </div>
 
-        <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+        <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
           {['month', 'week', 'day'].map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                view === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                view === v ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
               {v === 'month' ? 'Mes' : v === 'week' ? 'Semana' : 'Dia'}
@@ -349,16 +557,16 @@ export default function AgendaPage() {
       </div>
 
       {/* Calendar Views */}
-      <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        {view === 'month' && <MonthView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onDayClick={(d) => { setCurrentDate(d); setView('day'); }} onEventClick={openEditModal} />}
-        {view === 'week' && <WeekView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} />}
-        {view === 'day' && <DayView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={() => openCreateModal(currentDate)} />}
+      <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+        {view === 'month' && <MonthView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onDayClick={(d) => { setCurrentDate(d); setView('day'); }} onEventClick={openEditModal} allMembers={allMembers} />}
+        {view === 'week' && <WeekView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} />}
+        {view === 'day' && <DayView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={() => openCreateModal(currentDate)} allMembers={allMembers} businessHours={businessHours} />}
       </div>
 
       {/* Filtro por pessoa */}
       <div className="mt-3 flex items-center gap-2 text-xs">
-        <span className="font-medium text-slate-500 mr-1">Filtrar:</span>
-        {TEAM_MEMBERS.map(m => {
+        <span className="font-medium text-slate-500 dark:text-slate-400 mr-1">Filtrar:</span>
+        {allMembers.map(m => {
           const isActive = activeFilters.includes(m.id);
           return (
             <button
@@ -367,26 +575,38 @@ export default function AgendaPage() {
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all ${
                 isActive
                   ? 'border-transparent text-white shadow-sm'
-                  : 'border-slate-200 text-slate-400 bg-white'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800'
               }`}
               style={isActive ? { backgroundColor: m.color } : {}}
             >
               <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-white/80' : ''}`} style={!isActive ? { backgroundColor: m.color } : {}} />
-              <span className="font-medium">{m.name}</span>
+              <span className="font-medium">{shortName(m.name)}</span>
             </button>
           );
         })}
-        {activeFilters.length < TEAM_MEMBERS.length && (
+        {activeFilters.length < allMembers.length && (
           <button
-            onClick={() => setActiveFilters(TEAM_MEMBERS.map(m => m.id))}
-            className="px-2 py-1 text-slate-400 hover:text-slate-600 transition-colors"
+            onClick={() => setActiveFilters(allMembers.map(m => m.id))}
+            className="px-2 py-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           >
             Mostrar todos
           </button>
         )}
       </div>
 
-      {/* Event Modal */}
+      {/* Quick Create Popover (estilo Google Calendar) */}
+      {quickCreate && (
+        <QuickCreatePopover
+          form={form}
+          setForm={setForm}
+          onSave={handleSave}
+          onClose={() => setQuickCreate(null)}
+          onMoreOptions={openFullModal}
+          allMembers={allMembers}
+        />
+      )}
+
+      {/* Event Modal (edicao / mais opcoes) */}
       {showEventModal && (
         <EventModal
           form={form}
@@ -395,24 +615,25 @@ export default function AgendaPage() {
           onSave={handleSave}
           onClose={() => setShowEventModal(false)}
           onDelete={() => setShowDeleteModal(editingEvent?.id)}
+          allMembers={allMembers}
         />
       )}
 
       {/* Delete Confirmation */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
             <div className="p-6">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-slate-800 text-center mb-2">Excluir Evento?</h3>
-              <p className="text-sm text-slate-500 text-center">Esta acao nao pode ser desfeita.</p>
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 text-center mb-2">Excluir Evento?</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center">Esta acao nao pode ser desfeita.</p>
             </div>
-            <div className="p-6 bg-slate-50 flex gap-3 justify-center">
-              <button onClick={() => setShowDeleteModal(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors">
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex gap-3 justify-center">
+              <button onClick={() => setShowDeleteModal(null)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                 Cancelar
               </button>
               <button onClick={() => handleDelete(showDeleteModal)} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
@@ -422,21 +643,30 @@ export default function AgendaPage() {
           </div>
         </div>
       )}
+
+      {/* Recurrence Action Modal (editar/excluir ocorrencia de serie) */}
+      {recurrenceAction && (
+        <RecurrenceEditModal
+          action={recurrenceAction.action}
+          onChoice={handleRecurrenceChoice}
+          onClose={() => setRecurrenceAction(null)}
+        />
+      )}
     </div>
   );
 }
 
 // ==================== VIEW MENSAL ====================
 
-function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventClick }) {
+function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventClick, allMembers }) {
   const days = useMemo(() => getMonthDays(currentDate.getFullYear(), currentDate.getMonth()), [currentDate]);
 
   return (
     <div className="h-full flex flex-col">
       {/* Header dias da semana */}
-      <div className="grid grid-cols-7 border-b border-slate-200">
+      <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700">
         {DAYS_PT.map(day => (
-          <div key={day} className="px-2 py-2 text-center text-xs font-semibold text-slate-500 uppercase">
+          <div key={day} className="px-2 py-2 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
             {day}
           </div>
         ))}
@@ -452,33 +682,35 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
             <div
               key={i}
               onClick={() => onDayClick(date)}
-              className={`border-b border-r border-slate-100 p-1 min-h-[80px] cursor-pointer hover:bg-slate-50 transition-colors ${
-                !isCurrentMonth ? 'bg-slate-50/50' : ''
+              className={`border-b border-r border-slate-100 dark:border-slate-700 p-1 min-h-[80px] cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${
+                !isCurrentMonth ? 'bg-slate-50/50 dark:bg-slate-800/50' : ''
               }`}
             >
               <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${
-                isToday ? 'bg-fyness-primary text-white' : isCurrentMonth ? 'text-slate-700' : 'text-slate-400'
+                isToday ? 'bg-fyness-primary text-white' : isCurrentMonth ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'
               }`}>
                 {date.getDate()}
               </div>
 
               <div className="space-y-0.5">
                 {dayEvents.slice(0, 3).map(event => {
-                  const member = TEAM_MEMBERS.find(m => m.id === event.assignee);
+                  const member = allMembers.find(m => m.id === event.assignee);
                   return (
                     <div
                       key={event.id}
                       onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-                      className="text-[10px] px-1.5 py-0.5 rounded truncate text-white font-medium cursor-pointer hover:opacity-80 transition-opacity"
-                      style={{ backgroundColor: event.color || '#6366f1' }}
+                      className={`text-[10px] px-1.5 py-0.5 rounded truncate text-white font-medium cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5 ${event._isOS ? 'ring-1 ring-orange-300' : ''}`}
+                      style={{ backgroundColor: event.color || '#3b82f6' }}
                       title={`${event.title} - ${member?.name || ''}`}
                     >
-                      {formatTime(new Date(event.startDate))} {event.title}
+                      {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+                      {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                      <span className="truncate">{formatTime(new Date(event.startDate))} {event.title}</span>
                     </div>
                   );
                 })}
                 {dayEvents.length > 3 && (
-                  <div className="text-[10px] text-slate-500 font-medium px-1">
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium px-1">
                     +{dayEvents.length - 3} mais
                   </div>
                 )}
@@ -493,21 +725,21 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
 
 // ==================== VIEW SEMANAL ====================
 
-function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotClick }) {
+function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotClick, allMembers, businessHours }) {
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
 
   return (
     <div className="h-full flex flex-col">
       {/* Header com dias */}
-      <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-slate-200">
-        <div className="border-r border-slate-200" />
+      <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-slate-200 dark:border-slate-700">
+        <div className="border-r border-slate-200 dark:border-slate-700" />
         {weekDays.map((day, i) => {
           const isToday = isSameDay(day, today);
           return (
-            <div key={i} className="px-2 py-2 text-center border-r border-slate-100">
-              <div className="text-xs text-slate-500 uppercase">{DAYS_PT[day.getDay()]}</div>
+            <div key={i} className="px-2 py-2 text-center border-r border-slate-100 dark:border-slate-700">
+              <div className="text-xs text-slate-500 dark:text-slate-400 uppercase">{DAYS_PT[day.getDay()]}</div>
               <div className={`text-lg font-semibold mt-0.5 w-8 h-8 flex items-center justify-center rounded-full mx-auto ${
-                isToday ? 'bg-fyness-primary text-white' : 'text-slate-800'
+                isToday ? 'bg-fyness-primary text-white' : 'text-slate-800 dark:text-slate-100'
               }`}>
                 {day.getDate()}
               </div>
@@ -519,11 +751,13 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
       {/* Grid horarios */}
       <div className="flex-1 overflow-y-auto">
         <div className="grid grid-cols-[60px_repeat(7,1fr)]">
-          {HOURS.map(hour => (
+          {HOURS.map(hour => {
+            const isOffHours = hour < businessHours.start || hour >= businessHours.end;
+            return (
             <div key={hour} className="contents">
               {/* Label hora */}
-              <div className="h-14 border-r border-b border-slate-100 flex items-start justify-end pr-2 pt-0.5">
-                <span className="text-[10px] text-slate-400 font-medium">{String(hour).padStart(2, '0')}:00</span>
+              <div className={`h-14 border-r border-b border-slate-100 dark:border-slate-700 flex items-start justify-end pr-2 pt-0.5 ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}>
+                <span className={`text-[10px] font-medium ${isOffHours ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400 dark:text-slate-500'}`}>{String(hour).padStart(2, '0')}:00</span>
               </div>
 
               {/* Celulas por dia */}
@@ -539,7 +773,7 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
                       d.setHours(hour, 0, 0, 0);
                       onSlotClick(d);
                     }}
-                    className="h-14 border-r border-b border-slate-100 relative cursor-pointer hover:bg-blue-50/30 transition-colors"
+                    className={`h-14 border-r border-b border-slate-100 dark:border-slate-700 relative cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-colors ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}
                   >
                     {hourEvents.map(event => {
                       const start = new Date(event.startDate);
@@ -547,24 +781,28 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
                       const durationHours = Math.max((end - start) / 3600000, 0.5);
                       const topOffset = (start.getMinutes() / 60) * 56;
                       const height = Math.min(durationHours * 56, 56 * 4);
-                      const member = TEAM_MEMBERS.find(m => m.id === event.assignee);
+                      const member = allMembers.find(m => m.id === event.assignee);
 
                       return (
                         <div
                           key={event.id}
                           onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-                          className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-white text-[10px] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm"
+                          className={`absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-white text-[10px] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm ${event._isOS ? 'ring-1 ring-orange-300' : ''}`}
                           style={{
-                            backgroundColor: event.color || '#6366f1',
+                            backgroundColor: event.color || '#3b82f6',
                             top: `${topOffset}px`,
                             height: `${height}px`,
                             minHeight: '20px',
                           }}
                           title={`${event.title} - ${member?.name || ''}`}
                         >
-                          <div className="font-semibold truncate">{event.title}</div>
+                          <div className="font-semibold truncate flex items-center gap-0.5">
+                            {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+                            {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                            <span className="truncate">{event.title}</span>
+                          </div>
                           <div className="opacity-80 truncate">{formatTime(start)} - {formatTime(end)}</div>
-                          {member && <div className="opacity-70 truncate">{member.name}</div>}
+                          {member && <div className="opacity-70 truncate">{shortName(member.name)}</div>}
                         </div>
                       );
                     })}
@@ -572,7 +810,8 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
                 );
               })}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -581,22 +820,22 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
 
 // ==================== VIEW DIARIA ====================
 
-function DayView({ currentDate, today, getEventsForDay, onEventClick, onSlotClick }) {
+function DayView({ currentDate, today, getEventsForDay, onEventClick, onSlotClick, allMembers, businessHours }) {
   const dayEvents = useMemo(() => getEventsForDay(currentDate), [getEventsForDay, currentDate]);
   const isToday = isSameDay(currentDate, today);
 
   return (
     <div className="h-full flex flex-col">
       {/* Header do dia */}
-      <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-3">
+      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3">
         <div className={`w-12 h-12 rounded-full flex flex-col items-center justify-center ${
-          isToday ? 'bg-fyness-primary text-white' : 'bg-slate-100 text-slate-700'
+          isToday ? 'bg-fyness-primary text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
         }`}>
           <span className="text-[10px] uppercase leading-none">{DAYS_PT[currentDate.getDay()]}</span>
           <span className="text-lg font-bold leading-none">{currentDate.getDate()}</span>
         </div>
         <div>
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-slate-500 dark:text-slate-400">
             {dayEvents.length} evento{dayEvents.length !== 1 ? 's' : ''}
           </span>
         </div>
@@ -607,15 +846,16 @@ function DayView({ currentDate, today, getEventsForDay, onEventClick, onSlotClic
         <div className="grid grid-cols-[60px_1fr]">
           {HOURS.map(hour => {
             const hourEvents = dayEvents.filter(e => new Date(e.startDate).getHours() === hour);
+            const isOffHours = hour < businessHours.start || hour >= businessHours.end;
 
             return (
               <div key={hour} className="contents">
-                <div className="h-16 border-r border-b border-slate-100 flex items-start justify-end pr-2 pt-1">
-                  <span className="text-xs text-slate-400 font-medium">{String(hour).padStart(2, '0')}:00</span>
+                <div className={`h-16 border-r border-b border-slate-100 dark:border-slate-700 flex items-start justify-end pr-2 pt-1 ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}>
+                  <span className={`text-xs font-medium ${isOffHours ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400 dark:text-slate-500'}`}>{String(hour).padStart(2, '0')}:00</span>
                 </div>
                 <div
                   onClick={onSlotClick}
-                  className="h-16 border-b border-slate-100 relative cursor-pointer hover:bg-blue-50/30 transition-colors"
+                  className={`h-16 border-b border-slate-100 dark:border-slate-700 relative cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-colors ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}
                 >
                   {hourEvents.map(event => {
                     const start = new Date(event.startDate);
@@ -623,31 +863,43 @@ function DayView({ currentDate, today, getEventsForDay, onEventClick, onSlotClic
                     const durationMin = (end - start) / 60000;
                     const topOffset = (start.getMinutes() / 60) * 64;
                     const height = Math.max((durationMin / 60) * 64, 28);
-                    const member = TEAM_MEMBERS.find(m => m.id === event.assignee);
+                    const member = allMembers.find(m => m.id === event.assignee);
                     const eventType = EVENT_TYPES.find(t => t.id === event.type);
 
                     return (
                       <div
                         key={event.id}
                         onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-                        className="absolute left-1 right-4 rounded-lg px-3 py-1.5 text-white overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm"
+                        className={`absolute left-1 right-4 rounded-lg px-3 py-1.5 text-white overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm ${event._isOS ? 'ring-2 ring-orange-300' : ''}`}
                         style={{
-                          backgroundColor: event.color || '#6366f1',
+                          backgroundColor: event.color || '#3b82f6',
                           top: `${topOffset}px`,
                           minHeight: `${height}px`,
                         }}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-sm truncate">{event.title}</span>
-                          {eventType && (
-                            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                              {eventType.label}
-                            </span>
-                          )}
+                          <span className="font-semibold text-sm truncate flex items-center gap-1">
+                            {event._isOS && <svg className="w-3 h-3 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+                            {event._parentId && !event._isOS && <svg className="w-3 h-3 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                            {event.title}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {event._isOS && event._osStatus === 'in_progress' && (
+                              <span className="text-[9px] bg-yellow-400/30 text-yellow-100 px-1 py-0.5 rounded-full whitespace-nowrap font-semibold">Em andamento</span>
+                            )}
+                            {event._isOS && event._osStatus === 'done' && (
+                              <span className="text-[9px] bg-green-400/30 text-green-100 px-1 py-0.5 rounded-full whitespace-nowrap font-semibold">Concluida</span>
+                            )}
+                            {eventType && (
+                              <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                                {eventType.label}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="text-xs opacity-80 mt-0.5">
                           {formatTime(start)} - {formatTime(end)}
-                          {member && <span className="ml-2">{member.name}</span>}
+                          {member && <span className="ml-2">{shortName(member.name)}</span>}
                         </div>
                         {event.description && (
                           <div className="text-xs opacity-70 mt-0.5 truncate">{event.description}</div>
@@ -667,19 +919,259 @@ function DayView({ currentDate, today, getEventsForDay, onEventClick, onSlotClic
 
 // ==================== MODAL EVENTO ====================
 
-function EventModal({ form, setForm, editing, onSave, onClose, onDelete }) {
+// ==================== QUICK CREATE (estilo Google Calendar) ====================
+
+function QuickCreatePopover({ form, setForm, onSave, onClose, onMoreOptions, allMembers }) {
   const updateField = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+  const selectedType = EVENT_TYPES.find(t => t.id === form.type) || EVENT_TYPES[0];
+
+  return (
+    <div className="fixed inset-0 z-50" onClick={onClose}>
+      <div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Barra colorida no topo */}
+        <div className="h-2 rounded-t-2xl" style={{ backgroundColor: selectedType.color }} />
+
+        <div className="p-5 space-y-4">
+          {/* Titulo - input sem borda, estilo Google */}
+          <input
+            type="text"
+            value={form.title}
+            onChange={(e) => updateField('title', e.target.value)}
+            className="w-full text-xl font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-300 dark:placeholder:text-slate-500 focus:outline-none border-b-2 border-transparent focus:border-fyness-primary pb-2 transition-colors dark:bg-transparent"
+            placeholder="Adicionar titulo"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && form.title.trim()) onSave();
+              if (e.key === 'Escape') onClose();
+            }}
+          />
+
+          {/* Data e Hora */}
+          <div className="flex items-center gap-2 text-sm">
+            <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <input
+              type="date"
+              value={form.startDate}
+              onChange={(e) => { updateField('startDate', e.target.value); updateField('endDate', e.target.value); }}
+              className="px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+            />
+            <input
+              type="time"
+              value={form.startTime}
+              onChange={(e) => updateField('startTime', e.target.value)}
+              className="px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+            />
+            <span className="text-slate-400 dark:text-slate-500">-</span>
+            <input
+              type="time"
+              value={form.endTime}
+              onChange={(e) => updateField('endTime', e.target.value)}
+              className="px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+            />
+          </div>
+
+          {/* Recorrencia - contextual como Google Calendar */}
+          {(() => {
+            const d = form.startDate ? new Date(form.startDate + 'T00:00:00') : new Date();
+            const dayOfWeek = d.getDay();
+            const dayOfMonth = d.getDate();
+            const dayName = DAYS_FULL_PT[dayOfWeek];
+
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <select
+                    value={form.recurrenceType || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'custom') {
+                        // Abrir modal completo para personalizado
+                        updateField('recurrenceType', 'weekly');
+                        updateField('recurrenceConfig', { interval: 1, daysOfWeek: [dayOfWeek] });
+                        onMoreOptions();
+                        return;
+                      }
+                      updateField('recurrenceType', val || null);
+                      if (val === 'weekly') {
+                        updateField('recurrenceConfig', { interval: 1, daysOfWeek: [dayOfWeek] });
+                      } else if (val === 'monthly') {
+                        updateField('recurrenceConfig', { interval: 1, dayOfMonth });
+                      } else {
+                        updateField('recurrenceConfig', { interval: 1 });
+                      }
+                    }}
+                    className="flex-1 px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+                  >
+                    <option value="">Nao repete</option>
+                    <option value="daily">Diariamente</option>
+                    <option value="weekly">Semanalmente na {dayName}</option>
+                    <option value="monthly">Mensalmente no dia {dayOfMonth}</option>
+                    <option value="yearly">Anualmente</option>
+                    <option value="custom">Personalizado...</option>
+                  </select>
+                </div>
+
+                {/* Seletor de dias da semana (se semanal) */}
+                {form.recurrenceType === 'weekly' && (
+                  <div className="flex items-center gap-1 pl-7">
+                    {DAYS_PT.map((day, i) => {
+                      const selected = (form.recurrenceConfig?.daysOfWeek || []).includes(i);
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => {
+                            const days = form.recurrenceConfig?.daysOfWeek || [];
+                            const next = selected ? days.filter(d => d !== i) : [...days, i];
+                            if (next.length === 0) return; // precisa pelo menos 1 dia
+                            updateField('recurrenceConfig', { ...form.recurrenceConfig, daysOfWeek: next.sort() });
+                          }}
+                          className={`w-8 h-8 rounded-full text-[10px] font-bold transition-all ${
+                            selected ? 'bg-fyness-primary text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Tipo - pills coloridos */}
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+            </svg>
+            <div className="flex gap-1.5">
+              {EVENT_TYPES.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => updateField('type', t.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    form.type === t.id
+                      ? 'text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+                  }`}
+                  style={form.type === t.id ? { backgroundColor: t.color } : {}}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Responsavel */}
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={form.type === 'meeting' ? 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' : 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'} />
+            </svg>
+            <div className="flex gap-1.5 flex-wrap">
+              {form.type === 'meeting' ? (
+                // Multi-select para reunioes
+                allMembers.map(m => {
+                  const isSelected = (form.attendees || []).includes(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        const current = form.attendees || [];
+                        const next = isSelected ? current.filter(id => id !== m.id) : [...current, m.id];
+                        updateField('attendees', next);
+                        if (next.length > 0 && !next.includes(form.assignee)) updateField('assignee', next[0]);
+                      }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                        isSelected
+                          ? 'text-white shadow-sm'
+                          : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+                      }`}
+                      style={isSelected ? { backgroundColor: m.color } : {}}
+                    >
+                      {isSelected && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                      {shortName(m.name)}
+                    </button>
+                  );
+                })
+              ) : (
+                // Single select para outros tipos
+                allMembers.map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => updateField('assignee', m.id)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                      form.assignee === m.id
+                        ? 'text-white shadow-sm'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+                    }`}
+                    style={form.assignee === m.id ? { backgroundColor: m.color } : {}}
+                  >
+                    {shortName(m.name)}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+          {form.type === 'meeting' && (form.attendees || []).length > 0 && (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 ml-7">{(form.attendees || []).length} participante{(form.attendees || []).length > 1 ? 's' : ''}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between border-t border-slate-100 dark:border-slate-700">
+          <button
+            onClick={onMoreOptions}
+            className="text-sm text-fyness-primary hover:text-fyness-secondary font-medium transition-colors"
+          >
+            Mais opcoes
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={onSave}
+              disabled={!form.title.trim()}
+              className="px-5 py-2 bg-fyness-primary text-white text-sm rounded-lg hover:bg-fyness-secondary transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== MODAL COMPLETO (edicao / mais opcoes) ====================
+
+function EventModal({ form, setForm, editing, onSave, onClose, onDelete, allMembers }) {
+  const updateField = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+  const isPastEvent = new Date(`${form.endDate}T${form.endTime}:00`) < new Date();
+  const isMeeting = form.type === 'meeting';
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden">
         {/* Header */}
-        <div className="p-6 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-800">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
             {editing ? 'Editar Evento' : 'Novo Evento'}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
-            <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+            <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -689,12 +1181,12 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete }) {
         <div className="p-6 space-y-4">
           {/* Titulo */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Titulo</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Titulo</label>
             <input
               type="text"
               value={form.title}
               onChange={(e) => updateField('title', e.target.value)}
-              className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+              className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               placeholder="Ex: Reuniao de equipe"
               autoFocus
               onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onClose(); }}
@@ -704,21 +1196,21 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete }) {
           {/* Data e Hora - Inicio */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Data Inicio</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Data Inicio</label>
               <input
                 type="date"
                 value={form.startDate}
                 onChange={(e) => updateField('startDate', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Hora Inicio</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Hora Inicio</label>
               <input
                 type="time"
                 value={form.startTime}
                 onChange={(e) => updateField('startTime', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               />
             </div>
           </div>
@@ -726,45 +1218,74 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete }) {
           {/* Data e Hora - Fim */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Data Fim</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Data Fim</label>
               <input
                 type="date"
                 value={form.endDate}
                 onChange={(e) => updateField('endDate', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Hora Fim</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Hora Fim</label>
               <input
                 type="time"
                 value={form.endTime}
                 onChange={(e) => updateField('endTime', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               />
             </div>
           </div>
 
-          {/* Responsavel e Tipo */}
+          {/* Responsavel/Participantes e Tipo */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Responsavel</label>
-              <select
-                value={form.assignee}
-                onChange={(e) => updateField('assignee', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-              >
-                {TEAM_MEMBERS.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                {form.type === 'meeting' ? 'Participantes' : 'Responsavel'}
+              </label>
+              {form.type === 'meeting' ? (
+                <div className="flex gap-1.5 flex-wrap p-2 border border-slate-300 dark:border-slate-600 rounded-lg min-h-[42px] dark:bg-slate-800">
+                  {allMembers.map(m => {
+                    const isSelected = (form.attendees || []).includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          const current = form.attendees || [];
+                          const next = isSelected ? current.filter(id => id !== m.id) : [...current, m.id];
+                          updateField('attendees', next);
+                          if (next.length > 0 && !next.includes(form.assignee)) updateField('assignee', next[0]);
+                        }}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all ${
+                          isSelected ? 'text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+                        }`}
+                        style={isSelected ? { backgroundColor: m.color } : {}}
+                      >
+                        {isSelected && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                        {shortName(m.name)}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <select
+                  value={form.assignee}
+                  onChange={(e) => updateField('assignee', e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+                >
+                  {allMembers.map(m => (
+                    <option key={m.id} value={m.id}>{shortName(m.name)}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Tipo</label>
               <select
                 value={form.type}
                 onChange={(e) => updateField('type', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               >
                 {EVENT_TYPES.map(t => (
                   <option key={t.id} value={t.id}>{t.label}</option>
@@ -773,33 +1294,226 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete }) {
             </div>
           </div>
 
+          {/* Recorrencia */}
+          <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Recorrencia</span>
+            </div>
+
+            {(() => {
+              const d = form.startDate ? new Date(form.startDate + 'T00:00:00') : new Date();
+              const dayOfWeek = d.getDay();
+              const dayOfMonth = d.getDate();
+              const dayName = DAYS_FULL_PT[dayOfWeek];
+
+              return (
+                <>
+                  <select
+                    value={form.recurrenceType || ''}
+                    onChange={(e) => {
+                      const val = e.target.value || null;
+                      updateField('recurrenceType', val);
+                      if (!val) {
+                        updateField('recurrenceConfig', { interval: 1 });
+                        updateField('recurrenceEndType', 'never');
+                        updateField('recurrenceEndValue', '');
+                      } else if (val === 'weekly' || val === 'custom') {
+                        updateField('recurrenceType', 'weekly');
+                        updateField('recurrenceConfig', { ...form.recurrenceConfig, interval: form.recurrenceConfig?.interval || 1, daysOfWeek: form.recurrenceConfig?.daysOfWeek?.length ? form.recurrenceConfig.daysOfWeek : [dayOfWeek] });
+                      } else if (val === 'monthly') {
+                        updateField('recurrenceConfig', { interval: 1, dayOfMonth });
+                      } else {
+                        updateField('recurrenceConfig', { interval: form.recurrenceConfig?.interval || 1 });
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+                  >
+                    <option value="">Nao repete</option>
+                    <option value="daily">Diariamente</option>
+                    <option value="weekly">Semanalmente na {dayName}</option>
+                    <option value="monthly">Mensalmente no dia {dayOfMonth}</option>
+                    <option value="yearly">Anualmente</option>
+                  </select>
+
+                  {/* Intervalo */}
+                  {form.recurrenceType && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-600 dark:text-slate-300">A cada</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={form.recurrenceConfig?.interval || 1}
+                        onChange={(e) => updateField('recurrenceConfig', { ...form.recurrenceConfig, interval: parseInt(e.target.value) || 1 })}
+                        className="w-16 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm text-center dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-300">
+                        {form.recurrenceType === 'daily' && 'dia(s)'}
+                        {form.recurrenceType === 'weekly' && 'semana(s)'}
+                        {form.recurrenceType === 'monthly' && 'mes(es)'}
+                        {form.recurrenceType === 'yearly' && 'ano(s)'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Dias da semana (para semanal) */}
+                  {form.recurrenceType === 'weekly' && (
+                    <div className="space-y-1.5">
+                      <span className="text-xs text-slate-600 dark:text-slate-300">Repetir nos dias:</span>
+                      <div className="flex gap-1">
+                        {DAYS_PT.map((day, i) => {
+                          const selected = (form.recurrenceConfig?.daysOfWeek || []).includes(i);
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => {
+                                const days = form.recurrenceConfig?.daysOfWeek || [];
+                                const next = selected ? days.filter(dd => dd !== i) : [...days, i];
+                                if (next.length === 0) return;
+                                updateField('recurrenceConfig', { ...form.recurrenceConfig, daysOfWeek: next.sort() });
+                              }}
+                              className={`w-9 h-9 rounded-full text-xs font-medium transition-all ${
+                                selected ? 'bg-fyness-primary text-white shadow-sm' : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                              }`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Info mensal */}
+                  {form.recurrenceType === 'monthly' && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Repete todo dia <strong>{dayOfMonth}</strong> de cada mes</p>
+                  )}
+                </>
+              );
+            })()}
+
+            {/* Termino da recorrencia */}
+            {form.recurrenceType && (
+              <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Termina</span>
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="recEnd" checked={form.recurrenceEndType === 'never'} onChange={() => { updateField('recurrenceEndType', 'never'); updateField('recurrenceEndValue', ''); }} className="w-3.5 h-3.5 text-fyness-primary" />
+                    <span className="text-sm text-slate-700 dark:text-slate-200">Nunca</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="recEnd" checked={form.recurrenceEndType === 'after'} onChange={() => updateField('recurrenceEndType', 'after')} className="w-3.5 h-3.5 text-fyness-primary" />
+                    <span className="text-sm text-slate-700 dark:text-slate-200">Apos</span>
+                    {form.recurrenceEndType === 'after' && (
+                      <>
+                        <input
+                          type="number"
+                          min="1"
+                          max="999"
+                          value={form.recurrenceEndValue || ''}
+                          onChange={(e) => updateField('recurrenceEndValue', e.target.value)}
+                          className="w-16 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm text-center dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+                          placeholder="10"
+                        />
+                        <span className="text-sm text-slate-500 dark:text-slate-400">ocorrencia(s)</span>
+                      </>
+                    )}
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="recEnd" checked={form.recurrenceEndType === 'on_date'} onChange={() => updateField('recurrenceEndType', 'on_date')} className="w-3.5 h-3.5 text-fyness-primary" />
+                    <span className="text-sm text-slate-700 dark:text-slate-200">Na data</span>
+                    {form.recurrenceEndType === 'on_date' && (
+                      <input
+                        type="date"
+                        value={form.recurrenceEndValue || ''}
+                        onChange={(e) => updateField('recurrenceEndValue', e.target.value)}
+                        className="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+                      />
+                    )}
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Presenca (apenas reunioes passadas) */}
+          {isMeeting && isPastEvent && (
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2">
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Registro de Presenca</p>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.attended}
+                  onChange={(e) => {
+                    updateField('attended', e.target.checked);
+                    if (!e.target.checked) updateField('wasLate', false);
+                  }}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-slate-700 dark:text-slate-200">Participou da reuniao</span>
+              </label>
+              {form.attended && (
+                <label className="flex items-center gap-2 cursor-pointer ml-6">
+                  <input
+                    type="checkbox"
+                    checked={form.wasLate}
+                    onChange={(e) => {
+                      updateField('wasLate', e.target.checked);
+                      if (!e.target.checked) updateField('lateMinutes', 0);
+                    }}
+                    className="w-4 h-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400"
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-200">Chegou atrasado</span>
+                </label>
+              )}
+              {form.attended && form.wasLate && (
+                <div className="ml-6 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="480"
+                    value={form.lateMinutes || ''}
+                    onChange={(e) => updateField('lateMinutes', e.target.value)}
+                    placeholder="0"
+                    className="w-20 px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                  />
+                  <span className="text-sm text-slate-500 dark:text-slate-400">minutos de atraso</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Descricao */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Descricao</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Descricao</label>
             <textarea
               value={form.description}
               onChange={(e) => updateField('description', e.target.value)}
               rows={3}
-              className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none"
+              className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none dark:placeholder-slate-500"
               placeholder="Detalhes do evento..."
             />
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-slate-50 flex items-center justify-between">
+        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
           <div>
             {editing && (
               <button
                 onClick={onDelete}
-                className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+                className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-sm font-medium"
               >
                 Excluir
               </button>
             )}
           </div>
           <div className="flex gap-3">
-            <button onClick={onClose} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors text-sm">
+            <button onClick={onClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm">
               Cancelar
             </button>
             <button
@@ -810,6 +1524,70 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete }) {
               {editing ? 'Salvar' : 'Criar Evento'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== MODAL RECORRENCIA (editar/excluir serie) ====================
+
+function RecurrenceEditModal({ action, onChoice, onClose }) {
+  const [choice, setChoice] = useState('this');
+  const isDelete = action === 'delete';
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isDelete ? 'bg-red-100 dark:bg-red-900/20' : 'bg-blue-100 dark:bg-blue-900/20'}`}>
+              <svg className={`w-5 h-5 ${isDelete ? 'text-red-500' : 'text-blue-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+              {isDelete ? 'Excluir evento recorrente' : 'Editar evento recorrente'}
+            </h3>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+              <input type="radio" name="recChoice" checked={choice === 'this'} onChange={() => setChoice('this')} className="w-4 h-4 text-fyness-primary" />
+              <div>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Este evento</span>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Apenas esta ocorrencia sera {isDelete ? 'excluida' : 'editada'}</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+              <input type="radio" name="recChoice" checked={choice === 'future'} onChange={() => setChoice('future')} className="w-4 h-4 text-fyness-primary" />
+              <div>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Este e os proximos</span>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{isDelete ? 'Excluir' : 'Editar'} esta e todas as ocorrencias futuras</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+              <input type="radio" name="recChoice" checked={choice === 'all'} onChange={() => setChoice('all')} className="w-4 h-4 text-fyness-primary" />
+              <div>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Todos os eventos da serie</span>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Todas as ocorrencias serao {isDelete ? 'excluidas' : 'editadas'}</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 flex gap-3 justify-end border-t border-slate-100 dark:border-slate-700">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={() => onChoice(choice)}
+            className={`px-4 py-2 text-sm text-white rounded-lg transition-colors font-medium ${
+              isDelete ? 'bg-red-500 hover:bg-red-600' : 'bg-fyness-primary hover:bg-fyness-secondary'
+            }`}
+          >
+            {isDelete ? 'Excluir' : 'Editar'}
+          </button>
         </div>
       </div>
     </div>

@@ -8,13 +8,11 @@
  * - Avatar e menu do usuario
  */
 
-import { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-
-// Temporariamente desabilitado ate ativar auth
-// import { useAuth } from '../../contexts/AuthContext';
-// import { usePermissions } from '../../contexts/PermissionContext';
-// import { Protect } from '../auth/Protect';
+import { useState, useEffect } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { getProfile } from '../../lib/profileService';
+import logoFyness from '../../assets/logo-fyness.png';
 
 // Icones SVG
 const DashboardIcon = () => (
@@ -44,6 +42,12 @@ const AgendaIcon = () => (
 const FinancialIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+  </svg>
+);
+
+const ReportIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
   </svg>
 );
 
@@ -83,8 +87,8 @@ function NavItem({ to, icon: Icon, label, isCollapsed, badge }) {
       className={`
         flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200
         ${isActive
-          ? 'bg-blue-50 text-blue-700 font-medium'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
         }
         ${isCollapsed ? 'justify-center' : ''}
       `}
@@ -95,7 +99,7 @@ function NavItem({ to, icon: Icon, label, isCollapsed, badge }) {
         <>
           <span className="flex-1">{label}</span>
           {badge && (
-            <span className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-600 rounded-full">
+            <span className="px-2 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full">
               {badge}
             </span>
           )}
@@ -106,15 +110,34 @@ function NavItem({ to, icon: Icon, label, isCollapsed, badge }) {
 }
 
 export function Sidebar() {
-  // Auth desabilitado temporariamente
-  // const { profile, signOut } = useAuth();
-  // const { canAccessModule } = usePermissions();
-  const [isCollapsed, setIsCollapsed] = useState(true); // Inicia retraída
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [profile, setProfile] = useState({});
+
+  // Carregar perfil do Supabase na montagem
+  const loadProfile = async () => {
+    const p = await getProfile();
+    setProfile(p);
+  };
+
+  useEffect(() => { loadProfile(); }, []);
+
+  // Atualizar perfil quando salvo (custom event)
+  useEffect(() => {
+    const handleUpdate = () => loadProfile();
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('profile-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('profile-updated', handleUpdate);
+    };
+  }, []);
 
   const handleLogout = async () => {
-    // TODO: Ativar quando habilitar auth
-    console.log('Logout');
+    await signOut();
+    navigate('/login');
   };
 
   return (
@@ -122,22 +145,18 @@ export function Sidebar() {
       onMouseEnter={() => setIsCollapsed(false)}
       onMouseLeave={() => setIsCollapsed(true)}
       className={`
-        flex flex-col bg-white border-r border-slate-200 transition-all duration-300
+        flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 h-screen sticky top-0
         ${isCollapsed ? 'w-16' : 'w-64'}
       `}
     >
       {/* Logo/Header */}
-      <div className="h-16 flex items-center justify-center px-4 border-b border-slate-200">
+      <div className="h-16 flex items-center justify-center px-4 border-b border-slate-200 dark:border-slate-700">
         {isCollapsed ? (
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">F</span>
-          </div>
+          <img src={logoFyness} alt="Fyness" className="w-8 h-8 object-contain" />
         ) : (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">F</span>
-            </div>
-            <span className="font-bold text-slate-800">Fyness OS</span>
+            <img src={logoFyness} alt="Fyness" className="w-8 h-8 object-contain" />
+            <span className="font-bold text-slate-800 dark:text-slate-100">Fyness OS</span>
           </div>
         )}
       </div>
@@ -152,19 +171,11 @@ export function Sidebar() {
           isCollapsed={isCollapsed}
         />
 
-        {/* Processos */}
+        {/* Ordens de Servico */}
         <NavItem
-          to="/sales"
-          icon={SalesIcon}
-          label="Processos"
-          isCollapsed={isCollapsed}
-        />
-
-        {/* Minha Rotina */}
-        <NavItem
-          to="/routine"
-          icon={KanbanIcon}
-          label="Minha Rotina"
+          to="/financial"
+          icon={FinancialIcon}
+          label="Ordens de Servico"
           isCollapsed={isCollapsed}
         />
 
@@ -176,16 +187,32 @@ export function Sidebar() {
           isCollapsed={isCollapsed}
         />
 
-        {/* Ordens de Servico */}
+        {/* Minha Rotina */}
         <NavItem
-          to="/financial"
-          icon={FinancialIcon}
-          label="Ordens de Servico"
+          to="/routine"
+          icon={KanbanIcon}
+          label="Minha Rotina"
           isCollapsed={isCollapsed}
         />
 
         {/* Separador */}
-        <div className="my-4 border-t border-slate-200" />
+        <div className="my-4 border-t border-slate-200 dark:border-slate-700" />
+
+        {/* Processos */}
+        <NavItem
+          to="/sales"
+          icon={SalesIcon}
+          label="Processos"
+          isCollapsed={isCollapsed}
+        />
+
+        {/* Relatorios */}
+        <NavItem
+          to="/reports"
+          icon={ReportIcon}
+          label="Relatorios"
+          isCollapsed={isCollapsed}
+        />
 
         {/* Configuracoes */}
         <NavItem
@@ -197,25 +224,29 @@ export function Sidebar() {
       </nav>
 
       {/* User Profile */}
-      <div className="p-3 border-t border-slate-200">
+      <div className="p-3 border-t border-slate-200 dark:border-slate-700">
         <div className="relative">
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
             className={`
-              w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-100 transition-colors
+              w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors
               ${isCollapsed ? 'justify-center' : ''}
             `}
           >
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium">
-              A
-            </div>
+            {profile.avatar ? (
+              <img src={profile.avatar} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-medium shrink-0">
+                {(profile.name || 'U').charAt(0).toUpperCase()}
+              </div>
+            )}
             {!isCollapsed && (
               <div className="flex-1 text-left">
-                <div className="text-sm font-medium text-slate-800 truncate">
-                  Admin
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                  {profile.name || 'Sem nome'}
                 </div>
-                <div className="text-xs text-slate-500 truncate">
-                  Administrador
+                <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {profile.role || 'Sem cargo'}
                 </div>
               </div>
             )}
@@ -224,18 +255,18 @@ export function Sidebar() {
           {/* User Menu Dropdown */}
           {showUserMenu && (
             <div className={`
-              absolute bottom-full mb-2 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-50
+              absolute bottom-full mb-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg py-1 z-50
               ${isCollapsed ? 'left-0' : 'left-0 right-0'}
             `}>
               <button
-                onClick={() => {/* TODO: Abrir perfil */}}
-                className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+                onClick={() => { setShowUserMenu(false); navigate('/settings'); }}
+                className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
               >
                 Meu Perfil
               </button>
               <button
                 onClick={handleLogout}
-                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
               >
                 <LogoutIcon />
                 Sair

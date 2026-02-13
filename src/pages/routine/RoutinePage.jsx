@@ -1,284 +1,448 @@
 /**
- * RoutinePage - Kanban de Tarefas (O.S.)
+ * RoutinePage - Minha Rotina (O.S. pessoais)
+ *
+ * Mostra as O.S. ligadas ao usuario logado:
+ * - Por fazer: atribuida a mim, ainda nao peguei
+ * - Em andamento: peguei e estou executando
+ * - Concluido: finalizei
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../lib/supabase';
-// Auth desabilitado temporariamente
-// import { useAuth } from '../../contexts/AuthContext';
-import { OSCard } from '../../components/kanban/OSCard';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getOSOrders, getOSProjects, updateOSOrder } from '../../lib/osService';
+import { getProfile } from '../../lib/profileService';
 
-// Status do Kanban
+const PRIORITIES = {
+  urgent: { label: 'Urgente', color: 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400', dot: 'bg-red-500' },
+  high: { label: 'Alta', color: 'bg-orange-100 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400', dot: 'bg-orange-500' },
+  medium: { label: 'Media', color: 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400', dot: 'bg-yellow-400' },
+  low: { label: 'Baixa', color: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300', dot: 'bg-slate-400' },
+};
+
 const COLUMNS = [
-  { id: 'todo', title: 'A Fazer', color: 'bg-slate-500' },
-  { id: 'doing', title: 'Em Andamento', color: 'bg-blue-500' },
-  { id: 'done', title: 'Concluido', color: 'bg-green-500' }
+  { id: 'todo', title: 'Por Fazer', color: 'from-slate-400 to-slate-500', emptyText: 'Nenhuma O.S. pendente' },
+  { id: 'doing', title: 'Em Andamento', color: 'from-blue-500 to-blue-600', emptyText: 'Nenhuma O.S. em andamento' },
+  { id: 'done', title: 'Concluido', color: 'from-green-500 to-emerald-600', emptyText: 'Nenhuma O.S. concluida' },
 ];
 
-// Icone de adicionar
-const PlusIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-  </svg>
-);
+function formatDate(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
+
+function formatCurrency(value) {
+  return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
 
 export function RoutinePage() {
-  // Auth desabilitado temporariamente
-  // const { profile } = useAuth();
-  const profile = { id: 'temp-user' };
-  const [tasks, setTasks] = useState([]);
+  const navigate = useNavigate();
+  const [orders, setOrders] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [profile, setProfile] = useState({});
   const [loading, setLoading] = useState(true);
-  const [showNewTaskModal, setShowNewTaskModal] = useState(false);
-  const [newTask, setNewTask] = useState({
-    title: '',
-    description: '',
-    priority: 'medium',
-    estimated_time: 60
-  });
 
-  // Carregar tarefas
-  const loadTasks = useCallback(async () => {
-    if (!profile?.id) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select(`
-          *,
-          assigned_profile:profiles!tasks_assigned_to_fkey (
-            id,
-            full_name,
-            avatar_url
-          )
-        `)
-        .or(`assigned_to.eq.${profile.id},created_by.eq.${profile.id}`)
-        .order('order_index', { ascending: true });
-
-      if (error) throw error;
-      setTasks(data || []);
-    } catch (err) {
-      console.error('Erro ao carregar tarefas:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [profile?.id]);
+  // Expenses form
+  const [expenseOpen, setExpenseOpen] = useState(null); // orderId com form aberto
+  const [expName, setExpName] = useState('');
+  const [expValue, setExpValue] = useState('');
+  const [expQty, setExpQty] = useState('1');
 
   useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+    (async () => {
+      setLoading(true);
+      const [o, p, prof] = await Promise.all([getOSOrders(), getOSProjects(), getProfile()]);
+      setOrders(o);
+      setProjects(p);
+      setProfile(prof);
+      setLoading(false);
+    })();
+  }, []);
 
-  // Criar nova tarefa
-  const handleCreateTask = async (e) => {
-    e.preventDefault();
+  const userName = profile.name || '';
 
-    try {
-      const { error } = await supabase.from('tasks').insert({
-        title: newTask.title,
-        description: newTask.description,
-        priority: newTask.priority,
-        estimated_time: newTask.estimated_time,
-        status: 'todo',
-        assigned_to: profile.id,
-        created_by: profile.id
-      });
+  // Filtrar O.S. relevantes para o usuario
+  const myOrders = useMemo(() => {
+    if (!userName) return { todo: [], doing: [], done: [] };
 
-      if (error) throw error;
+    const nameLower = userName.toLowerCase();
 
-      setShowNewTaskModal(false);
-      setNewTask({ title: '', description: '', priority: 'medium', estimated_time: 60 });
-      loadTasks();
-    } catch (err) {
-      console.error('Erro ao criar tarefa:', err);
-      alert('Erro ao criar tarefa: ' + err.message);
+    const todo = orders.filter(o => {
+      const assignedTo = (o.assignedTo || '').toLowerCase();
+      return assignedTo === nameLower && o.status === 'available';
+    });
+
+    const doing = orders.filter(o => {
+      const assignee = (o.assignee || '').toLowerCase();
+      return assignee === nameLower && o.status === 'in_progress';
+    });
+
+    const done = orders.filter(o => {
+      const assignee = (o.assignee || '').toLowerCase();
+      return assignee === nameLower && o.status === 'done';
+    });
+
+    return { todo, doing, done };
+  }, [orders, userName]);
+
+  // Mapa de sequencia: ordem de execucao (prioridade + sortOrder)
+  const sequenceMap = useMemo(() => {
+    const PRIORITY_WEIGHT = { urgent: 0, high: 1, medium: 2, low: 3 };
+    const active = [...myOrders.todo, ...myOrders.doing].sort((a, b) => {
+      const pa = PRIORITY_WEIGHT[a.priority] ?? 9;
+      const pb = PRIORITY_WEIGHT[b.priority] ?? 9;
+      if (pa !== pb) return pa - pb;
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    });
+    const map = {};
+    active.forEach((o, i) => { map[o.id] = i + 1; });
+    return map;
+  }, [myOrders]);
+
+  const handleClaim = async (orderId) => {
+    const now = new Date().toISOString();
+    const updated = await updateOSOrder(orderId, {
+      assignee: userName,
+      status: 'in_progress',
+      actualStart: now,
+    });
+    if (updated) {
+      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
     }
   };
 
-  // Mover tarefa para outra coluna
-  const handleMoveTask = async (taskId, newStatus) => {
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ status: newStatus })
-        .eq('id', taskId);
-
-      if (error) throw error;
-      loadTasks();
-    } catch (err) {
-      console.error('Erro ao mover tarefa:', err);
+  const handleFinish = async (orderId) => {
+    const now = new Date().toISOString();
+    const updated = await updateOSOrder(orderId, {
+      status: 'done',
+      actualEnd: now,
+    });
+    if (updated) {
+      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
     }
   };
 
-  // Filtrar tarefas por status
-  const getTasksByStatus = (status) => {
-    return tasks.filter(task => task.status === status);
+  const handleReopen = async (orderId) => {
+    const updated = await updateOSOrder(orderId, {
+      status: 'in_progress',
+      actualEnd: '',
+    });
+    if (updated) {
+      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+    }
+  };
+
+  // ---- Expenses ----
+  const handleAddExpense = async (orderId) => {
+    const name = expName.trim();
+    const value = parseFloat(expValue) || 0;
+    const qty = parseInt(expQty) || 1;
+    if (!name || value <= 0) return;
+
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    const newExpenses = [...(order.expenses || []), { name, value, quantity: qty }];
+    const updated = await updateOSOrder(orderId, { expenses: newExpenses });
+    if (updated) {
+      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+    }
+    setExpName('');
+    setExpValue('');
+    setExpQty('1');
+  };
+
+  const handleRemoveExpense = async (orderId, index) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    const newExpenses = (order.expenses || []).filter((_, i) => i !== index);
+    const updated = await updateOSOrder(orderId, { expenses: newExpenses });
+    if (updated) {
+      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+    }
+  };
+
+  const calcExpensesTotal = (expenses) => {
+    if (!expenses || expenses.length === 0) return 0;
+    return expenses.reduce((acc, e) => acc + (e.value || 0) * (e.quantity || 1), 0);
+  };
+
+  const getProjectName = (projectId) => {
+    return projects.find(p => p.id === projectId)?.name || null;
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
+
+  const PRIORITY_WEIGHT = { urgent: 0, high: 1, medium: 2, low: 3 };
+  const sortBySeq = (a, b) => {
+    const pa = PRIORITY_WEIGHT[a.priority] ?? 9;
+    const pb = PRIORITY_WEIGHT[b.priority] ?? 9;
+    if (pa !== pb) return pa - pb;
+    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+  };
+
+  const columnData = {
+    todo: [...myOrders.todo].sort(sortBySeq),
+    doing: [...myOrders.doing].sort(sortBySeq),
+    done: myOrders.done,
+  };
+
+  const totalCount = myOrders.todo.length + myOrders.doing.length + myOrders.done.length;
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Minha Rotina</h2>
-          <p className="text-slate-500">Gerencie suas tarefas e controle seu tempo</p>
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Minha Rotina</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {userName ? (
+              <>O.S. atribuidas a <strong className="text-slate-700 dark:text-slate-200">{userName}</strong> — {totalCount} no total</>
+            ) : (
+              'Configure seu nome nas Configuracoes para ver suas O.S.'
+            )}
+          </p>
         </div>
-        <button
-          onClick={() => setShowNewTaskModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <PlusIcon />
-          Nova Tarefa
-        </button>
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex-1 flex gap-4 overflow-x-auto pb-4">
-        {COLUMNS.map(column => (
-          <div
-            key={column.id}
-            className="flex-1 min-w-[300px] max-w-[400px] bg-slate-100 rounded-xl p-4"
-          >
-            {/* Column Header */}
-            <div className="flex items-center gap-2 mb-4">
-              <div className={`w-3 h-3 rounded-full ${column.color}`}></div>
-              <h3 className="font-semibold text-slate-700">{column.title}</h3>
-              <span className="ml-auto px-2 py-0.5 bg-white rounded-full text-xs font-medium text-slate-600">
-                {getTasksByStatus(column.id).length}
-              </span>
+      {!userName ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
             </div>
-
-            {/* Tasks */}
-            <div className="space-y-3">
-              {getTasksByStatus(column.id).map(task => (
-                <OSCard
-                  key={task.id}
-                  task={task}
-                  onUpdate={loadTasks}
-                />
-              ))}
-
-              {getTasksByStatus(column.id).length === 0 && (
-                <div className="text-center py-8 text-slate-400 text-sm">
-                  Nenhuma tarefa
+            <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">Perfil nao configurado</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Preencha seu nome nas Configuracoes para ver suas O.S.</p>
+            <button
+              onClick={() => navigate('/settings')}
+              className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium"
+            >
+              Ir para Configuracoes
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Kanban Board */
+        <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
+          {COLUMNS.map((column) => {
+            const items = columnData[column.id];
+            return (
+              <div key={column.id} className="flex flex-col min-h-0">
+                {/* Column Header */}
+                <div className={`bg-gradient-to-r ${column.color} rounded-t-xl px-4 py-2.5 flex items-center justify-between`}>
+                  <h3 className="text-sm font-bold text-white">{column.title}</h3>
+                  <span className="bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    {items.length}
+                  </span>
                 </div>
-              )}
 
-              {/* Quick Move Buttons */}
-              {column.id !== 'done' && getTasksByStatus(column.id).length > 0 && (
-                <div className="pt-2 border-t border-slate-200 mt-4">
-                  <p className="text-xs text-slate-400 mb-2">Mover para:</p>
-                  <div className="flex gap-2">
-                    {COLUMNS.filter(c => c.id !== column.id).map(c => (
-                      <button
-                        key={c.id}
-                        onClick={() => {
-                          const firstTask = getTasksByStatus(column.id)[0];
-                          if (firstTask) handleMoveTask(firstTask.id, c.id);
-                        }}
-                        className="flex-1 py-1 text-xs text-slate-600 bg-white rounded hover:bg-slate-50 transition-colors"
+                {/* Cards */}
+                <div className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-b-xl p-3 space-y-2.5 overflow-y-auto border border-t-0 border-slate-200 dark:border-slate-700">
+                  {items.length === 0 && (
+                    <div className="flex items-center justify-center h-32 text-slate-400 dark:text-slate-500 text-sm italic">
+                      {column.emptyText}
+                    </div>
+                  )}
+
+                  {items.map(order => {
+                    const priority = PRIORITIES[order.priority] || PRIORITIES.medium;
+                    const projectName = getProjectName(order.projectId);
+
+                    return (
+                      <div
+                        key={order.id}
+                        className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 hover:shadow-md hover:border-fyness-primary/30 transition-all group"
                       >
-                        {c.title}
-                      </button>
-                    ))}
-                  </div>
+                        {/* Top row */}
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            {sequenceMap[order.id] && (
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-fyness-primary text-white text-[10px] font-bold shrink-0">{sequenceMap[order.id]}</span>
+                            )}
+                            <span className="text-xs font-bold text-slate-400 dark:text-slate-500">O.S. #{order.number}</span>
+                          </div>
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${priority.color}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
+                            {priority.label}
+                          </span>
+                        </div>
+
+                        {/* Title */}
+                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">{order.title}</h4>
+
+                        {/* Project & Client */}
+                        {projectName && (
+                          <p className="text-[11px] text-blue-500 font-medium mb-0.5">{projectName}</p>
+                        )}
+                        {order.client && (
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500">{order.client}</p>
+                        )}
+
+                        {/* Dates */}
+                        <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400 dark:text-slate-500">
+                          {order.estimatedStart && (
+                            <span>Prev: {formatDate(order.estimatedStart)}</span>
+                          )}
+                          {order.actualStart && (
+                            <span className="text-green-500">Inicio: {formatDate(order.actualStart)}</span>
+                          )}
+                          {order.actualEnd && (
+                            <span className="text-emerald-600">Fim: {formatDate(order.actualEnd)}</span>
+                          )}
+                        </div>
+
+                        {/* Expenses Section (doing + done) */}
+                        {(column.id === 'doing' || column.id === 'done') && (
+                          <div className="mt-2">
+                            {/* Existing expenses */}
+                            {order.expenses && order.expenses.length > 0 && (
+                              <div className="mb-1.5">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Gastos</span>
+                                  <span className="text-[10px] font-bold text-amber-600">{formatCurrency(calcExpensesTotal(order.expenses))}</span>
+                                </div>
+                                <div className="space-y-0.5">
+                                  {order.expenses.map((exp, idx) => (
+                                    <div key={idx} className="flex items-center justify-between text-[10px] bg-amber-50 dark:bg-amber-900/20 rounded px-1.5 py-0.5 group/exp">
+                                      <span className="text-slate-600 dark:text-slate-300 truncate mr-1">
+                                        {exp.quantity > 1 && <span className="font-medium text-slate-500 dark:text-slate-400">{exp.quantity}x </span>}
+                                        {exp.name}
+                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        <span className="font-medium text-amber-700">{formatCurrency(exp.value * (exp.quantity || 1))}</span>
+                                        {column.id === 'doing' && (
+                                          <button
+                                            onClick={() => handleRemoveExpense(order.id, idx)}
+                                            className="opacity-0 group-hover/exp:opacity-100 text-red-400 hover:text-red-600 transition-opacity ml-0.5"
+                                            title="Remover gasto"
+                                          >
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Add expense button/form (only doing) */}
+                            {column.id === 'doing' && (
+                              <>
+                                {expenseOpen === order.id ? (
+                                  <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-2 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                                    <input
+                                      type="text"
+                                      value={expName}
+                                      onChange={e => setExpName(e.target.value)}
+                                      placeholder="Material/Ferramenta"
+                                      className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400 dark:bg-slate-800 dark:text-slate-200 dark:placeholder-slate-500"
+                                    />
+                                    <div className="flex gap-1.5">
+                                      <input
+                                        type="number"
+                                        value={expValue}
+                                        onChange={e => setExpValue(e.target.value)}
+                                        placeholder="Valor (R$)"
+                                        min="0"
+                                        step="0.01"
+                                        className="flex-1 px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400 dark:bg-slate-800 dark:text-slate-200 dark:placeholder-slate-500"
+                                      />
+                                      <input
+                                        type="number"
+                                        value={expQty}
+                                        onChange={e => setExpQty(e.target.value)}
+                                        placeholder="Qtd"
+                                        min="1"
+                                        className="w-14 px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400 dark:bg-slate-800 dark:text-slate-200 dark:placeholder-slate-500"
+                                      />
+                                    </div>
+                                    <div className="flex gap-1">
+                                      <button
+                                        onClick={() => handleAddExpense(order.id)}
+                                        disabled={!expName.trim() || !expValue}
+                                        className="flex-1 py-1 bg-amber-500 text-white text-[10px] rounded hover:bg-amber-600 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                                      >
+                                        Adicionar
+                                      </button>
+                                      <button
+                                        onClick={() => { setExpenseOpen(null); setExpName(''); setExpValue(''); setExpQty('1'); }}
+                                        className="px-2 py-1 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 text-[10px] rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                      >
+                                        Cancelar
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => { setExpenseOpen(order.id); setExpName(''); setExpValue(''); setExpQty('1'); }}
+                                    className="w-full py-1 border border-dashed border-amber-300 dark:border-amber-600 text-amber-600 dark:text-amber-400 text-[10px] rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:border-amber-400 transition-colors font-medium flex items-center justify-center gap-1"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                    </svg>
+                                    Registrar Gasto
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2">
+                          {column.id === 'todo' && (
+                            <button
+                              onClick={() => handleClaim(order.id)}
+                              className="flex-1 py-1.5 bg-fyness-primary text-white text-xs rounded-lg hover:bg-fyness-secondary transition-colors font-medium"
+                            >
+                              Pegar O.S.
+                            </button>
+                          )}
+                          {column.id === 'doing' && (
+                            <button
+                              onClick={() => handleFinish(order.id)}
+                              className="flex-1 py-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 transition-colors font-medium"
+                            >
+                              Concluir
+                            </button>
+                          )}
+                          {column.id === 'done' && (
+                            <button
+                              onClick={() => handleReopen(order.id)}
+                              className="flex-1 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors font-medium"
+                            >
+                              Reabrir
+                            </button>
+                          )}
+                          <button
+                            onClick={() => navigate('/financial')}
+                            className="px-2 py-1.5 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 text-xs rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                            title="Ver no Kanban"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* New Task Modal */}
-      {showNewTaskModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
-            <div className="p-4 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-800">Nova Tarefa</h3>
-            </div>
-
-            <form onSubmit={handleCreateTask} className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Titulo
-                </label>
-                <input
-                  type="text"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ex: Revisar relatorio mensal"
-                />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Descricao
-                </label>
-                <textarea
-                  value={newTask.description}
-                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
-                  placeholder="Detalhes da tarefa..."
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Prioridade
-                  </label>
-                  <select
-                    value={newTask.priority}
-                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="low">Baixa</option>
-                    <option value="medium">Media</option>
-                    <option value="high">Alta</option>
-                    <option value="urgent">Urgente</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Tempo Estimado (min)
-                  </label>
-                  <input
-                    type="number"
-                    value={newTask.estimated_time}
-                    onChange={(e) => setNewTask({ ...newTask, estimated_time: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    min="1"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowNewTaskModal(false)}
-                  className="flex-1 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Criar Tarefa
-                </button>
-              </div>
-            </form>
-          </div>
+            );
+          })}
         </div>
       )}
     </div>

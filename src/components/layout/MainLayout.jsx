@@ -3,15 +3,17 @@
  *
  * Estrutura:
  * - Sidebar (navegacao)
- * - Header (breadcrumb, acoes)
+ * - Header (breadcrumb, acoes, theme toggle)
  * - Main (conteudo da pagina)
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
-// Auth desabilitado temporariamente
-// import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
+import { NotificationBell } from '../notifications/NotificationBell';
+import { GlobalSearch } from '../search/GlobalSearch';
 
 // Mapa de titulos por rota
 const routeTitles = {
@@ -21,15 +23,10 @@ const routeTitles = {
   '/routine': 'Minha Rotina',
   '/agenda': 'Agenda',
   '/financial': 'Ordens de Servico',
+  '/reports': 'Relatorios',
+  '/my-day': 'Meu Dia',
   '/settings': 'Configuracoes'
 };
-
-// Icone de notificacao
-const BellIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-  </svg>
-);
 
 // Icone de busca
 const SearchIcon = () => (
@@ -38,12 +35,23 @@ const SearchIcon = () => (
   </svg>
 );
 
+const SunIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+  </svg>
+);
+
 function searchLocalStorage(query) {
   if (!query || query.length < 2) return [];
   const q = query.toLowerCase();
   const results = [];
 
-  // Buscar em O.S.
   try {
     const orders = JSON.parse(localStorage.getItem('os_orders') || '[]');
     orders.forEach(o => {
@@ -58,7 +66,6 @@ function searchLocalStorage(query) {
     });
   } catch {}
 
-  // Buscar em Agenda
   try {
     const events = JSON.parse(localStorage.getItem('agenda_events') || '[]');
     events.forEach(e => {
@@ -77,6 +84,7 @@ function searchLocalStorage(query) {
 function Header() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
@@ -99,7 +107,6 @@ function Header() {
     navigate(result.route);
   };
 
-  // Fechar dropdown ao clicar fora
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (searchRef.current && !searchRef.current.contains(e.target)) {
@@ -110,7 +117,6 @@ function Header() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Determinar titulo baseado na rota
   const getTitle = () => {
     for (const [path, title] of Object.entries(routeTitles)) {
       if (location.pathname === path || location.pathname.startsWith(path + '/')) {
@@ -120,7 +126,6 @@ function Header() {
     return 'Dashboard';
   };
 
-  // Gerar breadcrumb
   const getBreadcrumb = () => {
     const parts = location.pathname.split('/').filter(Boolean);
     return parts.map((part, index) => {
@@ -133,25 +138,25 @@ function Header() {
   const breadcrumb = getBreadcrumb();
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between">
+    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-6 flex items-center justify-between">
       {/* Breadcrumb */}
       <div>
         <nav className="flex items-center gap-2 text-sm">
-          <span className="text-slate-400">Inicio</span>
+          <span className="text-slate-400 dark:text-slate-500">Inicio</span>
           {breadcrumb.map((item, index) => (
             <span key={item.path} className="flex items-center gap-2">
-              <span className="text-slate-300">/</span>
-              <span className={index === breadcrumb.length - 1 ? 'text-slate-800 font-medium' : 'text-slate-500'}>
+              <span className="text-slate-300 dark:text-slate-600">/</span>
+              <span className={index === breadcrumb.length - 1 ? 'text-slate-800 dark:text-slate-100 font-medium' : 'text-slate-500 dark:text-slate-400'}>
                 {item.title}
               </span>
             </span>
           ))}
         </nav>
-        <h1 className="text-xl font-semibold text-slate-800">{getTitle()}</h1>
+        <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">{getTitle()}</h1>
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {/* Search */}
         <div className="relative hidden md:block" ref={searchRef}>
           <input
@@ -160,30 +165,29 @@ function Header() {
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             onFocus={() => { if (searchQuery.length >= 2) setShowResults(true); }}
-            className="w-64 pl-10 pr-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            className="w-64 pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
           />
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">
             <SearchIcon />
           </div>
 
-          {/* Dropdown de resultados */}
           {showResults && (
-            <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+            <div className="absolute top-full mt-1 left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
               {searchResults.length === 0 ? (
-                <div className="px-4 py-3 text-sm text-slate-400 text-center">Nenhum resultado para &ldquo;{searchQuery}&rdquo;</div>
+                <div className="px-4 py-3 text-sm text-slate-400 dark:text-slate-500 text-center">Nenhum resultado para &ldquo;{searchQuery}&rdquo;</div>
               ) : (
                 searchResults.map((r, i) => (
                   <button
                     key={`${r.type}-${r.id}-${i}`}
                     onClick={() => handleResultClick(r)}
-                    className="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100 last:border-b-0"
+                    className="w-full px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0"
                   >
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${r.type === 'os' ? 'bg-fyness-primary' : 'bg-amber-500'}`}>
                       {r.type === 'os' ? 'OS' : 'AG'}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-slate-800 truncate">{r.label}</div>
-                      <div className="text-[11px] text-slate-400 truncate">{r.sub}</div>
+                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{r.label}</div>
+                      <div className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{r.sub}</div>
                     </div>
                   </button>
                 ))
@@ -192,6 +196,17 @@ function Header() {
           )}
         </div>
 
+        {/* Notifications */}
+        <NotificationBell />
+
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          title={isDark ? 'Modo claro' : 'Modo escuro'}
+        >
+          {isDark ? <SunIcon /> : <MoonIcon />}
+        </button>
       </div>
     </header>
   );
@@ -199,20 +214,27 @@ function Header() {
 
 export function MainLayout() {
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 print:block print:bg-white">
       {/* Sidebar */}
-      <Sidebar />
+      <div className="print:hidden">
+        <Sidebar />
+      </div>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden transition-all duration-300">
         {/* Header */}
-        <Header />
+        <div className="print:hidden">
+          <Header />
+        </div>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-6 print:p-0 print:overflow-visible">
           <Outlet />
         </main>
       </div>
+
+      {/* Global Search (Cmd+K) */}
+      <GlobalSearch />
     </div>
   );
 }

@@ -7,6 +7,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Milton One - Fonte para assinaturas */
+@font-face {
+  font-family: 'Milton One';
+  src: url('./assets/fonts/Milton_One.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Milton One';
+  src: url('./assets/fonts/Milton_One_Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Global Styles */
 * {
   box-sizing: border-box;
@@ -21,6 +38,25 @@ html, body, #root {
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: #f8fafc;
+}
+
+/* Dark mode body */
+.dark body,
+html.dark body {
+  background-color: #020617;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 /* ============================================
@@ -59,7 +95,7 @@ body {
 .djs-shape[data-element-id*="Demo"] .djs-visual > rect,
 .djs-shape[data-element-id*="Downsell"] .djs-visual > rect {
   fill: #ede9fe !important;
-  stroke: #8b5cf6 !important;
+  stroke: #2563eb !important;
   stroke-width: 2px !important;
 }
 
@@ -96,7 +132,7 @@ body {
 /* Recebimento Task - Indigo */
 .djs-shape[data-element-id*="Recebimento"] .djs-visual > rect {
   fill: #e0e7ff !important;
-  stroke: #6366f1 !important;
+  stroke: #3b82f6 !important;
   stroke-width: 2px !important;
 }
 
@@ -178,7 +214,7 @@ body {
 /* Lane - Vendas */
 .djs-shape[data-element-id*="Vendas"] .djs-visual > rect {
   fill: #ede9fe !important;
-  stroke: #8b5cf6 !important;
+  stroke: #2563eb !important;
   stroke-width: 1px !important;
 }
 
@@ -199,7 +235,7 @@ body {
 /* Lane - Parceiro */
 .djs-shape[data-element-id*="Parceiro"]:not([data-element-id*="Start"]) .djs-visual > rect {
   fill: #e0e7ff !important;
-  stroke: #6366f1 !important;
+  stroke: #3b82f6 !important;
   stroke-width: 1px !important;
 }
 
@@ -243,7 +279,7 @@ body {
 
 .djs-shape.selected .djs-outline,
 .djs-connection.selected .djs-outline {
-  stroke: #6366f1 !important;
+  stroke: #3b82f6 !important;
   stroke-width: 3px !important;
 }
 
@@ -317,7 +353,7 @@ body {
 }
 
 .djs-palette .entry.active {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
 }
 
 .djs-palette .entry.active img,
@@ -569,20 +605,41 @@ body {
 }
 
 .djs-shape[data-robot-task="true"] .djs-visual > rect {
-  stroke: #8b5cf6 !important;
+  stroke: #475569 !important;
   stroke-width: 2px !important;
 }
 
 /* Hover em tarefas automatizadas */
 .djs-shape[data-robot-task="true"]:hover .djs-visual > rect {
-  stroke: #7c3aed !important;
+  stroke: #334155 !important;
   stroke-width: 2.5px !important;
 }
 
 /* Seleção de tarefas automatizadas */
 .djs-shape[data-robot-task="true"].selected .djs-outline {
-  stroke: #8b5cf6 !important;
+  stroke: #475569 !important;
   stroke-width: 3px !important;
+}
+
+/* ========== PRINT STYLES ========== */
+@media print {
+  html, body, #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Quebra de pagina adequada */
+  .print\\:break-inside-avoid {
+    break-inside: avoid !important;
+  }
 }
 
 /* Animation for toast */
@@ -603,18 +660,11 @@ body {
 
 /* ========== ÍCONE DE ROBÔ NO MENU "CHANGE ELEMENT" ========== */
 
-/* Adicionar ícone de robô para a opção customizada de Tarefa Automatizada */
-.djs-popup .entry[data-action="replace-with-robot-task"] .robot-menu-icon::before,
-.djs-popup-body .entry[data-action="replace-with-robot-task"] .robot-menu-icon::before {
-  content: "🤖" !important;
-  font-size: 18px !important;
-  line-height: 24px !important;
-  font-family: system-ui, -apple-system, sans-serif !important;
-  display: inline-block !important;
-  width: 24px !important;
-  height: 24px !important;
-  text-align: center !important;
-  vertical-align: middle !important;
+/* Estilo para a opção customizada de Tarefa Automatizada no menu */
+.djs-popup .entry[data-action="replace-with-robot-task"],
+.djs-popup-body .entry[data-action="replace-with-robot-task"] {
+  display: flex;
+  align-items: center;
 }
 
 /* ========== OCULTAR BADGE/ÍCONE DA SUPABASE ========== */
@@ -844,4 +894,29 @@ g[data-element-id^="Lane_"] text,
 g[data-element-id^="Lane_"] tspan {
   transform: translateZ(1000px) !important;
   -webkit-transform: translateZ(1000px) !important;
+}
+
+/* ==================== Ocultar badge do Supabase ==================== */
+[data-supabase-badge],
+a[href*="supabase.com"],
+div:has(> a[href*="supabase"]) {
+  display: none !important;
+}
+
+/* ==================== Toast animation ==================== */
+@keyframes slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* ==================== Emergency pulse ==================== */
+@keyframes pulse-subtle {
+  0%, 100% { border-color: rgb(239 68 68); }
+  50% { border-color: rgb(239 68 68 / 0.4); }
+}
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
 }

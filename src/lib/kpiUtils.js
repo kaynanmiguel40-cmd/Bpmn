@@ -1,0 +1,270 @@
+/**
+ * kpiUtils - Funções utilitárias de cálculo de KPIs
+ *
+ * Extraídas do DashboardPage para reutilização e testabilidade.
+ */
+
+// ─── Helpers de Data ─────────────────────────────────────────────
+
+export function isCurrentMonth(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+}
+
+export function isLastMonth(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return d.getMonth() === lastMonth.getMonth() && d.getFullYear() === lastMonth.getFullYear();
+}
+
+// ─── Helpers de O.S. ─────────────────────────────────────────────
+
+/** Horas realizadas (actualStart -> actualEnd), 8h por dia */
+export function calcOSHours(order) {
+  if (!order.actualStart || !order.actualEnd) return 0;
+  const start = new Date(order.actualStart);
+  const end = new Date(order.actualEnd);
+  const diffMs = end - start;
+  const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
+  return diffDays * 8;
+}
+
+/** Horas previstas (estimatedStart -> estimatedEnd), 8h por dia */
+export function calcEstimatedHours(order) {
+  if (!order.estimatedStart || !order.estimatedEnd) return 0;
+  const start = new Date(order.estimatedStart);
+  const end = new Date(order.estimatedEnd);
+  const diffMs = end - start;
+  const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
+  return diffDays * 8;
+}
+
+/** Dias corridos entre duas datas (min 0) */
+export function calcDeliveryDays(order) {
+  if (!order.actualStart || !order.actualEnd) return null;
+  const start = new Date(order.actualStart);
+  const end = new Date(order.actualEnd);
+  return Math.max(0, Math.round((end - start) / (1000 * 60 * 60 * 24)));
+}
+
+/** Dias de atraso (positivo = atrasou, negativo = adiantou) */
+export function calcDelayDays(order) {
+  if (!order.estimatedEnd || !order.actualEnd) return null;
+  const estimated = new Date(order.estimatedEnd);
+  const actual = new Date(order.actualEnd);
+  return Math.round((actual - estimated) / (1000 * 60 * 60 * 24));
+}
+
+// ─── Helpers de Custo ────────────────────────────────────────────
+
+/** Calcula valor/hora de um membro da equipe */
+export function getMemberHourlyRate(member) {
+  const salary = parseFloat(member.salaryMonth || member.salary_month || 0);
+  const hours = parseFloat(member.hoursMonth || member.hours_month || 176);
+  if (salary <= 0 || hours <= 0) return 0;
+  return salary / hours;
+}
+
+/** Calcula custo total de uma O.S. (mão de obra + gastos materiais) */
+export function calcOSCost(order, membersList) {
+  const hours = calcOSHours(order);
+  const assigneeName = (order.assignee || '').toLowerCase().trim();
+  const member = membersList.find(m => m.name.toLowerCase().trim() === assigneeName);
+  const laborCost = member ? hours * getMemberHourlyRate(member) : 0;
+  const materialCost = (order.expenses || []).reduce((acc, e) => acc + (e.value || 0) * (e.quantity || 1), 0);
+  return { laborCost, materialCost, totalCost: laborCost + materialCost };
+}
+
+// ─── Formatação ──────────────────────────────────────────────────
+
+export function formatCurrency(value) {
+  const num = parseFloat(value);
+  if (isNaN(num)) return 'R$ 0,00';
+  return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+export function formatLateTime(totalMinutes) {
+  if (totalMinutes <= 0) return '0min';
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if (hours === 0) return `${mins}min`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}min`;
+}
+
+export function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'agora';
+  if (mins < 60) return `ha ${mins}min`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `ha ${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return 'ontem';
+  if (days < 7) return `ha ${days} dias`;
+  return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
+
+// ─── Helpers Diversos ────────────────────────────────────────────
+
+export function loadProfileSync() {
+  try { return JSON.parse(localStorage.getItem('settings_profile') || '{}'); }
+  catch { return {}; }
+}
+
+export function findCurrentUser(profile, teamMembers) {
+  const fallback = teamMembers[0] || { id: 'default', name: profile?.name || 'Usuario', color: '#3b82f6' };
+  if (!profile || !profile.name) return fallback;
+  const pName = profile.name.toLowerCase().trim();
+  const match = teamMembers.find(m => m.name.toLowerCase().trim() === pName || pName.includes(m.name.toLowerCase().trim()));
+  return match || { id: 'self', name: profile.name, color: '#3b82f6' };
+}
+
+// ─── Filtro por Período ──────────────────────────────────────────
+
+/** Filtra ordens e eventos dentro de um range de datas */
+export function filterByPeriod(ordersList, eventsList, startDate, endDate) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  const filteredOrders = ordersList.filter(o => {
+    // Concluídas: actualEnd dentro do range
+    if (o.status === 'done' && o.actualEnd) {
+      const d = new Date(o.actualEnd);
+      return d >= start && d <= end;
+    }
+    // Em andamento: incluir se actualStart <= endDate
+    if (o.status === 'in_progress' && o.actualStart) {
+      return new Date(o.actualStart) <= end;
+    }
+    // Disponíveis: incluir se criada dentro do range
+    if (o.status === 'available' && o.createdAt) {
+      const d = new Date(o.createdAt);
+      return d >= start && d <= end;
+    }
+    return false;
+  });
+
+  const filteredEvents = eventsList.filter(e => {
+    if (!e.startDate) return false;
+    const d = new Date(e.startDate);
+    return d >= start && d <= end;
+  });
+
+  return { filteredOrders, filteredEvents };
+}
+
+// ─── Cálculo Central de KPIs ─────────────────────────────────────
+
+/** Calcula todos os KPIs a partir de uma lista de O.S. e eventos */
+export function calcKPIs(ordersList, eventsList, targetHours) {
+  const now = new Date();
+  const done = ordersList.filter(o => o.status === 'done');
+  const doneMonth = done.filter(o => isCurrentMonth(o.actualEnd));
+  const doneLastMonth = done.filter(o => isLastMonth(o.actualEnd));
+  const inProgress = ordersList.filter(o => o.status === 'in_progress');
+  const available = ordersList.filter(o => o.status === 'available');
+
+  // Tempo medio de entrega (dias)
+  const deliveryDays = done.map(o => calcDeliveryDays(o)).filter(d => d !== null);
+  const avgDelivery = deliveryDays.length > 0 ? deliveryDays.reduce((s, d) => s + d, 0) / deliveryDays.length : 0;
+  const deliveryThisMonth = doneMonth.map(o => calcDeliveryDays(o)).filter(d => d !== null);
+  const avgDeliveryMonth = deliveryThisMonth.length > 0 ? deliveryThisMonth.reduce((s, d) => s + d, 0) / deliveryThisMonth.length : 0;
+
+  // Taxa de conclusao (mes)
+  const totalMes = doneMonth.length + inProgress.length;
+  const completionRate = totalMes > 0 ? (doneMonth.length / totalMes) * 100 : 0;
+
+  // Entrega no prazo
+  const withEstimate = done.filter(o => o.estimatedEnd && o.actualEnd);
+  const onTime = withEstimate.filter(o => calcDelayDays(o) <= 0);
+  const onTimeRate = withEstimate.length > 0 ? (onTime.length / withEstimate.length) * 100 : 100;
+
+  // Atraso medio (somente dos atrasados)
+  const delays = withEstimate.map(o => calcDelayDays(o)).filter(d => d > 0);
+  const avgDelay = delays.length > 0 ? delays.reduce((s, d) => s + d, 0) / delays.length : 0;
+
+  // Horas do mes
+  const hoursMonth = doneMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const hoursLastMonth = doneLastMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const hoursPercent = targetHours > 0 ? Math.min((hoursMonth / targetHours) * 100, 100) : 0;
+
+  // Produtividade = Horas Previstas / Horas Realizadas * 100
+  const dayOfMonth = now.getDate();
+  const realizedHours = done.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const estimatedHours = done.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
+  const productivity = realizedHours > 0 ? (estimatedHours / realizedHours) * 100 : 0;
+
+  // Variacao mes anterior
+  const realizedHoursMonth = doneMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const estimatedHoursMonth = doneMonth.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
+  const productivityMonth = realizedHoursMonth > 0 ? (estimatedHoursMonth / realizedHoursMonth) * 100 : 0;
+  const realizedHoursLast = doneLastMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const estimatedHoursLast = doneLastMonth.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
+  const productivityLast = realizedHoursLast > 0 ? (estimatedHoursLast / realizedHoursLast) * 100 : 0;
+  const productivityChange = productivityLast > 0 ? productivityMonth - productivityLast : 0;
+
+  // Carga de trabalho
+  const workload = inProgress.length;
+
+  // Utilizacao
+  const workDaysSoFar = Math.max(1, Math.floor(dayOfMonth * 5 / 7));
+  const availableHoursSoFar = workDaysSoFar * 8;
+  const utilization = availableHoursSoFar > 0 ? Math.min((hoursMonth / availableHoursSoFar) * 100, 100) : 0;
+
+  // Taxa de retrabalho
+  const doneWithEstimate = done.filter(o => calcEstimatedHours(o) > 0 && calcOSHours(o) > 0);
+  const reworkOrders = doneWithEstimate.filter(o => calcOSHours(o) > calcEstimatedHours(o) * 1.3);
+  const reworkRate = doneWithEstimate.length > 0 ? (reworkOrders.length / doneWithEstimate.length) * 100 : 0;
+
+  // Presenca e pontualidade em reunioes
+  const pastMeetings = eventsList.filter(e => e.type === 'meeting' && new Date(e.endDate) < now);
+  const attendedMeetings = pastMeetings.filter(e => e.attended === true);
+  const punctualMeetings = attendedMeetings.filter(e => !e.wasLate);
+  const lateMeetings = attendedMeetings.filter(e => e.wasLate);
+  const meetingAttendance = pastMeetings.length > 0 ? (attendedMeetings.length / pastMeetings.length) * 100 : 0;
+  const meetingPunctuality = attendedMeetings.length > 0 ? (punctualMeetings.length / attendedMeetings.length) * 100 : 0;
+  const totalLateMinutes = lateMeetings.reduce((sum, e) => sum + (parseInt(e.lateMinutes) || 0), 0);
+
+  return {
+    avgDelivery: avgDelivery.toFixed(1),
+    avgDeliveryMonth: avgDeliveryMonth.toFixed(1),
+    completionRate: completionRate.toFixed(0),
+    onTimeRate: onTimeRate.toFixed(0),
+    avgDelay: avgDelay.toFixed(1),
+    hoursMonth,
+    hoursLastMonth,
+    hoursPercent,
+    productivity: productivity.toFixed(0),
+    productivityMonth: productivityMonth.toFixed(0),
+    productivityChange: productivityChange.toFixed(0),
+    realizedHours: realizedHoursMonth,
+    estimatedHours: estimatedHoursMonth,
+    doneMonth: doneMonth.length,
+    doneLastMonth: doneLastMonth.length,
+    inProgress: inProgress.length,
+    available: available.length,
+    total: ordersList.length,
+    workload,
+    utilization: utilization.toFixed(0),
+    targetHours,
+    totalDone: done.length,
+    lateArrivals: lateMeetings.length,
+    totalLateMinutes,
+    meetingAttendance: meetingAttendance.toFixed(0),
+    meetingPunctuality: meetingPunctuality.toFixed(0),
+    pastMeetings: pastMeetings.length,
+    attendedMeetings: attendedMeetings.length,
+    punctualMeetings: punctualMeetings.length,
+    reworkRate: reworkRate.toFixed(0),
+    reworkCount: reworkOrders.length,
+    reworkTotal: doneWithEstimate.length,
+  };
+}

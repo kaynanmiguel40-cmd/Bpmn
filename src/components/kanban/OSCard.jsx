@@ -11,10 +11,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-// Auth desabilitado temporariamente
-// import { useAuth } from '../../contexts/AuthContext';
-// import { usePermissions } from '../../contexts/PermissionContext';
-// import { ProtectCost } from '../auth/Protect';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Icones SVG inline
 const PlayIcon = () => (
@@ -86,10 +83,8 @@ export function OSCard({
   isDragging = false,
   className = ''
 }) {
-  // Auth desabilitado temporariamente
-  // const { profile } = useAuth();
-  // const { canViewCosts } = usePermissions();
-  const profile = { id: 'temp-user' };
+  const { profile: authProfile } = useAuth();
+  const profile = authProfile || { id: 'temp-user' };
 
   const [isTimerRunning, setIsTimerRunning] = useState(task.is_timer_running || false);
   const [elapsedTime, setElapsedTime] = useState(task.actual_time || 0);
@@ -237,9 +232,9 @@ export function OSCard({
 
   // Classes dinamicas
   const cardClasses = [
-    'bg-white rounded-lg shadow-sm border-2 transition-all duration-200',
+    'bg-white dark:bg-slate-800 rounded-lg shadow-sm border-2 transition-all duration-200',
     isDragging ? 'opacity-50 rotate-2 scale-105' : '',
-    isOverBudget ? 'border-red-500 shadow-red-100' : 'border-transparent hover:border-blue-300',
+    isOverBudget ? 'border-red-500 shadow-red-100 dark:shadow-red-900/20' : 'border-transparent hover:border-blue-300 dark:hover:border-blue-600',
     isTimerRunning ? 'ring-2 ring-green-500 ring-opacity-50' : '',
     className
   ].filter(Boolean).join(' ');
@@ -249,7 +244,7 @@ export function OSCard({
       {/* Header */}
       <div className="p-3 pb-2">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-medium text-slate-800 text-sm leading-tight flex-1">
+          <h3 className="font-medium text-slate-800 dark:text-slate-100 text-sm leading-tight flex-1">
             {task.title}
           </h3>
           <span className={`px-2 py-0.5 rounded text-xs font-medium ${priorityColors[task.priority]}`}>
@@ -258,7 +253,7 @@ export function OSCard({
         </div>
 
         {task.description && (
-          <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
             {task.description}
           </p>
         )}
@@ -266,7 +261,7 @@ export function OSCard({
 
       {/* Progress Bar */}
       <div className="px-3">
-        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
           <div
             className={`h-full transition-all duration-300 ${
               isOverBudget ? 'bg-red-500' : progress > 80 ? 'bg-orange-500' : 'bg-blue-500'
@@ -279,12 +274,12 @@ export function OSCard({
       {/* Time Info */}
       <div className="px-3 pt-2">
         <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1 text-slate-600">
+          <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
             <ClockIcon />
-            <span className={isTimerRunning ? 'text-green-600 font-medium' : ''}>
+            <span className={isTimerRunning ? 'text-green-600 dark:text-green-400 font-medium' : ''}>
               {formatTime(elapsedTime)}
             </span>
-            <span className="text-slate-400">/</span>
+            <span className="text-slate-400 dark:text-slate-500">/</span>
             <span>{formatTime(estimatedTime)}</span>
           </div>
 
@@ -300,13 +295,13 @@ export function OSCard({
       {/* Cost Info */}
       <div className="px-3 pt-1">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">Custo:</span>
+          <span className="text-slate-500 dark:text-slate-400">Custo:</span>
           <div>
-            <span className={`font-medium ${isOverBudget ? 'text-red-600' : 'text-slate-700'}`}>
+            <span className={`font-medium ${isOverBudget ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>
               {formatCurrency(task.actual_cost || 0)}
             </span>
             {task.estimated_cost > 0 && (
-              <span className="text-slate-400 ml-1">
+              <span className="text-slate-400 dark:text-slate-500 ml-1">
                 / {formatCurrency(task.estimated_cost)}
               </span>
             )}
@@ -315,7 +310,7 @@ export function OSCard({
       </div>
 
       {/* Timer Controls */}
-      <div className="p-3 pt-2 border-t border-slate-100 mt-2">
+      <div className="p-3 pt-2 border-t border-slate-100 dark:border-slate-700 mt-2">
         <div className="flex items-center justify-between">
           {/* Assignee */}
           <div className="flex items-center gap-2">
@@ -326,11 +321,11 @@ export function OSCard({
                 className="w-6 h-6 rounded-full"
               />
             ) : (
-              <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium text-slate-600">
+              <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-xs font-medium text-slate-600 dark:text-slate-200">
                 {(task.assigned_profile?.full_name || '?')[0].toUpperCase()}
               </div>
             )}
-            <span className="text-xs text-slate-500 truncate max-w-[80px]">
+            <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[80px]">
               {task.assigned_profile?.full_name || 'Sem responsavel'}
             </span>
           </div>
@@ -361,7 +356,7 @@ export function OSCard({
 
         {/* Due Date */}
         {task.due_date && (
-          <div className="mt-2 text-xs text-slate-500">
+          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             Prazo: {new Date(task.due_date).toLocaleDateString('pt-BR')}
           </div>
         )}
