@@ -36,7 +36,7 @@ export function shortName(fullName) {
 
 export const MEMBER_COLORS = [
   '#3b82f6', '#22c55e', '#f97316', '#ec4899',
-  '#3b82f6', '#eab308', '#ef4444', '#2563eb',
+  '#8b5cf6', '#eab308', '#ef4444', '#2563eb',
   '#06b6d4', '#84cc16', '#f43f5e', '#14b8a6',
 ];
 

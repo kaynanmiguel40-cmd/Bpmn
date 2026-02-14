@@ -13,7 +13,10 @@ BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid()
-    AND role IN ('admin', 'manager')
+    AND LOWER(TRIM(role)) IN (
+      'admin', 'manager', 'gestor', 'gerente',
+      'diretor', 'supervisor', 'coordenador'
+    )
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;

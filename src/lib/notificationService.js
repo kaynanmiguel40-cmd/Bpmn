@@ -1,6 +1,7 @@
 import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabase';
 import { getOffline, saveOffline } from './offlineDB';
+import { notifyNative } from './pushNotifications';
 
 // ==================== HELPER: pegar user_id atual ====================
 
@@ -136,6 +137,12 @@ export async function notify({ userId, type = 'info', title, message, entityType
   // Disparar evento custom para atualizar o bell em tempo real
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('notification-created'));
+  }
+  // Push notification nativa no PC/celular
+  try {
+    notifyNative({ type, title, message, entityType, entityId });
+  } catch (e) {
+    // Silenciar — push e opcional
   }
   return result;
 }

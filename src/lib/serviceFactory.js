@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase } from './supabaseClient';
 import { toast } from '../contexts/ToastContext';
 import { validateAndSanitize, validatePartial } from './validation';
 import { saveOffline, getOffline, putOffline, removeOffline, markPendingSync, getPendingSync, clearPendingSync } from './offlineDB';

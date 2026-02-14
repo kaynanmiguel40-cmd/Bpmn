@@ -10,6 +10,7 @@ import {
 } from '../../hooks/queries';
 import { useRealtimeNotifications } from '../../hooks/useRealtimeSubscription';
 import { NotificationPanel } from './NotificationPanel';
+import { requestPermission, getPermissionStatus } from '../../lib/pushNotifications';
 
 const BellIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -31,6 +32,15 @@ export function NotificationBell() {
 
   // Supabase Realtime — invalida queries automaticamente em INSERT/UPDATE/DELETE
   useRealtimeNotifications();
+
+  // Pedir permissao de push na primeira vez que abrir o painel
+  const handleOpen = () => {
+    const willOpen = !isOpen;
+    setIsOpen(willOpen);
+    if (willOpen && getPermissionStatus() === 'default') {
+      requestPermission();
+    }
+  };
 
   // Fechar painel ao clicar fora
   useEffect(() => {
@@ -68,7 +78,7 @@ export function NotificationBell() {
   return (
     <div className="relative" ref={panelRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleOpen}
         className="relative p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         title="Notificacoes"
       >

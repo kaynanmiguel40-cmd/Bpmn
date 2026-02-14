@@ -211,12 +211,10 @@ export async function createOSOrder(order) {
 }
 
 export async function updateOSOrdersBatch(orderUpdates) {
-  const results = [];
-  for (const upd of orderUpdates) {
-    const result = await updateOSOrder(upd.id, upd);
-    if (result) results.push(result);
-  }
-  return results;
+  const results = await Promise.all(
+    orderUpdates.map(upd => updateOSOrder(upd.id, upd))
+  );
+  return results.filter(Boolean);
 }
 
 export async function clearProjectFromOrders(projectId) {

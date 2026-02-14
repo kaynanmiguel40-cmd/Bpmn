@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { showLocalNotification } from '../lib/pushNotifications';
 
 /**
  * Hook generico para Supabase Realtime.
@@ -68,7 +69,22 @@ export function useRealtimeAgendaEvents(enabled = true) {
  * Hook para Realtime em notifications.
  */
 export function useRealtimeNotifications(enabled = true) {
-  useRealtimeSubscription('notifications', ['notifications', 'unreadCount'], { enabled });
+  useRealtimeSubscription('notifications', ['notifications', 'unreadCount'], {
+    enabled,
+    onInsert: (row) => {
+      // Push nativa quando chega notificacao via Realtime (outro usuario enviou)
+      if (row && row.title) {
+        showLocalNotification({
+          title: row.title,
+          body: row.message || '',
+          type: row.type || 'info',
+          entityType: row.entity_type,
+          entityId: row.entity_id,
+          tag: `fyness-rt-${row.id}`,
+        });
+      }
+    },
+  });
 }
 
 /**

@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS public.os_orders (
     actual_end TEXT,
     attachments JSONB DEFAULT '[]',
     expenses JSONB DEFAULT '[]',
+    checklist JSONB DEFAULT '[]',
     project_id TEXT,
     type TEXT DEFAULT 'normal',
     parent_order_id TEXT,

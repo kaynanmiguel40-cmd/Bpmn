@@ -5,7 +5,7 @@
  * - Tela 3: Documento O.S. oficial
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, memo, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useOSOrders, useOSSectors, useOSProjects, useTeamMembers, useAgendaEvents, useClients, queryKeys,
@@ -20,6 +20,7 @@ import { toast } from '../../contexts/ToastContext';
 import { getProfile } from '../../lib/profileService';
 import { shortName } from '../../lib/teamService';
 import { MANAGER_ROLES } from '../../lib/roleUtils';
+import { usePermissions } from '../../contexts/PermissionContext';
 import logoFyness from '../../assets/logo-fyness.png';
 import { useRealtimeOSOrders, useRealtimeTeamMembers } from '../../hooks/useRealtimeSubscription';
 
@@ -213,6 +214,8 @@ export default function FinancialPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [showDone, setShowDone] = useState(false);
   const [donePage, setDonePage] = useState(0);
+  const CARDS_PER_COL = 20;
+  const [expandedCols, setExpandedCols] = useState({});
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
@@ -233,11 +236,26 @@ export default function FinancialPage() {
   // Modo emergencial do formulario
   const [emergencyFormMode, setEmergencyFormMode] = useState(false);
 
+  // Callbacks memoizados para OSCard (evita re-renders desnecessarios com memo)
+  const handleCardClick = useCallback((order) => setViewingOrder(order), []);
+  const handleDragStartCard = useCallback((id) => setDraggingId(id), []);
+  const handleDragEndCard = useCallback(() => { setDraggingId(null); setDragOverCol(null); setDropTarget(null); }, []);
+  const handleCardDragOver = useCallback((cardId, position) => setDropTarget({ cardId, position }), []);
+  const noop = useCallback(() => {}, []);
+
   const isManager = useMemo(() => {
     const r = (profile.role || '').toLowerCase().trim();
     if (!r) return false;
     return MANAGER_ROLES.some(m => r.includes(m));
   }, [profile]);
+
+  // Permissoes granulares (substituem isManager para acoes especificas)
+  const { hasPermission } = usePermissions();
+  const canCreateOS = hasPermission('os.create');
+  const canEditOS = hasPermission('os.edit');
+  const canDeleteOS = hasPermission('os.delete');
+  const canManageProjects = hasPermission('os.manage_projects');
+  const canViewCosts = hasPermission('financial.view_costs');
 
   // Lista completa: membros cadastrados + perfil logado (se nao estiver na lista)
   const allMembers = useMemo(() => {
@@ -297,19 +315,17 @@ export default function FinancialPage() {
     return grouped;
   }, [activeOrders]);
 
-  // Mapa de sequencia: ordem de execucao global (prioridade + sortOrder)
+  // Contagem continua: urgente/alta -> media -> baixa
   const sequenceMap = useMemo(() => {
-    const PRIORITY_WEIGHT = { urgent: 0, high: 1, medium: 2, low: 3 };
-    const sorted = [...activeOrders].sort((a, b) => {
-      const pa = PRIORITY_WEIGHT[a.priority] ?? 9;
-      const pb = PRIORITY_WEIGHT[b.priority] ?? 9;
-      if (pa !== pb) return pa - pb;
-      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-    });
     const map = {};
-    sorted.forEach((o, i) => { map[o.id] = i + 1; });
+    let seq = 1;
+    PRIORITY_COLUMNS.forEach(col => {
+      (ordersByColumn[col.id] || []).forEach(o => {
+        map[o.id] = seq++;
+      });
+    });
     return map;
-  }, [activeOrders]);
+  }, [ordersByColumn]);
 
   // Projetos filtrados
   const filteredProjects = useMemo(() => {
@@ -543,11 +559,15 @@ export default function FinancialPage() {
       setViewingOrder(updatedLocal.find(x => x.id === draggedId));
     }
 
-    // Salvar no banco em batch
+    // Salvar no banco apenas cards que mudaram
     const batchUpdates = [];
     batchUpdates.push({ id: draggedId, priority: newPriority, sortOrder: newSortMap[draggedId] ?? draggedOrder.sortOrder });
     for (const [id, sortOrder] of Object.entries(newSortMap)) {
-      if (id !== draggedId) batchUpdates.push({ id, sortOrder });
+      if (id === draggedId) continue;
+      const original = orders.find(o => o.id === id);
+      if (original && (original.sortOrder ?? 0) !== sortOrder) {
+        batchUpdates.push({ id, sortOrder });
+      }
     }
     await updateOSOrdersBatch(batchUpdates);
   };
@@ -688,17 +708,20 @@ export default function FinancialPage() {
           currentUser={currentUser}
           projectName={projectName}
           isManager={isManager}
+          canEditOS={canEditOS}
+          canDeleteOS={canDeleteOS}
+          canViewCosts={canViewCosts}
           profileName={profile.name || ''}
           profileCpf={profile.cpf || ''}
           teamMembers={allMembers}
           allOrders={orders}
           onBack={() => setViewingOrder(null)}
-          onEdit={() => openEdit(viewingOrder)}
+          onEdit={canEditOS ? () => openEdit(viewingOrder) : null}
           onClaim={() => handleClaim(viewingOrder.id)}
           onRelease={() => handleRelease(viewingOrder.id)}
-          onMoveForward={() => handleMoveForward(viewingOrder.id)}
-          onMoveBack={() => handleMoveBack(viewingOrder.id)}
-          onDelete={() => setShowDeleteModal(viewingOrder.id)}
+          onMoveForward={canEditOS ? () => handleMoveForward(viewingOrder.id) : null}
+          onMoveBack={canEditOS ? () => handleMoveBack(viewingOrder.id) : null}
+          onDelete={canDeleteOS ? () => setShowDeleteModal(viewingOrder.id) : null}
           onViewOrder={(order) => setViewingOrder(order)}
           onUpdateOrder={async (id, updates) => {
             // Update otimista: atualiza UI imediatamente
@@ -728,7 +751,7 @@ export default function FinancialPage() {
             clients={clients}
             onSave={handleSave}
             onClose={() => { setShowCreateForm(false); setEditingOrder(null); setEmergencyFormMode(false); }}
-            onDelete={isManager && editingOrder ? () => { setShowDeleteModal(editingOrder.id); setShowCreateForm(false); } : null}
+            onDelete={canDeleteOS && editingOrder ? () => { setShowDeleteModal(editingOrder.id); setShowCreateForm(false); } : null}
             isEmergency={emergencyFormMode}
             emergencyNumber={nextEmergencyNumber}
             allOrders={orders}
@@ -773,7 +796,7 @@ export default function FinancialPage() {
                 </span>
               )}
             </div>
-            {isManager && (
+            {canCreateOS && (
               <>
               <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium shadow-sm">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -793,7 +816,7 @@ export default function FinancialPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {isManager && selectedProject.id !== '__no_project__' && (
+            {canManageProjects && selectedProject.id !== '__no_project__' && (
               <button
                 onClick={() => openEditProject(selectedProject)}
                 className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
@@ -852,14 +875,14 @@ export default function FinancialPage() {
                   order={order}
                   teamMembers={allMembers}
                   seqNumber={null}
-                  onClick={() => setViewingOrder(order)}
+                  onClick={() => handleCardClick(order)}
                   isDragging={false}
                   dropPosition={null}
-                  onDragStart={() => {}}
-                  onDragEnd={() => {}}
-                  onCardDragOver={() => {}}
+                  onDragStart={noop}
+                  onDragEnd={noop}
+                  onCardDragOver={noop}
                   allOrders={orders}
-                />
+                      />
               ))}
             </div>
           </div>
@@ -907,21 +930,31 @@ export default function FinancialPage() {
                       {isOver ? 'Soltar aqui' : column.emptyText}
                     </div>
                   ) : (
-                    colOrders.map(order => (
-                      <OSCard
-                        key={order.id}
-                        order={order}
-                        teamMembers={allMembers}
-                        seqNumber={sequenceMap[order.id]}
-                        onClick={() => setViewingOrder(order)}
-                        isDragging={draggingId === order.id}
-                        dropPosition={dropTarget?.cardId === order.id ? dropTarget.position : null}
-                        onDragStart={() => setDraggingId(order.id)}
-                        onDragEnd={() => { setDraggingId(null); setDragOverCol(null); setDropTarget(null); }}
-                        onCardDragOver={(position) => setDropTarget({ cardId: order.id, position })}
-                        allOrders={orders}
-                      />
-                    ))
+                    <>
+                      {(expandedCols[column.id] ? colOrders : colOrders.slice(0, CARDS_PER_COL)).map(order => (
+                        <OSCard
+                          key={order.id}
+                          order={order}
+                          teamMembers={allMembers}
+                          seqNumber={sequenceMap[order.id]}
+                          onClick={() => handleCardClick(order)}
+                          isDragging={draggingId === order.id}
+                          dropPosition={dropTarget?.cardId === order.id ? dropTarget.position : null}
+                          onDragStart={() => handleDragStartCard(order.id)}
+                          onDragEnd={handleDragEndCard}
+                          onCardDragOver={(position) => handleCardDragOver(order.id, position)}
+                          allOrders={orders}
+                        />
+                      ))}
+                      {colOrders.length > CARDS_PER_COL && !expandedCols[column.id] && (
+                        <button
+                          onClick={() => setExpandedCols(prev => ({ ...prev, [column.id]: true }))}
+                          className="w-full mt-2 py-2 text-xs font-medium text-fyness-primary hover:bg-fyness-primary/5 rounded-lg transition-colors"
+                        >
+                          Ver mais {colOrders.length - CARDS_PER_COL} O.S.
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -961,7 +994,7 @@ export default function FinancialPage() {
                         <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Responsavel</th>
                         <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-green-500 uppercase tracking-wider">Inicio Real</th>
                         <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-green-500 uppercase tracking-wider">Fim Real</th>
-                        {isManager && <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-amber-500 uppercase tracking-wider">Custo</th>}
+                        {canViewCosts && <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-amber-500 uppercase tracking-wider">Custo</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -996,7 +1029,7 @@ export default function FinancialPage() {
                             </td>
                             <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{formatDate(order.actualStart)}</td>
                             <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{formatDate(order.actualEnd)}</td>
-                            {isManager && (
+                            {canViewCosts && (
                             <td className="px-4 py-2.5 text-right">
                               {(() => {
                                 const cost = calcOSCost(order, allMembers);
@@ -1015,7 +1048,7 @@ export default function FinancialPage() {
                         );
                       })}
                     </tbody>
-                    {isManager && (
+                    {canViewCosts && (
                     <tfoot>
                       <tr className="bg-slate-50 dark:bg-slate-800/50 border-t-2 border-slate-300 dark:border-slate-600">
                         <td colSpan="6" className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Total</td>
@@ -1170,7 +1203,7 @@ export default function FinancialPage() {
             clients={clients}
             onSave={handleSave}
             onClose={() => { setShowCreateForm(false); setEmergencyFormMode(false); }}
-            onDelete={isManager && editingOrder ? () => { setShowDeleteModal(editingOrder.id); setShowCreateForm(false); } : null}
+            onDelete={canDeleteOS && editingOrder ? () => { setShowDeleteModal(editingOrder.id); setShowCreateForm(false); } : null}
             isEmergency={emergencyFormMode}
             emergencyNumber={nextEmergencyNumber}
             allOrders={orders}
@@ -1196,7 +1229,7 @@ export default function FinancialPage() {
             sectors={sectors}
             onSave={handleSaveProject}
             onClose={() => setShowProjectForm(false)}
-            onDelete={isManager && editingProject ? () => { setShowDeleteProjectModal(editingProject.id); setShowProjectForm(false); } : null}
+            onDelete={canManageProjects && editingProject ? () => { setShowDeleteProjectModal(editingProject.id); setShowProjectForm(false); } : null}
           />
         )}
 
@@ -1221,7 +1254,7 @@ export default function FinancialPage() {
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Projetos</h1>
           <span className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2.5 py-0.5 rounded-full font-medium">{projects.length}</span>
         </div>
-        {isManager && (
+        {canManageProjects && (
           <button onClick={openCreateProject} className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium shadow-sm">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1272,7 +1305,7 @@ export default function FinancialPage() {
               >
                 {s.label}
               </button>
-              {isManager && sectorFilter === s.id && (
+              {canManageProjects && sectorFilter === s.id && (
                 <button
                   onClick={(e) => { e.stopPropagation(); openEditSector(s); }}
                   className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-white/70 hover:text-white transition-colors"
@@ -1285,7 +1318,7 @@ export default function FinancialPage() {
               )}
             </div>
           ))}
-          {isManager && (
+          {canManageProjects && (
             <button
               onClick={openCreateSector}
               className="px-2 py-1.5 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
@@ -1320,7 +1353,7 @@ export default function FinancialPage() {
                 {/* Icone + Acoes */}
                 <div className="flex items-start justify-between mb-3">
                   <FolderIcon color={project.color} size={40} />
-                  {isManager && (
+                  {canManageProjects && (
                     <button
                       onClick={(e) => { e.stopPropagation(); openEditProject(project); }}
                       className="p-1 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors opacity-0 group-hover:opacity-100"
@@ -1405,7 +1438,7 @@ export default function FinancialPage() {
                 : 'Crie seu primeiro projeto para organizar as O.S.'
               }
             </p>
-            {isManager && !projectSearch.trim() && sectorFilter === 'all' && (
+            {canManageProjects && !projectSearch.trim() && sectorFilter === 'all' && (
               <button onClick={openCreateProject} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
                 Criar Projeto
               </button>
@@ -1423,7 +1456,7 @@ export default function FinancialPage() {
           sectors={sectors}
           onSave={handleSaveProject}
           onClose={() => setShowProjectForm(false)}
-          onDelete={isManager && editingProject ? () => { setShowDeleteProjectModal(editingProject.id); setShowProjectForm(false); } : null}
+          onDelete={canManageProjects && editingProject ? () => { setShowDeleteProjectModal(editingProject.id); setShowProjectForm(false); } : null}
         />
       )}
 
@@ -1444,7 +1477,7 @@ export default function FinancialPage() {
           editing={!!editingSector}
           onSave={handleSaveSector}
           onClose={() => setShowSectorForm(false)}
-          onDelete={isManager && editingSector ? () => { setShowDeleteSectorModal(editingSector.id); setShowSectorForm(false); } : null}
+          onDelete={canManageProjects && editingSector ? () => { setShowDeleteSectorModal(editingSector.id); setShowSectorForm(false); } : null}
         />
       )}
 
@@ -1462,7 +1495,7 @@ export default function FinancialPage() {
 
 // ==================== CARD KANBAN ====================
 
-function OSCard({ order, onClick, isDragging, dropPosition, onDragStart, onDragEnd, onCardDragOver, teamMembers, seqNumber, allOrders = [] }) {
+const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, onDragStart, onDragEnd, onCardDragOver, teamMembers, seqNumber, allOrders = [] }) {
   const _tm = teamMembers.find(m => m.id === order.assignee);
   const member = _tm || (order.assignee ? { id: order.assignee, name: order.assignee, color: '#3b82f6' } : null);
   const isEmergency = order.type === 'emergency';
@@ -1548,24 +1581,28 @@ function OSCard({ order, onClick, isDragging, dropPosition, onDragStart, onDragE
               {(CATEGORIES.find(c => c.id === order.category) || {}).label || order.category}
             </span>
           )}
-          {order.slaDeadline && order.status !== 'done' && (() => {
-            const now = new Date();
-            const sla = new Date(order.slaDeadline);
-            const hoursLeft = (sla - now) / (1000 * 60 * 60);
-            const isExpired = hoursLeft < 0;
-            const isNear = hoursLeft >= 0 && hoursLeft < 4;
-            return (
-              <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${isExpired ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : isNear ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
-                SLA: {isExpired ? 'Expirado' : hoursLeft < 24 ? `${Math.floor(hoursLeft)}h` : `${Math.floor(hoursLeft / 24)}d`}
-              </span>
-            );
-          })()}
           {order.status === 'blocked' && order.blockReason && (
             <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
               {(BLOCK_REASONS.find(b => b.id === order.blockReason) || {}).label || order.blockReason}
             </span>
           )}
         </div>
+        {(order.estimatedStart || order.estimatedEnd) && (
+          <div className="flex items-center gap-2 mb-1 text-[10px] text-slate-400 dark:text-slate-500">
+            {order.estimatedStart && (
+              <span title="Inicio previsto">
+                <svg className="w-3 h-3 inline mr-0.5 -mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                {formatDateShort(order.estimatedStart)}
+              </span>
+            )}
+            {order.estimatedStart && order.estimatedEnd && <span>→</span>}
+            {order.estimatedEnd && (
+              <span title="Entrega prevista" className="font-medium text-slate-500 dark:text-slate-400">
+                {formatDateShort(order.estimatedEnd)}
+              </span>
+            )}
+          </div>
+        )}
         {(order.checklist || []).length > 0 && (() => {
           const done = (order.checklist || []).filter(i => i.done).length;
           const total = (order.checklist || []).length;
@@ -1618,11 +1655,11 @@ function OSCard({ order, onClick, isDragging, dropPosition, onDragStart, onDragE
       )}
     </div>
   );
-}
+});
 
 // ==================== DOCUMENTO O.S. ====================
 
-function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, onRelease, onMoveForward, onMoveBack, onDelete, isManager, profileName, profileCpf, teamMembers, allOrders = [], onViewOrder, onUpdateOrder }) {
+function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, onRelease, onMoveForward, onMoveBack, onDelete, isManager, canEditOS, canDeleteOS, canViewCosts, profileName, profileCpf, teamMembers, allOrders = [], onViewOrder, onUpdateOrder }) {
   // Ref para manter checklist mais recente e evitar closures obsoletas
   const checklistRef = useRef(order.checklist || []);
   checklistRef.current = order.checklist || [];
@@ -1677,7 +1714,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
             <button onClick={onMoveBack} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">Reabrir</button>
           )}
 
-          {isManager && (
+          {onEdit && (
             <button onClick={onEdit} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">Editar</button>
           )}
           <button onClick={handlePrint} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors flex items-center gap-1.5">
@@ -1686,7 +1723,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
             </svg>
             Imprimir
           </button>
-          {isManager && (
+          {onDelete && (
             <button onClick={onDelete} className="px-3 py-1.5 border border-red-200 dark:border-red-600/50 text-red-500 dark:text-red-400 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">Excluir</button>
           )}
         </div>
@@ -1800,17 +1837,9 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
               </div>
             </div>
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">SLA</label>
+              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prazo</label>
               <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">
                 {order.slaDeadline ? formatDate(order.slaDeadline) : '-'}
-                {order.slaDeadline && order.status !== 'done' && (() => {
-                  const hoursLeft = (new Date(order.slaDeadline) - new Date()) / (1000 * 60 * 60);
-                  return hoursLeft < 0
-                    ? <span className="ml-2 text-xs text-red-500 font-bold">EXPIRADO</span>
-                    : hoursLeft < 4
-                      ? <span className="ml-2 text-xs text-amber-500 font-bold">{Math.floor(hoursLeft)}h restantes</span>
-                      : null;
-                })()}
               </p>
             </div>
             <div className="p-4">
@@ -2316,7 +2345,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           )}
 
           {/* Custos (so gestor) */}
-          {isManager && order.status === 'done' && order.actualStart && order.actualEnd && (() => {
+          {canViewCosts && order.status === 'done' && order.actualStart && order.actualEnd && (() => {
             const cost = calcOSCost(order, teamMembers);
             const expenses = order.expenses || [];
             if (cost.totalCost <= 0 && expenses.length === 0) return null;
@@ -2903,6 +2932,8 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
   const inProgressOrders = allOrders.filter(o => o.type !== 'emergency' && (o.status === 'in_progress' || o.status === 'available'));
   const [linkUrl, setLinkUrl] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const checklistTextareaRef = useRef(null);
 
   // Helper: parseia linhas de texto em itens de checklist
@@ -3134,105 +3165,276 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
             <textarea value={form.description} onChange={(e) => update('description', e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none" placeholder="Descreva o servico a ser executado..." />
           </div>
 
-          {/* Bloco de Tarefas */}
+          {/* Bloco de Tarefas - Visual Builder */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">Bloco de Tarefas</label>
 
-            {/* Tarefas ja adicionadas (agrupadas) */}
-            {(form.checklist || []).length > 0 && (() => {
-              const cl = form.checklist;
-              const groups = [];
-              let currentGroup = null;
+            {/* Builder visual */}
+            {(() => {
+              const cl = form.checklist || [];
+              // Agrupar itens por grupo
+              const groupsMap = new Map();
               cl.forEach(item => {
-                if (item.group && item.group !== currentGroup) {
-                  currentGroup = item.group;
-                  groups.push({ title: item.group, items: [] });
-                } else if (!item.group && (groups.length === 0 || groups[groups.length - 1].title)) {
-                  groups.push({ title: null, items: [] });
-                }
-                if (groups.length === 0) groups.push({ title: null, items: [] });
-                groups[groups.length - 1].items.push(item);
+                const key = item.group || '__sem_grupo__';
+                if (!groupsMap.has(key)) groupsMap.set(key, []);
+                groupsMap.get(key).push(item);
               });
-              let globalIdx = 0;
+              const groupNames = [...groupsMap.keys()];
+
+              // Adicionar tarefa a um grupo
+              const addTaskToGroup = (groupName, taskText) => {
+                if (!taskText.trim()) return;
+                const newItem = {
+                  id: Date.now() + Math.random(),
+                  text: taskText.trim(),
+                  group: groupName === '__sem_grupo__' ? null : groupName,
+                  done: false, startedAt: null, completedAt: null, durationMin: null,
+                };
+                update('checklist', [...cl, newItem]);
+              };
+
+              // Remover tarefa
+              const removeTask = (taskId) => {
+                update('checklist', cl.filter(i => i.id !== taskId));
+              };
+
+              // Remover grupo inteiro
+              const removeGroup = (groupName) => {
+                update('checklist', cl.filter(i => (i.group || '__sem_grupo__') !== groupName));
+              };
+
+              // Renomear grupo
+              const renameGroup = (oldName, newName) => {
+                if (!newName.trim() || newName.trim() === oldName) return;
+                update('checklist', cl.map(i =>
+                  (i.group || '__sem_grupo__') === oldName
+                    ? { ...i, group: newName.trim() }
+                    : i
+                ));
+              };
+
               return (
-                <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
-                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{cl.length} {cl.length === 1 ? 'tarefa' : 'tarefas'}</span>
-                    <button type="button" onClick={() => update('checklist', [])} className="text-[10px] text-red-400 hover:text-red-500 dark:text-red-500 dark:hover:text-red-400 font-medium transition-colors">Limpar tudo</button>
-                  </div>
-                  {groups.map((grp, gIdx) => (
-                    <div key={gIdx}>
-                      {grp.title && (
-                        <div className="flex items-center gap-2 px-3 py-2 bg-fyness-primary/5 dark:bg-fyness-primary/10 border-b border-slate-100 dark:border-slate-700/50">
-                          <svg className="w-3.5 h-3.5 text-fyness-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="space-y-3">
+                  {/* Grupos existentes */}
+                  {groupNames.map((groupName) => {
+                    const items = groupsMap.get(groupName);
+                    const isDefault = groupName === '__sem_grupo__';
+                    return (
+                      <div key={groupName} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        {/* Header do grupo */}
+                        <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+                          <svg className="w-4 h-4 text-fyness-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                           </svg>
-                          <span className="text-xs font-semibold text-fyness-primary dark:text-blue-400">{grp.title}</span>
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">{grp.items.length}</span>
+                          {isDefault ? (
+                            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tarefas gerais</span>
+                          ) : (
+                            <input
+                              type="text"
+                              defaultValue={groupName}
+                              onBlur={(e) => renameGroup(groupName, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); } }}
+                              className="text-xs font-semibold text-fyness-primary dark:text-blue-400 bg-transparent border-none outline-none focus:ring-0 p-0 flex-1 min-w-0"
+                            />
+                          )}
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto mr-1">{items.length} {items.length === 1 ? 'tarefa' : 'tarefas'}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeGroup(groupName)}
+                            className="p-1 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                            title="Remover grupo"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
                         </div>
-                      )}
-                      <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                        {grp.items.map((item) => {
-                          globalIdx++;
-                          return (
-                            <div key={item.id} className={`flex items-center gap-2.5 py-2 group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${grp.title ? 'px-5' : 'px-3'}`}>
-                              <span className="w-5 h-5 rounded-md bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary text-[10px] font-bold flex items-center justify-center shrink-0">{globalIdx}</span>
+
+                        {/* Tarefas do grupo */}
+                        <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                          {items.map((item, idx) => (
+                            <div key={item.id} className="flex items-center gap-2.5 px-4 py-2 group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                              <span className="w-5 h-5 rounded-md bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary text-[10px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
                               <span className="text-sm text-slate-700 dark:text-slate-200 flex-1">{item.text}</span>
-                              <button type="button" onClick={() => update('checklist', cl.filter(i => i.id !== item.id))} className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
+                              <button type="button" onClick={() => removeTask(item.id)} className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                               </button>
                             </div>
-                          );
-                        })}
+                          ))}
+                        </div>
+
+                        {/* Input para adicionar tarefa ao grupo */}
+                        <div className="px-3 py-2 bg-slate-50/50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-700/50">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Adicionar tarefa..."
+                              className="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && e.target.value.trim()) {
+                                  addTaskToGroup(groupName, e.target.value);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                const input = e.currentTarget.previousElementSibling;
+                                if (input.value.trim()) {
+                                  addTaskToGroup(groupName, input.value);
+                                  input.value = '';
+                                  input.focus();
+                                }
+                              }}
+                              className="p-1.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-primary/90 transition-colors"
+                              title="Adicionar tarefa"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Input inline para novo grupo */}
+                  {showNewGroupInput && (
+                    <div className="flex items-center gap-2 p-3 rounded-xl border-2 border-fyness-primary/30 dark:border-blue-500/30 bg-fyness-primary/5 dark:bg-blue-900/10">
+                      <svg className="w-4 h-4 text-fyness-primary dark:text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        placeholder="Nome do grupo..."
+                        className="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newGroupName.trim()) {
+                            addTaskToGroup(newGroupName.trim(), 'Nova tarefa');
+                            setNewGroupName('');
+                            setShowNewGroupInput(false);
+                          }
+                          if (e.key === 'Escape') {
+                            setNewGroupName('');
+                            setShowNewGroupInput(false);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newGroupName.trim()) {
+                            addTaskToGroup(newGroupName.trim(), 'Nova tarefa');
+                          }
+                          setNewGroupName('');
+                          setShowNewGroupInput(false);
+                        }}
+                        className="px-3 py-1.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-primary/90 transition-colors text-xs font-medium"
+                      >
+                        Criar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setNewGroupName(''); setShowNewGroupInput(false); }}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Botoes de acao */}
+                  <div className="flex items-center gap-2">
+                    {/* Adicionar tarefa rapida (sem grupo) */}
+                    {!groupNames.includes('__sem_grupo__') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          update('checklist', [...cl, {
+                            id: Date.now() + Math.random(),
+                            text: 'Nova tarefa',
+                            group: null,
+                            done: false, startedAt: null, completedAt: null, durationMin: null,
+                          }]);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 hover:border-fyness-primary hover:text-fyness-primary dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                        Tarefa
+                      </button>
+                    )}
+
+                    {/* Adicionar novo grupo */}
+                    {!showNewGroupInput && (
+                      <button
+                        type="button"
+                        onClick={() => setShowNewGroupInput(true)}
+                        className="flex items-center gap-1.5 px-3 py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 hover:border-fyness-primary hover:text-fyness-primary dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                        Novo Grupo
+                      </button>
+                    )}
+
+                    {/* Limpar tudo */}
+                    {cl.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { if (confirm(`Remover todas as ${cl.length} tarefas?`)) update('checklist', []); }}
+                        className="flex items-center gap-1 px-3 py-2 text-[11px] text-red-400 hover:text-red-500 dark:text-red-500 dark:hover:text-red-400 font-medium transition-colors ml-auto"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        Limpar tudo
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Modo avancado (textarea colapsavel) */}
+                  <details className="group">
+                    <summary className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 transition-colors select-none">
+                      <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      Colar varias tarefas de uma vez
+                    </summary>
+                    <div className="mt-2">
+                      <textarea
+                        ref={checklistTextareaRef}
+                        placeholder={"Preparacao\n- Separar materiais\n- Verificar estoque\n\nExecucao\n- Instalar equipamento\n- Testar funcionamento"}
+                        rows={5}
+                        className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none leading-relaxed font-mono"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            const newItems = parseChecklistLines(e.target.value);
+                            if (newItems.length > 0) {
+                              update('checklist', [...cl, ...newItems]);
+                            }
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500">Linha sem <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">-</code> = nome do grupo &middot; com <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">-</code> = tarefa</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!checklistTextareaRef.current) return;
+                            const newItems = parseChecklistLines(checklistTextareaRef.current.value);
+                            if (newItems.length > 0) {
+                              update('checklist', [...cl, ...newItems]);
+                            }
+                            checklistTextareaRef.current.value = '';
+                            checklistTextareaRef.current.focus();
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-primary/90 transition-colors text-xs font-medium"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                          Adicionar
+                        </button>
                       </div>
                     </div>
-                  ))}
+                  </details>
                 </div>
               );
             })()}
-
-            {/* Textarea para adicionar bloco de tarefas */}
-            <div className="relative">
-              <textarea
-                ref={checklistTextareaRef}
-                placeholder={"Titulo do grupo (sem -)\n- Tarefa 1\n- Tarefa 2\n- Tarefa 3\n\nOutro grupo\n- Tarefa 4\n- Tarefa 5"}
-                rows={5}
-                className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none leading-relaxed font-mono"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    const newItems = parseChecklistLines(e.target.value);
-                    if (newItems.length > 0) {
-                      update('checklist', [...(form.checklist || []), ...newItems]);
-                    }
-                    e.target.value = '';
-                  }
-                }}
-              />
-              <div className="flex items-center justify-between mt-2">
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">Linha sem <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">-</code> = titulo &middot; com <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">-</code> = tarefa &middot; <span className="font-medium">Ctrl+Enter</span></p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!checklistTextareaRef.current) return;
-                    const newItems = parseChecklistLines(checklistTextareaRef.current.value);
-                    if (newItems.length > 0) {
-                      update('checklist', [...(form.checklist || []), ...newItems]);
-                    }
-                    checklistTextareaRef.current.value = '';
-                    checklistTextareaRef.current.focus();
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-primary/90 transition-colors text-xs font-medium"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Adicionar bloco
-                </button>
-              </div>
-            </div>
           </div>
 
           <div>

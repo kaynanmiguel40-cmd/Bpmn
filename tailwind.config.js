@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -8,11 +9,11 @@ export default {
     extend: {
       colors: {
         fyness: {
-          primary: '#6366f1',
-          secondary: '#8b5cf6',
-          dark: '#1e1b4b',
-          light: '#f5f3ff',
-          accent: '#22d3ee'
+          primary: '#3b82f6',
+          secondary: '#2563eb',
+          dark: '#172554',
+          light: '#eff6ff',
+          accent: '#38bdf8'
         }
       }
     },

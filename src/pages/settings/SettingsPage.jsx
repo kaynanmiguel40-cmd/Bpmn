@@ -14,31 +14,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { getProfile, saveProfile } from '../../lib/profileService';
 import { useOSOrders, useTeamMembers, queryKeys } from '../../hooks/queries';
 import { createTeamMember, updateTeamMember, deleteTeamMember, MEMBER_COLORS } from '../../lib/teamService';
-import { getCompanies, createCompany, updateCompany, deleteCompany, createAuthUser } from '../../lib/supabase';
+import { supabase, getCompanies, createCompany, updateCompany, deleteCompany, createAuthUser } from '../../lib/supabase';
 import { isManagerRole } from '../../lib/roleUtils';
 import { NotificationPreferences } from '../../components/communication/NotificationPreferences';
-
-// Calcular horas de uma O.S. a partir das datas reais
-function calcOSHours(order) {
-  if (!order.actualStart || !order.actualEnd) return 0;
-  const start = new Date(order.actualStart);
-  const end = new Date(order.actualEnd);
-  const diffMs = end - start;
-  const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
-  return diffDays * 8;
-}
-
-// Filtrar O.S. concluidas do mes atual a partir de lista carregada
-function filterMonthOS(orders) {
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-  return orders.filter(o => {
-    if (o.status !== 'done' || !o.actualEnd) return false;
-    const d = new Date(o.actualEnd);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
-}
 
 // Mascara de CPF: 000.000.000-00
 function maskCpf(value) {
@@ -107,7 +85,9 @@ export function SettingsPage() {
   const [newMemberHours, setNewMemberHours] = useState('176');
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberPassword, setNewMemberPassword] = useState('');
+  const [newMemberIsGestor, setNewMemberIsGestor] = useState(false);
   const [creatingMember, setCreatingMember] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [customCargo, setCustomCargo] = useState(false);
   // Empresa
@@ -167,22 +147,16 @@ export function SettingsPage() {
 
   // Calculos
   const hourlyRate = calcHourlyRate(profile.salaryMonth, profile.hoursMonth);
-  const now = new Date();
-  const monthOS = filterMonthOS(orders);
-  const monthHours = monthOS.reduce((sum, o) => sum + calcOSHours(o), 0);
-  const hoursPercent = profile.hoursMonth > 0 ? Math.min((monthHours / profile.hoursMonth) * 100, 100) : 0;
 
   const selectedCompany = companies.find(c => c.id === profile.companyId);
   const selectedCompanyColor = selectedCompany ? COMPANY_COLORS[(selectedCompany.colorIndex || 0) % COMPANY_COLORS.length] : null;
 
-  // Tabs (aba Financeiro so aparece para gestores)
-  const allTabs = [
+  // Tabs
+  const tabs = [
     { id: 'profile', label: 'Meu Perfil', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
     { id: 'team', label: 'Equipe', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
     { id: 'notifications', label: 'Notificacoes', icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9' },
-    { id: 'financial', label: 'Financeiro', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
   ];
-  const tabs = allTabs.filter(t => isManager || t.id !== 'financial');
 
   if (loading) {
     return (
@@ -290,6 +264,58 @@ export function SettingsPage() {
             <div className="mt-4 flex justify-end">
               <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">Salvar Dados</button>
             </div>
+          </div>
+
+          {/* Financeiro */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-4">Financeiro</h3>
+            {/* Cards de exibicao - todos veem */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div className="flex items-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+                <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Salario Mensal</p>
+                  <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(profile.salaryMonth)}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">Valor / Hora</p>
+                  <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(hourlyRate)}</p>
+                </div>
+              </div>
+            </div>
+            {/* Inputs editaveis - apenas gestores */}
+            {isManager && (
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3">Editar valores (apenas gestores)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Salario Mensal</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500">R$</span>
+                      <input type="number" value={profile.salaryMonth || ''} onChange={(e) => handleChange('salaryMonth', e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="3000" min="0" step="100" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Horas/Mes</label>
+                    <input type="number" value={profile.hoursMonth || ''} onChange={(e) => handleChange('hoursMonth', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="176" min="1" />
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">Salvar</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Empresas */}
@@ -483,203 +509,306 @@ export function SettingsPage() {
       {/* === TAB: Equipe === */}
       {activeTab === 'team' && (
         <div className="space-y-6">
-          {/* Adicionar membro */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">Adicionar Funcionario</h3>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-4">Cargos como Gestor, Diretor, Coordenador e Supervisor concedem acesso de gestao automaticamente.</p>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Nome</label>
-                <input
-                  type="text"
-                  value={newMemberName}
-                  onChange={(e) => setNewMemberName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Nome completo"
-                />
-              </div>
-              <div className="min-w-[180px]">
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Email (login)</label>
-                <input
-                  type="email"
-                  value={newMemberEmail}
-                  onChange={(e) => setNewMemberEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="email@empresa.com"
-                />
-              </div>
-              <div className="min-w-[120px]">
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Senha</label>
-                <input
-                  type="password"
-                  value={newMemberPassword}
-                  onChange={(e) => setNewMemberPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Min. 6 caracteres"
-                />
-              </div>
-              <div className="min-w-[150px]">
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Cargo</label>
-                {customCargo ? (
-                  <div className="flex gap-1">
-                    <input
-                      type="text"
-                      value={newMemberRole}
-                      onChange={(e) => setNewMemberRole(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Digite o cargo"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => { setCustomCargo(false); setNewMemberRole(''); }}
-                      className="px-2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                      title="Voltar para lista"
-                    >X</button>
-                  </div>
-                ) : (
-                  <select
-                    value={newMemberRole}
-                    onChange={(e) => {
-                      if (e.target.value === '_custom') {
-                        setCustomCargo(true);
-                        setNewMemberRole('');
-                      } else {
-                        setNewMemberRole(e.target.value);
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Selecione...</option>
-                    {CARGO_OPTIONS.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                    <option value="_custom">Outro (digitar)</option>
-                  </select>
-                )}
-              </div>
+          {/* Lista de membros */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
               <div>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Horario de Trabalho</label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="time"
-                    value={newMemberWorkStart}
-                    onChange={(e) => setNewMemberWorkStart(e.target.value)}
-                    className="px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <span className="text-xs text-slate-400 dark:text-slate-500">ate</span>
-                  <input
-                    type="time"
-                    value={newMemberWorkEnd}
-                    onChange={(e) => setNewMemberWorkEnd(e.target.value)}
-                    className="px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Funcionarios Cadastrados</h3>
+                <span className="text-xs text-slate-400 dark:text-slate-500">{teamMembers.length + 1} membro{teamMembers.length !== 0 ? 's' : ''}</span>
               </div>
               {isManager && (
-              <div>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Salario / Horas</label>
-                <div className="flex items-center gap-1.5">
-                  <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500">R$</span>
-                    <input
-                      type="number"
-                      value={newMemberSalary}
-                      onChange={(e) => setNewMemberSalary(e.target.value)}
-                      className="w-28 pl-7 pr-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="3000"
-                      min="0"
-                      step="100"
-                    />
-                  </div>
-                  <span className="text-xs text-slate-400 dark:text-slate-500">/</span>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={newMemberHours}
-                      onChange={(e) => setNewMemberHours(e.target.value)}
-                      className="w-16 px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="176"
-                      min="1"
-                    />
-                    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 dark:text-slate-500">h</span>
-                  </div>
-                </div>
-              </div>
+                <button
+                  onClick={() => setShowAddMemberModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  Novo Funcionario
+                </button>
               )}
-              <div>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Cor</label>
-                <div className="flex gap-1">
-                  {MEMBER_COLORS.slice(0, 8).map(c => (
-                    <button
-                      key={c}
-                      onClick={() => setNewMemberColor(c)}
-                      className={`w-7 h-7 rounded-full border-2 transition-all ${newMemberColor === c ? 'border-slate-800 dark:border-slate-200 scale-110' : 'border-transparent hover:scale-105'}`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
+            </div>
+
+          {/* Modal Adicionar Funcionario */}
+          {showAddMemberModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !creatingMember && setShowAddMemberModal(false)} />
+              <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-700">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Novo Funcionario</h2>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Crie o login e configure o acesso</p>
+                  </div>
+                  <button
+                    onClick={() => !creatingMember && setShowAddMemberModal(false)}
+                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
                 </div>
-              </div>
-              <button
-                disabled={creatingMember}
-                onClick={async () => {
-                  if (!newMemberName.trim()) return;
-                  if (!newMemberEmail.trim()) { alert('Email e obrigatorio para criar a conta.'); return; }
-                  if (!newMemberPassword || newMemberPassword.length < 6) { alert('Senha deve ter no minimo 6 caracteres.'); return; }
 
-                  setCreatingMember(true);
-                  try {
-                    // 1. Criar conta no Supabase Auth
-                    const authResult = await createAuthUser(newMemberEmail.trim(), newMemberPassword, newMemberName.trim());
-                    if (!authResult.success) {
-                      alert('Erro ao criar conta: ' + authResult.error);
-                      setCreatingMember(false);
-                      return;
-                    }
+                {/* Body */}
+                <div className="px-6 py-5 space-y-4">
+                  {/* Nome */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Nome completo</label>
+                    <input
+                      type="text"
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Ex: Robert Silva"
+                    />
+                  </div>
 
-                    // 2. Criar membro na tabela team_members
-                    const created = await createTeamMember({
-                      name: newMemberName.trim(),
-                      role: newMemberRole.trim(),
-                      color: newMemberColor,
-                      workStart: newMemberWorkStart,
-                      workEnd: newMemberWorkEnd,
-                      salaryMonth: parseFloat(newMemberSalary) || 0,
-                      hoursMonth: parseFloat(newMemberHours) || 176,
-                      email: newMemberEmail.trim(),
-                      authUserId: authResult.userId,
-                    });
-                    if (created) {
-                      queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });
+                  {/* Email e Senha */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Email (login)</label>
+                      <input
+                        type="email"
+                        value={newMemberEmail}
+                        onChange={(e) => setNewMemberEmail(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="email@empresa.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Senha</label>
+                      <input
+                        type="password"
+                        value={newMemberPassword}
+                        onChange={(e) => setNewMemberPassword(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Min. 6 caracteres"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Cargo e Acesso */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Cargo</label>
+                      {customCargo ? (
+                        <div className="flex gap-1">
+                          <input
+                            type="text"
+                            value={newMemberRole}
+                            onChange={(e) => setNewMemberRole(e.target.value)}
+                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Digite o cargo"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => { setCustomCargo(false); setNewMemberRole(''); }}
+                            className="px-2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                          >X</button>
+                        </div>
+                      ) : (
+                        <select
+                          value={newMemberRole}
+                          onChange={(e) => {
+                            if (e.target.value === '_custom') {
+                              setCustomCargo(true);
+                              setNewMemberRole('');
+                            } else {
+                              setNewMemberRole(e.target.value);
+                            }
+                          }}
+                          className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="">Selecione...</option>
+                          {CARGO_OPTIONS.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                          <option value="_custom">Outro (digitar)</option>
+                        </select>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Nivel de Acesso</label>
+                      <button
+                        type="button"
+                        onClick={() => setNewMemberIsGestor(!newMemberIsGestor)}
+                        className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                          newMemberIsGestor
+                            ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300'
+                            : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          newMemberIsGestor ? 'border-amber-500 bg-amber-500' : 'border-slate-300 dark:border-slate-500'
+                        }`}>
+                          {newMemberIsGestor && <span className="text-white text-[10px]">&#10003;</span>}
+                        </span>
+                        {newMemberIsGestor ? 'Gestor (acesso completo)' : 'Colaborador (acesso limitado)'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Horario de Trabalho */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Horario de Trabalho</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={newMemberWorkStart}
+                        onChange={(e) => setNewMemberWorkStart(e.target.value)}
+                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <span className="text-xs text-slate-400 dark:text-slate-500">ate</span>
+                      <input
+                        type="time"
+                        value={newMemberWorkEnd}
+                        onChange={(e) => setNewMemberWorkEnd(e.target.value)}
+                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Salario e Horas (apenas gestor ve) */}
+                  {isManager && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Salario Mensal / Horas</label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500">R$</span>
+                          <input
+                            type="number"
+                            value={newMemberSalary}
+                            onChange={(e) => setNewMemberSalary(e.target.value)}
+                            className="w-full pl-8 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="3000"
+                            min="0"
+                            step="100"
+                          />
+                        </div>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">/</span>
+                        <div className="relative w-24">
+                          <input
+                            type="number"
+                            value={newMemberHours}
+                            onChange={(e) => setNewMemberHours(e.target.value)}
+                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="176"
+                            min="1"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 dark:text-slate-500">h/mes</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cor */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Cor do perfil</label>
+                    <div className="flex gap-2">
+                      {MEMBER_COLORS.slice(0, 8).map(c => (
+                        <button
+                          key={c}
+                          onClick={() => setNewMemberColor(c)}
+                          className={`w-8 h-8 rounded-full border-2 transition-all ${newMemberColor === c ? 'border-slate-800 dark:border-slate-200 scale-110 shadow-md' : 'border-transparent hover:scale-105'}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 rounded-b-2xl">
+                  <button
+                    onClick={() => {
+                      setShowAddMemberModal(false);
                       setNewMemberName('');
                       setNewMemberRole('');
                       setNewMemberEmail('');
                       setNewMemberPassword('');
+                      setNewMemberIsGestor(false);
                       setCustomCargo(false);
                       setNewMemberWorkStart('08:00');
                       setNewMemberWorkEnd('18:00');
                       setNewMemberSalary('');
                       setNewMemberHours('176');
-                      setNewMemberColor(MEMBER_COLORS[(teamMembers.length + 1) % MEMBER_COLORS.length]);
-                    }
-                  } catch (err) {
-                    alert('Erro inesperado: ' + err.message);
-                  } finally {
-                    setCreatingMember(false);
-                  }
-                }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {creatingMember ? 'Criando...' : 'Adicionar'}
-              </button>
-            </div>
-          </div>
+                    }}
+                    disabled={creatingMember}
+                    className="px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    disabled={creatingMember}
+                    onClick={async () => {
+                      if (!newMemberName.trim()) { alert('Nome e obrigatorio.'); return; }
+                      if (!newMemberEmail.trim()) { alert('Email e obrigatorio para criar a conta.'); return; }
+                      if (!newMemberPassword || newMemberPassword.length < 6) { alert('Senha deve ter no minimo 6 caracteres.'); return; }
 
-          {/* Lista de membros */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Funcionarios Cadastrados</h3>
-              <span className="text-xs text-slate-400 dark:text-slate-500">{teamMembers.length + 1} membro{teamMembers.length !== 0 ? 's' : ''}</span>
+                      setCreatingMember(true);
+                      try {
+                        // 1. Criar conta no Supabase Auth
+                        const authResult = await createAuthUser(newMemberEmail.trim(), newMemberPassword, newMemberName.trim());
+                        if (!authResult.success) {
+                          alert('Erro ao criar conta: ' + authResult.error);
+                          setCreatingMember(false);
+                          return;
+                        }
+
+                        // 2. Definir nivel de acesso no profile
+                        if (authResult.userId) {
+                          const profileRole = newMemberIsGestor ? 'manager' : 'collaborator';
+                          await supabase
+                            .from('profiles')
+                            .update({ role: profileRole })
+                            .eq('id', authResult.userId);
+                        }
+
+                        // 3. Criar membro na tabela team_members
+                        const created = await createTeamMember({
+                          name: newMemberName.trim(),
+                          role: newMemberRole.trim(),
+                          color: newMemberColor,
+                          workStart: newMemberWorkStart,
+                          workEnd: newMemberWorkEnd,
+                          salaryMonth: parseFloat(newMemberSalary) || 0,
+                          hoursMonth: parseFloat(newMemberHours) || 176,
+                          email: newMemberEmail.trim(),
+                          authUserId: authResult.userId,
+                        });
+                        if (created) {
+                          await queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });
+                          setShowAddMemberModal(false);
+                          setNewMemberName('');
+                          setNewMemberRole('');
+                          setNewMemberEmail('');
+                          setNewMemberPassword('');
+                          setNewMemberIsGestor(false);
+                          setCustomCargo(false);
+                          setNewMemberWorkStart('08:00');
+                          setNewMemberWorkEnd('18:00');
+                          setNewMemberSalary('');
+                          setNewMemberHours('176');
+                          setNewMemberColor(MEMBER_COLORS[(teamMembers.length + 1) % MEMBER_COLORS.length]);
+                        } else {
+                          alert('Conta criada mas houve erro ao salvar na equipe. Tente novamente.');
+                        }
+                      } catch (err) {
+                        alert('Erro inesperado: ' + err.message);
+                      } finally {
+                        setCreatingMember(false);
+                      }
+                    }}
+                    className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {creatingMember ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                        Criando conta...
+                      </>
+                    ) : 'Criar Funcionario'}
+                  </button>
+                </div>
+              </div>
             </div>
+          )}
               <div className="divide-y divide-slate-100 dark:divide-slate-700">
                 {/* Perfil logado (voce) */}
                 <div className="px-6 py-3 flex items-center justify-between bg-blue-50/50 dark:bg-blue-900/10">
@@ -711,177 +840,275 @@ export function SettingsPage() {
                 {/* Demais membros */}
                 {teamMembers.map(member => (
                   <div key={member.id} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
-                    {editingMember?.id === member.id ? (
-                      <div className="flex items-center gap-3 flex-1">
-                        <input
-                          type="text"
-                          value={editingMember.name}
-                          onChange={(e) => setEditingMember(prev => ({ ...prev, name: e.target.value }))}
-                          className="flex-1 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        {editingMember._customCargo ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              value={editingMember.role}
-                              onChange={(e) => setEditingMember(prev => ({ ...prev, role: e.target.value }))}
-                              className="w-28 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="Cargo"
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => setEditingMember(prev => ({ ...prev, _customCargo: false, role: '' }))}
-                              className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                            >X</button>
-                          </div>
-                        ) : (
-                          <select
-                            value={CARGO_OPTIONS.includes(editingMember.role) ? editingMember.role : (editingMember.role ? '_custom' : '')}
-                            onChange={(e) => {
-                              if (e.target.value === '_custom') {
-                                setEditingMember(prev => ({ ...prev, _customCargo: true, role: prev.role || '' }));
-                              } else {
-                                setEditingMember(prev => ({ ...prev, role: e.target.value }));
-                              }
-                            }}
-                            className="w-32 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm dark:text-slate-200 dark:bg-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="">Cargo</option>
-                            {CARGO_OPTIONS.map(c => (
-                              <option key={c} value={c}>{c}</option>
-                            ))}
-                            <option value="_custom">Outro</option>
-                          </select>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-sm shrink-0"
+                        style={{ backgroundColor: member.color }}
+                      >
+                        {member.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{member.name}</div>
+                        {member.email && (
+                          <div className="text-[11px] text-slate-400 dark:text-slate-500">{member.email}</div>
                         )}
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="time"
-                            value={editingMember.workStart || '08:00'}
-                            onChange={(e) => setEditingMember(prev => ({ ...prev, workStart: e.target.value }))}
-                            className="px-1.5 py-0.5 border border-slate-300 dark:border-slate-600 rounded text-xs dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500">-</span>
-                          <input
-                            type="time"
-                            value={editingMember.workEnd || '18:00'}
-                            onChange={(e) => setEditingMember(prev => ({ ...prev, workEnd: e.target.value }))}
-                            className="px-1.5 py-0.5 border border-slate-300 dark:border-slate-600 rounded text-xs dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
+                        <div className="flex items-center gap-2">
+                          {member.role && <span className="text-xs text-slate-400 dark:text-slate-500">{member.role}</span>}
+                          <span className="text-[10px] text-slate-300 dark:text-slate-500 bg-slate-50 dark:bg-slate-700/50 px-1.5 py-0.5 rounded">
+                            {member.workStart || '08:00'} - {member.workEnd || '18:00'}
+                          </span>
+                          {isManager && member.salaryMonth > 0 && (
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded font-medium">
+                              R$ {(parseFloat(member.salaryMonth) / (parseFloat(member.hoursMonth) || 176)).toFixed(2)}/h
+                            </span>
+                          )}
                         </div>
-                        {isManager && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500">R$</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={async () => {
+                          let isGestor = false;
+                          if (member.authUserId) {
+                            const { data: prof } = await supabase
+                              .from('profiles')
+                              .select('role')
+                              .eq('id', member.authUserId)
+                              .single();
+                            isGestor = prof?.role === 'manager' || prof?.role === 'admin';
+                          }
+                          setEditingMember({
+                            ...member,
+                            _isGestor: isGestor,
+                            _customCargo: member.role && !CARGO_OPTIONS.includes(member.role),
+                          });
+                        }}
+                        className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                        title="Editar"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Remover ${member.name} da equipe?`)) return;
+                          await deleteTeamMember(member.id);
+                          queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });
+                        }}
+                        className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        title="Remover"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+          {/* Modal Editar Funcionario */}
+          {editingMember && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEditingMember(null)} />
+              <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-700">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Editar Funcionario</h2>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{editingMember.email || 'Sem email'}</p>
+                  </div>
+                  <button
+                    onClick={() => setEditingMember(null)}
+                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="px-6 py-5 space-y-4">
+                  {/* Nome */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Nome completo</label>
+                    <input
+                      type="text"
+                      value={editingMember.name}
+                      onChange={(e) => setEditingMember(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  {/* Cargo e Acesso */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Cargo</label>
+                      {editingMember._customCargo ? (
+                        <div className="flex gap-1">
+                          <input
+                            type="text"
+                            value={editingMember.role}
+                            onChange={(e) => setEditingMember(prev => ({ ...prev, role: e.target.value }))}
+                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Digite o cargo"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => setEditingMember(prev => ({ ...prev, _customCargo: false, role: '' }))}
+                            className="px-2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                          >X</button>
+                        </div>
+                      ) : (
+                        <select
+                          value={CARGO_OPTIONS.includes(editingMember.role) ? editingMember.role : ''}
+                          onChange={(e) => {
+                            if (e.target.value === '_custom') {
+                              setEditingMember(prev => ({ ...prev, _customCargo: true, role: '' }));
+                            } else {
+                              setEditingMember(prev => ({ ...prev, role: e.target.value }));
+                            }
+                          }}
+                          className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="">Selecione...</option>
+                          {CARGO_OPTIONS.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                          <option value="_custom">Outro (digitar)</option>
+                        </select>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Nivel de Acesso</label>
+                      <button
+                        type="button"
+                        onClick={() => setEditingMember(prev => ({ ...prev, _isGestor: !prev._isGestor }))}
+                        className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                          editingMember._isGestor
+                            ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300'
+                            : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          editingMember._isGestor ? 'border-amber-500 bg-amber-500' : 'border-slate-300 dark:border-slate-500'
+                        }`}>
+                          {editingMember._isGestor && <span className="text-white text-[10px]">&#10003;</span>}
+                        </span>
+                        {editingMember._isGestor ? 'Gestor (acesso completo)' : 'Colaborador (acesso limitado)'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Horario de Trabalho */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Horario de Trabalho</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={editingMember.workStart || '08:00'}
+                        onChange={(e) => setEditingMember(prev => ({ ...prev, workStart: e.target.value }))}
+                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <span className="text-xs text-slate-400 dark:text-slate-500">ate</span>
+                      <input
+                        type="time"
+                        value={editingMember.workEnd || '18:00'}
+                        onChange={(e) => setEditingMember(prev => ({ ...prev, workEnd: e.target.value }))}
+                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Salario e Horas (apenas gestor ve) */}
+                  {isManager && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Salario Mensal / Horas</label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500">R$</span>
                           <input
                             type="number"
                             value={editingMember.salaryMonth || ''}
                             onChange={(e) => setEditingMember(prev => ({ ...prev, salaryMonth: e.target.value }))}
-                            className="w-20 px-1.5 py-0.5 border border-slate-300 dark:border-slate-600 rounded text-xs dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full pl-8 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="3000"
+                            min="0"
+                            step="100"
                           />
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500">/</span>
+                        </div>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">/</span>
+                        <div className="relative w-24">
                           <input
                             type="number"
                             value={editingMember.hoursMonth || ''}
                             onChange={(e) => setEditingMember(prev => ({ ...prev, hoursMonth: e.target.value }))}
-                            className="w-12 px-1 py-0.5 border border-slate-300 dark:border-slate-600 rounded text-xs dark:text-slate-200 dark:bg-slate-700 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="176"
+                            min="1"
                           />
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500">h</span>
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 dark:text-slate-500">h/mes</span>
                         </div>
-                        )}
-                        <div className="flex gap-1">
-                          {MEMBER_COLORS.slice(0, 6).map(c => (
-                            <button
-                              key={c}
-                              onClick={() => setEditingMember(prev => ({ ...prev, color: c }))}
-                              className={`w-5 h-5 rounded-full border-2 ${editingMember.color === c ? 'border-slate-800 dark:border-slate-200' : 'border-transparent'}`}
-                              style={{ backgroundColor: c }}
-                            />
-                          ))}
-                        </div>
-                        <button
-                          onClick={async () => {
-                            const updated = await updateTeamMember(editingMember.id, {
-                              name: editingMember.name,
-                              role: editingMember.role,
-                              color: editingMember.color,
-                              workStart: editingMember.workStart,
-                              workEnd: editingMember.workEnd,
-                              salaryMonth: parseFloat(editingMember.salaryMonth) || 0,
-                              hoursMonth: parseFloat(editingMember.hoursMonth) || 176,
-                            });
-                            if (updated) {
-                              queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });
-                            }
-                            setEditingMember(null);
-                          }}
-                          className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700"
-                        >
-                          Salvar
-                        </button>
-                        <button
-                          onClick={() => setEditingMember(null)}
-                          className="px-2 py-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-xs"
-                        >
-                          Cancelar
-                        </button>
                       </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-sm shrink-0"
-                            style={{ backgroundColor: member.color }}
-                          >
-                            {member.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{member.name}</div>
-                            {member.email && (
-                              <div className="text-[11px] text-slate-400 dark:text-slate-500">{member.email}</div>
-                            )}
-                            <div className="flex items-center gap-2">
-                              {member.role && <span className="text-xs text-slate-400 dark:text-slate-500">{member.role}</span>}
-                              <span className="text-[10px] text-slate-300 dark:text-slate-500 bg-slate-50 dark:bg-slate-700/50 px-1.5 py-0.5 rounded">
-                                {member.workStart || '08:00'} - {member.workEnd || '18:00'}
-                              </span>
-                              {isManager && member.salaryMonth > 0 && (
-                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded font-medium">
-                                  R$ {(parseFloat(member.salaryMonth) / (parseFloat(member.hoursMonth) || 176)).toFixed(2)}/h
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => setEditingMember({ ...member })}
-                            className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                            title="Editar"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={async () => {
-                              if (!confirm(`Remover ${member.name} da equipe?`)) return;
-                              await deleteTeamMember(member.id);
-                              queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });
-                            }}
-                            className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                            title="Remover"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </>
-                    )}
+                    </div>
+                  )}
+
+                  {/* Cor */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">Cor do perfil</label>
+                    <div className="flex gap-2">
+                      {MEMBER_COLORS.slice(0, 8).map(c => (
+                        <button
+                          key={c}
+                          onClick={() => setEditingMember(prev => ({ ...prev, color: c }))}
+                          className={`w-8 h-8 rounded-full border-2 transition-all ${editingMember.color === c ? 'border-slate-800 dark:border-slate-200 scale-110 shadow-md' : 'border-transparent hover:scale-105'}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
                   </div>
-                ))}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 rounded-b-2xl">
+                  <button
+                    onClick={() => setEditingMember(null)}
+                    className="px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!editingMember.name?.trim()) { alert('Nome e obrigatorio.'); return; }
+                      const updated = await updateTeamMember(editingMember.id, {
+                        name: editingMember.name.trim(),
+                        role: editingMember.role?.trim() || '',
+                        color: editingMember.color,
+                        workStart: editingMember.workStart,
+                        workEnd: editingMember.workEnd,
+                        salaryMonth: parseFloat(editingMember.salaryMonth) || 0,
+                        hoursMonth: parseFloat(editingMember.hoursMonth) || 176,
+                      });
+                      if (editingMember.authUserId) {
+                        const profileRole = editingMember._isGestor ? 'manager' : 'collaborator';
+                        await supabase
+                          .from('profiles')
+                          .update({ role: profileRole })
+                          .eq('id', editingMember.authUserId);
+                      }
+                      if (updated) {
+                        queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });
+                      }
+                      setEditingMember(null);
+                    }}
+                    className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  >
+                    Salvar Alteracoes
+                  </button>
+                </div>
               </div>
+            </div>
+          )}
           </div>
         </div>
       )}
@@ -890,111 +1117,6 @@ export function SettingsPage() {
       {activeTab === 'notifications' && (
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
           <NotificationPreferences />
-        </div>
-      )}
-
-      {/* === TAB: Financeiro === */}
-      {activeTab === 'financial' && (
-        <div className="space-y-6">
-          {/* Cards de resumo */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Salario Mensal</p>
-                  <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(profile.salaryMonth)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Valor / Hora</p>
-                  <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(hourlyRate)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Progresso do mes */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-              </h3>
-              <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                {monthHours.toFixed(1)}h / {profile.hoursMonth}h
-              </span>
-            </div>
-            <div className="w-full h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  hoursPercent >= 100 ? 'bg-emerald-500' : hoursPercent >= 75 ? 'bg-amber-500' : 'bg-blue-500'
-                }`}
-                style={{ width: `${hoursPercent}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-2 text-xs text-slate-400 dark:text-slate-500">
-              <span>{hoursPercent.toFixed(0)}% completo</span>
-              <span>Restam {Math.max(0, profile.hoursMonth - monthHours).toFixed(1)}h</span>
-            </div>
-          </div>
-
-          {/* Historico de O.S. do mes */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Horas por O.S.</h3>
-            </div>
-            {monthOS.length === 0 ? (
-              <div className="px-6 py-12 text-center">
-                <svg className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                <p className="text-sm text-slate-400 dark:text-slate-500">Nenhuma O.S. concluida este mes</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-96 overflow-y-auto">
-                {monthOS.map(order => {
-                  const hours = calcOSHours(order);
-                  return (
-                    <div key={order.id} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="text-center min-w-[50px]">
-                          <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{hours}h</div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-slate-700 dark:text-slate-200">
-                            <span className="text-slate-400 dark:text-slate-500 font-mono text-xs">#{order.number}</span>{' '}
-                            {order.title}
-                          </div>
-                          <div className="text-xs text-slate-400 dark:text-slate-500">
-                            {order.client || 'Sem cliente'}
-                            {order.actualEnd && (
-                              <span> &middot; Concluida em {new Date(order.actualEnd).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-medium rounded-full">
-                        Concluida
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </div>
       )}
 

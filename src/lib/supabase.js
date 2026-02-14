@@ -1,24 +1,43 @@
 import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabaseClient';
 import { createCRUDService } from './serviceFactory';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export { supabase };
 
 // ==================== CRIAR USUARIO AUTH ====================
 
 /**
+ * Client separado para criar usuarios sem afetar a sessao do admin.
+ * Usa persistSession: false para nao interferir no onAuthStateChange.
+ */
+let _isolatedClient = null;
+function getIsolatedClient() {
+  if (!_isolatedClient) {
+    _isolatedClient = createClient(
+      import.meta.env.VITE_SUPABASE_URL,
+      import.meta.env.VITE_SUPABASE_ANON_KEY,
+      {
+        auth: {
+          storageKey: 'supabase-admin-ops',
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      }
+    );
+  }
+  return _isolatedClient;
+}
+
+/**
  * Cria um usuario no Supabase Auth sem deslogar o admin atual.
- * Salva a sessao do admin, cria o usuario, e restaura a sessao.
+ * Usa um client isolado para nao afetar a sessao principal.
  */
 export async function createAuthUser(email, password, fullName) {
-  // 1. Salvar sessao atual do admin
-  const { data: { session: adminSession } } = await supabase.auth.getSession();
-
   try {
-    // 2. Criar novo usuario
-    const { data, error } = await supabase.auth.signUp({
+    const isolated = getIsolatedClient();
+
+    const { data, error } = await isolated.auth.signUp({
       email,
       password,
       options: {
@@ -29,24 +48,8 @@ export async function createAuthUser(email, password, fullName) {
     if (error) throw error;
 
     const newUserId = data.user?.id || null;
-
-    // 3. Restaurar sessao do admin
-    if (adminSession) {
-      await supabase.auth.setSession({
-        access_token: adminSession.access_token,
-        refresh_token: adminSession.refresh_token,
-      });
-    }
-
     return { success: true, userId: newUserId };
   } catch (err) {
-    // Restaurar sessao do admin mesmo em caso de erro
-    if (adminSession) {
-      await supabase.auth.setSession({
-        access_token: adminSession.access_token,
-        refresh_token: adminSession.refresh_token,
-      });
-    }
     return { success: false, error: err.message };
   }
 }

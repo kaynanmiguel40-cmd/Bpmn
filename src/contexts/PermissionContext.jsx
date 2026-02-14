@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
+import { detectRole } from '../lib/roleUtils';
 
 const PermissionContext = createContext({});
 
@@ -18,29 +19,24 @@ export function PermissionProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   // Permissoes padrao por role (fallback quando tabelas nao existem)
+  // Gestor (manager) e Admin tem acesso completo ao SaaS
   const DEFAULT_PERMISSIONS = {
     admin: [
       { name: '*', module: '*' }
     ],
-    manager: [
-      { name: 'sales.view', module: 'sales' },
-      { name: 'sales.edit', module: 'sales' },
-      { name: 'financial.view', module: 'financial' },
-      { name: 'financial.view_costs', module: 'financial' },
-      { name: 'agenda.view', module: 'agenda' },
-      { name: 'agenda.edit', module: 'agenda' },
-      { name: 'os.view', module: 'os' },
-      { name: 'os.edit', module: 'os' },
-      { name: 'reports.view', module: 'reports' },
-      { name: 'settings.view', module: 'settings' },
-      { name: 'settings.edit', module: 'settings' },
-    ],
     member: [
       { name: 'sales.view', module: 'sales' },
       { name: 'agenda.view', module: 'agenda' },
+      { name: 'agenda.edit', module: 'agenda' },
       { name: 'os.view', module: 'os' },
+      { name: 'os.create', module: 'os' },
+      { name: 'os.edit', module: 'os' },
     ],
   };
+
+  // Gestor (detectRole 'manager') e admin tem acesso completo
+  const isGestor = detectRole(profile) === 'manager';
+  const normalizedRole = (isGestor || profile?.role === 'admin') ? 'admin' : 'member';
 
   // Buscar permissoes do usuario baseado no role
   const fetchPermissions = useCallback(async () => {
@@ -54,17 +50,17 @@ export function PermissionProvider({ children }) {
       const { data, error } = await supabase.rpc('get_user_permissions');
 
       if (error || !data || data.length === 0) {
-        // Usar permissoes padrao do role
-        setPermissions(DEFAULT_PERMISSIONS[profile.role] || []);
+        // Usar permissoes padrao baseado no role normalizado
+        setPermissions(DEFAULT_PERMISSIONS[normalizedRole] || DEFAULT_PERMISSIONS.member);
       } else {
         setPermissions(data);
       }
     } catch {
-      setPermissions(DEFAULT_PERMISSIONS[profile.role] || []);
+      setPermissions(DEFAULT_PERMISSIONS[normalizedRole] || DEFAULT_PERMISSIONS.member);
     } finally {
       setLoading(false);
     }
-  }, [profile?.role]);
+  }, [normalizedRole]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -72,38 +68,37 @@ export function PermissionProvider({ children }) {
     }
   }, [authLoading, fetchPermissions]);
 
+  const isAdmin = normalizedRole === 'admin' || permissions.some(p => p.name === '*');
+
   // Verificar se usuario tem uma permissao especifica
   const hasPermission = useCallback((permissionName) => {
-    // Admin tem todas as permissoes
-    if (profile?.role === 'admin') return true;
-
+    if (isAdmin) return true;
     return permissions.some(p =>
       p.name === permissionName ||
       p.permission_name === permissionName
     );
-  }, [permissions, profile?.role]);
+  }, [permissions, isAdmin]);
 
   // Verificar se usuario tem QUALQUER uma das permissoes
   const hasAnyPermission = useCallback((permissionNames) => {
-    if (profile?.role === 'admin') return true;
+    if (isAdmin) return true;
     return permissionNames.some(name => hasPermission(name));
-  }, [hasPermission, profile?.role]);
+  }, [hasPermission, isAdmin]);
 
   // Verificar se usuario tem TODAS as permissoes
   const hasAllPermissions = useCallback((permissionNames) => {
-    if (profile?.role === 'admin') return true;
+    if (isAdmin) return true;
     return permissionNames.every(name => hasPermission(name));
-  }, [hasPermission, profile?.role]);
+  }, [hasPermission, isAdmin]);
 
   // Verificar se pode acessar modulo
   const canAccessModule = useCallback((moduleName) => {
-    if (profile?.role === 'admin') return true;
-
+    if (isAdmin) return true;
     return permissions.some(p =>
       (p.module === moduleName) ||
       (p.name && p.name.startsWith(`${moduleName}.`))
     );
-  }, [permissions, profile?.role]);
+  }, [permissions, isAdmin]);
 
   // Verificar se pode ver custos financeiros
   const canViewCosts = useCallback(() => {

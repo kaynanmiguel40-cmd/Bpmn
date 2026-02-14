@@ -179,13 +179,23 @@ export function validateAndSanitize(schema, data) {
 
 /**
  * Valida parcialmente (para updates que nao tem todos os campos).
+ * So retorna os campos que estavam no input original — evita que
+ * .default() do Zod injete valores e sobrescreva dados existentes.
  */
 export function validatePartial(schema, data) {
   try {
     const sanitized = sanitizeObject(data);
+    const inputKeys = new Set(Object.keys(sanitized));
     const partialSchema = schema.partial();
     const parsed = partialSchema.parse(sanitized);
-    return { success: true, data: parsed, error: null };
+    // Filtrar: so manter campos que estavam no input original
+    const filtered = {};
+    for (const key of Object.keys(parsed)) {
+      if (inputKeys.has(key)) {
+        filtered[key] = parsed[key];
+      }
+    }
+    return { success: true, data: filtered, error: null };
   } catch (err) {
     if (err instanceof z.ZodError) {
       const messages = (err.issues || err.errors || []).map(e => e.message).join(', ');
