@@ -9,7 +9,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getOSOrders, getOSProjects, updateOSOrder } from '../../lib/osService';
+import { useQueryClient } from '@tanstack/react-query';
+import { useOSOrders, useOSProjects } from '../../hooks/queries';
+import { updateOSOrder } from '../../lib/osService';
 import { getProfile } from '../../lib/profileService';
 
 const PRIORITIES = {
@@ -37,10 +39,11 @@ function formatCurrency(value) {
 
 export function RoutinePage() {
   const navigate = useNavigate();
-  const [orders, setOrders] = useState([]);
-  const [projects, setProjects] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
+  const { data: projects = [], isLoading: loadingProjects } = useOSProjects();
   const [profile, setProfile] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
   // Expenses form
   const [expenseOpen, setExpenseOpen] = useState(null); // orderId com form aberto
@@ -49,15 +52,13 @@ export function RoutinePage() {
   const [expQty, setExpQty] = useState('1');
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const [o, p, prof] = await Promise.all([getOSOrders(), getOSProjects(), getProfile()]);
-      setOrders(o);
-      setProjects(p);
+    getProfile().then(prof => {
       setProfile(prof);
-      setLoading(false);
-    })();
+      setLoadingProfile(false);
+    });
   }, []);
+
+  const loading = loadingOrders || loadingProjects || loadingProfile;
 
   const userName = profile.name || '';
 
@@ -107,7 +108,7 @@ export function RoutinePage() {
       actualStart: now,
     });
     if (updated) {
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      queryClient.invalidateQueries({ queryKey: ['osOrders'] });
     }
   };
 
@@ -118,7 +119,7 @@ export function RoutinePage() {
       actualEnd: now,
     });
     if (updated) {
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      queryClient.invalidateQueries({ queryKey: ['osOrders'] });
     }
   };
 
@@ -128,7 +129,7 @@ export function RoutinePage() {
       actualEnd: '',
     });
     if (updated) {
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      queryClient.invalidateQueries({ queryKey: ['osOrders'] });
     }
   };
 
@@ -145,7 +146,7 @@ export function RoutinePage() {
     const newExpenses = [...(order.expenses || []), { name, value, quantity: qty }];
     const updated = await updateOSOrder(orderId, { expenses: newExpenses });
     if (updated) {
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      queryClient.invalidateQueries({ queryKey: ['osOrders'] });
     }
     setExpName('');
     setExpValue('');
@@ -159,7 +160,7 @@ export function RoutinePage() {
     const newExpenses = (order.expenses || []).filter((_, i) => i !== index);
     const updated = await updateOSOrder(orderId, { expenses: newExpenses });
     if (updated) {
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      queryClient.invalidateQueries({ queryKey: ['osOrders'] });
     }
   };
 

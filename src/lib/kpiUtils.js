@@ -76,7 +76,8 @@ export function calcOSCost(order, membersList) {
   const member = membersList.find(m => m.name.toLowerCase().trim() === assigneeName);
   const laborCost = member ? hours * getMemberHourlyRate(member) : 0;
   const materialCost = (order.expenses || []).reduce((acc, e) => acc + (e.value || 0) * (e.quantity || 1), 0);
-  return { laborCost, materialCost, totalCost: laborCost + materialCost };
+  const hourlyRate = member ? getMemberHourlyRate(member) : 0;
+  return { hours, hourlyRate, laborCost, materialCost, totalCost: laborCost + materialCost };
 }
 
 // ─── Formatação ──────────────────────────────────────────────────
@@ -267,4 +268,81 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
     reworkCount: reworkOrders.length,
     reworkTotal: doneWithEstimate.length,
   };
+}
+
+// ─── Lead Time ────────────────────────────────────────────────────
+
+/** Calcula lead time em horas (criacao ate conclusao) */
+export function calcLeadTimeHours(order) {
+  if (order.leadTimeHours) return order.leadTimeHours;
+  if (order.status !== 'done' || !order.createdAt || !order.actualEnd) return null;
+  return (new Date(order.actualEnd) - new Date(order.createdAt)) / (1000 * 60 * 60);
+}
+
+/** Calcula lead time medio das ordens concluidas */
+export function calcAvgLeadTime(ordersList) {
+  const leadTimes = ordersList
+    .filter(o => o.status === 'done')
+    .map(o => calcLeadTimeHours(o))
+    .filter(lt => lt !== null);
+  if (leadTimes.length === 0) return 0;
+  return leadTimes.reduce((sum, lt) => sum + lt, 0) / leadTimes.length;
+}
+
+// ─── SLA ──────────────────────────────────────────────────────────
+
+/** Calcula taxa de cumprimento de SLA */
+export function calcSLACompliance(ordersList) {
+  const withSLA = ordersList.filter(o => o.status === 'done' && o.slaDeadline && o.actualEnd);
+  if (withSLA.length === 0) return { rate: 100, met: 0, total: 0 };
+  const met = withSLA.filter(o => new Date(o.actualEnd) <= new Date(o.slaDeadline));
+  return {
+    rate: Math.round((met.length / withSLA.length) * 100),
+    met: met.length,
+    total: withSLA.length,
+  };
+}
+
+// ─── Metricas por Categoria ──────────────────────────────────────
+
+/** Agrupa ordens por categoria e calcula contagens */
+export function calcCategoryBreakdown(ordersList) {
+  const categories = ['bug', 'feature', 'support', 'compliance', 'campaign', 'internal'];
+  const result = {};
+  for (const cat of categories) {
+    const catOrders = ordersList.filter(o => (o.category || 'internal') === cat);
+    const done = catOrders.filter(o => o.status === 'done');
+    result[cat] = {
+      total: catOrders.length,
+      done: done.length,
+      inProgress: catOrders.filter(o => o.status === 'in_progress').length,
+      avgLeadTime: calcAvgLeadTime(catOrders),
+    };
+  }
+  return result;
+}
+
+// ─── Capacidade por Membro ───────────────────────────────────────
+
+/** Calcula horas alocadas vs disponiveis por membro */
+export function calcCapacity(ordersList, membersList) {
+  return membersList.map(member => {
+    const name = member.name.toLowerCase().trim();
+    const assigned = ordersList.filter(o =>
+      o.status === 'in_progress' &&
+      ((o.assignee || '').toLowerCase().trim() === name ||
+       (o.assignedTo || '').toLowerCase().trim() === name)
+    );
+    const allocatedHours = assigned.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
+    const availableHours = member.hoursMonth || member.hours_month || 176;
+    return {
+      id: member.id,
+      name: member.name,
+      color: member.color || '#3b82f6',
+      allocatedHours,
+      availableHours,
+      utilization: availableHours > 0 ? Math.round((allocatedHours / availableHours) * 100) : 0,
+      activeOrders: assigned.length,
+    };
+  });
 }

@@ -8,20 +8,21 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { getOSOrders } from '../../lib/osService';
-import { getAgendaEvents } from '../../lib/agendaService';
 import { getProfile } from '../../lib/profileService';
-import { getTeamMembers, shortName } from '../../lib/teamService';
+import { shortName } from '../../lib/teamService';
 import { MANAGER_ROLES, detectRole } from '../../lib/roleUtils';
+import { useOSOrders, useTeamMembers, useAgendaEvents } from '../../hooks/queries';
 import {
   calcOSHours, calcEstimatedHours, calcOSCost, calcKPIs, getMemberHourlyRate,
   formatCurrency, formatLateTime, timeAgo,
-  isCurrentMonth,
+  isCurrentMonth, isLastMonth,
   loadProfileSync, findCurrentUser,
+  calcCapacity, calcAvgLeadTime, calcSLACompliance, calcCategoryBreakdown,
 } from '../../lib/kpiUtils';
 import { getHistory, calculateTrends, saveMonthlySnapshot } from '../../lib/kpiSnapshotService';
 import { TrendCard } from '../../components/trends/TrendCard';
 import { ProjectionWidget } from '../../components/trends/ProjectionWidget';
+import { useRealtimeOSOrders } from '../../hooks/useRealtimeSubscription';
 
 // ─── Icones SVG ───────────────────────────────────────────────────
 
@@ -927,6 +928,83 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
         </SectionCard>
       </div>
 
+      {/* Capacidade da Equipe + Lead Time */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SectionCard title="Capacidade da Equipe">
+          <div className="p-5 space-y-3">
+            {(() => {
+              const capacity = calcCapacity(orders, allMembers);
+              return capacity.map(cap => (
+                <div key={cap.id} className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: cap.color }}>
+                        {cap.name.charAt(0)}
+                      </div>
+                      <span className="text-sm text-slate-700 dark:text-slate-200">{shortName(cap.name)}</span>
+                    </div>
+                    <span className={`text-xs font-bold ${cap.utilization > 100 ? 'text-red-500' : cap.utilization > 80 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                      {cap.utilization}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${cap.utilization > 100 ? 'bg-red-500' : cap.utilization > 80 ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                      style={{ width: `${Math.min(cap.utilization, 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400">{cap.allocatedHours}h alocadas / {cap.availableHours}h disponivel · {cap.activeOrders} O.S. ativas</p>
+                </div>
+              ));
+            })()}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Indicadores SaaS">
+          <div className="p-5 space-y-4">
+            {(() => {
+              const avgLT = calcAvgLeadTime(orders);
+              const sla = calcSLACompliance(orders);
+              const catBreakdown = calcCategoryBreakdown(orders);
+              const activeCats = Object.entries(catBreakdown).filter(([, v]) => v.total > 0);
+              const catLabels = { bug: 'Bug', feature: 'Feature', support: 'Suporte', compliance: 'Compliance', campaign: 'Campanha', internal: 'Interno' };
+              const catColors = { bug: '#ef4444', feature: '#3b82f6', support: '#22c55e', compliance: '#a855f7', campaign: '#f59e0b', internal: '#64748b' };
+              return (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50 text-center">
+                      <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{avgLT < 24 ? `${Math.round(avgLT)}h` : `${Math.round(avgLT / 24)}d`}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Lead Time Medio</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50 text-center">
+                      <p className={`text-2xl font-bold ${sla.rate >= 80 ? 'text-emerald-600' : sla.rate >= 50 ? 'text-amber-500' : 'text-red-500'}`}>{sla.rate}%</p>
+                      <p className="text-[10px] text-slate-400 mt-1">SLA Cumprido ({sla.met}/{sla.total})</p>
+                    </div>
+                  </div>
+                  {activeCats.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Por Categoria</p>
+                      {activeCats.map(([cat, data]) => (
+                        <div key={cat} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: catColors[cat] }} />
+                            <span className="text-slate-600 dark:text-slate-300">{catLabels[cat]}</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-slate-400">
+                            <span>{data.done}/{data.total}</span>
+                            <span>{data.inProgress} ativas</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </SectionCard>
+      </div>
+
       {/* Financial + Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Custo por Colaborador */}
@@ -1035,21 +1113,19 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
 
 export function DashboardPage() {
   const [profile, setProfile] = useState({});
-  const [orders, setOrders] = useState([]);
-  const [events, setEvents] = useState([]);
   const [selectedMember, setSelectedMember] = useState('all');
-  const [teamMembers, setTeamMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
 
+  const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
+  const { data: events = [], isLoading: loadingEvents } = useAgendaEvents();
+  const { data: teamMembers = [], isLoading: loadingMembers } = useTeamMembers();
+  const loading = loadingOrders || loadingEvents || loadingMembers;
+
+  // Realtime: atualiza automaticamente quando dados mudam no Supabase
+  useRealtimeOSOrders();
+
+  // Carregar profile inicial + escutar atualizacoes
   useEffect(() => {
-    (async () => {
-      const [p, o, e, members] = await Promise.all([getProfile(), getOSOrders(), getAgendaEvents(), getTeamMembers()]);
-      setProfile(p);
-      setOrders(o);
-      setEvents(e);
-      setTeamMembers(members);
-      setLoading(false);
-    })();
+    getProfile().then(setProfile);
 
     const handleUpdate = () => setProfile(loadProfileSync());
     window.addEventListener('storage', handleUpdate);
@@ -1058,17 +1134,6 @@ export function DashboardPage() {
       window.removeEventListener('storage', handleUpdate);
       window.removeEventListener('profile-updated', handleUpdate);
     };
-  }, []);
-
-  // Atualizar dados ao voltar para a pagina
-  useEffect(() => {
-    const handleFocus = async () => {
-      const [o, e] = await Promise.all([getOSOrders(), getAgendaEvents()]);
-      setOrders(o);
-      setEvents(e);
-    };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
   // Lista completa: membros cadastrados + perfil logado

@@ -10,9 +10,10 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { getProfile, saveProfile } from '../../lib/profileService';
-import { getOSOrders } from '../../lib/osService';
-import { getTeamMembers, createTeamMember, updateTeamMember, deleteTeamMember, MEMBER_COLORS } from '../../lib/teamService';
+import { useOSOrders, useTeamMembers, queryKeys } from '../../hooks/queries';
+import { createTeamMember, updateTeamMember, deleteTeamMember, MEMBER_COLORS } from '../../lib/teamService';
 import { getCompanies, createCompany, updateCompany, deleteCompany, createAuthUser } from '../../lib/supabase';
 import { isManagerRole } from '../../lib/roleUtils';
 import { NotificationPreferences } from '../../components/communication/NotificationPreferences';
@@ -86,15 +87,17 @@ const CARGO_OPTIONS = [
 ];
 
 export function SettingsPage() {
+  const queryClient = useQueryClient();
   const [profile, setProfile] = useState({});
   const [companies, setCompanies] = useState([]);
-  const [orders, setOrders] = useState([]);
   const [activeTab, setActiveTab] = useState('profile');
   const [showSaveToast, setShowSaveToast] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loadingProfileCompanies, setLoadingProfileCompanies] = useState(true);
   const avatarInputRef = useRef(null);
-  // Equipe
-  const [teamMembers, setTeamMembers] = useState([]);
+  // Dados via React Query
+  const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
+  const { data: teamMembers = [], isLoading: loadingTeamMembers } = useTeamMembers();
+  const loading = loadingProfileCompanies || loadingOrders || loadingTeamMembers;
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState('');
   const [newMemberColor, setNewMemberColor] = useState(MEMBER_COLORS[0]);
@@ -119,12 +122,10 @@ export function SettingsPage() {
 
   useEffect(() => {
     (async () => {
-      const [p, o, members, comps] = await Promise.all([getProfile(), getOSOrders(), getTeamMembers(), getCompanies()]);
+      const [p, comps] = await Promise.all([getProfile(), getCompanies()]);
       setProfile(p);
-      setOrders(o);
-      setTeamMembers(members);
       setCompanies(comps);
-      setLoading(false);
+      setLoadingProfileCompanies(false);
     })();
   }, []);
 
@@ -648,7 +649,7 @@ export function SettingsPage() {
                       authUserId: authResult.userId,
                     });
                     if (created) {
-                      setTeamMembers(prev => [...prev, created]);
+                      queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });
                       setNewMemberName('');
                       setNewMemberRole('');
                       setNewMemberEmail('');
@@ -810,7 +811,7 @@ export function SettingsPage() {
                               hoursMonth: parseFloat(editingMember.hoursMonth) || 176,
                             });
                             if (updated) {
-                              setTeamMembers(prev => prev.map(m => m.id === updated.id ? updated : m));
+                              queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });
                             }
                             setEditingMember(null);
                           }}
@@ -866,7 +867,7 @@ export function SettingsPage() {
                             onClick={async () => {
                               if (!confirm(`Remover ${member.name} da equipe?`)) return;
                               await deleteTeamMember(member.id);
-                              setTeamMembers(prev => prev.filter(m => m.id !== member.id));
+                              queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });
                             }}
                             className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                             title="Remover"

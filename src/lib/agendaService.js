@@ -1,4 +1,5 @@
 import { createCRUDService } from './serviceFactory';
+import { agendaEventSchema } from './validation';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -33,6 +34,7 @@ const eventService = createCRUDService({
   localKey: 'agenda_events',
   idPrefix: 'evt',
   transform: dbToEvent,
+  schema: agendaEventSchema,
   orderBy: 'start_date',
   fieldMap: {
     title: 'title',

@@ -1,5 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { getNotifications, getUnreadCount, markAsRead, markAllAsRead, deleteNotification } from '../../lib/notificationService';
+import { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useNotifications,
+  useUnreadCount,
+  useMarkAsRead,
+  useMarkAllAsRead,
+  useDeleteNotification,
+  queryKeys,
+} from '../../hooks/queries';
+import { useRealtimeNotifications } from '../../hooks/useRealtimeSubscription';
 import { NotificationPanel } from './NotificationPanel';
 
 const BellIcon = () => (
@@ -10,25 +19,20 @@ const BellIcon = () => (
 
 export function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const panelRef = useRef(null);
+  const queryClient = useQueryClient();
 
-  const loadNotifications = useCallback(async () => {
-    const [notifs, count] = await Promise.all([
-      getNotifications(),
-      getUnreadCount(),
-    ]);
-    setNotifications(notifs);
-    setUnreadCount(count);
-  }, []);
+  // React Query hooks para dados e mutacoes
+  const { data: notifications = [] } = useNotifications();
+  const { data: unreadCount = 0 } = useUnreadCount();
+  const markAsReadMutation = useMarkAsRead();
+  const markAllAsReadMutation = useMarkAllAsRead();
+  const deleteNotificationMutation = useDeleteNotification();
 
-  useEffect(() => {
-    loadNotifications();
-    const interval = setInterval(loadNotifications, 30000);
-    return () => clearInterval(interval);
-  }, [loadNotifications]);
+  // Supabase Realtime — invalida queries automaticamente em INSERT/UPDATE/DELETE
+  useRealtimeNotifications();
 
+  // Fechar painel ao clicar fora
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (panelRef.current && !panelRef.current.contains(e.target)) {
@@ -41,24 +45,24 @@ export function NotificationBell() {
 
   // Escutar evento custom de nova notificacao
   useEffect(() => {
-    const handleNewNotif = () => loadNotifications();
+    const handleNewNotif = () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
+    };
     window.addEventListener('notification-created', handleNewNotif);
     return () => window.removeEventListener('notification-created', handleNewNotif);
-  }, [loadNotifications]);
+  }, [queryClient]);
 
-  const handleMarkRead = async (id) => {
-    await markAsRead(id);
-    await loadNotifications();
+  const handleMarkRead = (id) => {
+    markAsReadMutation.mutate(id);
   };
 
-  const handleMarkAllRead = async () => {
-    await markAllAsRead();
-    await loadNotifications();
+  const handleMarkAllRead = () => {
+    markAllAsReadMutation.mutate();
   };
 
-  const handleDelete = async (id) => {
-    await deleteNotification(id);
-    await loadNotifications();
+  const handleDelete = (id) => {
+    deleteNotificationMutation.mutate(id);
   };
 
   return (

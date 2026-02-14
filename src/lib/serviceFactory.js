@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import { toast } from '../contexts/ToastContext';
+import { validateAndSanitize, validatePartial } from './validation';
+import { saveOffline, getOffline, putOffline, removeOffline, markPendingSync, getPendingSync, clearPendingSync } from './offlineDB';
 
 /**
  * Converte um objeto camelCase para snake_case usando o mapeamento fornecido.
@@ -20,7 +22,6 @@ function generateLocalId(prefix) {
 
 // ==================== SYNC ONLINE/OFFLINE ====================
 
-const PENDING_SYNC_KEY = '_pendingSync';
 const registeredServices = [];
 
 function registerForSync(service) {
@@ -40,7 +41,7 @@ async function syncPendingItems() {
 // Detectar reconexão
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
-    console.log('🌐 Conexão restaurada, sincronizando...');
+    console.log('[Sync] Conexao restaurada, sincronizando...');
     syncPendingItems();
   });
 }
@@ -48,7 +49,8 @@ if (typeof window !== 'undefined') {
 // ==================== FACTORY ====================
 
 /**
- * Factory que cria operações CRUD com fallback automático para localStorage.
+ * Factory que cria operações CRUD com fallback automático para IndexedDB (via Dexie).
+ * Inclui validação Zod, sanitização, e paginação.
  */
 export function createCRUDService(config) {
   const {
@@ -57,6 +59,7 @@ export function createCRUDService(config) {
     idPrefix,
     transform,
     fieldMap,
+    schema,
     orderBy = 'created_at',
     orderAsc = true,
   } = config;
@@ -69,11 +72,58 @@ export function createCRUDService(config) {
       .order(orderBy, { ascending: orderAsc });
 
     if (error) {
-      toast(`Modo offline — usando dados locais`, 'warning');
-      const local = JSON.parse(localStorage.getItem(localKey) || '[]');
+      console.error(`[${table}] GET ALL erro:`, error.message, error.code, error.details, error.hint);
+      toast(`Offline [${table}]: ${error.message}`, 'warning');
+      const local = await getOffline(table);
       return transform ? local.map(r => transform(r) || r) : local;
     }
+
+    // Salvar no IndexedDB para acesso offline futuro
+    saveOffline(table, data || []);
+
     return transform ? (data || []).map(transform) : (data || []);
+  }
+
+  // ==================== GET PAGINATED ====================
+  async function getPaginated(page = 1, pageSize = 20, filters = {}) {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase
+      .from(table)
+      .select('*', { count: 'exact' })
+      .order(orderBy, { ascending: orderAsc })
+      .range(from, to);
+
+    // Aplicar filtros dinamicos
+    for (const [field, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== '') {
+        query = query.eq(field, value);
+      }
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      toast(`Modo offline — usando dados locais`, 'warning');
+      const local = await getOffline(table);
+      const sliced = local.slice(from, to + 1);
+      return {
+        data: transform ? sliced.map(r => transform(r) || r) : sliced,
+        count: local.length,
+        page,
+        pageSize,
+        totalPages: Math.ceil(local.length / pageSize),
+      };
+    }
+
+    return {
+      data: transform ? (data || []).map(transform) : (data || []),
+      count: count || 0,
+      page,
+      pageSize,
+      totalPages: Math.ceil((count || 0) / pageSize),
+    };
   }
 
   // ==================== GET BY ID ====================
@@ -85,7 +135,7 @@ export function createCRUDService(config) {
       .single();
 
     if (error) {
-      const local = JSON.parse(localStorage.getItem(localKey) || '[]');
+      const local = await getOffline(table);
       const item = local.find(r => r.id === id);
       return item ? (transform ? transform(item) : item) : null;
     }
@@ -94,6 +144,16 @@ export function createCRUDService(config) {
 
   // ==================== CREATE ====================
   async function create(item, extraRow = {}) {
+    // Validar com schema Zod se disponivel
+    if (schema) {
+      const validation = validateAndSanitize(schema, item);
+      if (!validation.success) {
+        toast(validation.error, 'error');
+        return null;
+      }
+      item = validation.data;
+    }
+
     const now = new Date().toISOString();
     const row = {
       id: generateLocalId(idPrefix),
@@ -108,11 +168,11 @@ export function createCRUDService(config) {
       .single();
 
     if (error) {
-      const local = JSON.parse(localStorage.getItem(localKey) || '[]');
-      const newItem = { ...row, created_at: now, updated_at: now, _pendingSync: true };
-      local.push(newItem);
-      localStorage.setItem(localKey, JSON.stringify(local));
-      toast('Salvo localmente (sem conexão)', 'warning');
+      console.error(`[${table}] CREATE erro:`, error.message, error.code, error.details, error.hint);
+      const newItem = { ...row, created_at: now, updated_at: now };
+      await putOffline(table, newItem);
+      await markPendingSync(table, newItem.id, 'upsert');
+      toast(`Salvo localmente: ${error.message || 'sem conexao'}`, 'warning');
       return transform ? transform(newItem) : newItem;
     }
     return transform ? transform(data) : data;
@@ -120,6 +180,16 @@ export function createCRUDService(config) {
 
   // ==================== UPDATE ====================
   async function update(id, updates) {
+    // Validar parcialmente com schema Zod se disponivel
+    if (schema) {
+      const validation = validatePartial(schema, updates);
+      if (!validation.success) {
+        toast(validation.error, 'error');
+        return null;
+      }
+      updates = validation.data;
+    }
+
     const updateData = {
       updated_at: new Date().toISOString(),
       ...toSnakeCase(updates, fieldMap),
@@ -133,12 +203,14 @@ export function createCRUDService(config) {
       .single();
 
     if (error) {
-      const local = JSON.parse(localStorage.getItem(localKey) || '[]');
-      const idx = local.findIndex(r => r.id === id);
-      if (idx >= 0) {
-        local[idx] = { ...local[idx], ...updateData, _pendingSync: true };
-        localStorage.setItem(localKey, JSON.stringify(local));
-        return transform ? transform(local[idx]) : local[idx];
+      console.error(`[${table}] UPDATE erro:`, error.message, error.code, error.details, error.hint);
+      const local = await getOffline(table);
+      const item = local.find(r => r.id === id);
+      if (item) {
+        const updated = { ...item, ...updateData };
+        await putOffline(table, updated);
+        await markPendingSync(table, id, 'upsert');
+        return transform ? transform(updated) : updated;
       }
       return null;
     }
@@ -153,8 +225,8 @@ export function createCRUDService(config) {
       .eq('id', id);
 
     if (error) {
-      const local = JSON.parse(localStorage.getItem(localKey) || '[]');
-      localStorage.setItem(localKey, JSON.stringify(local.filter(r => r.id !== id)));
+      await removeOffline(table, id);
+      await markPendingSync(table, id, 'delete');
     }
     return !error;
   }
@@ -169,43 +241,44 @@ export function createCRUDService(config) {
       .eq(filterField, filterValue);
 
     if (error) {
-      const local = JSON.parse(localStorage.getItem(localKey) || '[]');
+      const local = await getOffline(table);
       const updated = local.map(r =>
         r[filterField] === filterValue ? { ...r, ...updateData } : r
       );
-      localStorage.setItem(localKey, JSON.stringify(updated));
+      await saveOffline(table, updated);
     }
   }
 
   // ==================== SYNC PENDING ====================
   async function syncPending() {
-    const local = JSON.parse(localStorage.getItem(localKey) || '[]');
-    const pending = local.filter(r => r._pendingSync);
+    const pending = await getPendingSync();
+    const tablePending = pending.filter(p => p.table_name === table);
     let synced = 0;
 
-    for (const item of pending) {
-      const row = { ...item };
-      delete row._pendingSync;
-
-      const { error } = await supabase
-        .from(table)
-        .upsert([row], { onConflict: 'id' });
-
-      if (!error) {
-        synced++;
-        // Remover flag _pendingSync
-        const current = JSON.parse(localStorage.getItem(localKey) || '[]');
-        const idx = current.findIndex(r => r.id === item.id);
-        if (idx >= 0) {
-          delete current[idx]._pendingSync;
-          localStorage.setItem(localKey, JSON.stringify(current));
+    for (const entry of tablePending) {
+      if (entry.operation === 'delete') {
+        const { error } = await supabase.from(table).delete().eq('id', entry.item_id);
+        if (!error) {
+          synced++;
+          await clearPendingSync(table, entry.item_id);
+        }
+      } else {
+        // upsert
+        const local = await getOffline(table);
+        const item = local.find(r => r.id === entry.item_id);
+        if (item) {
+          const { error } = await supabase.from(table).upsert([item], { onConflict: 'id' });
+          if (!error) {
+            synced++;
+            await clearPendingSync(table, entry.item_id);
+          }
         }
       }
     }
     return synced;
   }
 
-  const service = { getAll, getById, create, update, remove, bulkUpdate, syncPending };
+  const service = { getAll, getPaginated, getById, create, update, remove, bulkUpdate, syncPending };
 
   // Registrar para sync automático
   registerForSync(service);

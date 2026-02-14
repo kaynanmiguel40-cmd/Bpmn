@@ -67,16 +67,17 @@ function App() {
             </Route>
 
             {/* Rotas com Layout (Sidebar) — protegidas */}
+            {/* Cada pagina tem ErrorBoundary individual para nao crashar o app inteiro */}
             <Route element={<ProtectedRoute />}>
               <Route element={<MainLayout />}>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/sales" element={<Dashboard />} />
-                <Route path="/routine" element={<RoutinePage />} />
-                <Route path="/agenda" element={<AgendaPage />} />
-                <Route path="/financial" element={<FinancialPage />} />
-                <Route path="/reports" element={<ReportPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
+                <Route path="/sales" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                <Route path="/routine" element={<ErrorBoundary><RoutinePage /></ErrorBoundary>} />
+                <Route path="/agenda" element={<ErrorBoundary><AgendaPage /></ErrorBoundary>} />
+                <Route path="/financial" element={<ErrorBoundary><FinancialPage /></ErrorBoundary>} />
+                <Route path="/reports" element={<ErrorBoundary><ReportPage /></ErrorBoundary>} />
+                <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
               </Route>
             </Route>
           </Routes>

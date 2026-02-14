@@ -96,15 +96,17 @@ export function AuthProvider({ children }) {
       return { success: true, data };
     } catch (err) {
       // Fallback local: permite acesso offline quando Supabase nao esta disponivel
+      // Role 'viewer' por seguranca — sem permissao de escrita em modo offline
       const localUser = { id: 'local_' + email, email };
       setUser(localUser);
       setProfile({
         id: localUser.id,
         email,
         full_name: email.split('@')[0],
-        role: 'manager',
+        role: 'viewer',
+        isOffline: true,
       });
-      return { success: true, data: { user: localUser } };
+      return { success: true, data: { user: localUser }, offline: true };
     }
   };
 

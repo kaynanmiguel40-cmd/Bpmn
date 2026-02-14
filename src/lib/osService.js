@@ -1,5 +1,6 @@
 import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabase';
+import { osOrderSchema, sectorSchema, osProjectSchema } from './validation';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -10,9 +11,13 @@ export function dbToOrder(row) {
     number: row.number,
     title: row.title,
     description: row.description || '',
+    checklist: Array.isArray(row.checklist) ? row.checklist : [],
     priority: row.priority || 'medium',
     status: row.status || 'available',
+    category: row.category || 'internal',
+    blockReason: row.block_reason || null,
     client: row.client || '',
+    clientId: row.client_id || null,
     location: row.location || '',
     notes: row.notes || '',
     assignee: row.assignee || null,
@@ -22,6 +27,8 @@ export function dbToOrder(row) {
     estimatedEnd: row.estimated_end || '',
     actualStart: row.actual_start || '',
     actualEnd: row.actual_end || '',
+    slaDeadline: row.sla_deadline || null,
+    leadTimeHours: row.lead_time_hours || null,
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
     expenses: Array.isArray(row.expenses) ? row.expenses : [],
     projectId: row.project_id || null,
@@ -62,6 +69,7 @@ const sectorService = createCRUDService({
   localKey: 'os_sectors',
   idPrefix: 'sector',
   transform: dbToSector,
+  schema: sectorSchema,
   fieldMap: {
     label: 'label',
     color: 'color',
@@ -84,6 +92,7 @@ const projectService = createCRUDService({
   localKey: 'os_projects',
   idPrefix: 'proj',
   transform: dbToOSProject,
+  schema: osProjectSchema,
   fieldMap: {
     name: 'name',
     sector: 'sector_id',
@@ -104,13 +113,18 @@ const orderService = createCRUDService({
   localKey: 'os_orders',
   idPrefix: 'os',
   transform: dbToOrder,
+  schema: osOrderSchema,
   fieldMap: {
     number: 'number',
     title: 'title',
     description: 'description',
+    checklist: 'checklist',
     priority: 'priority',
     status: 'status',
+    category: 'category',
+    blockReason: 'block_reason',
     client: 'client',
+    clientId: 'client_id',
     location: 'location',
     notes: 'notes',
     assignee: 'assignee',
@@ -120,6 +134,8 @@ const orderService = createCRUDService({
     estimatedEnd: 'estimated_end',
     actualStart: 'actual_start',
     actualEnd: 'actual_end',
+    slaDeadline: 'sla_deadline',
+    leadTimeHours: 'lead_time_hours',
     attachments: 'attachments',
     expenses: 'expenses',
     projectId: 'project_id',
@@ -168,17 +184,30 @@ export async function getNextEmergencyNumber() {
   return (data[0].emergency_number || 0) + 1;
 }
 
+/** Calcula SLA deadline baseado na prioridade (horas a partir de agora) */
+export function calcSLADeadline(priority) {
+  const slaHours = { urgent: 4, high: 24, medium: 72, low: 168 };
+  const hours = slaHours[priority] || 72;
+  const deadline = new Date();
+  deadline.setHours(deadline.getHours() + hours);
+  return deadline.toISOString();
+}
+
 export async function createOSOrder(order) {
+  // Auto-calcular SLA se nao fornecido
+  const slaDeadline = order.slaDeadline || calcSLADeadline(order.priority || 'medium');
+
   if (order.type === 'emergency') {
     const nextEmg = await getNextEmergencyNumber();
     return orderService.create({
       ...order,
+      slaDeadline,
       emergencyNumber: order.emergencyNumber || nextEmg,
       priority: 'urgent',
     });
   }
   const nextNum = await getNextOrderNumber();
-  return orderService.create({ ...order, number: order.number || nextNum });
+  return orderService.create({ ...order, slaDeadline, number: order.number || nextNum });
 }
 
 export async function updateOSOrdersBatch(orderUpdates) {

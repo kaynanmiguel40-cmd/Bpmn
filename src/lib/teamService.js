@@ -1,4 +1,5 @@
 import { createCRUDService } from './serviceFactory';
+import { teamMemberSchema } from './validation';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -46,6 +47,7 @@ const memberService = createCRUDService({
   localKey: 'team_members',
   idPrefix: 'member',
   transform: dbToMember,
+  schema: teamMemberSchema,
   fieldMap: {
     name: 'name',
     role: 'role',

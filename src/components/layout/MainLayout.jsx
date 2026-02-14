@@ -160,7 +160,9 @@ function Header() {
         {/* Search */}
         <div className="relative hidden md:block" ref={searchRef}>
           <input
-            type="text"
+            type="search"
+            role="searchbox"
+            aria-label="Buscar ordens de servico e eventos"
             placeholder="Buscar O.S., eventos..."
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
@@ -202,6 +204,7 @@ function Header() {
         {/* Theme Toggle */}
         <button
           onClick={toggleTheme}
+          aria-label={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
           className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           title={isDark ? 'Modo claro' : 'Modo escuro'}
         >
@@ -228,7 +231,7 @@ export function MainLayout() {
         </div>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto p-6 print:p-0 print:overflow-visible">
+        <main role="main" aria-label="Conteudo principal" className="flex-1 overflow-auto p-6 print:p-0 print:overflow-visible">
           <Outlet />
         </main>
       </div>

@@ -50,11 +50,11 @@ export function LoginPage() {
         </div>
 
         {/* Form */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-xl">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-xl" role="region" aria-label="Formulario de login">
+          <form onSubmit={handleSubmit} className="space-y-6" role="form" aria-label="Login">
             {/* Error Alert */}
             {(localError || error) && (
-              <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm">
+              <div role="alert" className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm">
                 {localError || error}
               </div>
             )}
@@ -70,6 +70,8 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
+                aria-required="true"
                 className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="seu@email.com"
               />
@@ -86,6 +88,8 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
+                aria-required="true"
                 className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="••••••••"
               />

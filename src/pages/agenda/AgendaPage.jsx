@@ -4,11 +4,12 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { getAgendaEvents, createAgendaEvent, updateAgendaEvent, deleteAgendaEvent } from '../../lib/agendaService';
-import { getTeamMembers, shortName } from '../../lib/teamService';
+import { useAgendaEvents, useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent, useTeamMembers, useOSOrders } from '../../hooks/queries';
+import { shortName } from '../../lib/teamService';
 import { getProfile } from '../../lib/profileService';
 import { expandRecurrences, toDateKey } from '../../lib/recurrenceUtils';
-import { getOSOrders } from '../../lib/osService';
+import { downloadICS } from '../../lib/icsExporter';
+import { useRealtimeAgendaEvents } from '../../hooks/useRealtimeSubscription';
 
 // ==================== CONSTANTES ====================
 
@@ -88,8 +89,20 @@ function toLocalDateString(date) {
 
 export default function AgendaPage() {
   const today = new Date();
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+
+  // React Query hooks para dados
+  const { data: events = [], isLoading: loadingEvents } = useAgendaEvents();
+  const { data: teamMembers = [], isLoading: loadingMembers } = useTeamMembers();
+  const { data: osOrders = [], isLoading: loadingOS } = useOSOrders();
+  const createEventMutation = useCreateAgendaEvent();
+  const updateEventMutation = useUpdateAgendaEvent();
+  const deleteEventMutation = useDeleteAgendaEvent();
+
+  const loading = loadingEvents || loadingMembers || loadingOS;
+
+  // Realtime: atualiza automaticamente quando eventos mudam no Supabase
+  useRealtimeAgendaEvents();
+
   const [currentDate, setCurrentDate] = useState(today);
   const [view, setView] = useState('day');
   const [showEventModal, setShowEventModal] = useState(false);
@@ -97,9 +110,7 @@ export default function AgendaPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(null);
   const [quickCreate, setQuickCreate] = useState(null); // { date, startTime, endTime }
   const [recurrenceAction, setRecurrenceAction] = useState(null); // { event, action: 'edit'|'delete' }
-  const [teamMembers, setTeamMembers] = useState([]);
   const [profile, setProfile] = useState({});
-  const [osOrders, setOsOrders] = useState([]);
   const [activeFilters, setActiveFilters] = useState([]); // inicializa vazio, preenche ao carregar
 
   // Lista completa: membros cadastrados + perfil logado
@@ -140,22 +151,21 @@ export default function AgendaPage() {
     recurrenceEndValue: '',
   });
 
-  // Carregar eventos, membros, perfil e O.S.
+  // Carregar perfil (unico dado sem React Query hook)
   useEffect(() => {
-    (async () => {
-      const [data, members, prof, orders] = await Promise.all([getAgendaEvents(), getTeamMembers(), getProfile(), getOSOrders()]);
-      setEvents(data);
-      setTeamMembers(members);
-      setProfile(prof);
-      setOsOrders(orders);
-      // Filtros: incluir perfil se nao estiver nos membros
-      const profName = prof?.name?.toLowerCase().trim();
-      const profAlreadyIn = profName && members.some(m => m.name.toLowerCase().trim() === profName);
-      const allIds = profAlreadyIn ? members.map(m => m.id) : ['profile_self', ...members.map(m => m.id)];
-      setActiveFilters(allIds);
-      setLoading(false);
-    })();
+    getProfile().then(prof => setProfile(prof));
   }, []);
+
+  // Inicializar filtros quando teamMembers e profile estiverem prontos
+  useEffect(() => {
+    if (loadingMembers || !teamMembers.length) return;
+    setActiveFilters(prev => {
+      if (prev.length > 0) return prev; // ja inicializado
+      const profName = profile?.name?.toLowerCase().trim();
+      const profAlreadyIn = profName && teamMembers.some(m => m.name.toLowerCase().trim() === profName);
+      return profAlreadyIn ? teamMembers.map(m => m.id) : ['profile_self', ...teamMembers.map(m => m.id)];
+    });
+  }, [teamMembers, profile, loadingMembers]);
 
   // ==================== HANDLERS ====================
 
@@ -262,11 +272,9 @@ export default function AgendaPage() {
     if (editingEvent) {
       // Se editando ocorrencia virtual (toda serie), usar ID do pai
       const realId = editingEvent._parentId || editingEvent.id;
-      const saved = await updateAgendaEvent(realId, eventData);
-      if (saved) setEvents(prev => prev.map(e => e.id === realId ? saved : e));
+      await updateEventMutation.mutateAsync({ id: realId, updates: eventData });
     } else {
-      const saved = await createAgendaEvent(eventData);
-      if (saved) setEvents(prev => [...prev, saved]);
+      await createEventMutation.mutateAsync(eventData);
     }
     setShowEventModal(false);
     setQuickCreate(null);
@@ -281,8 +289,7 @@ export default function AgendaPage() {
       setShowEventModal(false);
       return;
     }
-    await deleteAgendaEvent(id);
-    setEvents(prev => prev.filter(e => e.id !== id));
+    await deleteEventMutation.mutateAsync(id);
     setShowDeleteModal(null);
     setShowEventModal(false);
     setQuickCreate(null);
@@ -301,8 +308,7 @@ export default function AgendaPage() {
       const exceptions = [...(parentEvent.recurrenceExceptions || [])];
       if (action === 'delete') {
         exceptions.push({ date: event._occurrenceDate, type: 'deleted' });
-        const saved = await updateAgendaEvent(parentId, { recurrenceExceptions: exceptions });
-        if (saved) setEvents(prev => prev.map(e => e.id === parentId ? saved : e));
+        await updateEventMutation.mutateAsync({ id: parentId, updates: { recurrenceExceptions: exceptions } });
       } else {
         // Para edicao de "este evento", abrir modal com os dados da ocorrencia
         // A excecao sera salva quando o usuario salvar o modal
@@ -312,8 +318,7 @@ export default function AgendaPage() {
       }
     } else if (choice === 'all') {
       if (action === 'delete') {
-        await deleteAgendaEvent(parentId);
-        setEvents(prev => prev.filter(e => e.id !== parentId));
+        await deleteEventMutation.mutateAsync(parentId);
       } else {
         // Editar toda a serie: abrir modal com dados do pai
         setRecurrenceAction(null);
@@ -325,19 +330,18 @@ export default function AgendaPage() {
         // Terminar a serie antes desta ocorrencia
         const endDate = new Date(event._occurrenceDate);
         endDate.setDate(endDate.getDate() - 1);
-        const saved = await updateAgendaEvent(parentId, {
+        await updateEventMutation.mutateAsync({ id: parentId, updates: {
           recurrenceEndType: 'on_date',
           recurrenceEndValue: toDateKey(endDate),
-        });
-        if (saved) setEvents(prev => prev.map(e => e.id === parentId ? saved : e));
+        }});
       } else {
         // Terminar serie antes, criar nova serie a partir desta data
         const endDate = new Date(event._occurrenceDate);
         endDate.setDate(endDate.getDate() - 1);
-        await updateAgendaEvent(parentId, {
+        await updateEventMutation.mutateAsync({ id: parentId, updates: {
           recurrenceEndType: 'on_date',
           recurrenceEndValue: toDateKey(endDate),
-        });
+        }});
         // Abrir modal para criar nova serie
         setRecurrenceAction(null);
         const start = new Date(event.startDate);
@@ -361,9 +365,7 @@ export default function AgendaPage() {
           recurrenceEndType: parentEvent.recurrenceEndType || 'never',
           recurrenceEndValue: parentEvent.recurrenceEndValue || '',
         });
-        // Recarregar eventos para refletir a serie cortada
-        const freshEvents = await getAgendaEvents();
-        setEvents(freshEvents);
+        // React Query ja refez o fetch via invalidation no mutateAsync acima
         setShowEventModal(true);
         return;
       }
@@ -405,8 +407,7 @@ export default function AgendaPage() {
       },
     });
 
-    const saved = await updateAgendaEvent(parentId, { recurrenceExceptions: exceptions });
-    if (saved) setEvents(prev => prev.map(e => e.id === parentId ? saved : e));
+    await updateEventMutation.mutateAsync({ id: parentId, updates: { recurrenceExceptions: exceptions } });
     setShowEventModal(false);
     setRecurrenceAction(null);
   };
@@ -541,18 +542,37 @@ export default function AgendaPage() {
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{headerTitle}</h2>
         </div>
 
-        <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
-          {['month', 'week', 'day'].map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                view === v ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-              }`}
-            >
-              {v === 'month' ? 'Mes' : v === 'week' ? 'Semana' : 'Dia'}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              try {
+                downloadICS(events, `agenda-${toLocalDateString(new Date())}.ics`);
+              } catch (err) {
+                console.error('Erro ao exportar .ics:', err);
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+            title="Exportar calendario .ics"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            .ics
+          </button>
+
+          <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
+            {['month', 'week', 'day'].map(v => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  view === v ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                }`}
+              >
+                {v === 'month' ? 'Mes' : v === 'week' ? 'Semana' : 'Dia'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

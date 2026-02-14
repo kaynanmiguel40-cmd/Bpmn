@@ -5,19 +5,23 @@
  * - Tela 3: Documento O.S. oficial
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
-  getOSSectors, createOSSector, updateOSSector, deleteOSSector,
-  getOSProjects, createOSProject, updateOSProject, deleteOSProject,
-  getOSOrders, createOSOrder, updateOSOrder, deleteOSOrder, updateOSOrdersBatch,
+  useOSOrders, useOSSectors, useOSProjects, useTeamMembers, useAgendaEvents, useClients, queryKeys,
+} from '../../hooks/queries';
+import {
+  createOSSector, updateOSSector, deleteOSSector,
+  createOSProject, updateOSProject, deleteOSProject,
+  createOSOrder, updateOSOrder, deleteOSOrder, updateOSOrdersBatch,
   clearProjectFromOrders, clearSectorFromProjects,
-  getNextOrderNumber, getNextEmergencyNumber,
 } from '../../lib/osService';
+import { toast } from '../../contexts/ToastContext';
 import { getProfile } from '../../lib/profileService';
-import { getTeamMembers, shortName } from '../../lib/teamService';
-import { getAgendaEvents } from '../../lib/agendaService';
+import { shortName } from '../../lib/teamService';
 import { MANAGER_ROLES } from '../../lib/roleUtils';
 import logoFyness from '../../assets/logo-fyness.png';
+import { useRealtimeOSOrders, useRealtimeTeamMembers } from '../../hooks/useRealtimeSubscription';
 
 // ==================== CONSTANTES ====================
 
@@ -40,6 +44,23 @@ const PRIORITY_COLUMNS = [
   { id: 'green', title: 'Baixa', color: 'from-green-500 to-emerald-600', priorities: ['low'], emptyText: 'Nenhuma O.S. de baixa prioridade' },
 ];
 
+const CATEGORIES = [
+  { id: 'internal', label: 'Interno', color: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300' },
+  { id: 'bug', label: 'Bug', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
+  { id: 'feature', label: 'Feature', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
+  { id: 'support', label: 'Suporte', color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' },
+  { id: 'compliance', label: 'Compliance', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
+  { id: 'campaign', label: 'Campanha', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
+];
+
+const BLOCK_REASONS = [
+  { id: 'material', label: 'Aguardando Material' },
+  { id: 'approval', label: 'Aguardando Aprovacao' },
+  { id: 'resource', label: 'Aguardando Recurso' },
+  { id: 'dependency', label: 'Dependencia de Outro Time' },
+  { id: 'other', label: 'Outro' },
+];
+
 const SECTOR_COLORS = ['#2563eb', '#3b82f6', '#f97316', '#10b981', '#ec4899', '#eab308', '#ef4444', '#06b6d4', '#84cc16', '#f43f5e'];
 
 const PROJECT_COLORS = ['#3b82f6', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#eab308', '#ef4444', '#2563eb'];
@@ -47,8 +68,11 @@ const PROJECT_COLORS = ['#3b82f6', '#3b82f6', '#10b981', '#f97316', '#ec4899', '
 const EMPTY_FORM = {
   title: '',
   description: '',
+  checklist: [],
   priority: 'medium',
+  category: 'internal',
   client: '',
+  clientId: '',
   location: '',
   notes: '',
   assignedTo: '',
@@ -57,6 +81,7 @@ const EMPTY_FORM = {
   attachments: [],
   projectId: null,
   parentOrderId: null,
+  blockReason: null,
 };
 
 const EMPTY_PROJECT_FORM = {
@@ -155,8 +180,29 @@ function InboxIcon({ size = 40 }) {
 // ==================== COMPONENTE PRINCIPAL ====================
 
 export default function FinancialPage() {
-  const [orders, setOrders] = useState([]);
-  const [projects, setProjects] = useState([]);
+  const queryClient = useQueryClient();
+
+  // React Query: data fetching
+  const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
+  const { data: projects = [], isLoading: loadingProjects } = useOSProjects();
+  const { data: sectors = [], isLoading: loadingSectors } = useOSSectors();
+  const { data: teamMembers = [], isLoading: loadingMembers } = useTeamMembers();
+  const { data: agendaEvents = [], isLoading: loadingEvents } = useAgendaEvents();
+  const { data: clients = [] } = useClients();
+
+  // Perfil do usuario (sem hook React Query disponivel)
+  const [profile, setProfile] = useState({});
+  useEffect(() => {
+    getProfile().then(data => setProfile(data || {})).catch(() => {});
+  }, []);
+
+  // Realtime: atualiza automaticamente quando dados mudam no Supabase
+  useRealtimeOSOrders();
+  useRealtimeTeamMembers();
+
+  // Loading combinado
+  const loading = loadingOrders || loadingProjects || loadingSectors || loadingMembers || loadingEvents;
+
   const [viewingOrder, setViewingOrder] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -170,7 +216,6 @@ export default function FinancialPage() {
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
-  const [loading, setLoading] = useState(true);
   // Project management
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
@@ -179,21 +224,14 @@ export default function FinancialPage() {
   const [projectSearch, setProjectSearch] = useState('');
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(null);
   // Sector management
-  const [sectors, setSectors] = useState([]);
   const [showSectorForm, setShowSectorForm] = useState(false);
   const [editingSector, setEditingSector] = useState(null);
   const [sectorForm, setSectorForm] = useState({ ...EMPTY_SECTOR_FORM });
   const [showDeleteSectorModal, setShowDeleteSectorModal] = useState(null);
-  // Perfil do usuario (para permissoes e assinatura)
-  const [profile, setProfile] = useState({});
-  // Membros da equipe (dinamico do Supabase)
-  const [teamMembers, setTeamMembers] = useState([]);
   // Preview de O.S. antes de confirmar (fluxo: form -> preview -> confirmar)
   const [pendingOrder, setPendingOrder] = useState(null);
   // Modo emergencial do formulario
   const [emergencyFormMode, setEmergencyFormMode] = useState(false);
-  // Eventos da agenda (para custo de reunioes)
-  const [agendaEvents, setAgendaEvents] = useState([]);
 
   const isManager = useMemo(() => {
     const r = (profile.role || '').toLowerCase().trim();
@@ -208,41 +246,6 @@ export default function FinancialPage() {
     if (alreadyIn) return teamMembers;
     return [{ id: 'profile_self', name: profile.name, role: profile.role || '', color: '#3b82f6' }, ...teamMembers];
   }, [teamMembers, profile]);
-
-  // Carregar dados do Supabase
-  const loadData = useCallback(async () => {
-    try {
-      const [ordersData, projectsData, sectorsData, profileData, membersData, eventsData] = await Promise.all([
-        getOSOrders(),
-        getOSProjects(),
-        getOSSectors(),
-        getProfile(),
-        getTeamMembers(),
-        getAgendaEvents(),
-      ]);
-      setOrders(ordersData);
-      setProjects(projectsData);
-      setSectors(sectorsData);
-      setProfile(profileData || {});
-      setTeamMembers(membersData);
-      setAgendaEvents(eventsData);
-    } catch (err) {
-      console.error('Erro ao carregar dados:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  // Recarregar ao voltar ao foco
-  useEffect(() => {
-    const handleFocus = () => loadData();
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [loadData]);
 
   const nextNumber = useMemo(() => {
     return orders.reduce((acc, o) => Math.max(acc, o.number || 0), 0) + 1;
@@ -347,8 +350,11 @@ export default function FinancialPage() {
     setForm({
       title: order.title,
       description: order.description || '',
+      checklist: order.checklist || [],
       priority: order.priority || 'medium',
+      category: order.category || 'internal',
       client: order.client || '',
+      clientId: order.clientId || '',
       location: order.location || '',
       notes: order.notes || '',
       assignedTo: order.assignedTo || '',
@@ -356,18 +362,21 @@ export default function FinancialPage() {
       estimatedEnd: order.estimatedEnd || '',
       attachments: order.attachments || [],
       projectId: order.projectId || null,
+      parentOrderId: order.parentOrderId || null,
+      blockReason: order.blockReason || null,
     });
     setShowCreateForm(true);
   };
 
-  const handleSave = async () => {
-    if (!form.title.trim()) return;
+  const handleSave = async (formOverride) => {
+    const currentForm = formOverride || form;
+    if (!currentForm.title.trim()) return;
 
     if (editingOrder) {
       // Edicao: salva direto
-      const updated = await updateOSOrder(editingOrder.id, form);
+      const updated = await updateOSOrder(editingOrder.id, currentForm);
       if (updated) {
-        setOrders(prev => prev.map(o => o.id === editingOrder.id ? updated : o));
+        queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === editingOrder.id ? updated : o));
         if (viewingOrder?.id === editingOrder.id) {
           setViewingOrder(updated);
         }
@@ -378,11 +387,11 @@ export default function FinancialPage() {
       const previewData = {
         id: `preview_${Date.now()}`,
         number: emergencyFormMode ? null : nextNumber,
-        ...form,
+        ...currentForm,
         type: emergencyFormMode ? 'emergency' : 'normal',
         emergencyNumber: emergencyFormMode ? nextEmergencyNumber : null,
-        parentOrderId: form.parentOrderId || null,
-        priority: emergencyFormMode ? 'urgent' : form.priority,
+        parentOrderId: currentForm.parentOrderId || null,
+        priority: emergencyFormMode ? 'urgent' : currentForm.priority,
         status: 'available',
         assignee: null,
         sortOrder: orders.length,
@@ -399,7 +408,7 @@ export default function FinancialPage() {
     const { id: _previewId, ...orderData } = pendingOrder;
     const newOrder = await createOSOrder(orderData);
     if (newOrder) {
-      setOrders(prev => [...prev, newOrder]);
+      queryClient.setQueryData(queryKeys.osOrders, prev => [...(prev || []), newOrder]);
     }
     setPendingOrder(null);
   };
@@ -414,8 +423,11 @@ export default function FinancialPage() {
     setForm({
       title: pendingOrder.title || '',
       description: pendingOrder.description || '',
+      checklist: pendingOrder.checklist || [],
       priority: pendingOrder.priority || 'medium',
+      category: pendingOrder.category || 'internal',
       client: pendingOrder.client || '',
+      clientId: pendingOrder.clientId || '',
       location: pendingOrder.location || '',
       notes: pendingOrder.notes || '',
       assignedTo: pendingOrder.assignedTo || '',
@@ -424,6 +436,7 @@ export default function FinancialPage() {
       attachments: pendingOrder.attachments || [],
       projectId: pendingOrder.projectId || null,
       parentOrderId: pendingOrder.parentOrderId || null,
+      blockReason: pendingOrder.blockReason || null,
     });
     setPendingOrder(null);
     setShowCreateForm(true);
@@ -431,7 +444,7 @@ export default function FinancialPage() {
 
   const handleDelete = async (id) => {
     await deleteOSOrder(id);
-    setOrders(prev => prev.filter(o => o.id !== id));
+    queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).filter(o => o.id !== id));
     setShowDeleteModal(null);
     if (viewingOrder?.id === id) setViewingOrder(null);
   };
@@ -444,7 +457,7 @@ export default function FinancialPage() {
       actualStart: now,
     });
     if (updated) {
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
       if (viewingOrder?.id === orderId) setViewingOrder(updated);
     }
   };
@@ -455,7 +468,7 @@ export default function FinancialPage() {
       status: 'available',
     });
     if (updated) {
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
       if (viewingOrder?.id === orderId) setViewingOrder(updated);
     }
   };
@@ -470,7 +483,7 @@ export default function FinancialPage() {
     else return;
     const updated = await updateOSOrder(orderId, updates);
     if (updated) {
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
       if (viewingOrder?.id === orderId) setViewingOrder(updated);
     }
   };
@@ -484,7 +497,7 @@ export default function FinancialPage() {
     else return;
     const updated = await updateOSOrder(orderId, updates);
     if (updated) {
-      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
       if (viewingOrder?.id === orderId) setViewingOrder(updated);
     }
   };
@@ -525,7 +538,7 @@ export default function FinancialPage() {
       }
       return o;
     });
-    setOrders(updatedLocal);
+    queryClient.setQueryData(queryKeys.osOrders, updatedLocal);
     if (viewingOrder?.id === draggedId) {
       setViewingOrder(updatedLocal.find(x => x.id === draggedId));
     }
@@ -564,7 +577,7 @@ export default function FinancialPage() {
     if (editingProject) {
       const updated = await updateOSProject(editingProject.id, projectForm);
       if (updated) {
-        setProjects(prev => prev.map(p => p.id === editingProject.id ? updated : p));
+        queryClient.setQueryData(queryKeys.osProjects, prev => (prev || []).map(p => p.id === editingProject.id ? updated : p));
         if (selectedProject?.id === editingProject.id) {
           setSelectedProject(updated);
         }
@@ -572,7 +585,7 @@ export default function FinancialPage() {
     } else {
       const newProject = await createOSProject(projectForm);
       if (newProject) {
-        setProjects(prev => [...prev, newProject]);
+        queryClient.setQueryData(queryKeys.osProjects, prev => [...(prev || []), newProject]);
       }
     }
     setShowProjectForm(false);
@@ -581,8 +594,8 @@ export default function FinancialPage() {
   const handleDeleteProject = async (id) => {
     await deleteOSProject(id);
     await clearProjectFromOrders(id);
-    setProjects(prev => prev.filter(p => p.id !== id));
-    setOrders(prev => prev.map(o => o.projectId === id ? { ...o, projectId: null } : o));
+    queryClient.setQueryData(queryKeys.osProjects, prev => (prev || []).filter(p => p.id !== id));
+    queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.projectId === id ? { ...o, projectId: null } : o));
     setShowDeleteProjectModal(null);
     if (selectedProject?.id === id) setSelectedProject(null);
   };
@@ -610,7 +623,7 @@ export default function FinancialPage() {
         color: sectorForm.color,
       });
       if (updated) {
-        setSectors(prev => prev.map(s => s.id === editingSector.id ? updated : s));
+        queryClient.setQueryData(queryKeys.osSectors, prev => (prev || []).map(s => s.id === editingSector.id ? updated : s));
       }
     } else {
       const newSector = await createOSSector({
@@ -618,7 +631,7 @@ export default function FinancialPage() {
         color: sectorForm.color,
       });
       if (newSector) {
-        setSectors(prev => [...prev, newSector]);
+        queryClient.setQueryData(queryKeys.osSectors, prev => [...(prev || []), newSector]);
       }
     }
     setShowSectorForm(false);
@@ -627,8 +640,8 @@ export default function FinancialPage() {
   const handleDeleteSector = async (id) => {
     await deleteOSSector(id);
     await clearSectorFromProjects(id);
-    setSectors(prev => prev.filter(s => s.id !== id));
-    setProjects(prev => prev.map(p => p.sector === id ? { ...p, sector: '' } : p));
+    queryClient.setQueryData(queryKeys.osSectors, prev => (prev || []).filter(s => s.id !== id));
+    queryClient.setQueryData(queryKeys.osProjects, prev => (prev || []).map(p => p.sector === id ? { ...p, sector: '' } : p));
     if (selectedProject?.sector === id) {
       setSelectedProject({ ...selectedProject, sector: '' });
     }
@@ -687,6 +700,22 @@ export default function FinancialPage() {
           onMoveBack={() => handleMoveBack(viewingOrder.id)}
           onDelete={() => setShowDeleteModal(viewingOrder.id)}
           onViewOrder={(order) => setViewingOrder(order)}
+          onUpdateOrder={async (id, updates) => {
+            // Update otimista: atualiza UI imediatamente
+            setViewingOrder(prev => prev ? { ...prev, ...updates, updatedAt: new Date().toISOString() } : prev);
+            queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === id ? { ...o, ...updates, updatedAt: new Date().toISOString() } : o));
+            // Salvar no servidor
+            const saved = await updateOSOrder(id, updates);
+            if (saved) {
+              // Sincronizar com dados reais do servidor
+              queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === id ? saved : o));
+              setViewingOrder(prev => (prev && prev.id === id) ? saved : prev);
+            } else {
+              // Falhou: refetch para restaurar estado correto
+              toast('Erro ao salvar alteracao', 'error');
+              queryClient.invalidateQueries({ queryKey: queryKeys.osOrders });
+            }
+          }}
         />
         {showCreateForm && (
           <OSFormModal
@@ -696,6 +725,7 @@ export default function FinancialPage() {
             number={editingOrder?.number || nextNumber}
             projects={projects}
             teamMembers={allMembers}
+            clients={clients}
             onSave={handleSave}
             onClose={() => { setShowCreateForm(false); setEditingOrder(null); setEmergencyFormMode(false); }}
             onDelete={isManager && editingOrder ? () => { setShowDeleteModal(editingOrder.id); setShowCreateForm(false); } : null}
@@ -1137,6 +1167,7 @@ export default function FinancialPage() {
             number={editingOrder?.number || nextNumber}
             projects={projects}
             teamMembers={allMembers}
+            clients={clients}
             onSave={handleSave}
             onClose={() => { setShowCreateForm(false); setEmergencyFormMode(false); }}
             onDelete={isManager && editingOrder ? () => { setShowDeleteModal(editingOrder.id); setShowCreateForm(false); } : null}
@@ -1302,7 +1333,7 @@ export default function FinancialPage() {
                 </div>
 
                 {/* Nome + Setor */}
-                <h3 className="text-sm font-bold text-slate-800 mb-1 group-hover:text-fyness-primary transition-colors">{project.name}</h3>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1 group-hover:text-fyness-primary transition-colors">{project.name}</h3>
                 {sector && (
                   <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full text-white mb-2" style={{ backgroundColor: sector.color }}>
                     {sector.label}
@@ -1311,7 +1342,7 @@ export default function FinancialPage() {
 
                 {/* Descricao */}
                 {project.description && (
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-3 line-clamp-1">{project.description}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-400 mb-3 line-clamp-1">{project.description}</p>
                 )}
 
                 {/* Stats */}
@@ -1326,7 +1357,7 @@ export default function FinancialPage() {
                 {/* Barra de progresso */}
                 {total > 0 && (
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-600 rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{ width: `${percent}%`, backgroundColor: project.color }}
@@ -1511,6 +1542,45 @@ function OSCard({ order, onClick, isDragging, dropPosition, onDragStart, onDragE
           </p>
         )}
         {order.client && <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-1">{order.client}</p>}
+        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+          {order.category && order.category !== 'internal' && (
+            <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${(CATEGORIES.find(c => c.id === order.category) || {}).color || 'bg-slate-100 text-slate-500'}`}>
+              {(CATEGORIES.find(c => c.id === order.category) || {}).label || order.category}
+            </span>
+          )}
+          {order.slaDeadline && order.status !== 'done' && (() => {
+            const now = new Date();
+            const sla = new Date(order.slaDeadline);
+            const hoursLeft = (sla - now) / (1000 * 60 * 60);
+            const isExpired = hoursLeft < 0;
+            const isNear = hoursLeft >= 0 && hoursLeft < 4;
+            return (
+              <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${isExpired ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : isNear ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
+                SLA: {isExpired ? 'Expirado' : hoursLeft < 24 ? `${Math.floor(hoursLeft)}h` : `${Math.floor(hoursLeft / 24)}d`}
+              </span>
+            );
+          })()}
+          {order.status === 'blocked' && order.blockReason && (
+            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
+              {(BLOCK_REASONS.find(b => b.id === order.blockReason) || {}).label || order.blockReason}
+            </span>
+          )}
+        </div>
+        {(order.checklist || []).length > 0 && (() => {
+          const done = (order.checklist || []).filter(i => i.done).length;
+          const total = (order.checklist || []).length;
+          const pct = total > 0 ? (done / total) * 100 : 0;
+          return (
+            <div className="flex items-center gap-2 mb-1">
+              <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
+              </div>
+              <span className={`text-[10px] font-medium ${pct === 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                {done}/{total}
+              </span>
+            </div>
+          );
+        })()}
         <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
           <div className="flex flex-col gap-0.5">
             {order.assignedTo && (
@@ -1552,7 +1622,19 @@ function OSCard({ order, onClick, isDragging, dropPosition, onDragStart, onDragE
 
 // ==================== DOCUMENTO O.S. ====================
 
-function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, onRelease, onMoveForward, onMoveBack, onDelete, isManager, profileName, profileCpf, teamMembers, allOrders = [], onViewOrder }) {
+function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, onRelease, onMoveForward, onMoveBack, onDelete, isManager, profileName, profileCpf, teamMembers, allOrders = [], onViewOrder, onUpdateOrder }) {
+  // Ref para manter checklist mais recente e evitar closures obsoletas
+  const checklistRef = useRef(order.checklist || []);
+  checklistRef.current = order.checklist || [];
+
+  // Estado de colapso dos blocos de tarefas
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+  const toggleGroupCollapse = (key) => setCollapsedGroups(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
   const teamMember = teamMembers.find(m => m.id === order.assignee);
   const member = teamMember || (order.assignee ? { id: order.assignee, name: order.assignee, color: '#3b82f6' } : null);
   const priority = PRIORITIES.find(p => p.id === order.priority) || PRIORITIES[1];
@@ -1708,6 +1790,49 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
             </div>
           </div>
 
+          <div className="grid grid-cols-3 border-b border-slate-200 dark:border-slate-700">
+            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
+              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Categoria</label>
+              <div className="mt-1">
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).color}`}>
+                  {(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).label}
+                </span>
+              </div>
+            </div>
+            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
+              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">SLA</label>
+              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">
+                {order.slaDeadline ? formatDate(order.slaDeadline) : '-'}
+                {order.slaDeadline && order.status !== 'done' && (() => {
+                  const hoursLeft = (new Date(order.slaDeadline) - new Date()) / (1000 * 60 * 60);
+                  return hoursLeft < 0
+                    ? <span className="ml-2 text-xs text-red-500 font-bold">EXPIRADO</span>
+                    : hoursLeft < 4
+                      ? <span className="ml-2 text-xs text-amber-500 font-bold">{Math.floor(hoursLeft)}h restantes</span>
+                      : null;
+                })()}
+              </p>
+            </div>
+            <div className="p-4">
+              {order.status === 'blocked' && order.blockReason ? (
+                <>
+                  <label className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">Motivo do Bloqueio</label>
+                  <p className="text-sm text-orange-600 dark:text-orange-400 mt-1 font-medium">{(BLOCK_REASONS.find(b => b.id === order.blockReason) || {}).label || order.blockReason}</p>
+                </>
+              ) : order.leadTimeHours ? (
+                <>
+                  <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Lead Time</label>
+                  <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.leadTimeHours < 24 ? `${Math.round(order.leadTimeHours)}h` : `${Math.round(order.leadTimeHours / 24)}d`}</p>
+                </>
+              ) : (
+                <>
+                  <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Lead Time</label>
+                  <p className="text-sm text-slate-400 mt-1">-</p>
+                </>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Data de Abertura</label>
@@ -1774,16 +1899,414 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
             </div>
           </div>
 
-          {/* Titulo e Descricao */}
+          {/* Titulo */}
           <div className="p-6 border-b border-slate-200 dark:border-slate-700">
             <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Titulo do Servico</label>
             <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">{order.title}</h3>
           </div>
 
-          <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-            <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Descricao do Servico</label>
-            <p className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed whitespace-pre-wrap">{order.description || 'Sem descricao.'}</p>
-          </div>
+          {/* Descricao */}
+          {order.description && (
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Descricao do Servico</label>
+              <p className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed whitespace-pre-wrap">{order.description}</p>
+            </div>
+          )}
+
+          {/* Bloco de Tarefas com cronometro e entregaveis por bloco */}
+          {(order.checklist || []).length > 0 && (() => {
+            const cl = order.checklist || [];
+            const doneCount = cl.filter(i => i.done).length;
+            const totalTime = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+            const fmtTime = (min) => {
+              if (!min || min <= 0) return '';
+              if (min < 60) return `${Math.round(min)}min`;
+              const h = Math.floor(min / 60);
+              const m = Math.round(min % 60);
+              return m > 0 ? `${h}h ${m}min` : `${h}h`;
+            };
+            const fmtHour = (iso) => {
+              if (!iso) return '';
+              const d = new Date(iso);
+              return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            };
+
+            // --- Helpers de output por BLOCO ---
+            const getGroupOutput = (groupKey) => {
+              const latestCl = checklistRef.current;
+              const firstItem = latestCl.find(i => (i.group || '__ungrouped__') === groupKey);
+              // Migrar: agregar outputs antigos de itens individuais + groupOutput
+              const grpItems = latestCl.filter(i => (i.group || '__ungrouped__') === groupKey);
+              const base = firstItem?.groupOutput || { text: '', links: [], files: [] };
+              // Coletar outputs legados de itens individuais
+              const legacyLinks = grpItems.flatMap(i => i.output?.links || []);
+              const legacyFiles = grpItems.flatMap(i => i.output?.files || []);
+              const legacyText = grpItems.map(i => i.output?.text || '').filter(Boolean).join('\n');
+              return {
+                text: base.text || legacyText,
+                links: [...(base.links || []), ...legacyLinks],
+                files: [...(base.files || []), ...legacyFiles],
+              };
+            };
+
+            const setGroupOutput = (groupKey, output) => {
+              if (!onUpdateOrder) return;
+              const latestCl = checklistRef.current;
+              let found = false;
+              // Limpar outputs antigos de itens individuais e setar groupOutput no primeiro item
+              const updated = latestCl.map(i => {
+                const itemKey = i.group || '__ungrouped__';
+                if (itemKey !== groupKey) return i;
+                const cleaned = { ...i };
+                delete cleaned.output; // remover output legado individual
+                if (!found) {
+                  found = true;
+                  return { ...cleaned, groupOutput: output };
+                }
+                delete cleaned.groupOutput;
+                return cleaned;
+              });
+              onUpdateOrder(order.id, { checklist: updated });
+            };
+
+            const handleGroupOutputUpdate = (groupKey, outputData) => {
+              const current = getGroupOutput(groupKey);
+              setGroupOutput(groupKey, { ...current, ...outputData });
+            };
+
+            const handleAddGroupLink = (groupKey, url, label) => {
+              if (!url.trim()) return;
+              const current = getGroupOutput(groupKey);
+              const fullUrl = url.trim().startsWith('http') ? url.trim() : `https://${url.trim()}`;
+              const newLinks = [...(current.links || []), { id: Date.now(), url: fullUrl, label: label.trim() || fullUrl }];
+              setGroupOutput(groupKey, { ...current, links: newLinks });
+            };
+
+            const handleRemoveGroupLink = (groupKey, linkId) => {
+              const current = getGroupOutput(groupKey);
+              setGroupOutput(groupKey, { ...current, links: (current.links || []).filter(l => l.id !== linkId) });
+            };
+
+            const handleAddGroupFile = (groupKey, file) => {
+              if (!file) return;
+              if (file.size > 3 * 1024 * 1024) { alert('Arquivo muito grande! Maximo: 3MB.'); return; }
+              const reader = new FileReader();
+              reader.onload = (ev) => {
+                const current = getGroupOutput(groupKey);
+                const isImage = file.type.startsWith('image/');
+                const newFile = { id: Date.now(), type: isImage ? 'image' : 'document', data: ev.target.result, label: file.name, mimeType: file.type };
+                setGroupOutput(groupKey, { ...current, files: [...(current.files || []), newFile] });
+              };
+              reader.readAsDataURL(file);
+            };
+
+            const handleRemoveGroupFile = (groupKey, fileId) => {
+              const current = getGroupOutput(groupKey);
+              setGroupOutput(groupKey, { ...current, files: (current.files || []).filter(f => f.id !== fileId) });
+            };
+
+            const handleToggle = (item) => {
+              if (!onUpdateOrder) return;
+              const latestCl = checklistRef.current;
+              const now = new Date().toISOString();
+              const arrIdx = latestCl.findIndex(i => i.id === item.id);
+              if (arrIdx === -1) return;
+              let updated;
+              if (!item.done) {
+                // Marcar como feito: calcular duracao desde o startedAt da task
+                // startedAt ja foi definido quando a task anterior terminou (ou quando a O.S. comecou)
+                // Fallback: completedAt da anterior > actualStart da O.S. > createdAt da O.S.
+                const prevItem = arrIdx > 0 ? latestCl[arrIdx - 1] : null;
+                const startRef = item.startedAt || (prevItem?.completedAt) || order.actualStart || order.createdAt || now;
+                const diffMs = new Date(now) - new Date(startRef);
+                const durationMin = Math.max(0, Math.round(diffMs / 60000));
+                // Encontrar a proxima task nao-feita para iniciar seu timer
+                let nextIdx = -1;
+                for (let ni = arrIdx + 1; ni < latestCl.length; ni++) {
+                  if (!latestCl[ni].done) { nextIdx = ni; break; }
+                }
+                updated = latestCl.map((i, iIdx) => {
+                  if (i.id === item.id) return { ...i, done: true, startedAt: startRef, completedAt: now, durationMin };
+                  if (iIdx === nextIdx) return { ...i, startedAt: now };
+                  return i;
+                });
+              } else {
+                // Desmarcar: limpar duracao e tambem limpar startedAt da proxima (se nao esta feita)
+                let nextIdx = -1;
+                for (let ni = arrIdx + 1; ni < latestCl.length; ni++) {
+                  if (!latestCl[ni].done) { nextIdx = ni; break; }
+                }
+                updated = latestCl.map((i, iIdx) => {
+                  if (i.id === item.id) return { ...i, done: false, completedAt: null, durationMin: null };
+                  if (iIdx === nextIdx) return { ...i, startedAt: null };
+                  return i;
+                });
+              }
+              onUpdateOrder(order.id, { checklist: updated });
+            };
+
+            // Agrupar tarefas
+            const groupOrder = [];
+            const groupMap = new Map();
+            cl.forEach(item => {
+              const key = item.group || '__ungrouped__';
+              if (!groupMap.has(key)) { groupMap.set(key, []); groupOrder.push(key); }
+              groupMap.get(key).push(item);
+            });
+
+            return (
+              <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Bloco de Tarefas</label>
+                  <div className="flex items-center gap-3">
+                    {totalTime > 0 && (
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">Total: {fmtTime(totalTime)}</span>
+                    )}
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{doneCount}/{cl.length}</span>
+                  </div>
+                </div>
+                <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full mb-3 overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${(doneCount / cl.length) * 100}%` }} />
+                </div>
+                <div className="space-y-2">
+                  {(() => {
+                    return groupOrder.map(groupKey => {
+                      const groupItems = groupMap.get(groupKey);
+                      const isGrouped = groupKey !== '__ungrouped__';
+                      const groupDone = groupItems.filter(i => i.done).length;
+                      const allGroupDone = groupDone === groupItems.length;
+                      const groupTime = groupItems.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+                      const isCollapsed = collapsedGroups.has(groupKey);
+                      const grpOutput = getGroupOutput(groupKey);
+                      const hasAttachments = (grpOutput.links?.length > 0) || (grpOutput.files?.length > 0) || grpOutput.text;
+
+                      return (
+                        <div key={groupKey} className={`rounded-xl overflow-hidden border transition-all ${
+                          allGroupDone ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/30 dark:bg-emerald-900/10' :
+                          isGrouped ? 'border-slate-200 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-800/30' :
+                          'border-slate-100 dark:border-slate-700/40'
+                        }`}>
+                          {/* Header do bloco — clicavel para colapsar/expandir */}
+                          <button
+                            onClick={() => toggleGroupCollapse(groupKey)}
+                            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100/50 dark:hover:bg-slate-700/30 transition-colors text-left"
+                          >
+                            <svg className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'} ${
+                              allGroupDone ? 'text-emerald-500 dark:text-emerald-400' : 'text-indigo-500 dark:text-indigo-400'
+                            }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                            {isGrouped ? (
+                              <svg className={`w-4 h-4 shrink-0 ${allGroupDone ? 'text-emerald-500 dark:text-emerald-400' : 'text-indigo-500 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                              </svg>
+                            )}
+                            <span className={`text-xs font-semibold flex-1 ${
+                              allGroupDone ? 'text-emerald-700 dark:text-emerald-300' : 'text-indigo-700 dark:text-indigo-300'
+                            }`}>
+                              {isGrouped ? groupKey : 'Tarefas'}
+                            </span>
+                            {groupTime > 0 && (
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500">{fmtTime(groupTime)}</span>
+                            )}
+                            {hasAttachments && (
+                              <span className="flex items-center gap-0.5 text-[10px] text-violet-500 dark:text-violet-400">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                </svg>
+                                {(grpOutput.links?.length || 0) + (grpOutput.files?.length || 0)}
+                              </span>
+                            )}
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                              allGroupDone ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' :
+                              'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                            }`}>
+                              {groupDone}/{groupItems.length}
+                            </span>
+                            {allGroupDone && (
+                              <svg className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </button>
+
+                          {/* Conteudo colapsavel: tarefas + entregaveis */}
+                          {!isCollapsed && (
+                            <div className="border-t border-slate-200/60 dark:border-slate-700/40">
+                              {/* Lista de tarefas */}
+                              <div className="px-2 py-1.5 space-y-1">
+                                {groupItems.map((item) => {
+                                  const arrIdx = cl.findIndex(i => i.id === item.id);
+                                  const isActive = !item.done && (arrIdx === 0 || cl[arrIdx - 1]?.done);
+                                  return (
+                                    <button
+                                      key={item.id}
+                                      onClick={() => handleToggle(item)}
+                                      disabled={!item.done && !isActive}
+                                      className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors text-left ${
+                                        isActive ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800' :
+                                        item.done ? 'hover:bg-slate-50 dark:hover:bg-slate-700/50' :
+                                        'opacity-50 cursor-not-allowed'
+                                      }`}
+                                    >
+                                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                                        item.done ? 'bg-emerald-500 border-emerald-500' :
+                                        isActive ? 'border-blue-400 dark:border-blue-500 animate-pulse' :
+                                        'border-slate-300 dark:border-slate-600'
+                                      }`}>
+                                        {item.done && (
+                                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                          </svg>
+                                        )}
+                                      </div>
+                                      <span className="text-xs text-slate-400 dark:text-slate-500 font-mono w-5 shrink-0">{arrIdx + 1}.</span>
+                                      <span className={`text-sm flex-1 ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : isActive ? 'text-blue-700 dark:text-blue-300 font-medium' : 'text-slate-700 dark:text-slate-200'}`}>{item.text}</span>
+                                      {item.done && item.durationMin != null && (
+                                        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(item.durationMin)}</span>
+                                      )}
+                                      {item.done && item.completedAt && (
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{fmtHour(item.completedAt)}</span>
+                                      )}
+                                      {isActive && !item.done && (
+                                        <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium shrink-0">Em andamento</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Entregaveis do BLOCO — aparece quando todas as tarefas do bloco estao concluidas */}
+                              {allGroupDone && (
+                                <div className="px-3 pb-3 pt-1 border-t border-emerald-200/50 dark:border-emerald-800/30">
+                                  <div className="flex items-center gap-1.5 mb-2">
+                                    <svg className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                    </svg>
+                                    <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider">Entregaveis do Bloco</span>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {/* Texto/descricao existente */}
+                                    {grpOutput.text && (
+                                      <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed bg-violet-50/50 dark:bg-violet-900/10 rounded-lg px-3 py-2">{grpOutput.text}</p>
+                                    )}
+                                    {/* Links existentes */}
+                                    {(grpOutput.links || []).length > 0 && (
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {grpOutput.links.map(link => (
+                                          <div key={link.id} className="flex items-center gap-1 px-2 py-1 bg-violet-50 dark:bg-violet-900/20 rounded-lg group/link">
+                                            <svg className="w-3 h-3 text-violet-500 dark:text-violet-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
+                                            </svg>
+                                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-violet-600 dark:text-violet-400 hover:underline font-medium max-w-[200px] truncate">{link.label}</a>
+                                            <button onClick={() => handleRemoveGroupLink(groupKey, link.id)} className="p-0.5 text-violet-300 dark:text-violet-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover/link:opacity-100 transition-all">
+                                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {/* Arquivos existentes */}
+                                    {(grpOutput.files || []).length > 0 && (
+                                      <div className="space-y-1.5">
+                                        {grpOutput.files.filter(f => f.type === 'image').length > 0 && (
+                                          <div className="grid grid-cols-3 gap-1.5">
+                                            {grpOutput.files.filter(f => f.type === 'image').map(f => (
+                                              <div key={f.id} className="relative group/file">
+                                                <img src={f.data} alt={f.label} className="w-full h-20 object-cover rounded-lg border border-violet-200 dark:border-violet-800/50" />
+                                                <button onClick={() => handleRemoveGroupFile(groupKey, f.id)} className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover/file:opacity-100 transition-all shadow">
+                                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                </button>
+                                                <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{f.label}</p>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {grpOutput.files.filter(f => f.type === 'document').map(f => (
+                                          <div key={f.id} className="flex items-center gap-2 px-2 py-1.5 bg-violet-50 dark:bg-violet-900/20 rounded-lg group/file">
+                                            <svg className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                            </svg>
+                                            <a href={f.data} download={f.label} className="text-[11px] text-violet-600 dark:text-violet-400 hover:underline font-medium flex-1 truncate">{f.label}</a>
+                                            <button onClick={() => handleRemoveGroupFile(groupKey, f.id)} className="p-0.5 text-violet-300 dark:text-violet-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover/file:opacity-100 transition-all">
+                                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {/* Inputs para adicionar entregavel ao bloco */}
+                                    <div className="space-y-1.5 mt-1">
+                                      <textarea
+                                        placeholder="Descreva o que foi entregue neste bloco..."
+                                        rows={1}
+                                        defaultValue={grpOutput.text || ''}
+                                        key={`grp_text_${groupKey}_${grpOutput.text?.length || 0}`}
+                                        onBlur={(e) => handleGroupOutputUpdate(groupKey, { text: e.target.value })}
+                                        className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-violet-400 focus:border-transparent resize-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                                      />
+                                      <div className="flex gap-1.5">
+                                        <input
+                                          type="text"
+                                          placeholder="Link de entrega..."
+                                          className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-violet-400 focus:border-transparent placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && e.target.value.trim()) {
+                                              e.preventDefault();
+                                              handleAddGroupLink(groupKey, e.target.value, '');
+                                              e.target.value = '';
+                                            }
+                                          }}
+                                        />
+                                        <button
+                                          onClick={(e) => {
+                                            const input = e.target.closest('div').querySelector('input[type="text"]');
+                                            if (input && input.value.trim()) { handleAddGroupLink(groupKey, input.value, ''); input.value = ''; }
+                                          }}
+                                          className="px-2 py-1.5 bg-violet-500 text-white rounded-lg hover:bg-violet-600 transition-colors text-xs font-medium shrink-0"
+                                          title="Adicionar link"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                      {/* Drop zone para arquivos */}
+                                      <label
+                                        className="flex flex-col items-center justify-center gap-1 px-3 py-3 border-2 border-dashed border-violet-300 dark:border-violet-700 rounded-xl text-violet-400 dark:text-violet-500 hover:border-violet-400 hover:bg-violet-50/50 dark:hover:bg-violet-900/10 cursor-pointer transition-all data-[dragging=true]:border-violet-500 data-[dragging=true]:bg-violet-50 dark:data-[dragging=true]:bg-violet-900/20 data-[dragging=true]:scale-[1.02]"
+                                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.dataset.dragging = 'true'; }}
+                                        onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.dataset.dragging = 'false'; }}
+                                        onDrop={(e) => {
+                                          e.preventDefault(); e.stopPropagation(); e.currentTarget.dataset.dragging = 'false';
+                                          Array.from(e.dataTransfer.files).forEach(f => handleAddGroupFile(groupKey, f));
+                                        }}
+                                      >
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                        </svg>
+                                        <span className="text-[11px] font-medium">Arraste arquivos ou clique aqui</span>
+                                        <span className="text-[9px] text-violet-300 dark:text-violet-600">Fotos e documentos (max 3MB)</span>
+                                        <input type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ppt,.pptx,.zip,.rar" className="hidden" onChange={(e) => { Array.from(e.target.files || []).forEach(f => handleAddGroupFile(groupKey, f)); e.target.value = ''; }} />
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            );
+          })()}
 
           {order.notes && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">
@@ -2111,16 +2634,169 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
             </div>
           </div>
 
-          {/* Titulo e Descricao */}
+          {/* Titulo */}
           <div className="p-6 border-b border-slate-200 dark:border-slate-700">
             <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Titulo do Servico</label>
             <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">{order.title}</h3>
           </div>
 
-          <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-            <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Descricao do Servico</label>
-            <p className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed whitespace-pre-wrap">{order.description || 'Sem descricao.'}</p>
-          </div>
+          {/* Descricao */}
+          {order.description && (
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Descricao do Servico</label>
+              <p className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed whitespace-pre-wrap">{order.description}</p>
+            </div>
+          )}
+
+          {/* Bloco de Tarefas (somente visualizacao — blocos colapsaveis) */}
+          {(order.checklist || []).length > 0 && (() => {
+            const cl = order.checklist || [];
+            const doneCount = cl.filter(i => i.done).length;
+            const totalTime = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+            const fmtTime = (min) => {
+              if (!min || min <= 0) return '';
+              if (min < 60) return `${Math.round(min)}min`;
+              const h = Math.floor(min / 60);
+              const m = Math.round(min % 60);
+              return m > 0 ? `${h}h ${m}min` : `${h}h`;
+            };
+            const fmtHour = (iso) => {
+              if (!iso) return '';
+              const d = new Date(iso);
+              return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            };
+            // Agrupar
+            const groupOrder = [];
+            const groupMap = new Map();
+            cl.forEach(item => {
+              const key = item.group || '__ungrouped__';
+              if (!groupMap.has(key)) { groupMap.set(key, []); groupOrder.push(key); }
+              groupMap.get(key).push(item);
+            });
+            // Helper para ler output do bloco (groupOutput + legado)
+            const getGrpOutput = (groupKey) => {
+              const grpItems = cl.filter(i => (i.group || '__ungrouped__') === groupKey);
+              const firstItem = grpItems[0];
+              const base = firstItem?.groupOutput || { text: '', links: [], files: [] };
+              const legacyLinks = grpItems.flatMap(i => i.output?.links || []);
+              const legacyFiles = grpItems.flatMap(i => i.output?.files || []);
+              const legacyText = grpItems.map(i => i.output?.text || '').filter(Boolean).join('\n');
+              return { text: base.text || legacyText, links: [...(base.links || []), ...legacyLinks], files: [...(base.files || []), ...legacyFiles] };
+            };
+            return (
+              <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Bloco de Tarefas</label>
+                  <div className="flex items-center gap-3">
+                    {totalTime > 0 && <span className="text-[10px] text-slate-400 dark:text-slate-500">Total: {fmtTime(totalTime)}</span>}
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{doneCount}/{cl.length}</span>
+                  </div>
+                </div>
+                <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full mb-3 overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${(doneCount / cl.length) * 100}%` }} />
+                </div>
+                <div className="space-y-2">
+                  {(() => {
+                    return groupOrder.map(groupKey => {
+                      const groupItems = groupMap.get(groupKey);
+                      const isGrouped = groupKey !== '__ungrouped__';
+                      const groupDone = groupItems.filter(i => i.done).length;
+                      const allGroupDone = groupDone === groupItems.length;
+                      const groupTime = groupItems.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+                      const grpOutput = getGrpOutput(groupKey);
+                      const hasAttachments = (grpOutput.links?.length > 0) || (grpOutput.files?.length > 0) || grpOutput.text;
+                      return (
+                        <div key={groupKey} className={`rounded-xl overflow-hidden border ${
+                          allGroupDone ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/30 dark:bg-emerald-900/10' :
+                          'border-slate-200 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-800/30'
+                        }`}>
+                          <div className="flex items-center gap-2.5 px-3 py-2.5">
+                            {isGrouped ? (
+                              <svg className={`w-4 h-4 shrink-0 ${allGroupDone ? 'text-emerald-500' : 'text-indigo-500 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                              </svg>
+                            )}
+                            <span className={`text-xs font-semibold flex-1 ${allGroupDone ? 'text-emerald-700 dark:text-emerald-300' : 'text-indigo-700 dark:text-indigo-300'}`}>
+                              {isGrouped ? groupKey : 'Tarefas'}
+                            </span>
+                            {groupTime > 0 && <span className="text-[10px] text-slate-400 dark:text-slate-500">{fmtTime(groupTime)}</span>}
+                            {hasAttachments && (
+                              <span className="flex items-center gap-0.5 text-[10px] text-violet-500 dark:text-violet-400">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                {(grpOutput.links?.length || 0) + (grpOutput.files?.length || 0)}
+                              </span>
+                            )}
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${allGroupDone ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                              {groupDone}/{groupItems.length}
+                            </span>
+                            {allGroupDone && (
+                              <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                            )}
+                          </div>
+                          <div className="border-t border-slate-200/60 dark:border-slate-700/40 px-2 py-1.5 space-y-1">
+                            {groupItems.map((item, localIdx) => {
+                              const arrIdx = cl.findIndex(i => i.id === item.id);
+                              return (
+                                <div key={item.id} className="flex items-center gap-3 px-2.5 py-2">
+                                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${item.done ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 dark:border-slate-600'}`}>
+                                    {item.done && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                  </div>
+                                  <span className="text-xs text-slate-400 font-mono w-5 shrink-0">{arrIdx + 1}.</span>
+                                  <span className={`text-sm flex-1 ${item.done ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{item.text}</span>
+                                  {item.done && item.durationMin != null && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(item.durationMin)}</span>}
+                                  {item.done && item.completedAt && <span className="text-[10px] text-slate-400 shrink-0">{fmtHour(item.completedAt)}</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {/* Entregaveis do bloco (somente leitura) */}
+                          {hasAttachments && (
+                            <div className="px-3 pb-3 pt-1 border-t border-violet-200/30 dark:border-violet-800/20">
+                              <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider">Entregaveis do Bloco</span>
+                              <div className="mt-1.5 space-y-1.5">
+                                {grpOutput.text && <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{grpOutput.text}</p>}
+                                {(grpOutput.links || []).length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {grpOutput.links.map(link => (
+                                      <a key={link.id} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-1 bg-violet-50 dark:bg-violet-900/20 rounded-lg text-[11px] text-violet-600 dark:text-violet-400 hover:underline font-medium">
+                                        <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" /></svg>
+                                        <span className="max-w-[200px] truncate">{link.label}</span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                                {(grpOutput.files || []).length > 0 && (
+                                  <div className="space-y-1.5">
+                                    {grpOutput.files.filter(f => f.type === 'image').length > 0 && (
+                                      <div className="grid grid-cols-3 gap-1.5">
+                                        {grpOutput.files.filter(f => f.type === 'image').map(f => (
+                                          <div key={f.id}><img src={f.data} alt={f.label} className="w-full h-20 object-cover rounded-lg border border-violet-200 dark:border-violet-800/50" /><p className="text-[9px] text-slate-400 mt-0.5 truncate">{f.label}</p></div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {grpOutput.files.filter(f => f.type === 'document').map(f => (
+                                      <div key={f.id} className="flex items-center gap-2 px-2 py-1.5 bg-violet-50 dark:bg-violet-900/20 rounded-lg">
+                                        <svg className="w-3.5 h-3.5 text-violet-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                                        <a href={f.data} download={f.label} className="text-[11px] text-violet-600 dark:text-violet-400 hover:underline font-medium flex-1 truncate">{f.label}</a>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            );
+          })()}
 
           {order.notes && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">
@@ -2222,11 +2898,47 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
 
 // ==================== MODAL FORMULARIO O.S. ====================
 
-function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose, onDelete, teamMembers, isEmergency = false, emergencyNumber = 1, allOrders = [] }) {
+function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose, onDelete, teamMembers, isEmergency = false, emergencyNumber = 1, allOrders = [], clients = [] }) {
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
   const inProgressOrders = allOrders.filter(o => o.type !== 'emergency' && (o.status === 'in_progress' || o.status === 'available'));
   const [linkUrl, setLinkUrl] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
+  const checklistTextareaRef = useRef(null);
+
+  // Helper: parseia linhas de texto em itens de checklist
+  const parseChecklistLines = (text) => {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return [];
+    const hasGroups = lines.some(l => l.startsWith('-') || l.startsWith('*'));
+    let currentGroup = null;
+    const items = [];
+    lines.forEach((line, i) => {
+      if (hasGroups && !line.startsWith('-') && !line.startsWith('*')) {
+        currentGroup = line;
+      } else {
+        const t = line.replace(/^[-*]\s*/, '');
+        if (t) {
+          items.push({ id: Date.now() + i, text: t, group: currentGroup || null, done: false, startedAt: null, completedAt: null, durationMin: null });
+        }
+      }
+    });
+    return items;
+  };
+
+  // Auto-parseia textarea antes de salvar
+  const handleSaveClick = () => {
+    let finalChecklist = [...(form.checklist || [])];
+    if (checklistTextareaRef.current && checklistTextareaRef.current.value.trim()) {
+      const newItems = parseChecklistLines(checklistTextareaRef.current.value);
+      if (newItems.length > 0) {
+        finalChecklist = [...finalChecklist, ...newItems];
+        checklistTextareaRef.current.value = '';
+      }
+    }
+    const finalForm = { ...form, checklist: finalChecklist };
+    setForm(finalForm);
+    onSave(finalForm);
+  };
 
   const attachments = form.attachments || [];
 
@@ -2324,15 +3036,9 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Cliente / Solicitante</label>
-              <input type="text" value={form.client} onChange={(e) => update('client', e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Ex: Acme Corp" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Local / Ambiente</label>
-              <input type="text" value={form.location} onChange={(e) => update('location', e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Ex: Servidor AWS" />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Local / Ambiente</label>
+            <input type="text" value={form.location} onChange={(e) => update('location', e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Ex: Servidor AWS, Producao, etc." />
           </div>
 
           <div>
@@ -2373,6 +3079,45 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
             )}
           </div>
 
+          {/* Categoria */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Categoria</label>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map(c => (
+                <button key={c.id} onClick={() => update('category', c.id)} className={`px-3 py-1.5 rounded-lg border text-sm transition-all ${form.category === c.id ? `${c.color} border-transparent font-medium` : 'border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cliente (select da tabela clients) */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Cliente</label>
+            <div className="relative">
+              <select
+                value={form.clientId || ''}
+                onChange={(e) => {
+                  const selectedClient = clients.find(c => c.id === e.target.value);
+                  update('clientId', e.target.value || '');
+                  if (selectedClient) update('client', selectedClient.name);
+                }}
+                className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+              >
+                <option value="">Sem cliente vinculado</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.company ? ` (${c.company})` : ''}</option>
+                ))}
+              </select>
+              <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            {!form.clientId && (
+              <input type="text" value={form.client} onChange={(e) => update('client', e.target.value)} className="w-full mt-2 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Ou digite o nome do cliente..." />
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Previsao de Inicio</label>
@@ -2386,7 +3131,108 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Descricao do Servico</label>
-            <textarea value={form.description} onChange={(e) => update('description', e.target.value)} rows={4} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none" placeholder="Descreva o servico a ser executado..." />
+            <textarea value={form.description} onChange={(e) => update('description', e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none" placeholder="Descreva o servico a ser executado..." />
+          </div>
+
+          {/* Bloco de Tarefas */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">Bloco de Tarefas</label>
+
+            {/* Tarefas ja adicionadas (agrupadas) */}
+            {(form.checklist || []).length > 0 && (() => {
+              const cl = form.checklist;
+              const groups = [];
+              let currentGroup = null;
+              cl.forEach(item => {
+                if (item.group && item.group !== currentGroup) {
+                  currentGroup = item.group;
+                  groups.push({ title: item.group, items: [] });
+                } else if (!item.group && (groups.length === 0 || groups[groups.length - 1].title)) {
+                  groups.push({ title: null, items: [] });
+                }
+                if (groups.length === 0) groups.push({ title: null, items: [] });
+                groups[groups.length - 1].items.push(item);
+              });
+              let globalIdx = 0;
+              return (
+                <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{cl.length} {cl.length === 1 ? 'tarefa' : 'tarefas'}</span>
+                    <button type="button" onClick={() => update('checklist', [])} className="text-[10px] text-red-400 hover:text-red-500 dark:text-red-500 dark:hover:text-red-400 font-medium transition-colors">Limpar tudo</button>
+                  </div>
+                  {groups.map((grp, gIdx) => (
+                    <div key={gIdx}>
+                      {grp.title && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-fyness-primary/5 dark:bg-fyness-primary/10 border-b border-slate-100 dark:border-slate-700/50">
+                          <svg className="w-3.5 h-3.5 text-fyness-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                          </svg>
+                          <span className="text-xs font-semibold text-fyness-primary dark:text-blue-400">{grp.title}</span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">{grp.items.length}</span>
+                        </div>
+                      )}
+                      <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                        {grp.items.map((item) => {
+                          globalIdx++;
+                          return (
+                            <div key={item.id} className={`flex items-center gap-2.5 py-2 group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${grp.title ? 'px-5' : 'px-3'}`}>
+                              <span className="w-5 h-5 rounded-md bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary text-[10px] font-bold flex items-center justify-center shrink-0">{globalIdx}</span>
+                              <span className="text-sm text-slate-700 dark:text-slate-200 flex-1">{item.text}</span>
+                              <button type="button" onClick={() => update('checklist', cl.filter(i => i.id !== item.id))} className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Textarea para adicionar bloco de tarefas */}
+            <div className="relative">
+              <textarea
+                ref={checklistTextareaRef}
+                placeholder={"Titulo do grupo (sem -)\n- Tarefa 1\n- Tarefa 2\n- Tarefa 3\n\nOutro grupo\n- Tarefa 4\n- Tarefa 5"}
+                rows={5}
+                className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none leading-relaxed font-mono"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    const newItems = parseChecklistLines(e.target.value);
+                    if (newItems.length > 0) {
+                      update('checklist', [...(form.checklist || []), ...newItems]);
+                    }
+                    e.target.value = '';
+                  }
+                }}
+              />
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">Linha sem <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">-</code> = titulo &middot; com <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">-</code> = tarefa &middot; <span className="font-medium">Ctrl+Enter</span></p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!checklistTextareaRef.current) return;
+                    const newItems = parseChecklistLines(checklistTextareaRef.current.value);
+                    if (newItems.length > 0) {
+                      update('checklist', [...(form.checklist || []), ...newItems]);
+                    }
+                    checklistTextareaRef.current.value = '';
+                    checklistTextareaRef.current.focus();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-primary/90 transition-colors text-xs font-medium"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Adicionar bloco
+                </button>
+              </div>
+            </div>
           </div>
 
           <div>
@@ -2476,7 +3322,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
           </div>
           <div className="flex gap-3">
             <button onClick={onClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm">Cancelar</button>
-            <button onClick={onSave} disabled={!form.title.trim()} className={`px-4 py-2 ${isEmergency ? 'bg-red-600 hover:bg-red-700' : 'bg-fyness-primary hover:bg-fyness-secondary'} text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed`}>
+            <button onClick={handleSaveClick} disabled={!form.title.trim()} className={`px-4 py-2 ${isEmergency ? 'bg-red-600 hover:bg-red-700' : 'bg-fyness-primary hover:bg-fyness-secondary'} text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed`}>
               {isEmergency ? 'Gerar Emergencial' : editing ? 'Salvar' : 'Gerar O.S.'}
             </button>
           </div>

@@ -1,5 +1,13 @@
 import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabase';
+import { getOffline, saveOffline } from './offlineDB';
+
+// ==================== HELPER: pegar user_id atual ====================
+
+async function getCurrentUserId() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id || null;
+}
 
 // ==================== TRANSFORMADOR ====================
 
@@ -40,20 +48,49 @@ const notifService = createCRUDService({
 
 // ==================== EXPORTS BASICOS ====================
 
-export const getNotifications = notifService.getAll;
 export const deleteNotification = notifService.remove;
 
-// ==================== FUNCOES ESPECIAIS ====================
+// ==================== FUNCOES COM FILTRO POR USUARIO ====================
+
+export async function getNotifications() {
+  const userId = await getCurrentUserId();
+
+  if (!userId) {
+    const local = await getOffline('notifications');
+    return local.map(r => dbToNotification(r) || r);
+  }
+
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    const local = await getOffline('notifications');
+    return local.filter(n => n.user_id === userId).map(r => dbToNotification(r) || r);
+  }
+
+  return (data || []).map(dbToNotification);
+}
 
 export async function getUnreadCount() {
+  const userId = await getCurrentUserId();
+
+  if (!userId) {
+    const local = await getOffline('notifications');
+    return local.filter(n => !n.is_read).length;
+  }
+
   const { count, error } = await supabase
     .from('notifications')
     .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
     .eq('is_read', false);
 
   if (error) {
-    const local = JSON.parse(localStorage.getItem('notifications') || '[]');
-    return local.filter(n => !n.is_read).length;
+    const local = await getOffline('notifications');
+    return local.filter(n => n.user_id === userId && !n.is_read).length;
   }
   return count || 0;
 }
@@ -63,15 +100,26 @@ export async function markAsRead(id) {
 }
 
 export async function markAllAsRead() {
-  const { error } = await supabase
+  const userId = await getCurrentUserId();
+
+  let query = supabase
     .from('notifications')
     .update({ is_read: true, updated_at: new Date().toISOString() })
     .eq('is_read', false);
 
+  // Filtrar por usuario se logado
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { error } = await query;
+
   if (error) {
-    const local = JSON.parse(localStorage.getItem('notifications') || '[]');
-    const updated = local.map(n => ({ ...n, is_read: true }));
-    localStorage.setItem('notifications', JSON.stringify(updated));
+    const local = await getOffline('notifications');
+    const updated = local.map(n =>
+      (n.user_id === userId && !n.is_read) ? { ...n, is_read: true } : n
+    );
+    saveOffline('notifications', updated);
   }
 }
 

@@ -1,11 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
-import { getOSOrders } from '../../lib/osService';
-import { getAgendaEvents } from '../../lib/agendaService';
-import { getTeamMembers } from '../../lib/teamService';
+import { useState, useMemo } from 'react';
+import { useOSOrders, useAgendaEvents, useTeamMembers } from '../../hooks/queries';
 import { generateReport, generateAllReports, getReportPreview } from '../../lib/reportGenerator';
 import { formatCurrency } from '../../lib/kpiUtils';
 import { useToast } from '../../contexts/ToastContext';
 import { ScheduleForm } from '../../components/reports/ScheduleForm';
+import { exportOSToExcel, exportKPIsToExcel } from '../../lib/excelExporter';
 
 function toInputDate(date) {
   return date.toISOString().split('T')[0];
@@ -23,31 +22,13 @@ export default function ReportPage() {
   const [filterMember, setFilterMember] = useState('all');
   const [generating, setGenerating] = useState(false);
   const [generatingAll, setGeneratingAll] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
-  // Dados
-  const [orders, setOrders] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [members, setMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [o, e, m] = await Promise.all([
-          getOSOrders(),
-          getAgendaEvents(),
-          getTeamMembers(),
-        ]);
-        setOrders(o || []);
-        setEvents(e || []);
-        setMembers(m || []);
-      } catch (err) {
-        addToast('Erro ao carregar dados', 'error');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  // Dados via React Query
+  const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
+  const { data: events = [], isLoading: loadingEvents } = useAgendaEvents();
+  const { data: members = [], isLoading: loadingMembers } = useTeamMembers();
+  const loading = loadingOrders || loadingEvents || loadingMembers;
 
   // Preview dos KPIs
   const preview = useMemo(() => {
@@ -94,6 +75,32 @@ export default function ReportPage() {
       console.error(err);
     } finally {
       setGeneratingAll(false);
+    }
+  };
+
+  const handleExportExcel = () => {
+    setExportingExcel(true);
+    try {
+      exportOSToExcel(orders, members, { start: startDate, end: endDate });
+      addToast('Planilha Excel exportada com sucesso', 'success');
+    } catch (err) {
+      addToast('Erro ao exportar Excel', 'error');
+      console.error(err);
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  const handleExportKPIExcel = () => {
+    setExportingExcel(true);
+    try {
+      exportKPIsToExcel(orders, members, events, { start: startDate, end: endDate });
+      addToast('Planilha KPI exportada com sucesso', 'success');
+    } catch (err) {
+      addToast('Erro ao exportar KPI Excel', 'error');
+      console.error(err);
+    } finally {
+      setExportingExcel(false);
     }
   };
 
@@ -185,46 +192,73 @@ export default function ReportPage() {
         </div>
       )}
 
-      {/* Botoes Gerar */}
-      <div className="flex flex-col sm:flex-row justify-end gap-3">
-        <button
-          onClick={handleGenerateAll}
-          disabled={generatingAll || generating}
-          className="flex items-center justify-center gap-2 px-6 py-3 bg-slate-700 text-white rounded-lg font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm dark:bg-slate-600 dark:hover:bg-slate-500"
-        >
-          {generatingAll ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Gerando Todos...
-            </>
-          ) : (
-            <>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Gerar Todos (Equipe + Individual)
-            </>
-          )}
-        </button>
-        <button
-          onClick={handleGenerate}
-          disabled={generating || generatingAll}
-          className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-        >
-          {generating ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Gerando...
-            </>
-          ) : (
-            <>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Gerar Relatorio PDF
-            </>
-          )}
-        </button>
+      {/* Botoes Export */}
+      <div className="flex flex-col gap-4">
+        {/* Excel */}
+        <div className="flex flex-col sm:flex-row justify-end gap-3">
+          <button
+            onClick={handleExportExcel}
+            disabled={exportingExcel}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-sm"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            Exportar O.S. (Excel)
+          </button>
+          <button
+            onClick={handleExportKPIExcel}
+            disabled={exportingExcel}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-sm"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            Exportar KPIs (Excel)
+          </button>
+        </div>
+
+        {/* PDF */}
+        <div className="flex flex-col sm:flex-row justify-end gap-3">
+          <button
+            onClick={handleGenerateAll}
+            disabled={generatingAll || generating}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-slate-700 text-white rounded-lg font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm dark:bg-slate-600 dark:hover:bg-slate-500"
+          >
+            {generatingAll ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Gerando Todos...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Gerar Todos (Equipe + Individual)
+              </>
+            )}
+          </button>
+          <button
+            onClick={handleGenerate}
+            disabled={generating || generatingAll}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+          >
+            {generating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Gerando...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Gerar Relatorio PDF
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Agendamentos */}

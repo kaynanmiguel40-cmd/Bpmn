@@ -84,6 +84,8 @@ function NavItem({ to, icon: Icon, label, isCollapsed, badge }) {
   return (
     <NavLink
       to={to}
+      aria-current={isActive ? 'page' : undefined}
+      aria-label={label}
       className={`
         flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200
         ${isActive
@@ -162,7 +164,7 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto" role="navigation" aria-label="Menu principal">
         {/* Dashboard */}
         <NavItem
           to="/dashboard"
@@ -228,6 +230,9 @@ export function Sidebar() {
         <div className="relative">
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
+            aria-label="Menu do usuario"
+            aria-expanded={showUserMenu}
+            aria-haspopup="true"
             className={`
               w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors
               ${isCollapsed ? 'justify-center' : ''}
