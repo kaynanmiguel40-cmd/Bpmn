@@ -415,10 +415,24 @@ export default function FinancialPage() {
       setShowCreateForm(false);
     } else {
       // Criacao: mostra preview antes de confirmar
+      // Auto-preencher estimatedStart se atribuiu a alguem mas nao definiu data
+      let autoEstimatedStart = currentForm.estimatedStart;
+      let autoEstimatedEnd = currentForm.estimatedEnd;
+      if (currentForm.assignedTo && !currentForm.estimatedStart) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(8, 0, 0, 0);
+        autoEstimatedStart = tomorrow.toISOString().slice(0, 16);
+        const endTime = new Date(tomorrow);
+        endTime.setHours(9, 0, 0, 0);
+        autoEstimatedEnd = autoEstimatedEnd || endTime.toISOString().slice(0, 16);
+      }
       const previewData = {
         id: `preview_${Date.now()}`,
         number: emergencyFormMode ? null : nextNumber,
         ...currentForm,
+        estimatedStart: autoEstimatedStart,
+        estimatedEnd: autoEstimatedEnd,
         type: emergencyFormMode ? 'emergency' : 'normal',
         emergencyNumber: emergencyFormMode ? nextEmergencyNumber : null,
         parentOrderId: currentForm.parentOrderId || null,

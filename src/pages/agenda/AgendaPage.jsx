@@ -435,35 +435,35 @@ export default function AgendaPage() {
 
   // O.S. convertidas em eventos do calendario (TODAS as O.S. com assignee)
   const OS_STATUS_COLORS = { available: '#3b82f6', in_progress: '#f97316', done: '#22c55e', blocked: '#ef4444' };
+  const SLA_HOURS = { urgent: 4, high: 24, medium: 72, low: 168 };
   const osCalendarEvents = useMemo(() => {
     return osOrders
       .filter(os => {
-        // Incluir O.S. que tenha alguem atribuido (assignee ou assignedTo)
         const hasAssignee = os.assignee || os.assignedTo;
-        if (!hasAssignee) return false;
-        // Precisa ter alguma data para posicionar no calendario
-        return os.actualStart || os.estimatedStart || os.slaDeadline || os.createdAt;
+        return hasAssignee && (os.actualStart || os.estimatedStart || os.slaDeadline || os.createdAt);
       })
       .map(os => {
-        // Determinar nome do responsavel: assignee (quem pegou) ou assignedTo (atribuido)
         const responsibleName = os.assignee || os.assignedTo || '';
         const member = allMembers.find(m => m.name.toLowerCase().trim() === responsibleName.toLowerCase().trim());
 
-        // Determinar datas baseado no status
         let start, end;
         if (os.actualStart) {
+          // Em andamento / concluida: datas reais
           start = new Date(os.actualStart);
           end = os.actualEnd ? new Date(os.actualEnd) : new Date(start.getTime() + 2 * 3600000);
         } else if (os.estimatedStart) {
+          // Agendada com previsao
           start = new Date(os.estimatedStart);
-          end = os.estimatedEnd ? new Date(os.estimatedEnd) : new Date(start.getTime() + 2 * 3600000);
+          end = os.estimatedEnd ? new Date(os.estimatedEnd) : new Date(start.getTime() + 1 * 3600000);
         } else if (os.slaDeadline) {
-          // SLA: posicionar 2h antes do deadline
+          // SLA: posicionar 1h antes do deadline
           end = new Date(os.slaDeadline);
-          start = new Date(end.getTime() - 2 * 3600000);
+          start = new Date(end.getTime() - 1 * 3600000);
         } else {
-          start = new Date(os.createdAt);
-          end = new Date(start.getTime() + 2 * 3600000);
+          // Sem datas: calcular prazo pela prioridade (medium=72h, urgent=4h, etc)
+          const slaH = SLA_HOURS[os.priority] || 72;
+          end = new Date(new Date(os.createdAt).getTime() + slaH * 3600000);
+          start = new Date(end.getTime() - 1 * 3600000);
         }
 
         const osNum = os.type === 'emergency' ? `EMG-${os.emergencyNumber}` : `#${os.number}`;
