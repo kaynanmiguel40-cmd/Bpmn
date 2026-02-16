@@ -112,6 +112,7 @@ export default function AgendaPage() {
   const [recurrenceAction, setRecurrenceAction] = useState(null); // { event, action: 'edit'|'delete' }
   const [profile, setProfile] = useState({});
   const [activeFilters, setActiveFilters] = useState([]); // inicializa vazio, preenche ao carregar
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
   // Lista completa: membros cadastrados + perfil logado
   const allMembers = useMemo(() => {
@@ -577,6 +578,81 @@ export default function AgendaPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Dropdown Filtro de Pessoas */}
+          <div className="relative">
+            <button
+              onClick={() => setShowFilterDropdown(prev => !prev)}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span>Equipe</span>
+              {activeFilters.length < allMembers.length && (
+                <span className="bg-blue-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                  {activeFilters.length}
+                </span>
+              )}
+              <svg className={`w-3.5 h-3.5 transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showFilterDropdown && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setShowFilterDropdown(false)} />
+                <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl z-40 py-1 overflow-hidden">
+                  {/* Selecionar/Desmarcar todos */}
+                  <button
+                    onClick={() => {
+                      if (activeFilters.length === allMembers.length) {
+                        setActiveFilters([]);
+                      } else {
+                        setActiveFilters(allMembers.map(m => m.id));
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors uppercase tracking-wide flex items-center justify-between"
+                  >
+                    <span>{activeFilters.length === allMembers.length ? 'Desmarcar todos' : 'Selecionar todos'}</span>
+                    <span className="text-[10px] normal-case font-normal text-slate-400 dark:text-slate-500">{activeFilters.length}/{allMembers.length}</span>
+                  </button>
+                  <div className="border-t border-slate-100 dark:border-slate-700" />
+
+                  {/* Lista de membros */}
+                  {allMembers.map(m => {
+                    const isActive = activeFilters.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => toggleFilter(m.id)}
+                        className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                      >
+                        {/* Checkbox */}
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          isActive ? 'border-transparent' : 'border-slate-300 dark:border-slate-600'
+                        }`} style={isActive ? { backgroundColor: m.color } : {}}>
+                          {isActive && (
+                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        {/* Avatar */}
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0" style={{ backgroundColor: m.color }}>
+                          {(m.name || '?').charAt(0).toUpperCase()}
+                        </div>
+                        {/* Nome */}
+                        <span className={`text-sm truncate ${isActive ? 'text-slate-800 dark:text-slate-100 font-medium' : 'text-slate-400 dark:text-slate-500'}`}>
+                          {shortName(m.name)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
           <button
             onClick={() => {
               try {
@@ -615,37 +691,6 @@ export default function AgendaPage() {
         {view === 'month' && <MonthView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onDayClick={(d) => { setCurrentDate(d); setView('day'); }} onEventClick={openEditModal} allMembers={allMembers} />}
         {view === 'week' && <WeekView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} />}
         {view === 'day' && <DayView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={() => openCreateModal(currentDate)} allMembers={allMembers} businessHours={businessHours} />}
-      </div>
-
-      {/* Filtro por pessoa */}
-      <div className="mt-3 flex items-center gap-2 text-xs">
-        <span className="font-medium text-slate-500 dark:text-slate-400 mr-1">Filtrar:</span>
-        {allMembers.map(m => {
-          const isActive = activeFilters.includes(m.id);
-          return (
-            <button
-              key={m.id}
-              onClick={() => toggleFilter(m.id)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all ${
-                isActive
-                  ? 'border-transparent text-white shadow-sm'
-                  : 'border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800'
-              }`}
-              style={isActive ? { backgroundColor: m.color } : {}}
-            >
-              <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-white/80' : ''}`} style={!isActive ? { backgroundColor: m.color } : {}} />
-              <span className="font-medium">{shortName(m.name)}</span>
-            </button>
-          );
-        })}
-        {activeFilters.length < allMembers.length && (
-          <button
-            onClick={() => setActiveFilters(allMembers.map(m => m.id))}
-            className="px-2 py-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          >
-            Mostrar todos
-          </button>
-        )}
       </div>
 
       {/* Quick Create Popover (estilo Google Calendar) */}
