@@ -111,7 +111,8 @@ export function SettingsPage() {
 
   // Auto-preencher profile com dados do team_member quando o profile esta vazio
   useEffect(() => {
-    if (loadingTeamMembers || loadingProfileCompanies || !profile.id) return;
+    if (loadingTeamMembers || loadingProfileCompanies) return;
+    if (!profile.id && !profile.email) return;
     const linked = teamMembers.find(m =>
       (m.authUserId && profile.id && m.authUserId === profile.id) ||
       (m.email && profile.email && m.email.toLowerCase().trim() === profile.email.toLowerCase().trim())
@@ -127,7 +128,7 @@ export function SettingsPage() {
       setProfile(merged);
       saveProfile(merged);
     }
-  }, [loadingTeamMembers, loadingProfileCompanies, profile.id]);
+  }, [loadingTeamMembers, loadingProfileCompanies, profile.id, profile.email]);
 
   const handleSave = async () => {
     await saveProfile(profile);

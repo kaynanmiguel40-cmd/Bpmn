@@ -46,13 +46,20 @@ export async function getProfile() {
     }
   }
 
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
+  // Garantir que SEMPRE retorna um profile com id, mesmo se tudo falhar
+  const emptyProfile = { id: userId, name: '', email: '', phone: '', role: '', bio: '', avatar: null, cpf: '', companyId: '', salaryMonth: '', hoursMonth: 176, startDate: '' };
 
-  if (error || !data || !data.name) {
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (!error && data && data.name) {
+      return dbToProfile(data);
+    }
+
     // user_profiles nao existe ou esta sem nome.
     // Tentar auto-preencher a partir da tabela profiles (criada pelo trigger de auth).
     const { data: authProfile } = await supabase
@@ -61,18 +68,33 @@ export async function getProfile() {
       .eq('id', userId)
       .single();
 
-    if (authProfile?.full_name) {
-      // Buscar dados do team_member para complementar (cargo, salario, etc.)
-      const { data: teamMember } = await supabase
-        .from('team_members')
-        .select('role, salary_month, hours_month, email')
-        .eq('auth_user_id', userId)
-        .single();
+    // Buscar dados do team_member para complementar (cargo, salario, etc.)
+    // Tentar por auth_user_id primeiro, depois por email
+    let teamMember = null;
+    const { data: tmById } = await supabase
+      .from('team_members')
+      .select('name, role, salary_month, hours_month, email')
+      .eq('auth_user_id', userId)
+      .single();
+    teamMember = tmById;
 
+    if (!teamMember && authProfile?.email) {
+      const { data: tmByEmail } = await supabase
+        .from('team_members')
+        .select('name, role, salary_month, hours_month, email')
+        .eq('email', authProfile.email)
+        .single();
+      teamMember = tmByEmail;
+    }
+
+    const bestName = authProfile?.full_name || teamMember?.name || '';
+    const bestEmail = teamMember?.email || authProfile?.email || '';
+
+    if (bestName) {
       const autoProfile = {
         id: userId,
-        name: authProfile.full_name,
-        email: teamMember?.email || authProfile.email || '',
+        name: bestName,
+        email: bestEmail,
         role: teamMember?.role || '',
         salary_month: teamMember?.salary_month || null,
         hours_month: teamMember?.hours_month || 176,
@@ -90,14 +112,29 @@ export async function getProfile() {
       return profile;
     }
 
-    // Nenhum dado encontrado, retornar localStorage
+    // Se tiver dados parciais do user_profiles (sem nome), retornar com id
+    if (data) {
+      const profile = dbToProfile(data);
+      return { ...emptyProfile, ...profile, id: userId };
+    }
+
+    // Nenhum dado no DB, tentar localStorage mas sempre com id
     try {
-      return JSON.parse(localStorage.getItem(localKey(userId)) || '{}');
+      const local = JSON.parse(localStorage.getItem(localKey(userId)) || '{}');
+      return { ...emptyProfile, ...local, id: userId };
     } catch {
-      return {};
+      return emptyProfile;
+    }
+  } catch (err) {
+    console.error('Erro ao buscar profile:', err);
+    // Mesmo com erro, retornar profile com id para useEffect funcionar
+    try {
+      const local = JSON.parse(localStorage.getItem(localKey(userId)) || '{}');
+      return { ...emptyProfile, ...local, id: userId };
+    } catch {
+      return emptyProfile;
     }
   }
-  return dbToProfile(data);
 }
 
 export async function saveProfile(profile) {

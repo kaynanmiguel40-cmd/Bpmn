@@ -73,7 +73,7 @@ export async function createAuthUser(email, password, fullName, profileRole = 'c
 
       // Criar registro em user_profiles (tabela usada pela UI para nome, cargo, etc.)
       // Sem isso o usuario aparece como "Sem nome" ao logar.
-      await isolated
+      const { error: upError } = await isolated
         .from('user_profiles')
         .upsert([{
           id: newUserId,
@@ -82,6 +82,20 @@ export async function createAuthUser(email, password, fullName, profileRole = 'c
           role: profileRole === 'manager' ? 'Gestor' : '',
           updated_at: new Date().toISOString(),
         }], { onConflict: 'id' });
+
+      // Se falhou com o client isolado, tentar com o client principal (admin logado)
+      if (upError) {
+        console.warn('user_profiles upsert falhou no isolated client, tentando com client principal:', upError.message);
+        await supabase
+          .from('user_profiles')
+          .upsert([{
+            id: newUserId,
+            name: fullName,
+            email,
+            role: profileRole === 'manager' ? 'Gestor' : '',
+            updated_at: new Date().toISOString(),
+          }], { onConflict: 'id' });
+      }
     }
 
     return { success: true, userId: newUserId };
