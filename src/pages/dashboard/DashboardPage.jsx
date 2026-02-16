@@ -964,7 +964,7 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
                       style={{ width: `${Math.min(cap.utilization, 100)}%` }}
                     />
                   </div>
-                  <p className="text-[10px] text-slate-400">{cap.allocatedHours}h alocadas / {cap.availableHours}h disponivel · {cap.activeOrders} O.S. ativas</p>
+                  <p className="text-[10px] text-slate-400">{cap.allocatedHours.toFixed(1)}h alocadas / {cap.availableHours}h disponivel · {cap.activeOrders} O.S. ativas</p>
                 </div>
               ));
             })()}
