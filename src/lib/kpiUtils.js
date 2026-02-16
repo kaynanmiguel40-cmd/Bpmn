@@ -23,21 +23,18 @@ export function isLastMonth(dateStr) {
 
 // ─── Helpers de O.S. ─────────────────────────────────────────────
 
-/** Horas realizadas: prioriza tempo real do checklist, fallback para actualStart->actualEnd */
+/** Horas realizadas: usa actualStart->actualEnd (tempo real total), checklist como fallback */
 export function calcOSHours(order) {
-  // Prioridade 1: tempo real das tarefas do checklist (mais preciso)
+  // Prioridade 1: diferenca real entre actualStart e actualEnd (mais confiavel)
+  if (order.actualStart && order.actualEnd) {
+    const diffMs = new Date(order.actualEnd) - new Date(order.actualStart);
+    if (diffMs > 0) return diffMs / (1000 * 60 * 60);
+  }
+  // Prioridade 2: soma do checklist (quando nao tem datas reais)
   const cl = order.checklist || [];
   const totalChecklistMin = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
-  if (totalChecklistMin > 0) {
-    return totalChecklistMin / 60;
-  }
-  // Prioridade 2: diferenca real entre actualStart e actualEnd
-  if (!order.actualStart || !order.actualEnd) return 0;
-  const start = new Date(order.actualStart);
-  const end = new Date(order.actualEnd);
-  const diffMs = end - start;
-  if (diffMs <= 0) return 0;
-  return diffMs / (1000 * 60 * 60);
+  if (totalChecklistMin > 0) return totalChecklistMin / 60;
+  return 0;
 }
 
 /** Horas previstas (estimatedStart -> estimatedEnd) em horas reais */

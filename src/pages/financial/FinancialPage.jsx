@@ -136,19 +136,16 @@ function formatCurrency(value) {
 }
 
 function calcOSHours(order) {
-  // Prioridade 1: usar tempo real das tarefas do checklist (mais preciso)
+  // Prioridade 1: actualStart/actualEnd (tempo real total, mais confiavel)
+  if (order.actualStart && order.actualEnd) {
+    const diffMs = new Date(order.actualEnd) - new Date(order.actualStart);
+    if (diffMs > 0) return diffMs / (1000 * 60 * 60);
+  }
+  // Prioridade 2: soma do checklist (quando nao tem datas reais)
   const cl = order.checklist || [];
   const totalChecklistMin = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
-  if (totalChecklistMin > 0) {
-    return totalChecklistMin / 60; // converter minutos para horas
-  }
-  // Prioridade 2: usar actualStart/actualEnd
-  if (!order.actualStart || !order.actualEnd) return 0;
-  const start = new Date(order.actualStart);
-  const end = new Date(order.actualEnd);
-  const diffMs = end - start;
-  if (diffMs <= 0) return 0;
-  return diffMs / (1000 * 60 * 60); // horas reais com decimais
+  if (totalChecklistMin > 0) return totalChecklistMin / 60;
+  return 0;
 }
 
 function getMemberHourlyRate(member) {
