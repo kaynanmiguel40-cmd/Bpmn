@@ -40,14 +40,14 @@ export function calcOSHours(order) {
   return diffMs / (1000 * 60 * 60);
 }
 
-/** Horas previstas (estimatedStart -> estimatedEnd), 8h por dia */
+/** Horas previstas (estimatedStart -> estimatedEnd) em horas reais */
 export function calcEstimatedHours(order) {
   if (!order.estimatedStart || !order.estimatedEnd) return 0;
   const start = new Date(order.estimatedStart);
   const end = new Date(order.estimatedEnd);
   const diffMs = end - start;
-  const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
-  return diffDays * 8;
+  if (diffMs <= 0) return 0;
+  return diffMs / (1000 * 60 * 60);
 }
 
 /** Dias corridos entre duas datas (min 0) */
