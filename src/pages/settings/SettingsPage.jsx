@@ -109,6 +109,26 @@ export function SettingsPage() {
     })();
   }, []);
 
+  // Auto-preencher profile com dados do team_member quando o profile esta vazio
+  useEffect(() => {
+    if (loadingTeamMembers || loadingProfileCompanies || !profile.id) return;
+    const linked = teamMembers.find(m =>
+      (m.authUserId && profile.id && m.authUserId === profile.id) ||
+      (m.email && profile.email && m.email.toLowerCase().trim() === profile.email.toLowerCase().trim())
+    );
+    if (!linked) return;
+    const updates = {};
+    if (!profile.name && linked.name) updates.name = linked.name;
+    if (!profile.role && linked.role) updates.role = linked.role;
+    if (!profile.salaryMonth && linked.salaryMonth) updates.salaryMonth = linked.salaryMonth;
+    if (!profile.hoursMonth && linked.hoursMonth) updates.hoursMonth = linked.hoursMonth;
+    if (Object.keys(updates).length > 0) {
+      const merged = { ...profile, ...updates };
+      setProfile(merged);
+      saveProfile(merged);
+    }
+  }, [loadingTeamMembers, loadingProfileCompanies, profile.id]);
+
   const handleSave = async () => {
     await saveProfile(profile);
     setShowSaveToast(true);
@@ -233,8 +253,8 @@ export function SettingsPage() {
                 <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
               </div>
               <div>
-                <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">{profile.name || 'Sem nome'}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{profile.role || 'Sem cargo'}</p>
+                <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">{profile.name || myTeamMember?.name || 'Sem nome'}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{profile.role || myTeamMember?.role || 'Sem cargo'}</p>
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Clique na foto para alterar</p>
               </div>
             </div>
@@ -246,11 +266,11 @@ export function SettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Nome completo</label>
-                <input type="text" value={profile.name || ''} onChange={(e) => handleChange('name', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Seu nome completo" />
+                <input type="text" value={profile.name || myTeamMember?.name || ''} onChange={(e) => handleChange('name', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Seu nome completo" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Cargo</label>
-                <input type="text" value={profile.role || ''} onChange={(e) => handleChange('role', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: Gestor, Operador" />
+                <input type="text" value={profile.role || myTeamMember?.role || ''} onChange={(e) => handleChange('role', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: Gestor, Operador" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">CPF</label>
