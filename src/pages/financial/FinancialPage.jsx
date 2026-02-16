@@ -1985,7 +1985,15 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           {(order.checklist || []).length > 0 && (() => {
             const cl = order.checklist || [];
             const doneCount = cl.filter(i => i.done).length;
-            const totalTime = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+            // Calcular duracao real a partir dos timestamps (ignora durationMin corrompido)
+            const realDuration = (item) => {
+              if (item.startedAt && item.completedAt) {
+                const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
+                if (diff > 0 && diff < 1440) return Math.round(diff);
+              }
+              return item.durationMin || 0;
+            };
+            const totalTime = cl.reduce((sum, i) => sum + realDuration(i), 0);
             const fmtTime = (min) => {
               if (!min || min <= 0) return '';
               if (min < 60) return `${Math.round(min)}min`;
@@ -2143,7 +2151,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                       const isGrouped = groupKey !== '__ungrouped__';
                       const groupDone = groupItems.filter(i => i.done).length;
                       const allGroupDone = groupDone === groupItems.length;
-                      const groupTime = groupItems.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+                      const groupTime = groupItems.reduce((sum, i) => sum + realDuration(i), 0);
                       const isCollapsed = collapsedGroups.has(groupKey);
                       const grpOutput = getGroupOutput(groupKey);
                       const hasAttachments = (grpOutput.links?.length > 0) || (grpOutput.files?.length > 0) || grpOutput.text;
@@ -2234,8 +2242,8 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                                       </div>
                                       <span className="text-xs text-slate-400 dark:text-slate-500 font-mono w-5 shrink-0">{arrIdx + 1}.</span>
                                       <span className={`text-sm flex-1 ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : isActive ? 'text-blue-700 dark:text-blue-300 font-medium' : 'text-slate-700 dark:text-slate-200'}`}>{item.text}</span>
-                                      {item.done && item.durationMin != null && (
-                                        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(item.durationMin)}</span>
+                                      {item.done && realDuration(item) > 0 && (
+                                        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(realDuration(item))}</span>
                                       )}
                                       {item.done && item.completedAt && (
                                         <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{fmtHour(item.completedAt)}</span>
@@ -2724,7 +2732,14 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
           {(order.checklist || []).length > 0 && (() => {
             const cl = order.checklist || [];
             const doneCount = cl.filter(i => i.done).length;
-            const totalTime = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+            const realDuration = (item) => {
+              if (item.startedAt && item.completedAt) {
+                const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
+                if (diff > 0 && diff < 1440) return Math.round(diff);
+              }
+              return item.durationMin || 0;
+            };
+            const totalTime = cl.reduce((sum, i) => sum + realDuration(i), 0);
             const fmtTime = (min) => {
               if (!min || min <= 0) return '';
               if (min < 60) return `${Math.round(min)}min`;
@@ -2774,7 +2789,7 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
                       const isGrouped = groupKey !== '__ungrouped__';
                       const groupDone = groupItems.filter(i => i.done).length;
                       const allGroupDone = groupDone === groupItems.length;
-                      const groupTime = groupItems.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+                      const groupTime = groupItems.reduce((sum, i) => sum + realDuration(i), 0);
                       const grpOutput = getGrpOutput(groupKey);
                       const hasAttachments = (grpOutput.links?.length > 0) || (grpOutput.files?.length > 0) || grpOutput.text;
                       return (
@@ -2819,7 +2834,7 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
                                   </div>
                                   <span className="text-xs text-slate-400 font-mono w-5 shrink-0">{arrIdx + 1}.</span>
                                   <span className={`text-sm flex-1 ${item.done ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{item.text}</span>
-                                  {item.done && item.durationMin != null && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(item.durationMin)}</span>}
+                                  {item.done && realDuration(item) > 0 && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(realDuration(item))}</span>}
                                   {item.done && item.completedAt && <span className="text-[10px] text-slate-400 shrink-0">{fmtHour(item.completedAt)}</span>}
                                 </div>
                               );
