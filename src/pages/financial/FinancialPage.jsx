@@ -1891,31 +1891,35 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
             </div>
           </div>
 
+          {(order.estimatedStart || order.estimatedEnd) && (
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prazo</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">
-                {order.slaDeadline ? formatDate(order.slaDeadline) : '-'}
-              </p>
+              <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Previsao de Inicio</label>
+              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.estimatedStart ? formatDate(order.estimatedStart) : '-'}</p>
             </div>
             <div className="p-4">
-              {order.status === 'blocked' && order.blockReason ? (
-                <>
-                  <label className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">Motivo do Bloqueio</label>
-                  <p className="text-sm text-orange-600 dark:text-orange-400 mt-1 font-medium">{(BLOCK_REASONS.find(b => b.id === order.blockReason) || {}).label || order.blockReason}</p>
-                </>
-              ) : (
-                <>
-                  <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Categoria</label>
-                  <div className="mt-1">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).color}`}>
-                      {(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).label}
-                    </span>
-                  </div>
-                </>
-              )}
+              <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Previsao de Entrega</label>
+              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.estimatedEnd ? formatDate(order.estimatedEnd) : '-'}</p>
             </div>
           </div>
+          )}
+
+          {(order.status === 'blocked' && order.blockReason) && (
+          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
+            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
+              <label className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">Motivo do Bloqueio</label>
+              <p className="text-sm text-orange-600 dark:text-orange-400 mt-1 font-medium">{(BLOCK_REASONS.find(b => b.id === order.blockReason) || {}).label || order.blockReason}</p>
+            </div>
+            <div className="p-4">
+              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Categoria</label>
+              <div className="mt-1">
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).color}`}>
+                  {(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).label}
+                </span>
+              </div>
+            </div>
+          </div>
+          )}
 
           {(order.actualStart || order.actualEnd) && (
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
@@ -2660,6 +2664,19 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
               </div>
             </div>
           </div>
+
+          {(order.estimatedStart || order.estimatedEnd) && (
+          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
+            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
+              <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Previsao de Inicio</label>
+              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.estimatedStart ? formatDate(order.estimatedStart) : '-'}</p>
+            </div>
+            <div className="p-4">
+              <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Previsao de Entrega</label>
+              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.estimatedEnd ? formatDate(order.estimatedEnd) : '-'}</p>
+            </div>
+          </div>
+          )}
 
           {(order.client || order.location) && (
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
