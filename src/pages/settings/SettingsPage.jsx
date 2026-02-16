@@ -829,8 +829,12 @@ export function SettingsPage() {
                     Editar Perfil
                   </button>
                 </div>
-                {/* Demais membros */}
-                {teamMembers.map(member => (
+                {/* Demais membros (filtra o perfil logado para nao duplicar) */}
+                {teamMembers.filter(m => {
+                  if (m.authUserId && profile.id && m.authUserId === profile.id) return false;
+                  if (m.email && profile.email && m.email.toLowerCase().trim() === profile.email.toLowerCase().trim()) return false;
+                  return true;
+                }).map(member => (
                   <div key={member.id} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
                     <div className="flex items-center gap-3">
                       <div
