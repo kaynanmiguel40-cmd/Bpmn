@@ -16,7 +16,7 @@ import {
   calcOSHours, calcEstimatedHours, calcOSCost, calcKPIs, getMemberHourlyRate,
   formatCurrency, formatLateTime, timeAgo,
   isCurrentMonth, isLastMonth,
-  loadProfileSync, findCurrentUser,
+  loadProfileSync, findCurrentUser, namesMatch,
   calcCapacity, calcAvgLeadTime, calcSLACompliance, calcCategoryBreakdown,
 } from '../../lib/kpiUtils';
 import { getHistory, calculateTrends, saveMonthlySnapshot } from '../../lib/kpiSnapshotService';
@@ -232,7 +232,12 @@ function CollaboratorDashboard({ profile, currentUser, orders, events }) {
   const targetHours = profile.hoursMonth || 176;
   const [kpiHistory, setKpiHistory] = useState([]);
 
-  const myOrders = useMemo(() => orders.filter(o => o.assignee === currentUser.id), [orders, currentUser]);
+  const myOrders = useMemo(() => {
+    const userName = (currentUser.name || '').toLowerCase().trim();
+    return orders.filter(o => {
+      return o.assignee === currentUser.id || namesMatch(o.assignee, currentUser.name) || namesMatch(o.assignedTo, currentUser.name);
+    });
+  }, [orders, currentUser]);
   const myEvents = useMemo(() => events.filter(e => e.assignee === currentUser.id), [events, currentUser]);
   const kpi = useMemo(() => calcKPIs(myOrders, myEvents, targetHours), [myOrders, myEvents, targetHours]);
 
@@ -596,8 +601,12 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
   // Filtrar dados pelo membro selecionado
   const filteredOrders = useMemo(() => {
     if (selectedMember === 'all') return orders;
-    return orders.filter(o => o.assignee === selectedMember);
-  }, [orders, selectedMember]);
+    const member = allMembers.find(m => m.id === selectedMember);
+    if (!member) return orders;
+    return orders.filter(o =>
+      o.assignee === selectedMember || namesMatch(member.name, o.assignee) || namesMatch(member.name, o.assignedTo)
+    );
+  }, [orders, selectedMember, allMembers]);
 
   const filteredEvents = useMemo(() => {
     if (selectedMember === 'all') return events;
@@ -609,7 +618,9 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
   // KPIs por membro
   const memberKPIs = useMemo(() => {
     return allMembers.map(member => {
-      const mOrders = orders.filter(o => o.assignee === member.name || o.assignee === member.id);
+      const mOrders = orders.filter(o =>
+        o.assignee === member.id || namesMatch(member.name, o.assignee) || namesMatch(member.name, o.assignedTo)
+      );
       const mEvents = events.filter(e => e.assignee === member.id);
       const mk = calcKPIs(mOrders, mEvents, targetHours);
       return { member, kpi: mk };
@@ -654,8 +665,8 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
       const attendees = meeting.attendees && meeting.attendees.length > 0
         ? meeting.attendees
         : meeting.assignee ? [meeting.assignee] : [];
-      const totalRate = attendees.reduce((sum, id) => {
-        const member = allMembers.find(m => m.id === id);
+      const totalRate = attendees.reduce((sum, idOrName) => {
+        const member = allMembers.find(m => m.id === idOrName || namesMatch(m.name, idOrName));
         return sum + (member ? getMemberHourlyRate(member) : 0);
       }, 0);
       return hours * totalRate;
@@ -669,7 +680,7 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
   const recentActivity = useMemo(() => {
     const items = [];
     orders.filter(o => o.status === 'done' && o.actualEnd).forEach(o => {
-      const member = allMembers.find(m => m.id === o.assignee || m.name === o.assignee);
+      const member = allMembers.find(m => m.id === o.assignee || namesMatch(m.name, o.assignee));
       const displayMember = member || (o.assignee ? { id: o.assignee, name: o.assignee, color: '#3b82f6' } : null);
       if (displayMember) items.push({ date: o.actualEnd, desc: `${shortName(displayMember.name)} concluiu O.S. #${o.number}`, member: displayMember });
     });

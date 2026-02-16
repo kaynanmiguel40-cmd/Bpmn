@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useOSOrders, useOSProjects } from '../../hooks/queries';
 import { updateOSOrder } from '../../lib/osService';
 import { getProfile } from '../../lib/profileService';
+import { namesMatch } from '../../lib/kpiUtils';
 
 const PRIORITIES = {
   urgent: { label: 'Urgente', color: 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400', dot: 'bg-red-500' },
@@ -66,22 +67,17 @@ export function RoutinePage() {
   const myOrders = useMemo(() => {
     if (!userName) return { todo: [], doing: [], done: [] };
 
-    const nameLower = userName.toLowerCase();
+    const todo = orders.filter(o =>
+      namesMatch(o.assignedTo, userName) && o.status === 'available'
+    );
 
-    const todo = orders.filter(o => {
-      const assignedTo = (o.assignedTo || '').toLowerCase();
-      return assignedTo === nameLower && o.status === 'available';
-    });
+    const doing = orders.filter(o =>
+      namesMatch(o.assignee, userName) && o.status === 'in_progress'
+    );
 
-    const doing = orders.filter(o => {
-      const assignee = (o.assignee || '').toLowerCase();
-      return assignee === nameLower && o.status === 'in_progress';
-    });
-
-    const done = orders.filter(o => {
-      const assignee = (o.assignee || '').toLowerCase();
-      return assignee === nameLower && o.status === 'done';
-    });
+    const done = orders.filter(o =>
+      namesMatch(o.assignee, userName) && o.status === 'done'
+    );
 
     return { todo, doing, done };
   }, [orders, userName]);
@@ -102,10 +98,24 @@ export function RoutinePage() {
 
   const handleClaim = async (orderId) => {
     const now = new Date().toISOString();
+    const order = orders.find(o => o.id === orderId);
+    // Inicializar startedAt da primeira tarefa nao-feita
+    let checklistUpdate = {};
+    if (order?.checklist?.length > 0) {
+      const firstUndone = order.checklist.findIndex(i => !i.done);
+      if (firstUndone >= 0) {
+        checklistUpdate = {
+          checklist: order.checklist.map((i, idx) =>
+            idx === firstUndone ? { ...i, startedAt: now } : i
+          ),
+        };
+      }
+    }
     const updated = await updateOSOrder(orderId, {
       assignee: userName,
       status: 'in_progress',
       actualStart: now,
+      ...checklistUpdate,
     });
     if (updated) {
       queryClient.invalidateQueries({ queryKey: ['osOrders'] });

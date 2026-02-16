@@ -52,8 +52,45 @@ export async function getProfile() {
     .eq('id', userId)
     .single();
 
-  if (error) {
-    console.log('⚠️ Perfil nao encontrado no Supabase, usando localStorage');
+  if (error || !data || !data.name) {
+    // user_profiles nao existe ou esta sem nome.
+    // Tentar auto-preencher a partir da tabela profiles (criada pelo trigger de auth).
+    const { data: authProfile } = await supabase
+      .from('profiles')
+      .select('full_name, email, role')
+      .eq('id', userId)
+      .single();
+
+    if (authProfile?.full_name) {
+      // Buscar dados do team_member para complementar (cargo, salario, etc.)
+      const { data: teamMember } = await supabase
+        .from('team_members')
+        .select('role, salary_month, hours_month, email')
+        .eq('auth_user_id', userId)
+        .single();
+
+      const autoProfile = {
+        id: userId,
+        name: authProfile.full_name,
+        email: teamMember?.email || authProfile.email || '',
+        role: teamMember?.role || '',
+        salary_month: teamMember?.salary_month || null,
+        hours_month: teamMember?.hours_month || 176,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Salvar no user_profiles para nao precisar fazer isso de novo
+      await supabase
+        .from('user_profiles')
+        .upsert([autoProfile], { onConflict: 'id' });
+
+      const profile = dbToProfile(autoProfile);
+      localStorage.setItem(localKey(userId), JSON.stringify(profile));
+      localStorage.setItem('settings_profile', JSON.stringify(profile));
+      return profile;
+    }
+
+    // Nenhum dado encontrado, retornar localStorage
     try {
       return JSON.parse(localStorage.getItem(localKey(userId)) || '{}');
     } catch {

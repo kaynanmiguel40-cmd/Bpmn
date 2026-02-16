@@ -23,6 +23,8 @@ export function dbToEvent(row) {
     recurrenceEndValue: row.recurrence_end_value || null,
     recurrenceExceptions: row.recurrence_exceptions || [],
     attendees: Array.isArray(row.attendees) ? row.attendees : [],
+    notes: row.notes || '',
+    attachments: Array.isArray(row.attachments) ? row.attachments : [],
     createdAt: row.created_at,
   };
 }
@@ -53,6 +55,8 @@ const eventService = createCRUDService({
     recurrenceEndValue: 'recurrence_end_value',
     recurrenceExceptions: 'recurrence_exceptions',
     attendees: 'attendees',
+    notes: 'notes',
+    attachments: 'attachments',
   },
 });
 

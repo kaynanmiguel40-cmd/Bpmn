@@ -23,14 +23,21 @@ export function isLastMonth(dateStr) {
 
 // ─── Helpers de O.S. ─────────────────────────────────────────────
 
-/** Horas realizadas (actualStart -> actualEnd), 8h por dia */
+/** Horas realizadas: prioriza tempo real do checklist, fallback para actualStart->actualEnd */
 export function calcOSHours(order) {
+  // Prioridade 1: tempo real das tarefas do checklist (mais preciso)
+  const cl = order.checklist || [];
+  const totalChecklistMin = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+  if (totalChecklistMin > 0) {
+    return totalChecklistMin / 60;
+  }
+  // Prioridade 2: diferenca real entre actualStart e actualEnd
   if (!order.actualStart || !order.actualEnd) return 0;
   const start = new Date(order.actualStart);
   const end = new Date(order.actualEnd);
   const diffMs = end - start;
-  const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
-  return diffDays * 8;
+  if (diffMs <= 0) return 0;
+  return diffMs / (1000 * 60 * 60);
 }
 
 /** Horas previstas (estimatedStart -> estimatedEnd), 8h por dia */
@@ -72,12 +79,13 @@ export function getMemberHourlyRate(member) {
 /** Calcula custo total de uma O.S. (mão de obra + gastos materiais) */
 export function calcOSCost(order, membersList) {
   const hours = calcOSHours(order);
-  const assigneeName = (order.assignee || '').toLowerCase().trim();
-  const member = membersList.find(m => m.name.toLowerCase().trim() === assigneeName);
-  const laborCost = member ? hours * getMemberHourlyRate(member) : 0;
-  const materialCost = (order.expenses || []).reduce((acc, e) => acc + (e.value || 0) * (e.quantity || 1), 0);
+  const member = membersList.find(m =>
+    namesMatch(m.name, order.assignee) || namesMatch(m.name, order.assignedTo)
+  );
   const hourlyRate = member ? getMemberHourlyRate(member) : 0;
-  return { hours, hourlyRate, laborCost, materialCost, totalCost: laborCost + materialCost };
+  const laborCost = hours * hourlyRate;
+  const materialCost = (order.expenses || []).reduce((acc, e) => acc + (e.value || 0) * (e.quantity || 1), 0);
+  return { hours, hourlyRate, laborCost, materialCost, totalCost: laborCost + materialCost, memberFound: !!member };
 }
 
 // ─── Formatação ──────────────────────────────────────────────────
@@ -111,6 +119,19 @@ export function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
+/** Remove acentos e normaliza texto para comparacao de nomes */
+export function normName(str) {
+  return (str || '').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Verifica se dois nomes "batem" (parcial, sem acento) */
+export function namesMatch(nameA, nameB) {
+  const a = normName(nameA);
+  const b = normName(nameB);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
 // ─── Helpers Diversos ────────────────────────────────────────────
 
 export function loadProfileSync() {
@@ -121,8 +142,7 @@ export function loadProfileSync() {
 export function findCurrentUser(profile, teamMembers) {
   const fallback = teamMembers[0] || { id: 'default', name: profile?.name || 'Usuario', color: '#3b82f6' };
   if (!profile || !profile.name) return fallback;
-  const pName = profile.name.toLowerCase().trim();
-  const match = teamMembers.find(m => m.name.toLowerCase().trim() === pName || pName.includes(m.name.toLowerCase().trim()));
+  const match = teamMembers.find(m => namesMatch(m.name, profile.name));
   return match || { id: 'self', name: profile.name, color: '#3b82f6' };
 }
 
@@ -192,9 +212,23 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
   const delays = withEstimate.map(o => calcDelayDays(o)).filter(d => d > 0);
   const avgDelay = delays.length > 0 ? delays.reduce((s, d) => s + d, 0) / delays.length : 0;
 
-  // Horas do mes
-  const hoursMonth = doneMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
-  const hoursLastMonth = doneLastMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
+  // Horas de reuniao do mes (contam como trabalho)
+  const calcMeetingHours = (evts, periodFn) => {
+    return evts
+      .filter(e => e.type === 'meeting' && e.startDate && e.endDate && periodFn(e.startDate))
+      .reduce((sum, e) => {
+        const diffMs = new Date(e.endDate) - new Date(e.startDate);
+        return sum + Math.max(0, diffMs / 3600000);
+      }, 0);
+  };
+  const meetingHoursMonth = calcMeetingHours(eventsList, isCurrentMonth);
+  const meetingHoursLastMonth = calcMeetingHours(eventsList, isLastMonth);
+
+  // Horas do mes (O.S. + reunioes)
+  const osHoursMonth = doneMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const osHoursLastMonth = doneLastMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const hoursMonth = osHoursMonth + meetingHoursMonth;
+  const hoursLastMonth = osHoursLastMonth + meetingHoursLastMonth;
   const hoursPercent = targetHours > 0 ? Math.min((hoursMonth / targetHours) * 100, 100) : 0;
 
   // Produtividade = Horas Previstas / Horas Realizadas * 100
@@ -243,6 +277,8 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
     hoursMonth,
     hoursLastMonth,
     hoursPercent,
+    osHoursMonth,
+    meetingHoursMonth,
     productivity: productivity.toFixed(0),
     productivityMonth: productivityMonth.toFixed(0),
     productivityChange: productivityChange.toFixed(0),
@@ -327,11 +363,9 @@ export function calcCategoryBreakdown(ordersList) {
 /** Calcula horas alocadas vs disponiveis por membro */
 export function calcCapacity(ordersList, membersList) {
   return membersList.map(member => {
-    const name = member.name.toLowerCase().trim();
     const assigned = ordersList.filter(o =>
       o.status === 'in_progress' &&
-      ((o.assignee || '').toLowerCase().trim() === name ||
-       (o.assignedTo || '').toLowerCase().trim() === name)
+      (namesMatch(member.name, o.assignee) || namesMatch(member.name, o.assignedTo))
     );
     const allocatedHours = assigned.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
     const availableHours = member.hoursMonth || member.hours_month || 176;

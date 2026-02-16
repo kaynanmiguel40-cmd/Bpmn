@@ -19,6 +19,7 @@ import {
 import { toast } from '../../contexts/ToastContext';
 import { getProfile } from '../../lib/profileService';
 import { shortName } from '../../lib/teamService';
+import { namesMatch } from '../../lib/kpiUtils';
 import { MANAGER_ROLES } from '../../lib/roleUtils';
 import { usePermissions } from '../../contexts/PermissionContext';
 import logoFyness from '../../assets/logo-fyness.png';
@@ -135,12 +136,19 @@ function formatCurrency(value) {
 }
 
 function calcOSHours(order) {
+  // Prioridade 1: usar tempo real das tarefas do checklist (mais preciso)
+  const cl = order.checklist || [];
+  const totalChecklistMin = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+  if (totalChecklistMin > 0) {
+    return totalChecklistMin / 60; // converter minutos para horas
+  }
+  // Prioridade 2: usar actualStart/actualEnd
   if (!order.actualStart || !order.actualEnd) return 0;
   const start = new Date(order.actualStart);
   const end = new Date(order.actualEnd);
   const diffMs = end - start;
-  const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
-  return diffDays * 8;
+  if (diffMs <= 0) return 0;
+  return diffMs / (1000 * 60 * 60); // horas reais com decimais
 }
 
 function getMemberHourlyRate(member) {
@@ -152,11 +160,13 @@ function getMemberHourlyRate(member) {
 
 function calcOSCost(order, membersList) {
   const hours = calcOSHours(order);
-  const assigneeName = (order.assignee || '').toLowerCase().trim();
-  const member = membersList.find(m => m.name.toLowerCase().trim() === assigneeName);
-  const laborCost = member ? hours * getMemberHourlyRate(member) : 0;
+  const member = membersList.find(m =>
+    namesMatch(m.name, order.assignee) || namesMatch(m.name, order.assignedTo)
+  );
+  const hourlyRate = member ? getMemberHourlyRate(member) : 0;
+  const laborCost = hours * hourlyRate;
   const materialCost = (order.expenses || []).reduce((acc, e) => acc + (e.value || 0) * (e.quantity || 1), 0);
-  return { laborCost, materialCost, totalCost: laborCost + materialCost, hours, hourlyRate: member ? getMemberHourlyRate(member) : 0 };
+  return { laborCost, materialCost, totalCost: laborCost + materialCost, hours, hourlyRate, memberFound: !!member };
 }
 
 // ==================== ICONES SVG ====================
@@ -210,7 +220,12 @@ export default function FinancialPage() {
   const [editingOrder, setEditingOrder] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
   const [filterMember, setFilterMember] = useState('all');
-  const [currentUser] = useState('1');
+  // Nome do usuario atual para assignee: prioriza nome do team_member (match por profile.name)
+  const currentUser = useMemo(() => {
+    if (!profile.name) return '';
+    const match = teamMembers.find(m => namesMatch(m.name, profile.name));
+    return match ? match.name : profile.name;
+  }, [profile.name, teamMembers]);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [showDone, setShowDone] = useState(false);
   const [donePage, setDonePage] = useState(0);
@@ -260,7 +275,7 @@ export default function FinancialPage() {
   // Lista completa: membros cadastrados + perfil logado (se nao estiver na lista)
   const allMembers = useMemo(() => {
     if (!profile.name) return teamMembers;
-    const alreadyIn = teamMembers.some(m => m.name.toLowerCase().trim() === profile.name.toLowerCase().trim());
+    const alreadyIn = teamMembers.some(m => namesMatch(m.name, profile.name));
     if (alreadyIn) return teamMembers;
     return [{ id: 'profile_self', name: profile.name, role: profile.role || '', color: '#3b82f6' }, ...teamMembers];
   }, [teamMembers, profile]);
@@ -467,10 +482,24 @@ export default function FinancialPage() {
 
   const handleClaim = async (orderId) => {
     const now = new Date().toISOString();
+    const order = orders.find(o => o.id === orderId);
+    // Inicializar startedAt da primeira tarefa nao-feita
+    let checklistUpdate = {};
+    if (order?.checklist?.length > 0) {
+      const firstUndone = order.checklist.findIndex(i => !i.done);
+      if (firstUndone >= 0) {
+        checklistUpdate = {
+          checklist: order.checklist.map((i, idx) =>
+            idx === firstUndone ? { ...i, startedAt: now } : i
+          ),
+        };
+      }
+    }
     const updated = await updateOSOrder(orderId, {
       assignee: profile.name || currentUser,
       status: 'in_progress',
       actualStart: now,
+      ...checklistUpdate,
     });
     if (updated) {
       queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
@@ -494,7 +523,18 @@ export default function FinancialPage() {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
     let updates;
-    if (order.status === 'available') updates = { assignee: currentUser, status: 'in_progress', actualStart: now };
+    if (order.status === 'available') {
+      updates = { assignee: currentUser, status: 'in_progress', actualStart: now };
+      // Inicializar startedAt da primeira tarefa nao-feita
+      if (order.checklist?.length > 0) {
+        const firstUndone = order.checklist.findIndex(i => !i.done);
+        if (firstUndone >= 0) {
+          updates.checklist = order.checklist.map((i, idx) =>
+            idx === firstUndone ? { ...i, startedAt: now } : i
+          );
+        }
+      }
+    }
     else if (order.status === 'in_progress') updates = { status: 'done', actualEnd: now };
     else return;
     const updated = await updateOSOrder(orderId, updates);
@@ -999,7 +1039,7 @@ export default function FinancialPage() {
                     </thead>
                     <tbody>
                       {pagedOrders.map(order => {
-                        const _tm = allMembers.find(m => m.id === order.assignee || m.name === order.assignee);
+                        const _tm = allMembers.find(m => m.id === order.assignee || namesMatch(m.name, order.assignee));
                         const member = _tm || (order.assignee ? { id: order.assignee, name: order.assignee, color: '#3b82f6' } : null);
                         return (
                           <tr
@@ -1033,9 +1073,19 @@ export default function FinancialPage() {
                             <td className="px-4 py-2.5 text-right">
                               {(() => {
                                 const cost = calcOSCost(order, allMembers);
+                                const fmtHrs = (h) => {
+                                  if (!h || h <= 0) return '';
+                                  if (h < 1) return `${Math.round(h * 60)}min`;
+                                  const hrs = Math.floor(h);
+                                  const mins = Math.round((h - hrs) * 60);
+                                  return mins > 0 ? `${hrs}h${mins}m` : `${hrs}h`;
+                                };
                                 return (
                                   <div>
                                     <span className="font-bold text-slate-800 dark:text-slate-100">{formatCurrency(cost.totalCost)}</span>
+                                    {cost.hours > 0 && (
+                                      <p className="text-[9px] text-slate-400">{fmtHrs(cost.hours)}</p>
+                                    )}
                                     {cost.materialCost > 0 && (
                                       <p className="text-[9px] text-amber-600">Mat: {formatCurrency(cost.materialCost)}</p>
                                     )}
@@ -1496,7 +1546,7 @@ export default function FinancialPage() {
 // ==================== CARD KANBAN ====================
 
 const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, onDragStart, onDragEnd, onCardDragOver, teamMembers, seqNumber, allOrders = [] }) {
-  const _tm = teamMembers.find(m => m.id === order.assignee);
+  const _tm = teamMembers.find(m => m.id === order.assignee || namesMatch(m.name, order.assignee));
   const member = _tm || (order.assignee ? { id: order.assignee, name: order.assignee, color: '#3b82f6' } : null);
   const isEmergency = order.type === 'emergency';
   const parentOrder = isEmergency && order.parentOrderId ? allOrders.find(o => o.id === order.parentOrderId) : null;
@@ -1672,10 +1722,10 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
     return next;
   });
 
-  const teamMember = teamMembers.find(m => m.id === order.assignee);
+  const teamMember = teamMembers.find(m => m.id === order.assignee || namesMatch(m.name, order.assignee));
   const member = teamMember || (order.assignee ? { id: order.assignee, name: order.assignee, color: '#3b82f6' } : null);
   const priority = PRIORITIES.find(p => p.id === order.priority) || PRIORITIES[1];
-  const isOwner = order.assignee === currentUser || order.assignee === profileName;
+  const isOwner = namesMatch(order.assignee, currentUser) || namesMatch(order.assignee, profileName);
   const docAttachments = order.attachments || [];
   const isEmergency = order.type === 'emergency';
   const parentOrder = isEmergency && order.parentOrderId ? allOrders.find(o => o.id === order.parentOrderId) : null;
@@ -1827,15 +1877,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
             </div>
           </div>
 
-          <div className="grid grid-cols-3 border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Categoria</label>
-              <div className="mt-1">
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).color}`}>
-                  {(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).label}
-                </span>
-              </div>
-            </div>
+          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prazo</label>
               <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">
@@ -1848,49 +1890,31 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                   <label className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">Motivo do Bloqueio</label>
                   <p className="text-sm text-orange-600 dark:text-orange-400 mt-1 font-medium">{(BLOCK_REASONS.find(b => b.id === order.blockReason) || {}).label || order.blockReason}</p>
                 </>
-              ) : order.leadTimeHours ? (
-                <>
-                  <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Lead Time</label>
-                  <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.leadTimeHours < 24 ? `${Math.round(order.leadTimeHours)}h` : `${Math.round(order.leadTimeHours / 24)}d`}</p>
-                </>
               ) : (
                 <>
-                  <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Lead Time</label>
-                  <p className="text-sm text-slate-400 mt-1">-</p>
+                  <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Categoria</label>
+                  <div className="mt-1">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).color}`}>
+                      {(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).label}
+                    </span>
+                  </div>
                 </>
               )}
             </div>
           </div>
 
+          {(order.actualStart || order.actualEnd) && (
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Data de Abertura</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDate(order.createdAt)}</p>
-            </div>
-            <div className="p-4">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Ultima Atualizacao</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDate(order.updatedAt)}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Previsao de Inicio</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDateShort(order.estimatedStart)}</p>
-            </div>
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Previsao de Entrega</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDateShort(order.estimatedEnd)}</p>
-            </div>
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-green-500 uppercase tracking-wider">Inicio Real</label>
               <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDate(order.actualStart)}</p>
             </div>
             <div className="p-4">
               <label className="text-[10px] font-semibold text-green-500 uppercase tracking-wider">Fim Real</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDate(order.actualEnd)}</p>
+              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDate(order.actualEnd) || '-'}</p>
             </div>
           </div>
+          )}
 
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
@@ -2043,10 +2067,10 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
               let updated;
               if (!item.done) {
                 // Marcar como feito: calcular duracao desde o startedAt da task
-                // startedAt ja foi definido quando a task anterior terminou (ou quando a O.S. comecou)
-                // Fallback: completedAt da anterior > actualStart da O.S. > createdAt da O.S.
+                // Prioridade: startedAt da task > completedAt da anterior > actualStart da O.S.
+                // NUNCA usar createdAt (pode ser dias atras)
                 const prevItem = arrIdx > 0 ? latestCl[arrIdx - 1] : null;
-                const startRef = item.startedAt || (prevItem?.completedAt) || order.actualStart || order.createdAt || now;
+                const startRef = item.startedAt || (prevItem?.completedAt) || order.actualStart || now;
                 const diffMs = new Date(now) - new Date(startRef);
                 const durationMin = Math.max(0, Math.round(diffMs / 60000));
                 // Encontrar a proxima task nao-feita para iniciar seu timer
@@ -2345,26 +2369,37 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           )}
 
           {/* Custos (so gestor) */}
-          {canViewCosts && order.status === 'done' && order.actualStart && order.actualEnd && (() => {
+          {canViewCosts && order.status === 'done' && (() => {
             const cost = calcOSCost(order, teamMembers);
             const expenses = order.expenses || [];
-            if (cost.totalCost <= 0 && expenses.length === 0) return null;
+            const fmtHrs = (h) => {
+              if (!h || h <= 0) return '0min';
+              if (h < 1) return `${Math.round(h * 60)}min`;
+              const hrs = Math.floor(h);
+              const mins = Math.round((h - hrs) * 60);
+              return mins > 0 ? `${hrs}h ${mins}min` : `${hrs}h`;
+            };
             return (
               <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-amber-50/30 dark:bg-amber-900/10">
                 <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Custo da Ordem de Servico</label>
                 <div className="mt-3 space-y-3">
                   {/* Mao de obra */}
-                  {cost.laborCost > 0 && (
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Mao de Obra</p>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                          {cost.hours}h trabalhadas x {formatCurrency(cost.hourlyRate)}/h
-                        </p>
-                      </div>
-                      <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{formatCurrency(cost.laborCost)}</span>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Mao de Obra</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                        {cost.hours > 0 ? `${fmtHrs(cost.hours)} trabalhadas` : 'Sem tempo registrado'}
+                        {cost.hourlyRate > 0 && ` x ${formatCurrency(cost.hourlyRate)}/h`}
+                      </p>
+                      {!cost.memberFound && order.assignee && (
+                        <p className="text-[10px] text-red-400">Membro "{order.assignee}" nao encontrado na equipe</p>
+                      )}
+                      {cost.memberFound && cost.hourlyRate <= 0 && (
+                        <p className="text-[10px] text-red-400">Salario nao configurado para este membro</p>
+                      )}
                     </div>
-                  )}
+                    <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{formatCurrency(cost.laborCost)}</span>
+                  </div>
 
                   {/* Materiais */}
                   {expenses.length > 0 && (
@@ -2612,28 +2647,7 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
             </div>
           </div>
 
-          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Data de Abertura</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDate(order.createdAt)}</p>
-            </div>
-            <div className="p-4">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Ultima Atualizacao</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDate(order.updatedAt)}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Previsao de Inicio</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDateShort(order.estimatedStart)}</p>
-            </div>
-            <div className="p-4">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Previsao de Entrega</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDateShort(order.estimatedEnd)}</p>
-            </div>
-          </div>
-
+          {(order.client || order.location) && (
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Cliente / Solicitante</label>
@@ -2644,6 +2658,7 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
               <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.location || '-'}</p>
             </div>
           </div>
+          )}
 
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">

@@ -149,6 +149,8 @@ export default function AgendaPage() {
     recurrenceConfig: { interval: 1 },
     recurrenceEndType: 'never',
     recurrenceEndValue: '',
+    notes: '',
+    attachments: [],
   });
 
   // Carregar perfil (unico dado sem React Query hook)
@@ -193,6 +195,8 @@ export default function AgendaPage() {
       recurrenceConfig: { interval: 1 },
       recurrenceEndType: 'never',
       recurrenceEndValue: '',
+      notes: '',
+      attachments: [],
     });
     setQuickCreate({ date: dateStr, startTime, endTime });
   };
@@ -234,6 +238,8 @@ export default function AgendaPage() {
       recurrenceConfig: event.recurrenceConfig || { interval: 1 },
       recurrenceEndType: event.recurrenceEndType || 'never',
       recurrenceEndValue: event.recurrenceEndValue || '',
+      notes: event.notes || '',
+      attachments: event.attachments || [],
     });
     setShowEventModal(true);
   };
@@ -267,6 +273,8 @@ export default function AgendaPage() {
       recurrenceConfig: form.recurrenceConfig || { interval: 1 },
       recurrenceEndType: form.recurrenceEndType || 'never',
       recurrenceEndValue: form.recurrenceEndValue || null,
+      notes: form.notes || '',
+      attachments: form.attachments || [],
     };
 
     if (editingEvent) {
@@ -364,6 +372,8 @@ export default function AgendaPage() {
           recurrenceConfig: parentEvent.recurrenceConfig || { interval: 1 },
           recurrenceEndType: parentEvent.recurrenceEndType || 'never',
           recurrenceEndValue: parentEvent.recurrenceEndValue || '',
+          notes: event.notes || '',
+          attachments: event.attachments || [],
         });
         // React Query ja refez o fetch via invalidation no mutateAsync acima
         setShowEventModal(true);
@@ -423,25 +433,49 @@ export default function AgendaPage() {
 
   const goToday = () => setCurrentDate(new Date());
 
-  // O.S. convertidas em eventos do calendario
+  // O.S. convertidas em eventos do calendario (TODAS as O.S. com assignee)
+  const OS_STATUS_COLORS = { available: '#3b82f6', in_progress: '#f97316', done: '#22c55e', blocked: '#ef4444' };
   const osCalendarEvents = useMemo(() => {
     return osOrders
-      .filter(os => os.actualStart && (os.status === 'in_progress' || os.status === 'done'))
+      .filter(os => {
+        // Incluir O.S. que tenha alguem atribuido (assignee ou assignedTo)
+        const hasAssignee = os.assignee || os.assignedTo;
+        if (!hasAssignee) return false;
+        // Precisa ter alguma data para posicionar no calendario
+        return os.actualStart || os.estimatedStart || os.slaDeadline || os.createdAt;
+      })
       .map(os => {
-        // Encontrar membro pelo nome do assignee
-        const member = allMembers.find(m => m.name.toLowerCase().trim() === (os.assignee || '').toLowerCase().trim());
-        const start = new Date(os.actualStart);
-        // Se terminou usa actualEnd, senao estima 2h a partir do inicio
-        const end = os.actualEnd ? new Date(os.actualEnd) : new Date(start.getTime() + 2 * 3600000);
+        // Determinar nome do responsavel: assignee (quem pegou) ou assignedTo (atribuido)
+        const responsibleName = os.assignee || os.assignedTo || '';
+        const member = allMembers.find(m => m.name.toLowerCase().trim() === responsibleName.toLowerCase().trim());
+
+        // Determinar datas baseado no status
+        let start, end;
+        if (os.actualStart) {
+          start = new Date(os.actualStart);
+          end = os.actualEnd ? new Date(os.actualEnd) : new Date(start.getTime() + 2 * 3600000);
+        } else if (os.estimatedStart) {
+          start = new Date(os.estimatedStart);
+          end = os.estimatedEnd ? new Date(os.estimatedEnd) : new Date(start.getTime() + 2 * 3600000);
+        } else if (os.slaDeadline) {
+          // SLA: posicionar 2h antes do deadline
+          end = new Date(os.slaDeadline);
+          start = new Date(end.getTime() - 2 * 3600000);
+        } else {
+          start = new Date(os.createdAt);
+          end = new Date(start.getTime() + 2 * 3600000);
+        }
+
+        const osNum = os.type === 'emergency' ? `EMG-${os.emergencyNumber}` : `#${os.number}`;
         return {
           id: `os_cal_${os.id}`,
-          title: `O.S. #${os.number} - ${os.title}`,
+          title: `O.S. ${osNum} - ${os.title}`,
           description: os.client ? `Cliente: ${os.client}` : os.description || '',
           startDate: start.toISOString(),
           endDate: end.toISOString(),
           assignee: member?.id || null,
           type: 'os',
-          color: '#f97316',
+          color: OS_STATUS_COLORS[os.status] || '#f97316',
           _isOS: true,
           _osId: os.id,
           _osStatus: os.status,
@@ -725,7 +759,9 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
                     >
                       {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                       {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
-                      <span className="truncate">{formatTime(new Date(event.startDate))} {event.title}</span>
+                      <span className={`truncate ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>{formatTime(new Date(event.startDate))} {event.title}</span>
+                      {event._isOS && event._osStatus === 'available' && <span className="ml-auto text-[8px] bg-white/30 px-1 rounded shrink-0">A fazer</span>}
+                      {event._isOS && event._osStatus === 'done' && <span className="ml-auto text-[8px] bg-white/30 px-1 rounded shrink-0">&#10003;</span>}
                     </div>
                   );
                 })}
@@ -819,7 +855,9 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
                           <div className="font-semibold truncate flex items-center gap-0.5">
                             {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                             {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
-                            <span className="truncate">{event.title}</span>
+                            <span className={`truncate ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>{event.title}</span>
+                            {event._isOS && event._osStatus === 'available' && <span className="text-[8px] bg-white/30 px-1 rounded shrink-0 ml-auto">A fazer</span>}
+                            {event._isOS && event._osStatus === 'done' && <span className="text-[8px] bg-white/30 px-1 rounded shrink-0 ml-auto">&#10003;</span>}
                           </div>
                           <div className="opacity-80 truncate">{formatTime(start)} - {formatTime(end)}</div>
                           {member && <div className="opacity-70 truncate">{shortName(member.name)}</div>}
@@ -898,17 +936,23 @@ function DayView({ currentDate, today, getEventsForDay, onEventClick, onSlotClic
                         }}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-sm truncate flex items-center gap-1">
+                          <span className={`font-semibold text-sm truncate flex items-center gap-1 ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>
                             {event._isOS && <svg className="w-3 h-3 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                             {event._parentId && !event._isOS && <svg className="w-3 h-3 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
                             {event.title}
                           </span>
                           <div className="flex items-center gap-1">
+                            {event._isOS && event._osStatus === 'available' && (
+                              <span className="text-[9px] bg-blue-400/30 text-blue-100 px-1.5 py-0.5 rounded-full whitespace-nowrap font-semibold">A fazer</span>
+                            )}
                             {event._isOS && event._osStatus === 'in_progress' && (
                               <span className="text-[9px] bg-yellow-400/30 text-yellow-100 px-1 py-0.5 rounded-full whitespace-nowrap font-semibold">Em andamento</span>
                             )}
                             {event._isOS && event._osStatus === 'done' && (
-                              <span className="text-[9px] bg-green-400/30 text-green-100 px-1 py-0.5 rounded-full whitespace-nowrap font-semibold">Concluida</span>
+                              <span className="text-[9px] bg-green-400/30 text-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap font-semibold">&#10003; Concluida</span>
+                            )}
+                            {event._isOS && event._osStatus === 'blocked' && (
+                              <span className="text-[9px] bg-red-400/30 text-red-100 px-1.5 py-0.5 rounded-full whitespace-nowrap font-semibold">Bloqueada</span>
                             )}
                             {eventType && (
                               <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
@@ -1183,10 +1227,10 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete, allMemb
   const isMeeting = form.type === 'meeting';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0">
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
             {editing ? 'Editar Evento' : 'Novo Evento'}
           </h3>
@@ -1198,7 +1242,7 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete, allMemb
         </div>
 
         {/* Form */}
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 overflow-y-auto">
           {/* Titulo */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Titulo</label>
@@ -1518,6 +1562,97 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete, allMemb
               placeholder="Detalhes do evento..."
             />
           </div>
+
+          {/* Anotacoes / Ata (reunioes) */}
+          {isMeeting && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                <span className="flex items-center gap-1.5">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Anotacoes / Ata da Reuniao
+                </span>
+              </label>
+              <textarea
+                value={form.notes}
+                onChange={(e) => updateField('notes', e.target.value)}
+                rows={5}
+                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-y dark:placeholder-slate-500"
+                placeholder="Pauta, decisoes, pendencias..."
+              />
+            </div>
+          )}
+
+          {/* Anexos (reunioes) */}
+          {isMeeting && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                <span className="flex items-center gap-1.5">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                  Anexos
+                </span>
+              </label>
+
+              {/* Lista de anexos existentes */}
+              {(form.attachments || []).length > 0 && (
+                <div className="space-y-1.5">
+                  {form.attachments.map((att, idx) => (
+                    <div key={att.id || idx} className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                      {att.type === 'image' ? (
+                        <img src={att.data} alt={att.label} className="w-8 h-8 rounded object-cover shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 bg-blue-50 dark:bg-blue-900/20 rounded flex items-center justify-center shrink-0">
+                          <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                      )}
+                      <span className="text-xs text-slate-600 dark:text-slate-300 truncate flex-1">{att.label || 'Arquivo'}</span>
+                      <button
+                        type="button"
+                        onClick={() => updateField('attachments', form.attachments.filter((_, i) => i !== idx))}
+                        className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Botao de upload */}
+              <label className="flex items-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors">
+                <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span className="text-sm text-slate-500 dark:text-slate-400">Adicionar arquivo (max 3MB)</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 3 * 1024 * 1024) { alert('Arquivo muito grande! Maximo: 3MB.'); return; }
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const isImage = file.type.startsWith('image/');
+                      const newAtt = { id: Date.now(), type: isImage ? 'image' : 'document', data: ev.target.result, label: file.name, mimeType: file.type };
+                      updateField('attachments', [...(form.attachments || []), newAtt]);
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <p className="text-xs text-slate-400 dark:text-slate-500">Atas, documentos, imagens, PDFs</p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

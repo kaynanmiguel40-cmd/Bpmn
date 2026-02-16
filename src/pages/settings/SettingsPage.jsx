@@ -14,7 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { getProfile, saveProfile } from '../../lib/profileService';
 import { useOSOrders, useTeamMembers, queryKeys } from '../../hooks/queries';
 import { createTeamMember, updateTeamMember, deleteTeamMember, MEMBER_COLORS } from '../../lib/teamService';
-import { supabase, getCompanies, createCompany, updateCompany, deleteCompany, createAuthUser } from '../../lib/supabase';
+import { supabase, getCompanies, createCompany, updateCompany, deleteCompany, createAuthUser, updateProfileRole } from '../../lib/supabase';
 import { isManagerRole } from '../../lib/roleUtils';
 import { NotificationPreferences } from '../../components/communication/NotificationPreferences';
 
@@ -744,24 +744,16 @@ export function SettingsPage() {
 
                       setCreatingMember(true);
                       try {
-                        // 1. Criar conta no Supabase Auth
-                        const authResult = await createAuthUser(newMemberEmail.trim(), newMemberPassword, newMemberName.trim());
+                        // 1. Criar conta no Supabase Auth + definir role no profile
+                        const profileRole = newMemberIsGestor ? 'manager' : 'collaborator';
+                        const authResult = await createAuthUser(newMemberEmail.trim(), newMemberPassword, newMemberName.trim(), profileRole);
                         if (!authResult.success) {
                           alert('Erro ao criar conta: ' + authResult.error);
                           setCreatingMember(false);
                           return;
                         }
 
-                        // 2. Definir nivel de acesso no profile
-                        if (authResult.userId) {
-                          const profileRole = newMemberIsGestor ? 'manager' : 'collaborator';
-                          await supabase
-                            .from('profiles')
-                            .update({ role: profileRole })
-                            .eq('id', authResult.userId);
-                        }
-
-                        // 3. Criar membro na tabela team_members
+                        // 2. Criar membro na tabela team_members
                         const created = await createTeamMember({
                           name: newMemberName.trim(),
                           role: newMemberRole.trim(),
@@ -1091,10 +1083,10 @@ export function SettingsPage() {
                       });
                       if (editingMember.authUserId) {
                         const profileRole = editingMember._isGestor ? 'manager' : 'collaborator';
-                        await supabase
-                          .from('profiles')
-                          .update({ role: profileRole })
-                          .eq('id', editingMember.authUserId);
+                        const roleResult = await updateProfileRole(editingMember.authUserId, profileRole);
+                        if (!roleResult.success) {
+                          console.warn('Nao foi possivel atualizar nivel de acesso:', roleResult.error);
+                        }
                       }
                       if (updated) {
                         queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers });

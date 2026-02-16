@@ -127,6 +127,8 @@ export const agendaEventSchema = z.object({
   type: z.enum(['meeting', 'task', 'reminder', 'deadline', 'other']).default('task'),
   color: z.string().optional().default('#3b82f6'),
   attendees: z.array(z.any()).default([]),
+  notes: z.string().optional().default(''),
+  attachments: z.array(z.any()).default([]),
 }).passthrough();
 
 export const commentSchema = z.object({
