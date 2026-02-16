@@ -99,6 +99,7 @@ export function SettingsPage() {
   const companyImageRef = useRef(null);
 
   const isManager = isManagerRole(profile);
+  const [memberAvatars, setMemberAvatars] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -108,6 +109,24 @@ export function SettingsPage() {
       setLoadingProfileCompanies(false);
     })();
   }, []);
+
+  // Buscar avatares dos membros que tem conta (authUserId)
+  useEffect(() => {
+    if (loadingTeamMembers || teamMembers.length === 0) return;
+    const authIds = teamMembers.filter(m => m.authUserId).map(m => m.authUserId);
+    if (authIds.length === 0) return;
+    (async () => {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('id, avatar')
+        .in('id', authIds);
+      if (data) {
+        const map = {};
+        data.forEach(p => { if (p.avatar) map[p.id] = p.avatar; });
+        setMemberAvatars(map);
+      }
+    })();
+  }, [loadingTeamMembers, teamMembers]);
 
   // Auto-preencher profile com dados do team_member quando o profile esta vazio
   useEffect(() => {
@@ -894,12 +913,16 @@ export function SettingsPage() {
                 }).map(member => (
                   <div key={member.id} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
                     <div className="flex items-center gap-3">
-                      <div
-                        className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-sm shrink-0"
-                        style={{ backgroundColor: member.color }}
-                      >
-                        {member.name.charAt(0).toUpperCase()}
-                      </div>
+                      {member.authUserId && memberAvatars[member.authUserId] ? (
+                        <img src={memberAvatars[member.authUserId]} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-sm shrink-0"
+                          style={{ backgroundColor: member.color }}
+                        >
+                          {member.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <div>
                         <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{member.name}</div>
                         {member.email && (
