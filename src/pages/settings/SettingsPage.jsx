@@ -145,8 +145,16 @@ export function SettingsPage() {
     setTimeout(() => setShowSaveToast(false), 2000);
   };
 
-  // Calculos
-  const hourlyRate = calcHourlyRate(profile.salaryMonth, profile.hoursMonth);
+  // Buscar team_member vinculado ao perfil logado (para fallback de salario)
+  const myTeamMember = teamMembers.find(m =>
+    (m.authUserId && profile.id && m.authUserId === profile.id) ||
+    (m.email && profile.email && m.email.toLowerCase().trim() === profile.email.toLowerCase().trim())
+  );
+
+  // Calculos - usar dados do profile, com fallback do team_member
+  const effectiveSalary = profile.salaryMonth || myTeamMember?.salaryMonth || 0;
+  const effectiveHours = profile.hoursMonth || myTeamMember?.hoursMonth || 176;
+  const hourlyRate = calcHourlyRate(effectiveSalary, effectiveHours);
 
   const selectedCompany = companies.find(c => c.id === profile.companyId);
   const selectedCompanyColor = selectedCompany ? COMPANY_COLORS[(selectedCompany.colorIndex || 0) % COMPANY_COLORS.length] : null;
@@ -279,7 +287,7 @@ export function SettingsPage() {
                 </div>
                 <div>
                   <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Salario Mensal</p>
-                  <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(profile.salaryMonth)}</p>
+                  <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(effectiveSalary)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
@@ -514,7 +522,13 @@ export function SettingsPage() {
             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Funcionarios Cadastrados</h3>
-                <span className="text-xs text-slate-400 dark:text-slate-500">{teamMembers.length + 1} membro{teamMembers.length !== 0 ? 's' : ''}</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">{
+                  teamMembers.filter(m => {
+                    if (m.authUserId && profile.id && m.authUserId === profile.id) return false;
+                    if (m.email && profile.email && m.email.toLowerCase().trim() === profile.email.toLowerCase().trim()) return false;
+                    return true;
+                  }).length + 1
+                } membros</span>
               </div>
               {isManager && (
                 <button
@@ -803,22 +817,42 @@ export function SettingsPage() {
           )}
               <div className="divide-y divide-slate-100 dark:divide-slate-700">
                 {/* Perfil logado (voce) */}
+                {(() => {
+                  // Buscar nome do team_member quando profile.name esta vazio
+                  const linkedMember = teamMembers.find(m =>
+                    (m.authUserId && profile.id && m.authUserId === profile.id) ||
+                    (m.email && profile.email && m.email.toLowerCase().trim() === profile.email.toLowerCase().trim())
+                  );
+                  const displayName = profile.name || linkedMember?.name || 'Sem nome';
+                  const displayRole = profile.role || linkedMember?.role || '';
+                  const displayColor = linkedMember?.color || '#3b82f6';
+                  return (
                 <div className="px-6 py-3 flex items-center justify-between bg-blue-50/50 dark:bg-blue-900/10">
                   <div className="flex items-center gap-3">
                     {profile.avatar ? (
                       <img src={profile.avatar} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
                     ) : (
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-medium text-sm shrink-0">
-                        {(profile.name || 'U').charAt(0).toUpperCase()}
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-sm shrink-0" style={{ background: `linear-gradient(135deg, ${displayColor}, ${displayColor}cc)` }}>
+                        {displayName.charAt(0).toUpperCase()}
                       </div>
                     )}
                     <div>
                       <div className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                        {profile.name || 'Sem nome'}
+                        {displayName}
                         <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 rounded-full">Voce</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        {profile.role && <span className="text-xs text-slate-400 dark:text-slate-500">{profile.role}</span>}
+                        {displayRole && <span className="text-xs text-slate-400 dark:text-slate-500">{displayRole}</span>}
+                        {linkedMember && (
+                          <span className="text-[10px] text-slate-300 dark:text-slate-500 bg-slate-50 dark:bg-slate-700/50 px-1.5 py-0.5 rounded">
+                            {linkedMember.workStart || '08:00'} - {linkedMember.workEnd || '18:00'}
+                          </span>
+                        )}
+                        {isManager && linkedMember && linkedMember.salaryMonth > 0 && (
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded font-medium">
+                            R$ {(parseFloat(linkedMember.salaryMonth) / (parseFloat(linkedMember.hoursMonth) || 176)).toFixed(2)}/h
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -829,6 +863,8 @@ export function SettingsPage() {
                     Editar Perfil
                   </button>
                 </div>
+                  );
+                })()}
                 {/* Demais membros (filtra o perfil logado para nao duplicar) */}
                 {teamMembers.filter(m => {
                   if (m.authUserId && profile.id && m.authUserId === profile.id) return false;
