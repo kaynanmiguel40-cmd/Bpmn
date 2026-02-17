@@ -221,6 +221,7 @@ function GanttBar({ task, x, y, width, height, isSummary, isMilestone, isCritica
 
 function DependencyArrows({ tasks, visibleTasks, getTaskPosition, criticalIds, showCriticalPath }) {
   const arrows = [];
+  const G = 10; // gap minimo
 
   for (const task of visibleTasks) {
     if (!task.predecessors || task.predecessors.length === 0) continue;
@@ -234,30 +235,49 @@ function DependencyArrows({ tasks, visibleTasks, getTaskPosition, criticalIds, s
       if (!predPos || !taskPos) continue;
 
       const type = pred.type || 'FS';
-      let startX, startY, endX, endY;
-
-      if (type === 'FS') {
-        startX = predPos.x + predPos.width; startY = predPos.y + predPos.height / 2;
-        endX = taskPos.x; endY = taskPos.y + taskPos.height / 2;
-      } else if (type === 'SS') {
-        startX = predPos.x; startY = predPos.y + predPos.height / 2;
-        endX = taskPos.x; endY = taskPos.y + taskPos.height / 2;
-      } else if (type === 'FF') {
-        startX = predPos.x + predPos.width; startY = predPos.y + predPos.height / 2;
-        endX = taskPos.x + taskPos.width; endY = taskPos.y + taskPos.height / 2;
-      } else {
-        startX = predPos.x; startY = predPos.y + predPos.height / 2;
-        endX = taskPos.x + taskPos.width; endY = taskPos.y + taskPos.height / 2;
-      }
-
       const isCriticalArrow = showCriticalPath && criticalIds.has(task.id) && criticalIds.has(predTask.id);
       const color = isCriticalArrow ? '#ef4444' : '#94a3b8';
       const marker = isCriticalArrow ? 'url(#arrowhead-critical)' : 'url(#arrowhead)';
 
-      const midX = startX + 10;
-      const path = endX > startX + 20
-        ? `M${startX},${startY} H${midX} V${endY} H${endX}`
-        : `M${startX},${startY} H${midX} V${endY > startY ? startY + 20 : startY - 20} H${endX - 10} V${endY} H${endX}`;
+      const pCY = predPos.y + predPos.height / 2;
+      const tCY = taskPos.y + taskPos.height / 2;
+      const bottomY = Math.max(predPos.y + predPos.height, taskPos.y + taskPos.height) + G;
+
+      const predEnd = predPos.x + predPos.width;
+      const predStart = predPos.x;
+      const taskEnd = taskPos.x + taskPos.width;
+      const taskStart = taskPos.x;
+
+      let path;
+
+      if (type === 'FS') {
+        // Saida: direita do pred → Entrada: esquerda do sucessor
+        if (taskStart >= predEnd) {
+          // Direto: curva no ponto medio entre as barras
+          const midX = (predEnd + taskStart) / 2;
+          path = `M${predEnd},${pCY} H${midX} V${tCY} H${taskStart}`;
+        } else {
+          // Sobreposto: contornar por baixo
+          const entryX = taskStart - G;
+          path = `M${predEnd},${pCY} H${predEnd + G} V${bottomY} H${entryX} V${tCY} H${taskStart}`;
+        }
+      } else if (type === 'SS') {
+        // Saida: esquerda do pred → Entrada: esquerda do sucessor
+        const leftX = Math.min(predStart, taskStart) - G;
+        path = `M${predStart},${pCY} H${leftX} V${tCY} H${taskStart}`;
+      } else if (type === 'FF') {
+        // Saida: direita do pred → Entrada: direita do sucessor
+        const rightX = Math.max(predEnd, taskEnd) + G;
+        path = `M${predEnd},${pCY} H${rightX} V${tCY} H${taskEnd}`;
+      } else { // SF
+        // Saida: esquerda do pred → Entrada: direita do sucessor
+        const leftX = Math.min(predStart, taskEnd) - G;
+        if (predStart <= taskEnd) {
+          path = `M${predStart},${pCY} H${leftX} V${tCY} H${taskEnd}`;
+        } else {
+          path = `M${predStart},${pCY} H${predStart - G} V${bottomY} H${taskEnd - G} V${tCY} H${taskEnd}`;
+        }
+      }
 
       arrows.push(
         <g key={`${predTask.id}-${task.id}`}>
@@ -278,7 +298,7 @@ const GanttTimeline = forwardRef(function GanttTimeline({
   summaryIds,
   criticalIds,
   showCriticalPath,
-  selectedTaskId,
+  selectedTaskIds,
   dateRange,
   zoom,
   zoomConfig,
@@ -329,7 +349,7 @@ const GanttTimeline = forwardRef(function GanttTimeline({
   // day e week usam colunas por dia; month usa proporcional
   const dateToX = useCallback((dateStr) => {
     if (!dateStr) return 0;
-    const date = new Date(dateStr + 'T00:00:00');
+    const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
     const days = daysBetween(dateRange.start, date);
 
     if (zoom === 'day' || zoom === 'week') {
@@ -570,12 +590,11 @@ const GanttTimeline = forwardRef(function GanttTimeline({
             <line key={i} x1={0} y1={(i + 1) * rowHeight} x2={totalWidth} y2={(i + 1) * rowHeight} stroke="#f1f5f9" strokeWidth={0.5} className="dark:stroke-slate-800" />
           ))}
 
-          {/* Selected row */}
-          {selectedTaskId && (() => {
-            const idx = tasks.findIndex(t => t.id === selectedTaskId);
-            if (idx === -1) return null;
-            return <rect x={0} y={idx * rowHeight} width={totalWidth} height={rowHeight} fill="#eff6ff" className="dark:fill-blue-900/10" />;
-          })()}
+          {/* Selected rows */}
+          {selectedTaskIds.size > 0 && tasks.map((t, i) => {
+            if (!selectedTaskIds.has(t.id)) return null;
+            return <rect key={t.id} x={0} y={i * rowHeight} width={totalWidth} height={rowHeight} fill="#eff6ff" className="dark:fill-blue-900/10" />;
+          })}
 
           {/* Today line */}
           {todayX > 0 && todayX < totalWidth && (
@@ -595,7 +614,7 @@ const GanttTimeline = forwardRef(function GanttTimeline({
 
             const isSummary = summaryIds.has(task.id);
             const isCritical = showCriticalPath && criticalIds.has(task.id);
-            const isSelected = task.id === selectedTaskId;
+            const isSelected = selectedTaskIds.has(task.id);
 
             const displayTask = dragState?.taskId === task.id
               ? { ...task, startDate: dragState.startDate, endDate: dragState.endDate }
@@ -606,7 +625,7 @@ const GanttTimeline = forwardRef(function GanttTimeline({
             const barWidth = task.isMilestone ? 0 : Math.max(4, endX - x + colWidth);
 
             return (
-              <g key={task.id} onClick={() => onSelectTask(task.id)}>
+              <g key={task.id} onClick={(e) => onSelectTask(task.id, e)}>
                 <GanttBar
                   task={displayTask}
                   x={x}

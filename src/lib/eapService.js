@@ -1,6 +1,6 @@
 import { createCRUDService } from './serviceFactory';
 import { eapProjectSchema, eapTaskSchema } from './validation';
-import { createOSOrder, updateOSOrder, getOSProjects, createOSProject } from './osService';
+import { createOSOrder, getOSProjects, createOSProject } from './osService';
 
 // ==================== TRANSFORMS ====================
 
@@ -19,6 +19,19 @@ function dbToProject(row) {
   };
 }
 
+// Normaliza timestamp do Supabase para "YYYY-MM-DDTHH:MM" (datetime-local)
+function normalizeDateTime(val) {
+  if (!val) return '';
+  // Se ja esta no formato correto (sem timezone), retornar direto
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(val)) return val;
+  // Se e string com timezone (vem do Supabase TIMESTAMPTZ), usar UTC pra nao mudar o horario
+  const d = new Date(val);
+  if (isNaN(d)) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  // Supabase armazena em UTC, entao ler como UTC pra manter o horario que o usuario digitou
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
 function dbToTask(row) {
   return {
     id: row.id,
@@ -29,8 +42,8 @@ function dbToTask(row) {
     sortOrder: row.sort_order ?? 0,
     level: row.level ?? 0,
     isMilestone: row.is_milestone ?? false,
-    startDate: row.start_date || '',
-    endDate: row.end_date || '',
+    startDate: normalizeDateTime(row.start_date),
+    endDate: normalizeDateTime(row.end_date),
     durationDays: row.duration_days ?? 1,
     estimatedHours: row.estimated_hours ?? null,
     progress: row.progress ?? 0,
@@ -95,6 +108,48 @@ const taskService = createCRUDService({
   orderBy: 'sort_order',
   orderAsc: true,
 });
+
+// ==================== UNDO PERSISTENCE ====================
+
+import { putOffline, getOffline } from './offlineDB';
+
+/**
+ * Salva os stacks de undo/redo no IndexedDB para sobreviver a F5/crash.
+ * Cada projeto tem seu proprio par de stacks.
+ */
+export async function saveUndoStacks(projectId, undoStack, redoStack) {
+  try {
+    await putOffline('eap_undo_history', {
+      id: `${projectId}_undo`,
+      stack: undoStack,
+    });
+    await putOffline('eap_undo_history', {
+      id: `${projectId}_redo`,
+      stack: redoStack,
+    });
+  } catch (err) {
+    console.warn('[EAP] Erro ao persistir undo/redo:', err);
+  }
+}
+
+/**
+ * Carrega os stacks de undo/redo do IndexedDB.
+ * Retorna { undoStack: [], redoStack: [] }.
+ */
+export async function loadUndoStacks(projectId) {
+  try {
+    const all = await getOffline('eap_undo_history');
+    const undoEntry = all.find(e => e.id === `${projectId}_undo`);
+    const redoEntry = all.find(e => e.id === `${projectId}_redo`);
+    return {
+      undoStack: Array.isArray(undoEntry?.stack) ? undoEntry.stack : [],
+      redoStack: Array.isArray(redoEntry?.stack) ? redoEntry.stack : [],
+    };
+  } catch (err) {
+    console.warn('[EAP] Erro ao carregar undo/redo:', err);
+    return { undoStack: [], redoStack: [] };
+  }
+}
 
 // ==================== HELPERS ====================
 
@@ -253,27 +308,57 @@ export async function generateOSFromTask(task, projectName, allTasks = []) {
 /**
  * Sincroniza o progresso das tarefas EAP baseado no status das OS vinculadas.
  * available = 0%, in_progress = 50%, done = 100%
+ *
+ * Regra bidirecional:
+ * - OS done (100%) → sempre sobrescreve (tarefa concluida pela OS)
+ * - OS in_progress → so atualiza se progresso EAP era 0 (nao sobrescrever ajuste manual)
+ * - OS available → so atualiza se progresso EAP > 0 E nao tem ajuste manual
+ *
+ * Retorna { eapUpdates, osUpdates } para permitir sync nos dois sentidos.
  */
 export function syncProgressFromOS(eapTasks, osOrders) {
   const osMap = new Map(osOrders.map(o => [o.id, o]));
-  const updates = [];
+  const eapUpdates = [];
+  const osUpdates = [];
 
   for (const task of eapTasks) {
     if (!task.osOrderId) continue;
     const os = osMap.get(task.osOrderId);
     if (!os) continue;
 
-    let newProgress;
-    if (os.status === 'done') newProgress = 100;
-    else if (os.status === 'in_progress') newProgress = 50;
-    else newProgress = 0;
-
-    if (newProgress !== task.progress) {
-      updates.push({ id: task.id, progress: newProgress });
+    // OS concluida → EAP deve ser 100% (fonte de verdade: OS)
+    if (os.status === 'done' && task.progress !== 100) {
+      eapUpdates.push({ id: task.id, progress: 100 });
+    }
+    // EAP concluida manualmente → OS deveria ser 'done' (sync reverso)
+    else if (task.progress === 100 && os.status !== 'done') {
+      osUpdates.push({ id: os.id, status: 'done' });
+    }
+    // EAP tem progresso > 0 e OS ainda esta available → iniciar OS
+    else if (task.progress > 0 && task.progress < 100 && os.status === 'available') {
+      osUpdates.push({ id: os.id, status: 'in_progress' });
+    }
+    // OS in_progress e EAP esta 0 → sincronizar para 50
+    else if (os.status === 'in_progress' && task.progress === 0) {
+      eapUpdates.push({ id: task.id, progress: 50 });
     }
   }
 
-  return updates;
+  return { eapUpdates, osUpdates };
+}
+
+// ==================== HELPERS DE DATA ====================
+
+/** Formata Date para "YYYY-MM-DD" usando horario local (evita shift de dia por UTC) */
+function formatLocalDate(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Formata Date para "YYYY-MM-DDTHH:MM" usando horario local */
+function formatLocalDateTime(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // ==================== UTILIDADES EAP ====================
@@ -308,18 +393,25 @@ export function recalculateWBS(tasks) {
 
 /**
  * Calcula datas resumo de uma tarefa pai baseado nos filhos.
+ * Inclui filhos que tenham apenas startDate (usa startDate como endDate fallback).
  */
 export function calculateSummaryDates(parentId, tasks) {
   const children = tasks.filter(t => t.parentId === parentId);
   if (children.length === 0) return null;
 
-  const starts = children.filter(t => t.startDate).map(t => new Date(t.startDate));
-  const ends = children.filter(t => t.endDate).map(t => new Date(t.endDate));
+  // Coletar todas as datas, usando startDate como fallback para endDate e vice-versa
+  const allDates = [];
+  for (const child of children) {
+    const start = child.startDate ? new Date(child.startDate) : null;
+    const end = child.endDate ? new Date(child.endDate) : null;
+    if (start && !isNaN(start)) allDates.push({ start, end: end && !isNaN(end) ? end : start });
+    else if (end && !isNaN(end)) allDates.push({ start: end, end });
+  }
 
-  if (starts.length === 0 || ends.length === 0) return null;
+  if (allDates.length === 0) return null;
 
-  const minStart = new Date(Math.min(...starts));
-  const maxEnd = new Date(Math.max(...ends));
+  const minStart = new Date(Math.min(...allDates.map(d => d.start)));
+  const maxEnd = new Date(Math.max(...allDates.map(d => d.end)));
   const durationMs = maxEnd - minStart;
   const durationDays = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
 
@@ -337,8 +429,8 @@ export function calculateSummaryDates(parentId, tasks) {
   const totalHours = children.reduce((sum, c) => sum + (c.estimatedHours ?? (c.durationDays || 1) * 8), 0);
 
   return {
-    startDate: minStart.toISOString().split('T')[0],
-    endDate: maxEnd.toISOString().split('T')[0],
+    startDate: formatLocalDate(minStart),
+    endDate: formatLocalDate(maxEnd),
     durationDays,
     estimatedHours: parseFloat(totalHours.toFixed(2)),
     progress,
@@ -406,8 +498,9 @@ export function calculateCriticalPath(tasks) {
     }
   }
 
-  // Se tem ciclo, incluir tarefas faltantes no final
+  // Se tem ciclo, incluir tarefas faltantes no final (com aviso)
   if (topoOrder.length < workTasks.length) {
+    console.warn('[EAP] Dependencia circular detectada no calculo do caminho critico.');
     for (const t of workTasks) {
       if (!topoOrder.includes(t.id)) topoOrder.push(t.id);
     }
@@ -418,7 +511,7 @@ export function calculateCriticalPath(tasks) {
   const baseDate = new Date('2020-01-01T00:00:00');
   const toDay = (dateStr) => {
     if (!dateStr) return 0;
-    return Math.round((new Date(dateStr + 'T00:00:00') - baseDate) / 86400000);
+    return Math.round((new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00') - baseDate) / 86400000);
   };
 
   const ES = new Map(); // Early Start
@@ -573,9 +666,16 @@ export function flattenTree(tree, collapsedIds = new Set()) {
 /**
  * Calcula a data de fim baseada na data de inicio e duracao (dias uteis).
  */
+// Normaliza string de data para Date (suporta "YYYY-MM-DD" e "YYYY-MM-DDTHH:MM")
+function toDate(str) {
+  if (!str) return null;
+  if (str.includes('T')) return new Date(str);
+  return new Date(str + 'T00:00:00');
+}
+
 export function calcEndDate(startDate, durationDays) {
   if (!startDate || !durationDays) return '';
-  const start = new Date(startDate + 'T00:00:00');
+  const start = toDate(startDate);
   let remaining = durationDays - 1;
   const result = new Date(start);
 
@@ -587,7 +687,13 @@ export function calcEndDate(startDate, durationDays) {
     }
   }
 
-  return result.toISOString().split('T')[0];
+  // Preservar hora original se tinha
+  if (startDate.includes('T')) {
+    // Manter a hora do inicio, so mudar a data
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${formatLocalDate(result)}T${pad(start.getHours())}:${pad(start.getMinutes())}`;
+  }
+  return formatLocalDate(result);
 }
 
 /**
@@ -595,12 +701,15 @@ export function calcEndDate(startDate, durationDays) {
  */
 export function calcDuration(startDate, endDate) {
   if (!startDate || !endDate) return 1;
-  const start = new Date(startDate + 'T00:00:00');
-  const end = new Date(endDate + 'T00:00:00');
+  const start = toDate(startDate);
+  const end = toDate(endDate);
+  // Contar dias uteis entre as datas (ignorando hora)
+  const s = new Date(start); s.setHours(0, 0, 0, 0);
+  const e = new Date(end); e.setHours(0, 0, 0, 0);
   let days = 0;
-  const current = new Date(start);
+  const current = new Date(s);
 
-  while (current <= end) {
+  while (current <= e) {
     const day = current.getDay();
     if (day !== 0 && day !== 6) {
       days++;
@@ -611,6 +720,88 @@ export function calcDuration(startDate, endDate) {
   return Math.max(1, days);
 }
 
+/**
+ * Calcula horas uteis entre dois datetimes (seg-sex, 08:00-18:00).
+ */
+export function calcWorkHours(startStr, endStr) {
+  if (!startStr || !endStr) return 0;
+  const WORK_START = 8;
+  const WORK_END = 18;
+  const start = toDate(startStr);
+  const end = toDate(endStr);
+  if (!start || !end || end <= start) return 0;
+
+  // Mesmo dia
+  if (start.toDateString() === end.toDateString()) {
+    if (start.getDay() === 0 || start.getDay() === 6) return 0;
+    const s = Math.max(start.getHours() + start.getMinutes() / 60, WORK_START);
+    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END);
+    return Math.max(0, parseFloat((e - s).toFixed(2)));
+  }
+
+  let total = 0;
+  const cur = new Date(start);
+
+  // Primeiro dia
+  if (cur.getDay() !== 0 && cur.getDay() !== 6) {
+    const s = Math.max(cur.getHours() + cur.getMinutes() / 60, WORK_START);
+    total += Math.max(0, WORK_END - s);
+  }
+
+  // Dias intermediarios
+  cur.setDate(cur.getDate() + 1); cur.setHours(0, 0, 0, 0);
+  const endDay = new Date(end); endDay.setHours(0, 0, 0, 0);
+  while (cur < endDay) {
+    if (cur.getDay() !== 0 && cur.getDay() !== 6) total += (WORK_END - WORK_START);
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // Ultimo dia
+  if (end.getDay() !== 0 && end.getDay() !== 6) {
+    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END);
+    total += Math.max(0, e - WORK_START);
+  }
+
+  return parseFloat(total.toFixed(2));
+}
+
+// ==================== VALIDACAO DE DEPENDENCIAS ====================
+
+/**
+ * Detecta se adicionar as predecessoras criaria um ciclo (dependencia circular).
+ * Usa DFS para verificar se o taskId e alcancavel a partir de algum predecessor.
+ * Retorna true se detectar ciclo.
+ */
+export function detectCircularDependency(taskId, newPredecessors, allTasks) {
+  if (!newPredecessors || newPredecessors.length === 0) return false;
+
+  const taskMap = new Map(allTasks.map(t => [t.id, t]));
+
+  // Verificar: a partir de cada predecessor, consigo chegar de volta ao taskId?
+  // Se sim, criar essa dependencia formaria um ciclo.
+  function canReach(fromId, targetId, visited = new Set()) {
+    if (fromId === targetId) return true;
+    if (visited.has(fromId)) return false;
+    visited.add(fromId);
+
+    const task = taskMap.get(fromId);
+    if (!task || !task.predecessors) return false;
+
+    for (const pred of task.predecessors) {
+      if (canReach(pred.taskId, targetId, visited)) return true;
+    }
+    return false;
+  }
+
+  // Se algum predecessor ja depende (direta ou indiretamente) do taskId → ciclo
+  for (const pred of newPredecessors) {
+    if (pred.taskId === taskId) return true; // Auto-referencia
+    if (canReach(taskId, pred.taskId, new Set())) return true;
+  }
+
+  return false;
+}
+
 // ==================== PREDECESSORAS ====================
 
 /**
@@ -618,7 +809,7 @@ export function calcDuration(startDate, endDate) {
  */
 function addWorkDaysToDate(dateStr, days) {
   if (!dateStr || days === 0) return dateStr;
-  const date = new Date(dateStr + 'T00:00:00');
+  const date = toDate(dateStr);
   let remaining = Math.abs(days);
   const direction = days > 0 ? 1 : -1;
 
@@ -630,7 +821,10 @@ function addWorkDaysToDate(dateStr, days) {
     }
   }
 
-  return date.toISOString().split('T')[0];
+  if (dateStr.includes('T')) {
+    return formatLocalDateTime(date);
+  }
+  return formatLocalDate(date);
 }
 
 /**
@@ -673,19 +867,61 @@ export function parsePredecessors(text, rowTaskMap) {
 }
 
 /**
- * Auto-agenda tarefas baseado em suas predecessoras.
+ * Auto-agenda tarefas baseado em suas predecessoras (igual MS Project).
+ * Usa ordenação topológica (Kahn's) para garantir que predecessores
+ * sejam processados ANTES dos sucessores, independente da ordem de linha.
  * Propaga datas em cascata (FS, SS, FF, SF com lag).
  * Retorna array de { id, startDate, endDate } para update.
  */
 export function autoScheduleTasks(tasks) {
-  const sorted = [...tasks].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-  const taskMap = new Map(sorted.map(t => [t.id, { ...t }]));
+  const taskMap = new Map(tasks.map(t => [t.id, { ...t }]));
+
+  // --- Topological Sort (Kahn's) ---
+  const inDegree = new Map();
+  const successors = new Map();
+  for (const t of tasks) {
+    inDegree.set(t.id, 0);
+    successors.set(t.id, []);
+  }
+  for (const t of tasks) {
+    if (!t.predecessors) continue;
+    for (const pred of t.predecessors) {
+      if (!taskMap.has(pred.taskId)) continue;
+      inDegree.set(t.id, (inDegree.get(t.id) || 0) + 1);
+      successors.get(pred.taskId)?.push(t.id);
+    }
+  }
+  const queue = [];
+  for (const [id, deg] of inDegree) {
+    if (deg === 0) queue.push(id);
+  }
+  const topoOrder = [];
+  while (queue.length > 0) {
+    const id = queue.shift();
+    topoOrder.push(id);
+    for (const succId of (successors.get(id) || [])) {
+      const newDeg = (inDegree.get(succId) || 1) - 1;
+      inDegree.set(succId, newDeg);
+      if (newDeg === 0) queue.push(succId);
+    }
+  }
+  // Ciclo detectado? incluir faltantes mas logar aviso
+  if (topoOrder.length < tasks.length) {
+    console.warn('[EAP] Dependencia circular detectada no auto-scheduling. Tarefas ciclicas serao ignoradas no agendamento.');
+    for (const t of tasks) {
+      if (!topoOrder.includes(t.id)) topoOrder.push(t.id);
+    }
+  }
+
+  // --- Propagar datas em ordem topológica ---
   const updates = [];
 
-  for (const task of sorted) {
-    if (!task.predecessors || task.predecessors.length === 0) continue;
+  for (const id of topoOrder) {
+    const task = taskMap.get(id);
+    if (!task || !task.predecessors || task.predecessors.length === 0) continue;
 
     let maxStartDate = null;
+    let maxStartStr = null;
 
     for (const pred of task.predecessors) {
       const predTask = taskMap.get(pred.taskId);
@@ -714,22 +950,26 @@ export function autoScheduleTasks(tasks) {
       }
 
       if (newStartStr) {
-        const d = new Date(newStartStr + 'T00:00:00');
+        const d = toDate(newStartStr);
         if (!maxStartDate || d > maxStartDate) {
           maxStartDate = d;
+          maxStartStr = newStartStr;
         }
       }
     }
 
-    if (maxStartDate) {
-      const newStart = maxStartDate.toISOString().split('T')[0];
+    if (maxStartStr) {
+      const newStart = maxStartStr;
       const newEnd = calcEndDate(newStart, task.durationDays || 1);
 
-      if (newStart !== task.startDate) {
+      // Comparar apenas a parte da data (ignorar diferenca de formato com/sem hora)
+      const curDatePart = (task.startDate || '').split('T')[0];
+      const newDatePart = newStart.split('T')[0];
+      if (newDatePart !== curDatePart) {
         updates.push({ id: task.id, startDate: newStart, endDate: newEnd });
-        // Atualizar copia local para propagacao em cascata
-        const t = taskMap.get(task.id);
-        if (t) { t.startDate = newStart; t.endDate = newEnd; }
+        // Atualizar cópia local para propagação em cascata
+        task.startDate = newStart;
+        task.endDate = newEnd;
       }
     }
   }

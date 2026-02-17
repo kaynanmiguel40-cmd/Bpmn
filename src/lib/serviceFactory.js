@@ -175,6 +175,8 @@ export function createCRUDService(config) {
       toast(`Salvo localmente: ${error.message || 'sem conexao'}`, 'warning');
       return transform ? transform(newItem) : newItem;
     }
+    // Sucesso: salvar no cache local para consistencia offline
+    if (data) await putOffline(table, data);
     return transform ? transform(data) : data;
   }
 
@@ -214,6 +216,8 @@ export function createCRUDService(config) {
       }
       return null;
     }
+    // Sucesso: atualizar cache local para consistencia offline
+    if (data) await putOffline(table, data);
     return transform ? transform(data) : data;
   }
 
@@ -225,8 +229,12 @@ export function createCRUDService(config) {
       .eq('id', id);
 
     if (error) {
+      // Offline: marcar para sync quando voltar online
       await removeOffline(table, id);
       await markPendingSync(table, id, 'delete');
+    } else {
+      // Sucesso: limpar do cache local tambem (evita registros fantasma)
+      await removeOffline(table, id);
     }
     return !error;
   }

@@ -356,7 +356,13 @@ export function useUpdateEapTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, updates }) => updateEapTask(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapTasks }),
+    onSuccess: (_, variables) => {
+      // Em operacoes batch (auto-scheduling, undo), pular invalidacao individual
+      // O chamador invalida uma vez no final
+      if (!variables.skipInvalidation) {
+        qc.invalidateQueries({ queryKey: queryKeys.eapTasks });
+      }
+    },
   });
 }
 

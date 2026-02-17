@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useEapProjects, useCreateEapProject, useEapTasks, useCreateEapTask, useUpdateEapTask, useDeleteEapTask, useTeamMembers, useOSOrders } from '../../hooks/queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEapProjects, useCreateEapProject, useEapTasks, useCreateEapTask, useUpdateEapTask, useDeleteEapTask, useTeamMembers, useOSOrders, queryKeys } from '../../hooks/queries';
 import { useToast } from '../../contexts/ToastContext';
 import { getProfile } from '../../lib/profileService';
 import GanttChart from './components/GanttChart';
@@ -9,6 +10,7 @@ const DEFAULT_PROJECT_NAME = 'Fyness EAP';
 
 export default function EapPage() {
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
 
   // Data
   const { data: projects = [], isLoading: loadingProjects } = useEapProjects();
@@ -61,8 +63,8 @@ export default function EapPage() {
     return result;
   }, [createTaskMut]);
 
-  const handleUpdateTask = useCallback(async (id, updates) => {
-    const result = await updateTaskMut.mutateAsync({ id, updates });
+  const handleUpdateTask = useCallback(async (id, updates, skipInvalidation = false) => {
+    const result = await updateTaskMut.mutateAsync({ id, updates, skipInvalidation });
     return result;
   }, [updateTaskMut]);
 
@@ -92,6 +94,7 @@ export default function EapPage() {
           onCreateTask={handleCreateTask}
           onUpdateTask={handleUpdateTask}
           onDeleteTask={handleDeleteTask}
+          invalidateEapTasks={() => queryClient.invalidateQueries({ queryKey: queryKeys.eapTasks })}
         />
       </div>
     </div>

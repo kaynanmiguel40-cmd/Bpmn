@@ -80,7 +80,7 @@ function EditableCell({ value, field, taskId, isEditing, onStartEdit, onFinish, 
     return (
       <input
         ref={inputRef}
-        type={type === 'number' ? 'number' : type === 'date' ? 'date' : 'text'}
+        type={type === 'number' ? 'number' : type === 'datetime-local' ? 'datetime-local' : type === 'date' ? 'date' : 'text'}
         value={localValue}
         onChange={e => setLocalValue(e.target.value)}
         onBlur={handleFinish}
@@ -104,7 +104,7 @@ function EditableCell({ value, field, taskId, isEditing, onStartEdit, onFinish, 
 
 // Formatar horas para exibição
 function formatHours(h) {
-  if (h == null || h === 0) return '0h';
+  if (h == null || h === 0 || h === '') return '';
   if (h < 1) return `${Math.round(h * 60)}m`;
   return `${parseFloat(h.toFixed(1))}h`;
 }
@@ -391,8 +391,8 @@ const COLUMNS = [
   { key: 'name', label: 'Nome da Tarefa', width: 160, flex: true },
   { key: 'durationDays', label: 'Dur.', width: 45, type: 'number' },
   { key: 'estimatedHours', label: 'Horas', width: 50, type: 'number' },
-  { key: 'startDate', label: 'Inicio', width: 78, type: 'date' },
-  { key: 'endDate', label: 'Termino', width: 78, type: 'date' },
+  { key: 'startDate', label: 'Inicio', width: 110, type: 'datetime-local' },
+  { key: 'endDate', label: 'Termino', width: 110, type: 'datetime-local' },
   { key: 'predecessors', label: 'Pred.', width: 58 },
   { key: 'assignedTo', label: 'Resp.', width: 80 },
   { key: 'notes', label: 'Notas', width: 60 },
@@ -406,7 +406,7 @@ const TaskTable = forwardRef(function TaskTable({
   allTasks,
   summaryIds,
   collapsedIds,
-  selectedTaskId,
+  selectedTaskIds,
   editingCell,
   criticalIds,
   showCriticalPath,
@@ -416,19 +416,52 @@ const TaskTable = forwardRef(function TaskTable({
   hiddenColumns = new Set(),
   rowHeight,
   onSelectTask,
+  onDragSelect,
   onToggleCollapse,
   onEditCell,
   onCellChange,
   onScroll,
 }, ref) {
 
+  // Drag-select state (arrastar pra selecionar estilo Windows)
+  const dragRef = useRef(null); // { startIdx }
+
+  const handleRowMouseDown = (e, idx) => {
+    if (e.button !== 0) return; // so botao esquerdo
+    if (e.target.closest('input, select, button')) return; // nao interceptar inputs
+    dragRef.current = { startIdx: idx };
+  };
+
+  const handleRowMouseEnter = (idx) => {
+    if (!dragRef.current) return;
+    const from = Math.min(dragRef.current.startIdx, idx);
+    const to = Math.max(dragRef.current.startIdx, idx);
+    // So ativar drag-select se moveu pelo menos 1 row
+    if (from !== to) {
+      const ids = tasks.slice(from, to + 1).map(t => t.id);
+      onDragSelect(ids);
+    }
+  };
+
+  useEffect(() => {
+    const handleMouseUp = () => { dragRef.current = null; };
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
+
   // Filtrar colunas visiveis
   const visibleColumns = COLUMNS.filter(col => !hiddenColumns.has(col.key));
 
   const formatDate = (d) => {
     if (!d) return '';
-    const date = new Date(d + 'T00:00:00');
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    const date = new Date(d.includes('T') ? d : d + 'T00:00:00');
+    if (isNaN(date)) return '';
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yy = String(date.getFullYear()).slice(-2);
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mi = String(date.getMinutes()).padStart(2, '0');
+    return `${dd}/${mm}/${yy} ${hh}:${mi}`;
   };
 
   const assigneeOptions = [
@@ -462,16 +495,16 @@ const TaskTable = forwardRef(function TaskTable({
             Nenhuma tarefa. Clique em + Tarefa para comecar.
           </div>
         ) : (
-          tasks.map((task) => {
+          tasks.map((task, rowIdx) => {
             const isSummary = summaryIds.has(task.id);
             const isCollapsed = collapsedIds.has(task.id);
-            const isSelected = task.id === selectedTaskId;
+            const isSelected = selectedTaskIds.has(task.id);
             const isCritical = showCriticalPath && criticalIds.has(task.id);
 
             return (
               <div
                 key={task.id}
-                className={`flex items-center border-b border-slate-100 dark:border-slate-800 transition-colors ${
+                className={`flex items-center border-b border-slate-100 dark:border-slate-800 transition-colors select-none ${
                   isSelected
                     ? 'bg-blue-50 dark:bg-blue-900/20'
                     : isCritical
@@ -479,7 +512,9 @@ const TaskTable = forwardRef(function TaskTable({
                       : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
                 }`}
                 style={{ height: rowHeight }}
-                onClick={() => onSelectTask(task.id)}
+                onClick={(e) => onSelectTask(task.id, e)}
+                onMouseDown={(e) => handleRowMouseDown(e, rowIdx)}
+                onMouseEnter={() => handleRowMouseEnter(rowIdx)}
               >
                 {visibleColumns.map(col => {
                   const isEditingThis = editingCell?.taskId === task.id && editingCell?.field === col.key;
@@ -568,15 +603,18 @@ const TaskTable = forwardRef(function TaskTable({
 
                   // Duracao
                   if (col.key === 'durationDays') {
+                    const isEstimated = !task.estimatedHours;
+                    const durLabel = task.isMilestone ? '0' : `${task.durationDays || 1}${isEstimated ? '?' : 'd'}`;
                     return (
                       <div
                         key={col.key}
                         className="flex items-center justify-center text-xs text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 h-full shrink-0"
                         style={{ width: col.width }}
                       >
-                        {!isSummary ? (
+                        {!isSummary && !task.isMilestone ? (
                           <EditableCell
                             value={task.durationDays}
+                            displayValue={durLabel}
                             field="durationDays"
                             taskId={task.id}
                             isEditing={isEditingThis}
@@ -586,7 +624,7 @@ const TaskTable = forwardRef(function TaskTable({
                             className="text-center"
                           />
                         ) : (
-                          <span className="text-[11px]">{task.durationDays || 0}d</span>
+                          <span className="text-[11px]">{task.isMilestone ? '0' : `${task.durationDays || 0}d`}</span>
                         )}
                       </div>
                     );
@@ -620,23 +658,24 @@ const TaskTable = forwardRef(function TaskTable({
                     );
                   }
 
-                  // Datas
+                  // Datas (datetime-local)
                   if (col.key === 'startDate' || col.key === 'endDate') {
                     return (
                       <div
                         key={col.key}
-                        className="flex items-center text-[11px] text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 h-full shrink-0"
+                        className="flex items-center text-[10px] text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 h-full shrink-0"
                         style={{ width: col.width }}
                       >
                         {!isSummary ? (
                           <EditableCell
                             value={task[col.key]}
+                            displayValue={formatDate(task[col.key])}
                             field={col.key}
                             taskId={task.id}
                             isEditing={isEditingThis}
                             onStartEdit={onEditCell}
                             onFinish={(id, f, v) => id ? onCellChange(id, f, v) : onEditCell(null)}
-                            type="date"
+                            type="datetime-local"
                           />
                         ) : (
                           <span className="px-1">{formatDate(task[col.key])}</span>

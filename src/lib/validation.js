@@ -180,6 +180,7 @@ export const eapTaskSchema = z.object({
   startDate: z.string().nullable().optional().default(null),
   endDate: z.string().nullable().optional().default(null),
   durationDays: z.number().min(0).optional().default(1),
+  estimatedHours: z.number().nullable().optional().default(null),
   progress: z.number().min(0).max(100).optional().default(0),
   assignedTo: z.string().optional().default(''),
   predecessors: z.array(z.object({
@@ -188,6 +189,7 @@ export const eapTaskSchema = z.object({
     lag: z.number().default(0),
   })).optional().default([]),
   notes: z.string().optional().default(''),
+  attachments: z.array(z.any()).optional().default([]),
   color: z.string().optional().default(''),
   osOrderId: z.string().nullable().optional().default(null),
 }).passthrough();

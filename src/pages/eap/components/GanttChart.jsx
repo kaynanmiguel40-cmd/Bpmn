@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { buildTaskTree, flattenTree, recalculateWBS, calculateSummaryDates, calcEndDate, calcDuration, calculateCriticalPath, generateOSFromTask, syncProgressFromOS, parsePredecessors, autoScheduleTasks } from '../../../lib/eapService';
-import { deleteOSOrder } from '../../../lib/osService';
+import { buildTaskTree, flattenTree, recalculateWBS, calculateSummaryDates, calcEndDate, calcDuration, calcWorkHours, calculateCriticalPath, generateOSFromTask, syncProgressFromOS, parsePredecessors, autoScheduleTasks, detectCircularDependency, saveUndoStacks, loadUndoStacks } from '../../../lib/eapService';
+import { deleteOSOrder, updateOSOrder } from '../../../lib/osService';
 import { queryKeys } from '../../../hooks/queries';
 import { useToast } from '../../../contexts/ToastContext';
 import GanttToolbar from './GanttToolbar';
@@ -22,17 +22,19 @@ const ZOOM_CONFIGS = {
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
-export default function GanttChart({ project, tasks, teamMembers, osOrders = [], onCreateTask, onUpdateTask, onDeleteTask }) {
+export default function GanttChart({ project, tasks, teamMembers, osOrders = [], onCreateTask, onUpdateTask, onDeleteTask, invalidateEapTasks }) {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const containerRef = useRef(null);
   const tableRef = useRef(null);
   const timelineRef = useRef(null);
+  const isProcessingRef = useRef(false); // Guard contra operacoes concorrentes
 
   // State
   const [zoom, setZoom] = useState('week');
   const [collapsedIds, setCollapsedIds] = useState(new Set());
-  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
+  const lastSelectedRef = useRef(null); // Para Shift+Click range
   const [editingCell, setEditingCell] = useState(null); // { taskId, field }
   const [tableWidth, setTableWidth] = useState(DEFAULT_TABLE_WIDTH);
   const [isResizingTable, setIsResizingTable] = useState(false);
@@ -40,6 +42,118 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
   const [filterAssignee, setFilterAssignee] = useState('all');
   const [hiddenColumns, setHiddenColumns] = useState(new Set(['wbsNumber']));
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // ==================== UNDO / REDO ====================
+  const undoStackRef = useRef([]);  // Array de UndoEntry: [{ taskId, before, after }]
+  const redoStackRef = useRef([]);
+  const MAX_UNDO = 50;
+  const undoLoadedRef = useRef(false);
+
+  // Persistir stacks no IndexedDB (fire-and-forget, nao bloqueia a UI)
+  const persistUndoStacks = useCallback(() => {
+    saveUndoStacks(project.id, undoStackRef.current, redoStackRef.current);
+  }, [project.id]);
+
+  // Helper: propagar datas resumo recursivamente para cima na hierarquia
+  const propagateSummaryUp = useCallback(async (startParentId, tasksCopy) => {
+    const changes = [];
+    const completedOps = [];
+    let parentId = startParentId;
+    const workingTasks = tasksCopy.map(t => ({ ...t }));
+
+    while (parentId) {
+      const parent = workingTasks.find(t => t.id === parentId);
+      if (!parent) break;
+
+      const summary = calculateSummaryDates(parentId, workingTasks);
+      if (!summary) break;
+
+      if (parent.startDate !== summary.startDate || parent.endDate !== summary.endDate ||
+          parent.durationDays !== summary.durationDays || parent.progress !== summary.progress ||
+          parent.estimatedHours !== summary.estimatedHours) {
+        const before = {};
+        for (const key of Object.keys(summary)) before[key] = parent[key];
+        changes.push({ taskId: parentId, before, after: { ...summary } });
+        await onUpdateTask(parentId, summary, true);
+        completedOps.push({ taskId: parentId, before });
+        const idx = workingTasks.findIndex(t => t.id === parentId);
+        if (idx !== -1) Object.assign(workingTasks[idx], summary);
+      }
+
+      parentId = parent.parentId;
+    }
+
+    return { changes, completedOps };
+  }, [onUpdateTask]);
+
+  // Carregar stacks do IndexedDB ao montar
+  useEffect(() => {
+    if (undoLoadedRef.current) return;
+    undoLoadedRef.current = true;
+    loadUndoStacks(project.id).then(({ undoStack, redoStack }) => {
+      if (undoStack.length > 0 || redoStack.length > 0) {
+        undoStackRef.current = undoStack;
+        redoStackRef.current = redoStack;
+      }
+    });
+  }, [project.id]);
+
+  const recordUndo = useCallback((changes) => {
+    if (changes.length === 0) return;
+    undoStackRef.current.push(changes);
+    if (undoStackRef.current.length > MAX_UNDO) undoStackRef.current.shift();
+    redoStackRef.current = []; // Nova ação limpa redo
+    persistUndoStacks();
+  }, [persistUndoStacks]);
+
+  const handleUndo = useCallback(async () => {
+    if (isProcessingRef.current) return; // Guard: evitar undo concorrente
+    const entry = undoStackRef.current.pop();
+    if (!entry) { addToast('Nada para desfazer', 'info'); return; }
+
+    isProcessingRef.current = true;
+    try {
+      // Filtrar entries de tarefas que ainda existem
+      const validEntries = entry.filter(e => tasks.some(t => t.id === e.taskId));
+      for (let i = validEntries.length - 1; i >= 0; i--) {
+        const { taskId, before } = validEntries[i];
+        await onUpdateTask(taskId, before, true); // skipInvalidation
+      }
+      redoStackRef.current.push(entry);
+      addToast('Desfeito (Ctrl+Z)', 'success');
+    } catch (err) {
+      addToast('Erro ao desfazer: ' + (err.message || 'erro'), 'error');
+      // Re-push entry que falhou para nao perder do stack
+      undoStackRef.current.push(entry);
+    } finally {
+      isProcessingRef.current = false;
+      invalidateEapTasks();
+      persistUndoStacks();
+    }
+  }, [onUpdateTask, addToast, tasks, invalidateEapTasks, persistUndoStacks]);
+
+  const handleRedo = useCallback(async () => {
+    if (isProcessingRef.current) return;
+    const entry = redoStackRef.current.pop();
+    if (!entry) { addToast('Nada para refazer', 'info'); return; }
+
+    isProcessingRef.current = true;
+    try {
+      const validEntries = entry.filter(e => tasks.some(t => t.id === e.taskId));
+      for (const { taskId, after } of validEntries) {
+        await onUpdateTask(taskId, after, true); // skipInvalidation
+      }
+      undoStackRef.current.push(entry);
+      addToast('Refeito (Ctrl+Y)', 'success');
+    } catch (err) {
+      addToast('Erro ao refazer: ' + (err.message || 'erro'), 'error');
+      redoStackRef.current.push(entry);
+    } finally {
+      isProcessingRef.current = false;
+      invalidateEapTasks();
+      persistUndoStacks();
+    }
+  }, [onUpdateTask, addToast, tasks, invalidateEapTasks, persistUndoStacks]);
 
   // Fullscreen toggle
   const toggleFullscreen = useCallback(() => {
@@ -72,6 +186,55 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
   const tree = useMemo(() => buildTaskTree(tasks), [tasks]);
   const flatTasks = useMemo(() => flattenTree(tree, collapsedIds), [tree, collapsedIds]);
 
+  // ==================== MULTI-SELECAO ====================
+  // Click = seleciona so aquela | Ctrl+Click = toggle | Shift+Click = range
+
+  const handleSelectTask = useCallback((taskId, event) => {
+    const ctrlKey = event?.ctrlKey || event?.metaKey;
+    const shiftKey = event?.shiftKey;
+
+    if (shiftKey && lastSelectedRef.current) {
+      const startIdx = flatTasks.findIndex(t => t.id === lastSelectedRef.current);
+      const endIdx = flatTasks.findIndex(t => t.id === taskId);
+      if (startIdx !== -1 && endIdx !== -1) {
+        const from = Math.min(startIdx, endIdx);
+        const to = Math.max(startIdx, endIdx);
+        const rangeIds = new Set(flatTasks.slice(from, to + 1).map(t => t.id));
+        if (ctrlKey) {
+          setSelectedTaskIds(prev => new Set([...prev, ...rangeIds]));
+        } else {
+          setSelectedTaskIds(rangeIds);
+        }
+      }
+    } else if (ctrlKey) {
+      setSelectedTaskIds(prev => {
+        const next = new Set(prev);
+        if (next.has(taskId)) next.delete(taskId);
+        else next.add(taskId);
+        return next;
+      });
+      lastSelectedRef.current = taskId;
+    } else {
+      setSelectedTaskIds(new Set([taskId]));
+      lastSelectedRef.current = taskId;
+    }
+  }, [flatTasks]);
+
+  // Helper: primeiro ID selecionado (para operacoes que precisam de um)
+  const firstSelectedId = useMemo(() => {
+    if (selectedTaskIds.size === 0) return null;
+    for (const t of flatTasks) {
+      if (selectedTaskIds.has(t.id)) return t.id;
+    }
+    return [...selectedTaskIds][0];
+  }, [selectedTaskIds, flatTasks]);
+
+  // Drag-select: arrastar pra selecionar varias (estilo Windows)
+  const handleDragSelect = useCallback((taskIds) => {
+    setSelectedTaskIds(new Set(taskIds));
+    if (taskIds.length > 0) lastSelectedRef.current = taskIds[taskIds.length - 1];
+  }, []);
+
   // Mapas de row number ↔ taskId (para predecessoras)
   const taskRowMap = useMemo(() => {
     const map = new Map();
@@ -100,18 +263,26 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     return ids;
   }, [tasks]);
 
-  // Recalcular datas dos pais (summary) ao carregar dados
+  // Recalcular datas dos pais (summary) ao carregar dados — bottom-up
   useEffect(() => {
     if (tasks.length === 0) return;
     (async () => {
-      for (const parentId of summaryIds) {
-        const parent = tasks.find(t => t.id === parentId);
+      // Ordenar pais por nivel descendente (mais profundo primeiro)
+      const sortedParentIds = [...summaryIds].sort((a, b) => {
+        const tA = tasks.find(t => t.id === a);
+        const tB = tasks.find(t => t.id === b);
+        return (tB?.level || 0) - (tA?.level || 0);
+      });
+      const workingTasks = tasks.map(t => ({ ...t }));
+      for (const parentId of sortedParentIds) {
+        const parent = workingTasks.find(t => t.id === parentId);
         if (!parent) continue;
-        const summary = calculateSummaryDates(parentId, tasks);
+        const summary = calculateSummaryDates(parentId, workingTasks);
         if (!summary) continue;
-        // Só atualizar se as datas estão diferentes
         if (parent.startDate !== summary.startDate || parent.endDate !== summary.endDate || parent.durationDays !== summary.durationDays) {
           await onUpdateTask(parentId, summary);
+          const idx = workingTasks.findIndex(t => t.id === parentId);
+          if (idx !== -1) Object.assign(workingTasks[idx], summary);
         }
       }
     })();
@@ -131,7 +302,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     const allDates = tasks
       .flatMap(t => [t.startDate, t.endDate])
       .filter(Boolean)
-      .map(d => new Date(d + 'T00:00:00'));
+      .map(d => new Date(d.includes('T') ? d : d + 'T00:00:00'));
 
     if (zoom === 'month') {
       // Zoom mes: mostrar o ano inteiro (jan-dez) do ano atual
@@ -214,7 +385,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     const level = parentTask ? parentTask.level + 1 : 0;
 
     const today = new Date().toISOString().split('T')[0];
-    const endDate = calcEndDate(today, 5);
+    const endDate = calcEndDate(today, 1);
 
     const newTask = {
       projectId: project.id,
@@ -224,7 +395,8 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
       level,
       startDate: today,
       endDate,
-      durationDays: 5,
+      durationDays: 1,
+      estimatedHours: 0,
       progress: 0,
       assignedTo: '',
       predecessors: [],
@@ -232,9 +404,9 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
 
     const result = await onCreateTask(newTask);
     if (result) {
-      setSelectedTaskId(result.id);
+      setSelectedTaskIds(new Set([result.id]));
+      lastSelectedRef.current = result.id;
       setEditingCell({ taskId: result.id, field: 'name' });
-      // Se adicionou subtarefa, expandir pai
       if (parentId) {
         setCollapsedIds(prev => {
           const next = new Set(prev);
@@ -266,7 +438,8 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
 
     const result = await onCreateTask(newTask);
     if (result) {
-      setSelectedTaskId(result.id);
+      setSelectedTaskIds(new Set([result.id]));
+      lastSelectedRef.current = result.id;
       setEditingCell({ taskId: result.id, field: 'name' });
     }
   }, [tasks, project.id, onCreateTask]);
@@ -281,22 +454,26 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
   }, [osOrders]);
 
   const handleDeleteSelectedTask = useCallback(async () => {
-    if (!selectedTaskId) return;
+    if (selectedTaskIds.size === 0) return;
 
-    // Coletar todas as tarefas a deletar (selecionada + filhos recursivos)
-    const idsToDelete = [selectedTaskId];
+    // Coletar todas as tarefas a deletar (selecionadas + filhos recursivos)
+    const idsToDelete = new Set();
     const collectChildren = (parentId) => {
       for (const t of tasks) {
         if (t.parentId === parentId) {
-          idsToDelete.push(t.id);
+          idsToDelete.add(t.id);
           collectChildren(t.id);
         }
       }
     };
-    collectChildren(selectedTaskId);
+    for (const id of selectedTaskIds) {
+      idsToDelete.add(id);
+      collectChildren(id);
+    }
 
-    // Limpar OS vinculadas: deletar se "available", manter se em andamento/concluida
+    // Limpar OS vinculadas — rastrear falhas
     let osDeleted = 0;
+    const osFailedIds = [];
     for (const id of idsToDelete) {
       const task = tasks.find(t => t.id === id);
       if (!task?.osOrderId) continue;
@@ -305,12 +482,30 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
         try {
           await deleteOSOrder(os.id);
           osDeleted++;
-        } catch { /* OS pode ja ter sido deletada */ }
+        } catch (err) {
+          osFailedIds.push(id);
+          addToast(`Falha ao remover OS "${os.title}": ${err.message || 'erro'}. A tarefa sera mantida.`, 'error');
+        }
       }
     }
 
-    // Deletar tarefas (filhos primeiro, depois pai)
-    for (const id of idsToDelete.reverse()) {
+    // Remover tarefas com OS que falharam (nao deletar para evitar orfas)
+    for (const failedId of osFailedIds) {
+      idsToDelete.delete(failedId);
+    }
+
+    if (idsToDelete.size === 0) {
+      addToast('Nenhuma tarefa deletada (falha ao remover OS vinculadas)', 'warning');
+      return;
+    }
+
+    // Deletar filhos primeiro: ordenar por level descendente
+    const sortedIds = [...idsToDelete].sort((a, b) => {
+      const tA = tasks.find(t => t.id === a);
+      const tB = tasks.find(t => t.id === b);
+      return (tB?.level || 0) - (tA?.level || 0);
+    });
+    for (const id of sortedIds) {
       await onDeleteTask(id);
     }
 
@@ -318,142 +513,296 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
       queryClient.invalidateQueries({ queryKey: queryKeys.osOrders });
     }
 
-    setSelectedTaskId(null);
-    const msg = osDeleted > 0
-      ? `Tarefa excluida (${osDeleted} OS removida${osDeleted > 1 ? 's' : ''})`
-      : 'Tarefa excluida';
+    // Limpar entries do undo/redo que referenciam tarefas deletadas
+    undoStackRef.current = undoStackRef.current
+      .map(entry => entry.filter(e => !idsToDelete.has(e.taskId)))
+      .filter(entry => entry.length > 0);
+    redoStackRef.current = redoStackRef.current
+      .map(entry => entry.filter(e => !idsToDelete.has(e.taskId)))
+      .filter(entry => entry.length > 0);
+    persistUndoStacks();
+
+    setSelectedTaskIds(new Set());
+    lastSelectedRef.current = null;
+    const count = idsToDelete.size;
+    const msg = count > 1
+      ? `${count} tarefas excluidas${osDeleted > 0 ? ` (${osDeleted} OS removida${osDeleted > 1 ? 's' : ''})` : ''}${osFailedIds.length > 0 ? ` (${osFailedIds.length} mantida${osFailedIds.length > 1 ? 's' : ''} por erro na OS)` : ''}`
+      : `Tarefa excluida${osDeleted > 0 ? ` (${osDeleted} OS removida${osDeleted > 1 ? 's' : ''})` : ''}`;
     addToast(msg, 'success');
-  }, [selectedTaskId, tasks, osMap, onDeleteTask, addToast, queryClient]);
+  }, [selectedTaskIds, tasks, osMap, onDeleteTask, addToast, queryClient]);
 
   const handleIndent = useCallback(async () => {
-    if (!selectedTaskId) return;
-    const task = tasks.find(t => t.id === selectedTaskId);
-    if (!task) return;
+    if (selectedTaskIds.size === 0 || isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    const undoChanges = [];
 
-    // Encontrar a tarefa anterior no mesmo nivel
-    const siblings = tasks
-      .filter(t => t.parentId === task.parentId)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-    const idx = siblings.findIndex(t => t.id === task.id);
-    if (idx <= 0) return; // Nao pode indentar a primeira
+    try {
+      for (const t of flatTasks) {
+        if (!selectedTaskIds.has(t.id)) continue;
+        const task = tasks.find(tk => tk.id === t.id);
+        if (!task) continue;
 
-    const newParent = siblings[idx - 1];
-    await onUpdateTask(task.id, {
-      parentId: newParent.id,
-      level: (newParent.level || 0) + 1,
-    });
-    // Expandir novo pai
-    setCollapsedIds(prev => {
-      const next = new Set(prev);
-      next.delete(newParent.id);
-      return next;
-    });
-  }, [selectedTaskId, tasks, onUpdateTask]);
+        const siblings = tasks
+          .filter(s => s.parentId === task.parentId)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+        const idx = siblings.findIndex(s => s.id === task.id);
+        if (idx <= 0) continue;
+
+        const newParent = siblings[idx - 1];
+        const before = { parentId: task.parentId, level: task.level };
+        const after = { parentId: newParent.id, level: (newParent.level || 0) + 1 };
+
+        undoChanges.push({ taskId: task.id, before, after });
+        await onUpdateTask(task.id, after, true); // skipInvalidation
+
+        setCollapsedIds(prev => {
+          const next = new Set(prev);
+          next.delete(newParent.id);
+          return next;
+        });
+      }
+
+      if (undoChanges.length > 0) recordUndo(undoChanges);
+    } catch (err) {
+      addToast('Erro ao indentar: ' + (err.message || 'erro'), 'error');
+    } finally {
+      isProcessingRef.current = false;
+      invalidateEapTasks();
+    }
+  }, [selectedTaskIds, flatTasks, tasks, onUpdateTask, recordUndo, addToast, invalidateEapTasks]);
 
   const handleOutdent = useCallback(async () => {
-    if (!selectedTaskId) return;
-    const task = tasks.find(t => t.id === selectedTaskId);
-    if (!task || !task.parentId) return;
+    if (selectedTaskIds.size === 0 || isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    const undoChanges = [];
 
-    const parent = tasks.find(t => t.id === task.parentId);
-    if (!parent) return;
+    try {
+      for (const t of flatTasks) {
+        if (!selectedTaskIds.has(t.id)) continue;
+        const task = tasks.find(tk => tk.id === t.id);
+        if (!task || !task.parentId) continue;
 
-    await onUpdateTask(task.id, {
-      parentId: parent.parentId || null,
-      level: Math.max(0, (parent.level || 0)),
-    });
-  }, [selectedTaskId, tasks, onUpdateTask]);
+        const parent = tasks.find(p => p.id === task.parentId);
+        if (!parent) continue;
+
+        const before = { parentId: task.parentId, level: task.level };
+        const after = { parentId: parent.parentId || null, level: Math.max(0, (parent.level || 0)) };
+
+        undoChanges.push({ taskId: task.id, before, after });
+        await onUpdateTask(task.id, after, true); // skipInvalidation
+      }
+
+      if (undoChanges.length > 0) recordUndo(undoChanges);
+    } catch (err) {
+      addToast('Erro ao desindentar: ' + (err.message || 'erro'), 'error');
+    } finally {
+      isProcessingRef.current = false;
+      invalidateEapTasks();
+    }
+  }, [selectedTaskIds, flatTasks, tasks, onUpdateTask, recordUndo, addToast, invalidateEapTasks]);
 
   const handleCellEdit = useCallback(async (taskId, field, value) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
+    const undoChanges = [];
+    const completedUpdates = []; // Track updates que deram certo (para rollback)
     const updates = {};
 
     // Predecessoras: parsear texto para array
     if (field === 'predecessors') {
-      updates.predecessors = parsePredecessors(value, rowTaskMap);
+      const parsed = parsePredecessors(value, rowTaskMap);
+      // Validar dependencias circulares antes de salvar
+      if (parsed.length > 0 && detectCircularDependency(taskId, parsed, tasks)) {
+        addToast('Dependencia circular detectada! Esta predecessora criaria um ciclo.', 'error');
+        setEditingCell(null);
+        return;
+      }
+      updates.predecessors = parsed;
     } else {
       updates[field] = value;
     }
 
     // Auto-calculo de datas/duracao
     if (field === 'estimatedHours') {
-      // Salvar horas reais + recalcular dias
       updates.estimatedHours = value;
       const days = Math.max(1, Math.ceil(value / 8));
       updates.durationDays = days;
       if (task.startDate) {
         updates.endDate = calcEndDate(task.startDate, days);
       }
-    } else if (field === 'startDate' && task.durationDays > 0) {
-      updates.endDate = calcEndDate(value, task.durationDays);
+    } else if (field === 'startDate') {
+      if (task.endDate) {
+        const days = calcDuration(value, task.endDate);
+        updates.durationDays = days;
+        updates.estimatedHours = calcWorkHours(value, task.endDate);
+      } else if (task.durationDays > 0) {
+        updates.endDate = calcEndDate(value, task.durationDays);
+      }
     } else if (field === 'endDate' && task.startDate) {
-      updates.durationDays = calcDuration(task.startDate, value);
-      updates.estimatedHours = calcDuration(task.startDate, value) * 8;
+      const days = calcDuration(task.startDate, value);
+      updates.durationDays = days;
+      updates.estimatedHours = calcWorkHours(task.startDate, value);
     } else if (field === 'durationDays' && task.startDate) {
       updates.endDate = calcEndDate(task.startDate, value);
-      updates.estimatedHours = value * 8;
+      updates.estimatedHours = calcWorkHours(task.startDate, calcEndDate(task.startDate, value));
     }
 
-    await onUpdateTask(taskId, updates);
+    // Undo: capturar estado anterior da tarefa principal
+    const beforeMain = {};
+    for (const key of Object.keys(updates)) beforeMain[key] = task[key];
+    undoChanges.push({ taskId, before: beforeMain, after: { ...updates } });
 
-    // Recalcular pai se necessario
-    if (task.parentId && ['startDate', 'endDate', 'durationDays', 'estimatedHours', 'progress'].includes(field)) {
-      const summary = calculateSummaryDates(task.parentId, tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
-      if (summary) {
-        await onUpdateTask(task.parentId, summary);
+    try {
+      // Primeira atualizacao: a edicao principal (esta dispara invalidation normal)
+      await onUpdateTask(taskId, updates);
+      completedUpdates.push({ taskId, before: beforeMain });
+
+      // Recalcular pais recursivamente na hierarquia (bottom-up)
+      if (task.parentId && ['startDate', 'endDate', 'durationDays', 'estimatedHours', 'progress'].includes(field)) {
+        const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, ...updates } : t);
+        const { changes: parentChanges, completedOps } = await propagateSummaryUp(task.parentId, updatedTasks);
+        undoChanges.push(...parentChanges);
+        completedUpdates.push(...completedOps);
       }
-    }
 
-    // Auto-scheduling: propagar datas quando predecessoras ou datas mudam
-    if (['predecessors', 'startDate', 'endDate', 'durationDays', 'estimatedHours'].includes(field)) {
-      const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, ...updates } : t);
-      const scheduleUpdates = autoScheduleTasks(updatedTasks);
-      for (const su of scheduleUpdates) {
-        if (su.id !== taskId) {
-          await onUpdateTask(su.id, { startDate: su.startDate, endDate: su.endDate });
+      // Auto-scheduling: propagar datas quando predecessoras ou datas mudam
+      if (['predecessors', 'startDate', 'endDate', 'durationDays', 'estimatedHours'].includes(field)) {
+        let updatedTasks2 = tasks.map(t => t.id === taskId ? { ...t, ...updates } : t);
+        const scheduleUpdates = autoScheduleTasks(updatedTasks2);
+        for (const su of scheduleUpdates) {
+          if (su.id === taskId && field !== 'predecessors') continue;
+
+          const suTask = tasks.find(t => t.id === su.id);
+          if (suTask) {
+            undoChanges.push({
+              taskId: su.id,
+              before: { startDate: suTask.startDate, endDate: suTask.endDate },
+              after: { startDate: su.startDate, endDate: su.endDate },
+            });
+          }
+          await onUpdateTask(su.id, { startDate: su.startDate, endDate: su.endDate }, true);
+          if (suTask) completedUpdates.push({ taskId: su.id, before: { startDate: suTask.startDate, endDate: suTask.endDate } });
+          updatedTasks2 = updatedTasks2.map(t => t.id === su.id ? { ...t, startDate: su.startDate, endDate: su.endDate } : t);
         }
-      }
-    }
 
+        // Propagar datas dos pais recursivamente (todas as tarefas afetadas)
+        const affectedParentIds = new Set();
+        if (task.parentId) affectedParentIds.add(task.parentId);
+        for (const su of scheduleUpdates) {
+          const suTask = updatedTasks2.find(t => t.id === su.id);
+          if (suTask?.parentId) affectedParentIds.add(suTask.parentId);
+        }
+        const sortedParents = [...affectedParentIds].sort((a, b) => {
+          const tA = updatedTasks2.find(t => t.id === a);
+          const tB = updatedTasks2.find(t => t.id === b);
+          return (tB?.level || 0) - (tA?.level || 0);
+        });
+        const propagated = new Set();
+        for (const pid of sortedParents) {
+          if (propagated.has(pid)) continue;
+          const { changes: pCh, completedOps: pOps } = await propagateSummaryUp(pid, updatedTasks2);
+          for (const ch of pCh) {
+            propagated.add(ch.taskId);
+            updatedTasks2 = updatedTasks2.map(t => t.id === ch.taskId ? { ...t, ...ch.after } : t);
+          }
+          undoChanges.push(...pCh);
+          completedUpdates.push(...pOps);
+        }
+
+        invalidateEapTasks();
+      }
+
+      recordUndo(undoChanges);
+    } catch (err) {
+      // Rollback: reverter updates que ja foram pro servidor
+      if (completedUpdates.length > 0) {
+        addToast('Erro parcial — revertendo alteracoes...', 'warning');
+        for (let i = completedUpdates.length - 1; i >= 0; i--) {
+          try {
+            await onUpdateTask(completedUpdates[i].taskId, completedUpdates[i].before, true);
+          } catch { /* rollback best-effort */ }
+        }
+        invalidateEapTasks();
+      }
+      addToast('Erro ao salvar: ' + (err.message || 'erro'), 'error');
+    }
     setEditingCell(null);
-  }, [tasks, onUpdateTask, rowTaskMap]);
+  }, [tasks, onUpdateTask, rowTaskMap, recordUndo, addToast, invalidateEapTasks, propagateSummaryUp]);
 
   // Drag na barra do gantt
   const handleBarDrag = useCallback(async (taskId, newStartDate, newEndDate) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const undoChanges = [];
+    const completedUpdates = [];
     const duration = calcDuration(newStartDate, newEndDate);
-    await onUpdateTask(taskId, {
-      startDate: newStartDate,
-      endDate: newEndDate,
-      durationDays: duration,
+    const dragUpdates = { startDate: newStartDate, endDate: newEndDate, durationDays: duration };
+
+    undoChanges.push({
+      taskId,
+      before: { startDate: task.startDate, endDate: task.endDate, durationDays: task.durationDays },
+      after: { ...dragUpdates },
     });
 
-    const task = tasks.find(t => t.id === taskId);
-    if (task?.parentId) {
-      const updated = tasks.map(t => t.id === taskId ? { ...t, startDate: newStartDate, endDate: newEndDate, durationDays: duration } : t);
-      const summary = calculateSummaryDates(task.parentId, updated);
-      if (summary) {
-        await onUpdateTask(task.parentId, summary);
-      }
-    }
+    try {
+      // Primeira atualizacao: dispara invalidation normal
+      await onUpdateTask(taskId, dragUpdates);
+      completedUpdates.push({ taskId, before: { startDate: task.startDate, endDate: task.endDate, durationDays: task.durationDays } });
 
-    // Auto-scheduling: propagar para tarefas successoras
-    const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, startDate: newStartDate, endDate: newEndDate, durationDays: duration } : t);
-    const scheduleUpdates = autoScheduleTasks(updatedTasks);
-    for (const su of scheduleUpdates) {
-      if (su.id !== taskId) {
-        await onUpdateTask(su.id, { startDate: su.startDate, endDate: su.endDate });
+      // Propagar datas dos pais recursivamente na hierarquia
+      if (task.parentId) {
+        const updated = tasks.map(t => t.id === taskId ? { ...t, ...dragUpdates } : t);
+        const { changes: parentChanges, completedOps } = await propagateSummaryUp(task.parentId, updated);
+        undoChanges.push(...parentChanges);
+        completedUpdates.push(...completedOps);
       }
+
+      const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, ...dragUpdates } : t);
+      const scheduleUpdates = autoScheduleTasks(updatedTasks);
+      for (const su of scheduleUpdates) {
+        if (su.id !== taskId) {
+          const suTask = tasks.find(t => t.id === su.id);
+          if (suTask) {
+            undoChanges.push({
+              taskId: su.id,
+              before: { startDate: suTask.startDate, endDate: suTask.endDate },
+              after: { startDate: su.startDate, endDate: su.endDate },
+            });
+          }
+          await onUpdateTask(su.id, { startDate: su.startDate, endDate: su.endDate }, true);
+          if (suTask) completedUpdates.push({ taskId: su.id, before: { startDate: suTask.startDate, endDate: suTask.endDate } });
+        }
+      }
+
+      // Invalidar uma vez no final do batch
+      if (scheduleUpdates.length > 0 || task.parentId) {
+        invalidateEapTasks();
+      }
+
+      recordUndo(undoChanges);
+    } catch (err) {
+      // Rollback: reverter updates que ja foram pro servidor
+      if (completedUpdates.length > 0) {
+        addToast('Erro parcial ao mover — revertendo...', 'warning');
+        for (let i = completedUpdates.length - 1; i >= 0; i--) {
+          try {
+            await onUpdateTask(completedUpdates[i].taskId, completedUpdates[i].before, true);
+          } catch { /* rollback best-effort */ }
+        }
+        invalidateEapTasks();
+      }
+      addToast('Erro ao mover tarefa: ' + (err.message || 'erro'), 'error');
     }
-  }, [tasks, onUpdateTask]);
+  }, [tasks, onUpdateTask, recordUndo, addToast, invalidateEapTasks, propagateSummaryUp]);
 
   // ==================== PONTE EAP → OS ====================
 
-  // Gerar OS a partir da tarefa selecionada
+  // Gerar OS a partir da tarefa selecionada (usa a primeira da selecao)
   const handleGenerateOS = useCallback(async () => {
-    if (!selectedTaskId) return;
-    const task = tasks.find(t => t.id === selectedTaskId);
+    if (!firstSelectedId) return;
+    const task = tasks.find(t => t.id === firstSelectedId);
     if (!task) return;
 
     if (task.osOrderId) {
@@ -461,7 +810,6 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
       return;
     }
 
-    // Nao gerar OS para tarefas raiz (level 0) - elas sao Projetos
     if (task.level === 0 && summaryIds.has(task.id)) {
       addToast('Tarefas raiz viram Projetos de OS. Selecione uma atividade (nivel 1+) para gerar OS.', 'warning');
       return;
@@ -470,7 +818,6 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     try {
       const os = await generateOSFromTask(task, project.name, tasks);
       if (os) {
-        // Invalidar caches para refletir a nova OS, o projeto e o vinculo na tarefa
         queryClient.invalidateQueries({ queryKey: queryKeys.osOrders });
         queryClient.invalidateQueries({ queryKey: queryKeys.osProjects });
         queryClient.invalidateQueries({ queryKey: queryKeys.eapTasks });
@@ -485,36 +832,89 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     } catch (err) {
       addToast('Erro ao gerar OS: ' + (err.message || 'erro desconhecido'), 'error');
     }
-  }, [selectedTaskId, tasks, summaryIds, project.name, addToast, queryClient]);
+  }, [firstSelectedId, tasks, summaryIds, project.name, addToast, queryClient]);
 
-  // Sincronizar progresso das tarefas com status das OS
+  // Sincronizar progresso bidirecional: EAP ↔ OS
   const handleSyncProgress = useCallback(async () => {
-    const updates = syncProgressFromOS(tasks, osOrders);
-    if (updates.length === 0) {
+    const { eapUpdates, osUpdates } = syncProgressFromOS(tasks, osOrders);
+    if (eapUpdates.length === 0 && osUpdates.length === 0) {
       addToast('Tudo sincronizado - nenhuma alteracao necessaria', 'info');
       return;
     }
 
-    let count = 0;
-    for (const { id, progress } of updates) {
-      await onUpdateTask(id, { progress });
-      count++;
+    try {
+      let eapCount = 0;
+      let osCount = 0;
+
+      // Sync OS → EAP (atualizar progresso das tarefas)
+      for (const { id, progress } of eapUpdates) {
+        await onUpdateTask(id, { progress }, true);
+        eapCount++;
+      }
+
+      // Sync EAP → OS (atualizar status das OS)
+      for (const { id, status } of osUpdates) {
+        try {
+          await updateOSOrder(id, { status });
+          osCount++;
+        } catch (err) {
+          addToast(`Falha ao atualizar OS: ${err.message || 'erro'}`, 'error');
+        }
+      }
+
+      if (eapCount > 0) invalidateEapTasks();
+      if (osCount > 0) queryClient.invalidateQueries({ queryKey: queryKeys.osOrders });
+
+      const msgs = [];
+      if (eapCount > 0) msgs.push(`${eapCount} tarefa${eapCount > 1 ? 's' : ''} atualizada${eapCount > 1 ? 's' : ''}`);
+      if (osCount > 0) msgs.push(`${osCount} OS atualizada${osCount > 1 ? 's' : ''}`);
+      addToast(`Sincronizado: ${msgs.join(', ')}`, 'success');
+    } catch (err) {
+      addToast('Erro ao sincronizar: ' + (err.message || 'erro'), 'error');
+      invalidateEapTasks();
     }
-    addToast(`${count} tarefa${count > 1 ? 's' : ''} sincronizada${count > 1 ? 's' : ''} com as OS`, 'success');
-  }, [tasks, osOrders, onUpdateTask, addToast]);
+  }, [tasks, osOrders, onUpdateTask, addToast, invalidateEapTasks, queryClient]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Ctrl+Z / Ctrl+Y funcionam sempre (mesmo editando)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
       if (editingCell) return; // Nao interceptar quando editando
 
-      if (e.key === 'Delete' && selectedTaskId) {
+      // Ctrl+A: selecionar todas
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        setSelectedTaskIds(new Set(flatTasks.map(t => t.id)));
+        return;
+      }
+
+      // Escape: limpar selecao
+      if (e.key === 'Escape') {
+        setSelectedTaskIds(new Set());
+        lastSelectedRef.current = null;
+        return;
+      }
+
+      if (e.key === 'Delete' && selectedTaskIds.size > 0) {
         e.preventDefault();
         handleDeleteSelectedTask();
       } else if (e.key === 'Insert') {
         e.preventDefault();
-        handleAddTask(null);
-      } else if (e.key === 'Tab' && selectedTaskId) {
+        // Insert cria IRMA da selecionada (mesmo pai), igual MS Project
+        const sel = firstSelectedId ? tasks.find(t => t.id === firstSelectedId) : null;
+        handleAddTask(sel ? sel.parentId : null);
+      } else if (e.key === 'Tab' && selectedTaskIds.size > 0) {
         e.preventDefault();
         if (e.shiftKey) handleOutdent();
         else handleIndent();
@@ -523,7 +923,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editingCell, selectedTaskId, handleDeleteSelectedTask, handleAddTask, handleOutdent, handleIndent]);
+  }, [editingCell, selectedTaskIds, flatTasks, firstSelectedId, tasks, handleDeleteSelectedTask, handleAddTask, handleOutdent, handleIndent, handleUndo, handleRedo]);
 
   // ==================== RENDER ====================
 
@@ -533,21 +933,26 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
       <GanttToolbar
         zoom={zoom}
         onZoomChange={setZoom}
-        onAddTask={() => handleAddTask(null)}
-        onAddSubTask={() => handleAddTask(selectedTaskId)}
+        onAddTask={() => {
+          // Botao "Tarefa": cria irma da selecionada (mesmo pai)
+          const sel = firstSelectedId ? tasks.find(t => t.id === firstSelectedId) : null;
+          handleAddTask(sel ? sel.parentId : null);
+        }}
+        onAddSubTask={() => handleAddTask(firstSelectedId)}
         onAddMilestone={handleAddMilestone}
         onDeleteTask={handleDeleteSelectedTask}
         onIndent={handleIndent}
         onOutdent={handleOutdent}
         showCriticalPath={showCriticalPath}
         onToggleCriticalPath={() => setShowCriticalPath(p => !p)}
-        hasSelection={!!selectedTaskId}
+        hasSelection={selectedTaskIds.size > 0}
+        selectionCount={selectedTaskIds.size}
         teamMembers={teamMembers}
         filterAssignee={filterAssignee}
         onFilterAssignee={setFilterAssignee}
         onGenerateOS={handleGenerateOS}
         onSyncProgress={handleSyncProgress}
-        selectedTask={selectedTaskId ? tasks.find(t => t.id === selectedTaskId) : null}
+        selectedTask={firstSelectedId ? tasks.find(t => t.id === firstSelectedId) : null}
         summaryIds={summaryIds}
         hiddenColumns={hiddenColumns}
         onToggleColumn={handleToggleColumn}
@@ -568,7 +973,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
             allTasks={tasks}
             summaryIds={summaryIds}
             collapsedIds={collapsedIds}
-            selectedTaskId={selectedTaskId}
+            selectedTaskIds={selectedTaskIds}
             editingCell={editingCell}
             criticalIds={criticalIds}
             showCriticalPath={showCriticalPath}
@@ -577,7 +982,8 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
             taskRowMap={taskRowMap}
             hiddenColumns={hiddenColumns}
             rowHeight={ROW_HEIGHT}
-            onSelectTask={setSelectedTaskId}
+            onSelectTask={handleSelectTask}
+            onDragSelect={handleDragSelect}
             onToggleCollapse={handleToggleCollapse}
             onEditCell={setEditingCell}
             onCellChange={handleCellEdit}
@@ -600,12 +1006,12 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
             summaryIds={summaryIds}
             criticalIds={criticalIds}
             showCriticalPath={showCriticalPath}
-            selectedTaskId={selectedTaskId}
+            selectedTaskIds={selectedTaskIds}
             dateRange={dateRange}
             zoom={zoom}
             zoomConfig={ZOOM_CONFIGS[zoom]}
             rowHeight={ROW_HEIGHT}
-            onSelectTask={setSelectedTaskId}
+            onSelectTask={handleSelectTask}
             onBarDrag={handleBarDrag}
             onScroll={handleTimelineScroll}
           />
@@ -625,10 +1031,11 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
             const linked = tasks.filter(t => t.osOrderId).length;
             return linked > 0 ? <span className="text-emerald-500">{linked} OS vinculada{linked > 1 ? 's' : ''}</span> : null;
           })()}
+          {selectedTaskIds.size > 1 && <span className="text-blue-500 font-medium">{selectedTaskIds.size} selecionadas</span>}
           {showCriticalPath && <span className="text-red-500">Caminho Critico ativo</span>}
         </div>
         <div className="flex items-center gap-3">
-          <span>Tab: Indentar | Shift+Tab: Recuar | Insert: Nova Tarefa | Delete: Excluir</span>
+          <span>Ctrl+Z: Desfazer | Ctrl+A: Selecionar Tudo | Ctrl+Click: Multi | Shift+Click: Range</span>
         </div>
       </div>
     </div>

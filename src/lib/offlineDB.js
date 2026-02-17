@@ -28,6 +28,10 @@ db.version(2).stores({
   clients: 'id, name, email, company',
 });
 
+db.version(3).stores({
+  eap_undo_history: 'id',
+});
+
 // ==================== OPERACOES ====================
 
 /**
