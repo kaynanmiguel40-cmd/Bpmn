@@ -6,6 +6,7 @@ import { getNotifications, markAsRead, markAllAsRead, deleteNotification, getUnr
 import { getClients, createClient, updateClient, deleteClient } from '../lib/clientService';
 import { getAllActivities } from '../lib/activityLogService';
 import { getHistory as getKPIHistory } from '../lib/kpiSnapshotService';
+import { getEapProjects, createEapProject, updateEapProject, deleteEapProject, getEapTasks, createEapTask, updateEapTask, deleteEapTask } from '../lib/eapService';
 
 // ==================== QUERY KEYS ====================
 
@@ -20,6 +21,8 @@ export const queryKeys = {
   activities: ['activities'],
   clients: ['clients'],
   kpiHistory: ['kpiHistory'],
+  eapProjects: ['eapProjects'],
+  eapTasks: ['eapTasks'],
 };
 
 // ==================== OS ORDERS ====================
@@ -294,5 +297,73 @@ export function useKPIHistory(limit = 12) {
     queryKey: [...queryKeys.kpiHistory, limit],
     queryFn: () => getKPIHistory(limit),
     staleTime: 120_000,
+  });
+}
+
+// ==================== EAP PROJECTS ====================
+
+export function useEapProjects() {
+  return useQuery({
+    queryKey: queryKeys.eapProjects,
+    queryFn: getEapProjects,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateEapProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createEapProject,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapProjects }),
+  });
+}
+
+export function useUpdateEapProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateEapProject(id, updates),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapProjects }),
+  });
+}
+
+export function useDeleteEapProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteEapProject,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapProjects }),
+  });
+}
+
+// ==================== EAP TASKS ====================
+
+export function useEapTasks() {
+  return useQuery({
+    queryKey: queryKeys.eapTasks,
+    queryFn: getEapTasks,
+    staleTime: 15_000,
+  });
+}
+
+export function useCreateEapTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createEapTask,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapTasks }),
+  });
+}
+
+export function useUpdateEapTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateEapTask(id, updates),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapTasks }),
+  });
+}
+
+export function useDeleteEapTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteEapTask,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapTasks }),
   });
 }

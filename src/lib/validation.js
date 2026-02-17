@@ -157,6 +157,41 @@ export const clientSchema = z.object({
   notes: z.string().optional().default(''),
 }).passthrough();
 
+// ==================== EAP / GANTT ====================
+
+export const eapProjectSchema = z.object({
+  name: z.string().min(1, 'Nome do projeto e obrigatorio'),
+  description: z.string().optional().default(''),
+  startDate: z.string().nullable().optional().default(null),
+  endDate: z.string().nullable().optional().default(null),
+  status: z.enum(['planning', 'active', 'completed', 'on_hold']).default('planning'),
+  color: z.string().optional().default('#3b82f6'),
+  createdBy: z.string().optional().default(''),
+}).passthrough();
+
+export const eapTaskSchema = z.object({
+  name: z.string().min(1, 'Nome da tarefa e obrigatorio'),
+  projectId: z.string().min(1, 'Projeto e obrigatorio'),
+  wbsNumber: z.string().optional().default(''),
+  parentId: z.string().nullable().optional().default(null),
+  sortOrder: z.number().optional().default(0),
+  level: z.number().optional().default(0),
+  isMilestone: z.boolean().optional().default(false),
+  startDate: z.string().nullable().optional().default(null),
+  endDate: z.string().nullable().optional().default(null),
+  durationDays: z.number().min(0).optional().default(1),
+  progress: z.number().min(0).max(100).optional().default(0),
+  assignedTo: z.string().optional().default(''),
+  predecessors: z.array(z.object({
+    taskId: z.string(),
+    type: z.enum(['FS', 'SS', 'FF', 'SF']).default('FS'),
+    lag: z.number().default(0),
+  })).optional().default([]),
+  notes: z.string().optional().default(''),
+  color: z.string().optional().default(''),
+  osOrderId: z.string().nullable().optional().default(null),
+}).passthrough();
+
 // ==================== VALIDACAO + SANITIZACAO ====================
 
 /**

@@ -95,18 +95,17 @@ export function AuthProvider({ children }) {
       if (error) throw error;
       return { success: true, data };
     } catch (err) {
-      // Fallback local: permite acesso offline quando Supabase nao esta disponivel
-      // Role 'viewer' por seguranca — sem permissao de escrita em modo offline
-      const localUser = { id: 'local_' + email, email };
-      setUser(localUser);
-      setProfile({
-        id: localUser.id,
-        email,
-        full_name: email.split('@')[0],
-        role: 'viewer',
-        isOffline: true,
-      });
-      return { success: true, data: { user: localUser }, offline: true };
+      const msg = err.message || 'Erro ao fazer login';
+      // Traduzir erros comuns do Supabase para portugues
+      const translated =
+        msg.includes('Invalid login credentials') ? 'Email ou senha incorretos' :
+        msg.includes('Email not confirmed') ? 'Email ainda nao confirmado. Verifique sua caixa de entrada.' :
+        msg.includes('Too many requests') ? 'Muitas tentativas. Aguarde alguns minutos.' :
+        msg.includes('User not found') ? 'Usuario nao encontrado' :
+        msg.includes('Network') || msg.includes('fetch') ? 'Erro de conexao. Verifique sua internet.' :
+        msg;
+      setError(translated);
+      return { success: false, error: translated };
     }
   };
 

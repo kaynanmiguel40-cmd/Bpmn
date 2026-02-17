@@ -23,6 +23,7 @@ const routeTitles = {
   '/routine': 'Minha Rotina',
   '/agenda': 'Agenda',
   '/financial': 'Ordens de Servico',
+  '/eap': 'EAP - Grafico de Gantt',
   '/reports': 'Relatorios',
   '/my-day': 'Meu Dia',
   '/settings': 'Configuracoes'

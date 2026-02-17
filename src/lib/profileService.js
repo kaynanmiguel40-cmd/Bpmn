@@ -22,9 +22,9 @@ export function dbToProfile(row) {
 
 // ==================== HELPERS ====================
 
-async function getCurrentUserId() {
+async function getCurrentUser() {
   const { data: { user } } = await supabase.auth.getUser();
-  return user?.id || null;
+  return { id: user?.id || null, email: user?.email || null };
 }
 
 function localKey(userId) {
@@ -36,7 +36,7 @@ function localKey(userId) {
 // Usa upsert e dispara evento no window.
 
 export async function getProfile() {
-  const userId = await getCurrentUserId();
+  const { id: userId, email: authEmail } = await getCurrentUser();
 
   if (!userId) {
     try {
@@ -78,17 +78,19 @@ export async function getProfile() {
       .single();
     teamMember = tmById;
 
-    if (!teamMember && authProfile?.email) {
+    // Buscar por email: usar authProfile.email OU authEmail (direto do auth)
+    const searchEmail = authProfile?.email || authEmail;
+    if (!teamMember && searchEmail) {
       const { data: tmByEmail } = await supabase
         .from('team_members')
         .select('name, role, salary_month, hours_month, email')
-        .eq('email', authProfile.email)
+        .eq('email', searchEmail)
         .single();
       teamMember = tmByEmail;
     }
 
     const bestName = authProfile?.full_name || teamMember?.name || '';
-    const bestEmail = teamMember?.email || authProfile?.email || '';
+    const bestEmail = teamMember?.email || authProfile?.email || authEmail || '';
 
     if (bestName) {
       const autoProfile = {
@@ -138,7 +140,7 @@ export async function getProfile() {
 }
 
 export async function saveProfile(profile) {
-  const userId = await getCurrentUserId();
+  const { id: userId } = await getCurrentUser();
   const id = userId || profile.id || 'default';
 
   const row = {
