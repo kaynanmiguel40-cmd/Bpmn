@@ -135,11 +135,63 @@ function formatCurrency(value) {
   return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// Calcula horas uteis entre duas datas (seg-sex, 08:00-18:00)
+function calcWorkingHoursBetween(startStr, endStr) {
+  const WORK_START = 8;  // 08:00
+  const WORK_END = 18;   // 18:00
+  const WORK_HOURS_PER_DAY = WORK_END - WORK_START; // 10h
+
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  if (end <= start) return 0;
+
+  // Mesmo dia
+  if (start.toDateString() === end.toDateString()) {
+    const day = start.getDay();
+    if (day === 0 || day === 6) return 0; // fim de semana
+    const s = Math.max(start.getHours() + start.getMinutes() / 60, WORK_START);
+    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END);
+    return Math.max(0, e - s);
+  }
+
+  // Multiplos dias
+  let totalHours = 0;
+  const current = new Date(start);
+
+  // Primeiro dia: do inicio ate 18:00
+  if (current.getDay() !== 0 && current.getDay() !== 6) {
+    const s = Math.max(current.getHours() + current.getMinutes() / 60, WORK_START);
+    totalHours += Math.max(0, WORK_END - s);
+  }
+
+  // Dias intermediarios: 10h cada dia util
+  current.setDate(current.getDate() + 1);
+  current.setHours(0, 0, 0, 0);
+  const endDay = new Date(end);
+  endDay.setHours(0, 0, 0, 0);
+
+  while (current < endDay) {
+    const day = current.getDay();
+    if (day !== 0 && day !== 6) {
+      totalHours += WORK_HOURS_PER_DAY;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  // Ultimo dia: de 08:00 ate o fim
+  if (end.getDay() !== 0 && end.getDay() !== 6) {
+    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END);
+    totalHours += Math.max(0, e - WORK_START);
+  }
+
+  return totalHours;
+}
+
 function calcOSHours(order) {
-  // Prioridade 1: actualStart/actualEnd (tempo real total, mais confiavel)
+  // Prioridade 1: actualStart/actualEnd (horas uteis, 08-18h seg-sex)
   if (order.actualStart && order.actualEnd) {
-    const diffMs = new Date(order.actualEnd) - new Date(order.actualStart);
-    if (diffMs > 0) return diffMs / (1000 * 60 * 60);
+    const hours = calcWorkingHoursBetween(order.actualStart, order.actualEnd);
+    if (hours > 0) return hours;
   }
   // Prioridade 2: soma do checklist (quando nao tem datas reais)
   const cl = order.checklist || [];
@@ -1045,6 +1097,7 @@ export default function FinancialPage() {
                         <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Responsavel</th>
                         <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-green-500 uppercase tracking-wider">Inicio Real</th>
                         <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-green-500 uppercase tracking-wider">Fim Real</th>
+                        <th className="text-center px-4 py-2.5 text-[10px] font-semibold text-blue-400 uppercase tracking-wider">Previsto vs Real</th>
                         {canViewCosts && <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-amber-500 uppercase tracking-wider">Custo</th>}
                       </tr>
                     </thead>
@@ -1080,6 +1133,49 @@ export default function FinancialPage() {
                             </td>
                             <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{formatDate(order.actualStart)}</td>
                             <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{formatDate(order.actualEnd)}</td>
+                            <td className="px-4 py-2.5 text-center">
+                              {(() => {
+                                const fmtDur = (h) => {
+                                  if (!h || h <= 0) return '-';
+                                  if (h < 1) return `${Math.round(h * 60)}min`;
+                                  const hrs = Math.floor(h);
+                                  const mins = Math.round((h - hrs) * 60);
+                                  return mins > 0 ? `${hrs}h${mins}m` : `${hrs}h`;
+                                };
+                                const realHours = calcOSHours(order);
+                                // Previsto: estimatedStart/End ou leadTimeHours
+                                let estHours = 0;
+                                if (order.estimatedStart && order.estimatedEnd) {
+                                  const diffMs = new Date(order.estimatedEnd) - new Date(order.estimatedStart);
+                                  if (diffMs > 0) estHours = diffMs / (1000 * 60 * 60);
+                                }
+                                if (!estHours && order.leadTimeHours) estHours = order.leadTimeHours;
+
+                                if (!estHours && !realHours) return <span className="text-slate-400">-</span>;
+                                if (!estHours) return <span className="text-slate-400 text-[10px]">Real: {fmtDur(realHours)}</span>;
+
+                                const diff = realHours - estHours;
+                                const isEarly = diff < 0;
+                                const isLate = diff > 0;
+                                return (
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                      <span className="text-slate-400">{fmtDur(estHours)}</span>
+                                      <span className="text-slate-500">→</span>
+                                      <span className="text-slate-300 font-medium">{fmtDur(realHours)}</span>
+                                    </div>
+                                    {diff !== 0 && (
+                                      <span className={`text-[9px] font-bold ${isEarly ? 'text-emerald-500' : 'text-red-400'}`}>
+                                        {isEarly ? '▼' : '▲'} {fmtDur(Math.abs(diff))} {isEarly ? 'antes' : 'a mais'}
+                                      </span>
+                                    )}
+                                    {diff === 0 && (
+                                      <span className="text-[9px] font-bold text-blue-400">= no prazo</span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </td>
                             {canViewCosts && (
                             <td className="px-4 py-2.5 text-right">
                               {(() => {
@@ -1112,7 +1208,7 @@ export default function FinancialPage() {
                     {canViewCosts && (
                     <tfoot>
                       <tr className="bg-slate-50 dark:bg-slate-800/50 border-t-2 border-slate-300 dark:border-slate-600">
-                        <td colSpan="6" className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Total</td>
+                        <td colSpan="7" className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Total</td>
                         <td className="px-4 py-2.5 text-right">
                           <span className="text-sm font-bold text-blue-600">
                             {formatCurrency(doneOrders.reduce((sum, o) => sum + calcOSCost(o, allMembers).totalCost, 0))}
