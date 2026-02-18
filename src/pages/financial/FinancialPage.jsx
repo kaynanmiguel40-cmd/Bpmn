@@ -88,7 +88,7 @@ const EMPTY_FORM = {
 
 const EMPTY_PROJECT_FORM = {
   name: '',
-  sector: 'ti',
+  sector: '',
   color: '#3b82f6',
   description: '',
 };
@@ -696,9 +696,10 @@ export default function FinancialPage() {
 
   const handleSaveProject = async () => {
     if (!projectForm.name.trim()) return;
+    const payload = { ...projectForm, sector: projectForm.sector || null };
 
     if (editingProject) {
-      const updated = await updateOSProject(editingProject.id, projectForm);
+      const updated = await updateOSProject(editingProject.id, payload);
       if (updated) {
         queryClient.setQueryData(queryKeys.osProjects, prev => (prev || []).map(p => p.id === editingProject.id ? updated : p));
         if (selectedProject?.id === editingProject.id) {
@@ -706,7 +707,7 @@ export default function FinancialPage() {
         }
       }
     } else {
-      const newProject = await createOSProject(projectForm);
+      const newProject = await createOSProject(payload);
       if (newProject) {
         queryClient.setQueryData(queryKeys.osProjects, prev => [...(prev || []), newProject]);
       }
