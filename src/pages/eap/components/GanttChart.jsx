@@ -274,17 +274,21 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
         return (tB?.level || 0) - (tA?.level || 0);
       });
       const workingTasks = tasks.map(t => ({ ...t }));
+      let anyChanged = false;
       for (const parentId of sortedParentIds) {
         const parent = workingTasks.find(t => t.id === parentId);
         if (!parent) continue;
         const summary = calculateSummaryDates(parentId, workingTasks);
         if (!summary) continue;
         if (parent.startDate !== summary.startDate || parent.endDate !== summary.endDate || parent.durationDays !== summary.durationDays) {
-          await onUpdateTask(parentId, summary);
+          await onUpdateTask(parentId, summary, true); // skipInvalidation
           const idx = workingTasks.findIndex(t => t.id === parentId);
           if (idx !== -1) Object.assign(workingTasks[idx], summary);
+          anyChanged = true;
         }
       }
+      // Invalidar uma unica vez no final
+      if (anyChanged) invalidateEapTasks();
     })();
   // Rodar apenas 1x ao montar (tasks iniciais)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -302,7 +306,8 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     const allDates = tasks
       .flatMap(t => [t.startDate, t.endDate])
       .filter(Boolean)
-      .map(d => new Date(d.includes('T') ? d : d + 'T00:00:00'));
+      .map(d => new Date(d.includes('T') ? d : d + 'T00:00:00'))
+      .filter(d => !isNaN(d.getTime()));
 
     if (zoom === 'month') {
       // Zoom mes: mostrar o ano inteiro (jan-dez) do ano atual
@@ -384,8 +389,8 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     const parentTask = parentId ? tasks.find(t => t.id === parentId) : null;
     const level = parentTask ? parentTask.level + 1 : 0;
 
-    const today = new Date().toISOString().split('T')[0];
-    const endDate = calcEndDate(today, 1);
+    const today = new Date().toISOString().split('T')[0] + 'T08:00';
+    const endDate = calcEndDate(today.split('T')[0], 1) + 'T17:00';
 
     const newTask = {
       projectId: project.id,
@@ -404,8 +409,12 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
 
     const result = await onCreateTask(newTask);
     if (result) {
-      setSelectedTaskIds(new Set([result.id]));
-      lastSelectedRef.current = result.id;
+      // Subtarefa: manter selecao no pai (facilita criar varias sub seguidas)
+      const isSubtask = parentId && selectedTaskIds.has(parentId);
+      if (!isSubtask) {
+        setSelectedTaskIds(new Set([result.id]));
+        lastSelectedRef.current = result.id;
+      }
       setEditingCell({ taskId: result.id, field: 'name' });
       if (parentId) {
         setCollapsedIds(prev => {
@@ -415,11 +424,11 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
         });
       }
     }
-  }, [tasks, project.id, onCreateTask]);
+  }, [tasks, project.id, onCreateTask, selectedTaskIds]);
 
   const handleAddMilestone = useCallback(async () => {
     const maxSort = tasks.reduce((m, t) => Math.max(m, t.sortOrder || 0), 0);
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0] + 'T08:00';
 
     const newTask = {
       projectId: project.id,

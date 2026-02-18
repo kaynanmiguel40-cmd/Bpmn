@@ -429,8 +429,8 @@ export function calculateSummaryDates(parentId, tasks) {
   const totalHours = children.reduce((sum, c) => sum + (c.estimatedHours ?? (c.durationDays || 1) * 8), 0);
 
   return {
-    startDate: formatLocalDate(minStart),
-    endDate: formatLocalDate(maxEnd),
+    startDate: formatLocalDateTime(minStart),
+    endDate: formatLocalDateTime(maxEnd),
     durationDays,
     estimatedHours: parseFloat(totalHours.toFixed(2)),
     progress,
