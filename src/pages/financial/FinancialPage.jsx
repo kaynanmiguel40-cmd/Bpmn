@@ -3615,12 +3615,14 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                                 <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
                               </svg>
                               <span className="w-5 h-5 rounded-md bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary text-[10px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
-                              <input
-                                type="text"
+                              <textarea
                                 defaultValue={item.text}
                                 onBlur={(e) => updateTaskText(item.id, e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                className="text-sm text-slate-700 dark:text-slate-200 flex-1 bg-transparent border-none outline-none focus:ring-0 p-0 hover:bg-slate-100 dark:hover:bg-slate-700/40 focus:bg-slate-100 dark:focus:bg-slate-700/40 rounded px-1 -mx-1 transition-colors"
+                                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) e.target.blur(); }}
+                                rows={1}
+                                onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                                onFocus={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                                className="text-sm text-slate-700 dark:text-slate-200 flex-1 bg-transparent border-none outline-none focus:ring-0 p-0 hover:bg-slate-100 dark:hover:bg-slate-700/40 focus:bg-slate-100 dark:focus:bg-slate-700/40 rounded px-1 -mx-1 transition-colors resize-none overflow-hidden"
                               />
                               <button type="button" onClick={() => removeTask(item.id)} className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

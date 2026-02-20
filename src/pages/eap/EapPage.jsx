@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useEapProjects, useCreateEapProject, useDeleteEapProject, useEapTasks } from '../../hooks/queries';
+import { useEapProjects, useCreateEapProject, useUpdateEapProject, useDeleteEapProject, useEapTasks } from '../../hooks/queries';
 import { useToast } from '../../contexts/ToastContext';
 import { getProfile } from '../../lib/profileService';
 
@@ -25,6 +25,7 @@ export default function EapPage() {
 
   // Mutations
   const createProjectMut = useCreateEapProject();
+  const updateProjectMut = useUpdateEapProject();
   const deleteProjectMut = useDeleteEapProject();
 
   // State
@@ -88,6 +89,49 @@ export default function EapPage() {
     } finally {
       creatingRef.current = false;
       setIsCreating(false);
+    }
+  };
+
+  // Edicao de projeto
+  const [editProject, setEditProject] = useState(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleRequestEdit = (e, project) => {
+    e.stopPropagation();
+    setEditProject(project);
+    setEditForm({
+      name: project.name || '',
+      description: project.description || '',
+      startDate: project.startDate || '',
+      endDate: project.endDate || '',
+      status: project.status || 'planning',
+      color: project.color || '#3b82f6',
+    });
+  };
+
+  const handleUpdateProject = async () => {
+    if (!editProject) return;
+    if (!editForm.name.trim()) {
+      addToast('Nome do projeto e obrigatorio', 'error');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await updateProjectMut.mutateAsync({
+        id: editProject.id,
+        updates: {
+          ...editForm,
+          startDate: editForm.startDate || null,
+          endDate: editForm.endDate || null,
+        },
+      });
+      setEditProject(null);
+      addToast('Projeto atualizado!', 'success');
+    } catch {
+      addToast('Erro ao atualizar projeto', 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -179,16 +223,27 @@ export default function EapPage() {
                   style={{ backgroundColor: project.color || '#3b82f6' }}
                 />
 
-                {/* Botao excluir (hover) */}
-                <button
-                  onClick={(e) => handleRequestDelete(e, project.id, project.name)}
-                  className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all"
-                  title="Excluir projeto"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
+                {/* Botoes editar/excluir (hover) */}
+                <div className="absolute top-3 right-3 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all">
+                  <button
+                    onClick={(e) => handleRequestEdit(e, project)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                    title="Editar projeto"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => handleRequestDelete(e, project.id, project.name)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    title="Excluir projeto"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
 
                 {/* Nome do projeto */}
                 <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mt-2 mb-2 pr-8 truncate">
@@ -345,6 +400,107 @@ export default function EapPage() {
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 {isCreating ? 'Criando...' : 'Criar Projeto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Edicao */}
+      {editProject && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditProject(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-4">Editar Projeto</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nome *</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={e => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Nome do projeto"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  autoFocus
+                  onKeyDown={e => e.key === 'Enter' && handleUpdateProject()}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Descricao</label>
+                <textarea
+                  value={editForm.description}
+                  onChange={e => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Descricao opcional"
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Inicio</label>
+                  <input
+                    type="date"
+                    value={editForm.startDate}
+                    onChange={e => setEditForm(prev => ({ ...prev, startDate: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Fim</label>
+                  <input
+                    type="date"
+                    value={editForm.endDate}
+                    onChange={e => setEditForm(prev => ({ ...prev, endDate: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
+                <select
+                  value={editForm.status}
+                  onChange={e => setEditForm(prev => ({ ...prev, status: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="planning">Planejamento</option>
+                  <option value="active">Ativo</option>
+                  <option value="on_hold">Pausado</option>
+                  <option value="completed">Concluido</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Cor</label>
+                <div className="flex gap-2 flex-wrap">
+                  {PROJECT_COLORS.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setEditForm(prev => ({ ...prev, color: c }))}
+                      className={`w-7 h-7 rounded-full transition-all ${editForm.color === c ? 'ring-2 ring-offset-2 ring-blue-500 dark:ring-offset-slate-800' : 'hover:scale-110'}`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setEditProject(null)}
+                className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleUpdateProject}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {isSaving ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
           </div>

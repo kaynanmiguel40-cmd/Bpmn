@@ -301,6 +301,7 @@ function NotionEditor({ content, onChange }) {
 
 function TaskDetailCell({ notes, attachments = [], taskId, taskName, wbsNumber, onFinish }) {
   const [open, setOpen] = useState(false);
+  const [maximized, setMaximized] = useState(false);
   const [localNotes, setLocalNotes] = useState(notes || '');
   const [localAtts, setLocalAtts] = useState(attachments);
   const [linkUrl, setLinkUrl] = useState('');
@@ -398,7 +399,11 @@ function TaskDetailCell({ notes, attachments = [], taskId, taskName, wbsNumber, 
           <div className="fixed inset-0 bg-black/20 z-[9998]" onClick={handleSave} />
           <div
             ref={panelRef}
-            className="fixed top-0 right-0 h-full w-[480px] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 shadow-2xl z-[9999] flex flex-col animate-slide-in-right"
+            className={`fixed bg-white dark:bg-slate-800 shadow-2xl z-[9999] flex flex-col transition-all duration-200 ${
+              maximized
+                ? 'inset-4 rounded-2xl border border-slate-200 dark:border-slate-700'
+                : 'top-0 right-0 h-full w-[480px] border-l border-slate-200 dark:border-slate-700 animate-slide-in-right'
+            }`}
           >
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700">
@@ -411,11 +416,24 @@ function TaskDetailCell({ notes, attachments = [], taskId, taskName, wbsNumber, 
                     <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">{wbsNumber}</span>
                   )}
                 </div>
-                <button onClick={handleSave} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                  <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setMaximized(m => !m)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title={maximized ? 'Reduzir' : 'Maximizar'}>
+                    {maximized ? (
+                      <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 9L4 4m0 0v4m0-4h4m6 6l5 5m0 0v-4m0 4h-4" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 3h6m0 0v6m0-6l-7 7M9 21H3m0 0v-6m0 6l7-7" />
+                      </svg>
+                    )}
+                  </button>
+                  <button onClick={handleSave} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                    <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <h2 className="mt-2 text-lg font-semibold text-slate-800 dark:text-slate-100 leading-snug">{taskName || 'Tarefa'}</h2>
             </div>
