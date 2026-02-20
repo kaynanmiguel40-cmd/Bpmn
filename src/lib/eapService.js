@@ -838,13 +838,13 @@ function addWorkDaysToDate(dateStr, days) {
 }
 
 // Mapa interno→PT e PT→interno para tipos de predecessora
-const TYPE_TO_PT = { FS: 'FI', SS: 'II', FF: 'FF', SF: 'IF' };
-const PT_TO_TYPE = { FI: 'FS', II: 'SS', FF: 'FF', IF: 'SF', FS: 'FS', SS: 'SS', SF: 'SF' };
+const TYPE_TO_PT = { FS: 'FI', SS: 'II', FF: 'TT', SF: 'IF' };
+const PT_TO_TYPE = { FI: 'FS', II: 'SS', TT: 'FF', IF: 'SF', FF: 'FF', FS: 'FS', SS: 'SS', SF: 'SF' };
 
 /**
  * Formata predecessoras para exibicao na tabela (em portugues).
  * Ex: [{taskId: 'etsk_xxx', type: 'FS', lag: 2}] → "3FI+2d"
- * FI = Fim-Inicio, II = Inicio-Inicio, FF = Fim-Fim, IF = Inicio-Fim
+ * FI = Fim-Inicio, II = Inicio-Inicio, TT = Termino-Termino, IF = Inicio-Fim
  */
 export function formatPredecessors(predecessors, taskRowMap) {
   if (!predecessors || predecessors.length === 0) return '';
@@ -874,7 +874,7 @@ export function parsePredecessors(text, rowTaskMap) {
   const parts = text.split(/[;,]/);
   const result = [];
   for (const part of parts) {
-    const m = part.trim().match(/^(\d+)\s*(FI|II|FF|IF|FS|SS|SF)?\s*([+-]\d+)?\s*d?\s*$/i);
+    const m = part.trim().match(/^(\d+)\s*(FI|II|TT|IF|FF|FS|SS|SF)?\s*([+-]\d+)?\s*d?\s*$/i);
     if (!m) continue;
     const row = parseInt(m[1], 10);
     const rawType = (m[2] || 'FI').toUpperCase();
