@@ -2143,7 +2143,7 @@ function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMem
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [postForm, setPostForm] = useState({
     title: '', description: '', scheduledDate: '', scheduledTime: '12:00',
-    platform: 'instagram', mediaType: null, assignee: '',
+    platforms: ['instagram'], mediaType: null, assignee: '',
   });
   const [recurrence, setRecurrence] = useState({ enabled: false, type: 'weekly', daysOfWeek: [], monthsAhead: 3 });
 
@@ -2185,7 +2185,7 @@ function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMem
     setPostForm({
       title: '', description: '',
       scheduledDate: date ? toLocalDateString(date) : toLocalDateString(today),
-      scheduledTime: '12:00', platform: 'instagram', mediaType: null, assignee: '',
+      scheduledTime: '12:00', platforms: ['instagram'], mediaType: null, assignee: '',
     });
     setRecurrence({ enabled: false, type: 'weekly', daysOfWeek: [], monthsAhead: 3 });
     setEditingPost({});
@@ -2198,7 +2198,7 @@ function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMem
       description: post.description || '',
       scheduledDate: post.scheduledDate || '',
       scheduledTime: post.scheduledTime || '12:00',
-      platform: post.platform || 'instagram',
+      platforms: [post.platform || 'instagram'],
       mediaType: post.mediaType || null,
       assignee: post.assignee || '',
     });
@@ -2263,27 +2263,40 @@ function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMem
 
   const handleSave = async () => {
     if (!postForm.title.trim() || !postForm.scheduledDate) return;
+    if (!editingPost?.id && (!postForm.platforms || postForm.platforms.length === 0)) return;
     try {
       if (editingPost?.id) {
-        // Edicao simples (sem recorrencia)
-        await updatePost.mutateAsync({ id: editingPost.id, updates: postForm });
+        // Edicao simples — manda platform unico (o primeiro selecionado)
+        const { platforms, ...rest } = postForm;
+        await updatePost.mutateAsync({ id: editingPost.id, updates: { ...rest, platform: platforms[0] } });
       } else if (recurrence.enabled) {
-        // Criacao com recorrencia: gerar multiplos posts
+        // Criacao com recorrencia: gerar posts por data x plataforma
         const dates = generateRecurrenceDates(postForm.scheduledDate, recurrence);
+        const { platforms, ...baseForm } = postForm;
+        const platList = platforms || ['instagram'];
         if (dates.length === 0) {
-          await createPost.mutateAsync(postForm);
+          for (const plat of platList) {
+            await createPost.mutateAsync({ ...baseForm, platform: plat });
+          }
         } else {
           const groupId = `recgroup_${Date.now()}`;
           for (const date of dates) {
-            await createPost.mutateAsync({
-              ...postForm,
-              scheduledDate: date,
-              recurrenceGroupId: groupId,
-            });
+            for (const plat of platList) {
+              await createPost.mutateAsync({
+                ...baseForm,
+                platform: plat,
+                scheduledDate: date,
+                recurrenceGroupId: groupId,
+              });
+            }
           }
         }
       } else {
-        await createPost.mutateAsync(postForm);
+        // Criacao simples: um post pra cada plataforma selecionada
+        const { platforms, ...baseForm } = postForm;
+        for (const plat of (platforms || ['instagram'])) {
+          await createPost.mutateAsync({ ...baseForm, platform: plat });
+        }
       }
       setEditingPost(null);
     } catch (err) {
@@ -2568,26 +2581,51 @@ function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMem
                 </div>
               </div>
 
-              {/* Plataforma */}
+              {/* Plataformas (multi-select na criacao, single na edicao) */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Plataforma</label>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  {editingPost?.id ? 'Plataforma' : 'Plataformas'}
+                  {!editingPost?.id && <span className="text-slate-400 ml-1">(selecione uma ou mais)</span>}
+                </label>
                 <div className="flex gap-2">
-                  {PLATFORMS.map(p => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setPostForm(f => ({ ...f, platform: p.id }))}
-                      className={`flex-1 flex flex-col items-center justify-center gap-1 px-3 py-2.5 rounded-lg text-[10px] font-bold transition-all border-2 ${
-                        postForm.platform === p.id
-                          ? 'text-white shadow-md scale-105'
-                          : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 hover:border-slate-300'
-                      }`}
-                      style={postForm.platform === p.id ? { backgroundColor: p.color, borderColor: p.color, color: '#fff' } : { color: p.color }}
-                    >
-                      {PLATFORM_ICONS[p.id]?.(20)}
-                      <span>{p.label}</span>
-                    </button>
-                  ))}
+                  {PLATFORMS.map(p => {
+                    const isSelected = (postForm.platforms || []).includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          if (editingPost?.id) {
+                            // Edicao: selecao unica
+                            setPostForm(f => ({ ...f, platforms: [p.id] }));
+                          } else {
+                            // Criacao: toggle multi-select
+                            setPostForm(f => {
+                              const current = f.platforms || [];
+                              const next = isSelected
+                                ? current.filter(id => id !== p.id)
+                                : [...current, p.id];
+                              return { ...f, platforms: next.length > 0 ? next : current };
+                            });
+                          }
+                        }}
+                        className={`flex-1 flex flex-col items-center justify-center gap-1 px-3 py-2.5 rounded-lg text-[10px] font-bold transition-all border-2 ${
+                          isSelected
+                            ? 'text-white shadow-md scale-105'
+                            : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                        }`}
+                        style={isSelected ? { backgroundColor: p.color, borderColor: p.color, color: '#fff' } : { color: p.color }}
+                      >
+                        {PLATFORM_ICONS[p.id]?.(20)}
+                        <span>{p.label}</span>
+                        {isSelected && !editingPost?.id && (
+                          <svg className="w-3 h-3 absolute top-1 right-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -2731,9 +2769,11 @@ function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMem
                       {/* Preview quantidade */}
                       {recurrence.enabled && postForm.scheduledDate && (() => {
                         const dates = generateRecurrenceDates(postForm.scheduledDate, recurrence);
+                        const platCount = (postForm.platforms || []).length || 1;
+                        const totalPosts = dates.length * platCount;
                         return dates.length > 0 ? (
                           <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
-                            {dates.length} postagens serao criadas
+                            {totalPosts} postagens serao criadas ({dates.length} datas x {platCount} {platCount === 1 ? 'rede' : 'redes'})
                           </p>
                         ) : (
                           <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -2792,10 +2832,10 @@ function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMem
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={!postForm.title.trim() || !postForm.scheduledDate}
+                  disabled={!postForm.title.trim() || !postForm.scheduledDate || (!editingPost?.id && (!postForm.platforms || postForm.platforms.length === 0))}
                   className="px-4 py-1.5 text-xs bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {editingPost?.id ? 'Salvar' : 'Criar Postagem'}
+                  {editingPost?.id ? 'Salvar' : `Criar${(postForm.platforms || []).length > 1 ? ` (${postForm.platforms.length} redes)` : ''}`}
                 </button>
               </div>
             </div>
