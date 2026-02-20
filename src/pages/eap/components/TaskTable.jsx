@@ -374,28 +374,21 @@ function TaskDetailCell({ notes, attachments = [], taskId, taskName, wbsNumber, 
     setLocalAtts(prev => prev.filter(a => a.id !== id));
   };
 
-  const hasNotes = !!(notes && notes.trim());
+  const hasNotes = !!(notes && stripHtml(notes));
   const count = attachments.length;
-  const plainPreview = stripHtml(notes).slice(0, 30);
 
   return (
     <>
       <div
-        className="flex items-center gap-1 w-full h-full cursor-pointer px-1 group"
+        className="flex items-center justify-center w-full h-full cursor-pointer px-1 group"
         onClick={() => setOpen(true)}
-        title={hasNotes ? stripHtml(notes) : 'Clique para adicionar anotacoes'}
+        title="Abrir anotacoes"
       >
-        {hasNotes ? (
-          <span className="text-[10px] text-slate-600 dark:text-slate-300 truncate leading-tight">
-            {plainPreview}{stripHtml(notes).length > 30 ? '...' : ''}
-          </span>
-        ) : (
-          <svg className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 group-hover:text-blue-400 transition-colors mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-          </svg>
-        )}
+        <svg className={`w-4 h-4 transition-colors ${hasNotes ? 'text-blue-500' : 'text-slate-300 dark:text-slate-600 group-hover:text-blue-400'}`} fill={hasNotes ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
         {count > 0 && (
-          <span className="w-3.5 h-3.5 bg-blue-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center shrink-0">{count}</span>
+          <span className="w-3.5 h-3.5 bg-blue-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center shrink-0 ml-0.5">{count}</span>
         )}
       </div>
 
@@ -544,7 +537,7 @@ const COLUMNS = [
   { key: 'predecessors', label: 'Pred.', width: 58 },
   { key: 'assignedTo', label: 'Resp.', width: 80 },
   { key: 'supervisor', label: 'Superv.', width: 80 },
-  { key: 'notes', label: 'Notas', width: 120 },
+  { key: 'notes', label: 'Notas', width: 50 },
   { key: 'progress', label: '%', width: 50 },
 ];
 
