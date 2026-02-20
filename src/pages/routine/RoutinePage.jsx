@@ -441,9 +441,9 @@ export function RoutinePage() {
                             </button>
                           )}
                           <button
-                            onClick={() => navigate('/financial')}
+                            onClick={() => navigate('/financial', { state: { openOsId: order.id } })}
                             className="px-2 py-1.5 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 text-xs rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                            title="Ver no Kanban"
+                            title="Abrir O.S."
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
