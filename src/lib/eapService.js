@@ -786,8 +786,8 @@ export function detectCircularDependency(taskId, newPredecessors, allTasks) {
 
   const taskMap = new Map(allTasks.map(t => [t.id, t]));
 
-  // Verificar: a partir de cada predecessor, consigo chegar de volta ao taskId?
-  // Se sim, criar essa dependencia formaria um ciclo.
+  // Verificar: a partir do predecessor, seguindo a cadeia de predecessoras dele,
+  // consigo chegar de volta ao taskId? Se sim, criar essa dependencia formaria um ciclo.
   function canReach(fromId, targetId, visited = new Set()) {
     if (fromId === targetId) return true;
     if (visited.has(fromId)) return false;
@@ -802,10 +802,11 @@ export function detectCircularDependency(taskId, newPredecessors, allTasks) {
     return false;
   }
 
-  // Se algum predecessor ja depende (direta ou indiretamente) do taskId → ciclo
+  // Se o predecessor ja depende (direta ou indiretamente) do taskId → ciclo
+  // Direcao correta: partir do predecessor e ver se chega ao taskId
   for (const pred of newPredecessors) {
     if (pred.taskId === taskId) return true; // Auto-referencia
-    if (canReach(taskId, pred.taskId, new Set())) return true;
+    if (canReach(pred.taskId, taskId, new Set())) return true;
   }
 
   return false;
@@ -836,9 +837,14 @@ function addWorkDaysToDate(dateStr, days) {
   return formatLocalDate(date);
 }
 
+// Mapa interno→PT e PT→interno para tipos de predecessora
+const TYPE_TO_PT = { FS: 'FI', SS: 'II', FF: 'FF', SF: 'IF' };
+const PT_TO_TYPE = { FI: 'FS', II: 'SS', FF: 'FF', IF: 'SF', FS: 'FS', SS: 'SS', SF: 'SF' };
+
 /**
- * Formata predecessoras para exibicao na tabela.
- * Ex: [{taskId: 'etsk_xxx', type: 'FS', lag: 2}] → "3FS+2d"
+ * Formata predecessoras para exibicao na tabela (em portugues).
+ * Ex: [{taskId: 'etsk_xxx', type: 'FS', lag: 2}] → "3FI+2d"
+ * FI = Fim-Inicio, II = Inicio-Inicio, FF = Fim-Fim, IF = Inicio-Fim
  */
 export function formatPredecessors(predecessors, taskRowMap) {
   if (!predecessors || predecessors.length === 0) return '';
@@ -846,9 +852,11 @@ export function formatPredecessors(predecessors, taskRowMap) {
     const row = taskRowMap.get(p.taskId);
     if (row === undefined) return '';
     const type = p.type || 'FS';
+    const ptType = TYPE_TO_PT[type] || 'FI';
     const lag = p.lag || 0;
     let str = String(row);
-    if (type !== 'FS') str += type;
+    // FI e o padrao, so mostra se for diferente
+    if (ptType !== 'FI') str += ptType;
     if (lag > 0) str += '+' + lag + 'd';
     else if (lag < 0) str += lag + 'd';
     return str;
@@ -857,17 +865,20 @@ export function formatPredecessors(predecessors, taskRowMap) {
 
 /**
  * Parseia texto de predecessoras para o formato interno.
- * Ex: "3FS+2d;5" → [{taskId: 'etsk_xxx', type: 'FS', lag: 2}, ...]
+ * Aceita tanto PT (FI, II, FF, IF) quanto EN (FS, SS, FF, SF).
+ * Ex: "3FI+2d;5" → [{taskId: 'etsk_xxx', type: 'FS', lag: 2}, ...]
+ * Ex: "3II;5IF-1d" → [{..., type: 'SS', ...}, {..., type: 'SF', lag: -1}]
  */
 export function parsePredecessors(text, rowTaskMap) {
   if (!text || !text.trim()) return [];
   const parts = text.split(/[;,]/);
   const result = [];
   for (const part of parts) {
-    const m = part.trim().match(/^(\d+)\s*(FS|SS|FF|SF)?\s*([+-]\d+)?\s*d?\s*$/i);
+    const m = part.trim().match(/^(\d+)\s*(FI|II|FF|IF|FS|SS|SF)?\s*([+-]\d+)?\s*d?\s*$/i);
     if (!m) continue;
     const row = parseInt(m[1], 10);
-    const type = (m[2] || 'FS').toUpperCase();
+    const rawType = (m[2] || 'FI').toUpperCase();
+    const type = PT_TO_TYPE[rawType] || 'FS';
     const lag = m[3] ? parseInt(m[3], 10) : 0;
     const taskId = rowTaskMap.get(row);
     if (taskId) result.push({ taskId, type, lag });

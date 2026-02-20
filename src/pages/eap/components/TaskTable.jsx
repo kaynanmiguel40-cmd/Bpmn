@@ -164,37 +164,32 @@ function ProgressCell({ value, taskId, onFinish }) {
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
-function TaskDetailCell({ notes, attachments = [], taskId, onFinish }) {
+function TaskDetailCell({ notes, attachments = [], taskId, taskName, wbsNumber, onFinish }) {
   const [open, setOpen] = useState(false);
   const [localNotes, setLocalNotes] = useState(notes || '');
   const [localAtts, setLocalAtts] = useState(attachments);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
-  const btnRef = useRef(null);
   const panelRef = useRef(null);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
 
   useEffect(() => { setLocalNotes(notes || ''); }, [notes]);
   useEffect(() => { setLocalAtts(attachments); }, [attachments]);
 
-  useEffect(() => {
-    if (!open || !btnRef.current) return;
-    const rect = btnRef.current.getBoundingClientRect();
-    const left = Math.min(rect.left, window.innerWidth - 310);
-    const top = rect.bottom + 4;
-    const maxTop = window.innerHeight - 400;
-    setPos({ top: Math.min(top, maxTop), left: Math.max(8, left - 100) });
-  }, [open]);
-
+  // Fechar ao clicar fora
   useEffect(() => {
     if (!open) return;
     const handleClick = (e) => {
-      if (btnRef.current?.contains(e.target)) return;
       if (panelRef.current?.contains(e.target)) return;
       handleSave();
     };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    // Delay para nao fechar imediatamente ao abrir
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClick);
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClick);
+    };
   }, [open, localNotes, localAtts]);
 
   const handleSave = () => {
@@ -245,139 +240,176 @@ function TaskDetailCell({ notes, attachments = [], taskId, onFinish }) {
     setLocalAtts(prev => prev.filter(a => a.id !== id));
   };
 
-  const hasContent = !!(notes && notes.trim()) || attachments.length > 0;
+  const hasNotes = !!(notes && notes.trim());
   const count = attachments.length;
+  const preview = hasNotes ? notes.trim().slice(0, 30) : '';
 
   return (
     <>
       <div
-        ref={btnRef}
-        className="flex items-center justify-center w-full h-full cursor-pointer relative"
-        onDoubleClick={() => setOpen(true)}
-        title={hasContent ? `${notes || ''}\n${count} anexo(s)` : 'Duplo clique para detalhes'}
+        className="flex items-center gap-1 w-full h-full cursor-pointer px-1 group"
+        onClick={() => setOpen(true)}
+        title={hasNotes ? notes : 'Clique para adicionar anotacoes'}
       >
-        {hasContent ? (
-          <svg className="w-3.5 h-3.5 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h5v7h7v9H6z"/>
-            <path d="M8 13h8v1H8zm0 3h5v1H8z"/>
-          </svg>
+        {hasNotes ? (
+          <span className="text-[10px] text-slate-600 dark:text-slate-300 truncate leading-tight">
+            {preview}{notes.trim().length > 30 ? '...' : ''}
+          </span>
         ) : (
-          <svg className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 group-hover:text-blue-400 transition-colors mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
         )}
         {count > 0 && (
-          <span className="absolute -top-1 -right-0.5 w-3.5 h-3.5 bg-blue-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">{count}</span>
+          <span className="w-3.5 h-3.5 bg-blue-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center shrink-0">{count}</span>
         )}
       </div>
-      {open && (
-        <div
-          ref={panelRef}
-          className="fixed bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-3 z-[9999] max-h-[380px] overflow-y-auto"
-          style={{ top: pos.top, left: pos.left, width: 300 }}
-        >
-          {/* Notas */}
-          <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase">Notas</div>
-          <textarea
-            value={localNotes}
-            onChange={e => setLocalNotes(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Escape') { setOpen(false); }
-              if (e.key === 'Enter' && e.ctrlKey) handleSave();
-            }}
-            rows={3}
-            placeholder="Descricao da tarefa..."
-            className="w-full text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 p-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
 
-          {/* Anexos existentes */}
-          {localAtts.length > 0 && (
-            <div className="mt-2">
-              <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase">Anexos ({localAtts.length})</div>
-              <div className="space-y-1">
-                {localAtts.map(att => (
-                  <div key={att.id} className="flex items-center gap-2 p-1.5 rounded border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-750 group">
-                    {att.type === 'link' ? (
-                      <svg className="w-3.5 h-3.5 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                      </svg>
-                    ) : (
-                      att.data && att.data.startsWith('data:image') ? (
-                        <img src={att.data} alt={att.label} className="w-7 h-7 rounded object-cover shrink-0" />
-                      ) : (
-                        <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      )
-                    )}
-                    <span className="text-[11px] text-slate-600 dark:text-slate-300 truncate flex-1">
-                      {att.type === 'link' ? (
-                        <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline" onClick={e => e.stopPropagation()}>
-                          {att.label}
-                        </a>
-                      ) : att.label}
-                    </span>
-                    <button
-                      onClick={() => removeAtt(att.id)}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-red-500 transition-opacity"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
+      {/* Painel lateral de anotacoes */}
+      {open && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-[9998]" onClick={handleSave} />
+          <div
+            ref={panelRef}
+            className="fixed top-0 right-0 h-full w-[360px] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 shadow-2xl z-[9999] flex flex-col animate-slide-in-right"
+          >
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Anotacoes</h3>
+                </div>
+                <button onClick={handleSave} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                  <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              {/* Nome da tarefa */}
+              <div className="mt-2 flex items-center gap-2">
+                {wbsNumber && (
+                  <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">{wbsNumber}</span>
+                )}
+                <span className="text-sm text-slate-700 dark:text-slate-200 font-medium truncate">{taskName || 'Tarefa'}</span>
               </div>
             </div>
-          )}
 
-          {/* Adicionar Link */}
-          <div className="mt-2">
-            <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase">Adicionar Link</div>
-            <div className="flex gap-1">
-              <input
-                type="url"
-                value={linkUrl}
-                onChange={e => setLinkUrl(e.target.value)}
-                placeholder="https://..."
-                className="flex-1 text-[11px] border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                onKeyDown={e => { if (e.key === 'Enter') addLink(); }}
-              />
-              <button onClick={addLink} className="text-[10px] px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 shrink-0">+</button>
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Notas */}
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Observacoes</label>
+                <textarea
+                  value={localNotes}
+                  onChange={e => setLocalNotes(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') handleSave();
+                    if (e.key === 'Enter' && e.ctrlKey) handleSave();
+                  }}
+                  rows={6}
+                  placeholder="Registre observacoes internas, acompanhamentos, decisoes..."
+                  className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 p-3 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 dark:placeholder-slate-500"
+                  autoFocus
+                />
+              </div>
+
+              {/* Anexos existentes */}
+              {localAtts.length > 0 && (
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Anexos ({localAtts.length})</label>
+                  <div className="space-y-1.5">
+                    {localAtts.map(att => (
+                      <div key={att.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-750 group">
+                        {att.type === 'link' ? (
+                          <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                          </svg>
+                        ) : (
+                          att.data && att.data.startsWith('data:image') ? (
+                            <img src={att.data} alt={att.label} className="w-8 h-8 rounded object-cover shrink-0" />
+                          ) : (
+                            <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          )
+                        )}
+                        <span className="text-xs text-slate-600 dark:text-slate-300 truncate flex-1">
+                          {att.type === 'link' ? (
+                            <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline" onClick={e => e.stopPropagation()}>
+                              {att.label}
+                            </a>
+                          ) : att.label}
+                        </span>
+                        <button
+                          onClick={() => removeAtt(att.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Adicionar Link */}
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Adicionar Link</label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="url"
+                    value={linkUrl}
+                    onChange={e => setLinkUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onKeyDown={e => { if (e.key === 'Enter') addLink(); }}
+                  />
+                  <button onClick={addLink} className="text-xs px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 shrink-0 font-medium">+</button>
+                </div>
+                {linkUrl && (
+                  <input
+                    type="text"
+                    value={linkLabel}
+                    onChange={e => setLinkLabel(e.target.value)}
+                    placeholder="Nome do link (opcional)"
+                    className="w-full mt-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onKeyDown={e => { if (e.key === 'Enter') addLink(); }}
+                  />
+                )}
+              </div>
+
+              {/* Upload Arquivo */}
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Upload Arquivo</label>
+                <label className="flex items-center gap-2 p-3 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-blue-400 transition-colors">
+                  <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Imagem ou arquivo (max 2MB)</span>
+                  <input type="file" accept="image/*,.pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
+                </label>
+              </div>
             </div>
-            {linkUrl && (
-              <input
-                type="text"
-                value={linkLabel}
-                onChange={e => setLinkLabel(e.target.value)}
-                placeholder="Nome do link (opcional)"
-                className="w-full mt-1 text-[11px] border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                onKeyDown={e => { if (e.key === 'Enter') addLink(); }}
-              />
-            )}
-          </div>
 
-          {/* Upload Arquivo */}
-          <div className="mt-2">
-            <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase">Upload Arquivo</div>
-            <label className="flex items-center gap-2 p-2 rounded border border-dashed border-slate-300 dark:border-slate-600 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400">Imagem ou arquivo (max 2MB)</span>
-              <input type="file" accept="image/*,.pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
-            </label>
-          </div>
-
-          {/* Acoes */}
-          <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-100 dark:border-slate-700">
-            <span className="text-[10px] text-slate-400">Ctrl+Enter para salvar</span>
-            <div className="flex gap-1">
-              <button onClick={() => setOpen(false)} className="text-[10px] px-2 py-0.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">Cancelar</button>
-              <button onClick={handleSave} className="text-[10px] px-3 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600">Salvar</button>
+            {/* Footer */}
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+              <span className="text-[10px] text-slate-400">Ctrl+Enter para salvar</span>
+              <div className="flex gap-2">
+                <button onClick={() => { setLocalNotes(notes || ''); setLocalAtts(attachments); setOpen(false); }} className="text-xs px-3 py-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleSave} className="text-xs px-4 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium transition-colors">
+                  Salvar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );
@@ -397,7 +429,7 @@ const COLUMNS = [
   { key: 'predecessors', label: 'Pred.', width: 58 },
   { key: 'assignedTo', label: 'Resp.', width: 80 },
   { key: 'supervisor', label: 'Superv.', width: 80 },
-  { key: 'notes', label: 'Notas', width: 60 },
+  { key: 'notes', label: 'Notas', width: 120 },
   { key: 'progress', label: '%', width: 50 },
 ];
 
@@ -978,6 +1010,8 @@ const TaskTable = forwardRef(function TaskTable({
                           notes={task.notes}
                           attachments={task.attachments}
                           taskId={task.id}
+                          taskName={task.name}
+                          wbsNumber={task.wbsNumber}
                           onFinish={onCellChange}
                         />
                       </div>
