@@ -912,6 +912,15 @@ div:has(> a[href*="supabase"]) {
   animation: slide-in 0.3s ease-out;
 }
 
+/* ==================== Chat slide-in-right ==================== */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+
 /* ==================== Emergency pulse ==================== */
 @keyframes pulse-subtle {
   0%, 100% { border-color: rgb(239 68 68); }

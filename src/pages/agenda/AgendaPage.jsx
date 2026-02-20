@@ -4,12 +4,14 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useAgendaEvents, useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent, useTeamMembers, useOSOrders } from '../../hooks/queries';
+import { useNavigate } from 'react-router-dom';
+import { useAgendaEvents, useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent, useTeamMembers, useOSOrders, useContentPosts, useCreateContentPost, useUpdateContentPost, useDeleteContentPost } from '../../hooks/queries';
 import { shortName } from '../../lib/teamService';
 import { getProfile } from '../../lib/profileService';
 import { expandRecurrences, toDateKey } from '../../lib/recurrenceUtils';
 import { downloadICS } from '../../lib/icsExporter';
-import { useRealtimeAgendaEvents } from '../../hooks/useRealtimeSubscription';
+import { useRealtimeAgendaEvents, useRealtimeContentPosts } from '../../hooks/useRealtimeSubscription';
+import { notifyEventCreated } from '../../lib/notificationTriggers';
 
 // ==================== CONSTANTES ====================
 
@@ -85,10 +87,72 @@ function toLocalDateString(date) {
   return `${y}-${m}-${d}`;
 }
 
+// ==================== OVERLAP LAYOUT (estilo Google Calendar) ====================
+
+function computeOverlapLayout(events) {
+  if (events.length === 0) return [];
+
+  const parsed = events.map(e => ({
+    ...e,
+    _startMs: new Date(e.startDate).getTime(),
+    _endMs: new Date(e.endDate).getTime(),
+  }));
+
+  // Ordena: inicio mais cedo primeiro; empate = maior duracao primeiro
+  parsed.sort((a, b) => a._startMs - b._startMs || (b._endMs - b._startMs) - (a._endMs - a._startMs));
+
+  // Agrupar eventos que se sobrepõem transitivamente
+  const groups = [];
+  let currentGroup = [parsed[0]];
+  let groupEnd = parsed[0]._endMs;
+
+  for (let i = 1; i < parsed.length; i++) {
+    const ev = parsed[i];
+    if (ev._startMs < groupEnd) {
+      currentGroup.push(ev);
+      groupEnd = Math.max(groupEnd, ev._endMs);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [ev];
+      groupEnd = ev._endMs;
+    }
+  }
+  groups.push(currentGroup);
+
+  // Atribuir colunas dentro de cada grupo
+  const result = [];
+  for (const group of groups) {
+    const columns = []; // columns[i] = fim do ultimo evento na coluna i
+    for (const ev of group) {
+      let placed = false;
+      for (let c = 0; c < columns.length; c++) {
+        if (ev._startMs >= columns[c]) {
+          ev._col = c;
+          columns[c] = ev._endMs;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        ev._col = columns.length;
+        columns.push(ev._endMs);
+      }
+    }
+    const totalCols = columns.length;
+    for (const ev of group) {
+      ev._totalCols = totalCols;
+      result.push(ev);
+    }
+  }
+
+  return result;
+}
+
 // ==================== COMPONENTE PRINCIPAL ====================
 
 export default function AgendaPage() {
   const today = new Date();
+  const routerNavigate = useNavigate();
 
   // React Query hooks para dados
   const { data: events = [], isLoading: loadingEvents } = useAgendaEvents();
@@ -98,10 +162,17 @@ export default function AgendaPage() {
   const updateEventMutation = useUpdateAgendaEvent();
   const deleteEventMutation = useDeleteAgendaEvent();
 
+  // Content posts (Calendario de Postagens)
+  const { data: contentPosts = [] } = useContentPosts();
+  const createPostMutation = useCreateContentPost();
+  const updatePostMutation = useUpdateContentPost();
+  const deletePostMutation = useDeleteContentPost();
+
   const loading = loadingEvents || loadingMembers || loadingOS;
 
-  // Realtime: atualiza automaticamente quando eventos mudam no Supabase
+  // Realtime
   useRealtimeAgendaEvents();
+  useRealtimeContentPosts();
 
   const [currentDate, setCurrentDate] = useState(today);
   const [view, setView] = useState('day');
@@ -113,6 +184,8 @@ export default function AgendaPage() {
   const [profile, setProfile] = useState({});
   const [activeFilters, setActiveFilters] = useState([]); // inicializa vazio, preenche ao carregar
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [dayViewMember, setDayViewMember] = useState(null);
+  const [viewingEvent, setViewingEvent] = useState(null); // modal de detalhes do evento
 
   // Lista completa: membros cadastrados + perfil logado
   const allMembers = useMemo(() => {
@@ -121,6 +194,18 @@ export default function AgendaPage() {
     if (alreadyIn) return teamMembers;
     return [{ id: 'profile_self', name: profile.name, role: profile.role || '', color: '#3b82f6' }, ...teamMembers];
   }, [teamMembers, profile]);
+
+  // ID do membro do usuario logado (para DayView individual)
+  const myMemberId = useMemo(() => {
+    if (!profile.name) return null;
+    const match = teamMembers.find(m => m.name.toLowerCase().trim() === profile.name.toLowerCase().trim());
+    return match ? match.id : 'profile_self';
+  }, [teamMembers, profile]);
+
+  // Inicializar dayViewMember com o usuario logado
+  useEffect(() => {
+    if (myMemberId && !dayViewMember) setDayViewMember(myMemberId);
+  }, [myMemberId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleFilter = (memberId) => {
     setActiveFilters(prev => {
@@ -208,8 +293,11 @@ export default function AgendaPage() {
   };
 
   const openEditModal = (event) => {
-    // O.S. sao somente leitura no calendario
-    if (event._isOS) return;
+    // O.S. e eventos normais: abre modal de detalhes
+    if (event._isOS) {
+      setViewingEvent(event);
+      return;
+    }
     // Se e ocorrencia virtual de evento recorrente, perguntar o que fazer
     if (event._parentId) {
       setRecurrenceAction({ event, action: 'edit' });
@@ -283,7 +371,11 @@ export default function AgendaPage() {
       const realId = editingEvent._parentId || editingEvent.id;
       await updateEventMutation.mutateAsync({ id: realId, updates: eventData });
     } else {
-      await createEventMutation.mutateAsync(eventData);
+      const created = await createEventMutation.mutateAsync(eventData);
+      // Notificar participantes do novo evento
+      if (eventData.attendees?.length > 0) {
+        notifyEventCreated(created || eventData, eventData.attendees, teamMembers, profile?.id);
+      }
     }
     setShowEventModal(false);
     setQuickCreate(null);
@@ -437,43 +529,46 @@ export default function AgendaPage() {
   // O.S. convertidas em eventos do calendario (TODAS as O.S. com assignee)
   const OS_STATUS_COLORS = { available: '#3b82f6', in_progress: '#f97316', done: '#22c55e', blocked: '#ef4444' };
   const SLA_HOURS = { urgent: 4, high: 24, medium: 72, low: 168 };
+  const BIZ_START_H = 8;  // inicio expediente
+  const BIZ_END_H = 18;   // fim expediente
+
   const osCalendarEvents = useMemo(() => {
-    return osOrders
+    const result = [];
+
+    osOrders
       .filter(os => {
         const hasAssignee = os.assignee || os.assignedTo;
         return hasAssignee && (os.actualStart || os.estimatedStart || os.slaDeadline || os.createdAt);
       })
-      .map(os => {
+      .forEach(os => {
         const responsibleName = os.assignee || os.assignedTo || '';
         const member = allMembers.find(m => m.name.toLowerCase().trim() === responsibleName.toLowerCase().trim());
 
         let start, end;
         if (os.actualStart) {
-          // Em andamento / concluida: datas reais
           start = new Date(os.actualStart);
           end = os.actualEnd ? new Date(os.actualEnd) : new Date(start.getTime() + 2 * 3600000);
         } else if (os.estimatedStart) {
-          // Agendada com previsao
           start = new Date(os.estimatedStart);
           end = os.estimatedEnd ? new Date(os.estimatedEnd) : new Date(start.getTime() + 1 * 3600000);
         } else if (os.slaDeadline) {
-          // SLA: posicionar 1h antes do deadline
           end = new Date(os.slaDeadline);
           start = new Date(end.getTime() - 1 * 3600000);
         } else {
-          // Sem datas: calcular prazo pela prioridade (medium=72h, urgent=4h, etc)
           const slaH = SLA_HOURS[os.priority] || 72;
           end = new Date(new Date(os.createdAt).getTime() + slaH * 3600000);
           start = new Date(end.getTime() - 1 * 3600000);
         }
 
+        // Guard: garantir que end > start
+        if (end <= start) {
+          end = new Date(start.getTime() + 2 * 3600000);
+        }
+
         const osNum = os.type === 'emergency' ? `EMG-${os.emergencyNumber}` : `#${os.number}`;
-        return {
-          id: `os_cal_${os.id}`,
+        const baseEvent = {
           title: `O.S. ${osNum} - ${os.title}`,
           description: os.client ? `Cliente: ${os.client}` : os.description || '',
-          startDate: start.toISOString(),
-          endDate: end.toISOString(),
           assignee: member?.id || null,
           type: 'os',
           color: OS_STATUS_COLORS[os.status] || '#f97316',
@@ -482,7 +577,50 @@ export default function AgendaPage() {
           _osStatus: os.status,
           _osPriority: os.priority,
         };
+
+        // OS concluida: mostra horario real (sem split)
+        if (os.status === 'done') {
+          result.push({ ...baseEvent, id: `os_cal_${os.id}`, startDate: start.toISOString(), endDate: end.toISOString() });
+          return;
+        }
+
+        // Split: OS nao pode passar das 18h (continua no proximo dia as 08h)
+        let segStart = new Date(start);
+        let segIdx = 0;
+        while (segStart < end) {
+          const dayEnd = new Date(segStart);
+          dayEnd.setHours(BIZ_END_H, 0, 0, 0);
+
+          // Se segStart ja passou do fim do expediente, pula pro proximo dia
+          if (segStart >= dayEnd) {
+            segStart.setDate(segStart.getDate() + 1);
+            segStart.setHours(BIZ_START_H, 0, 0, 0);
+            continue;
+          }
+
+          const segEnd = end <= dayEnd ? end : dayEnd;
+          result.push({
+            ...baseEvent,
+            id: `os_cal_${os.id}${segIdx > 0 ? `_seg${segIdx}` : ''}`,
+            startDate: segStart.toISOString(),
+            endDate: segEnd.toISOString(),
+          });
+          segIdx++;
+
+          if (end > dayEnd) {
+            segStart = new Date(segStart);
+            segStart.setDate(segStart.getDate() + 1);
+            segStart.setHours(BIZ_START_H, 0, 0, 0);
+          } else {
+            break;
+          }
+
+          // Safety: max 30 segmentos
+          if (segIdx >= 30) break;
+        }
       });
+
+    return result;
   }, [osOrders, allMembers]);
 
   // Eventos de um dia (com expansao de recorrencia + O.S. + filtro de pessoa)
@@ -502,6 +640,20 @@ export default function AgendaPage() {
 
     return [...expanded, ...osForDay].filter(e => activeFilters.includes(e.assignee));
   }, [events, osCalendarEvents, activeFilters]);
+
+  // Todos os eventos do dia sem filtro de pessoa (usado pelo DayView individual)
+  const getAllEventsForDay = useCallback((date) => {
+    const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    const expanded = expandRecurrences(events, dayStart, dayEnd);
+    const osForDay = osCalendarEvents.filter(e => {
+      const start = new Date(e.startDate);
+      const end = new Date(e.endDate);
+      return end >= dayStart && start < dayEnd;
+    });
+    return [...expanded, ...osForDay];
+  }, [events, osCalendarEvents]);
 
   // Horario comercial calculado a partir dos membros filtrados
   const businessHours = useMemo(() => {
@@ -548,38 +700,45 @@ export default function AgendaPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => openCreateModal()}
-            className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium shadow-sm"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Novo Evento
-          </button>
+          {view !== 'posts' && (
+            <>
+              <button
+                onClick={() => openCreateModal()}
+                className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Novo Evento
+              </button>
 
-          <div className="flex items-center gap-1">
-            <button onClick={() => navigate(-1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-              <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button onClick={goToday} className="px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-              Hoje
-            </button>
-            <button onClick={() => navigate(1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-              <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => navigate(-1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                  <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button onClick={goToday} className="px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                  Hoje
+                </button>
+                <button onClick={() => navigate(1)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                  <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
 
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{headerTitle}</h2>
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{headerTitle}</h2>
+            </>
+          )}
+          {view === 'posts' && (
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Calendario de Postagens</h2>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Dropdown Filtro de Pessoas */}
-          <div className="relative">
+          {/* Dropdown Filtro de Pessoas (escondido no day view e posts view) */}
+          {view !== 'day' && view !== 'posts' && <div className="relative">
             <button
               onClick={() => setShowFilterDropdown(prev => !prev)}
               className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
@@ -651,27 +810,29 @@ export default function AgendaPage() {
                 </div>
               </>
             )}
-          </div>
+          </div>}
 
-          <button
-            onClick={() => {
-              try {
-                downloadICS(events, `agenda-${toLocalDateString(new Date())}.ics`);
-              } catch (err) {
-                console.error('Erro ao exportar .ics:', err);
-              }
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-            title="Exportar calendario .ics"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            .ics
-          </button>
+          {view !== 'posts' && (
+            <button
+              onClick={() => {
+                try {
+                  downloadICS(events, `agenda-${toLocalDateString(new Date())}.ics`);
+                } catch (err) {
+                  console.error('Erro ao exportar .ics:', err);
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+              title="Exportar calendario .ics"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              .ics
+            </button>
+          )}
 
           <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
-            {['month', 'week', 'day'].map(v => (
+            {['month', 'week', 'day', 'posts'].map(v => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -679,7 +840,7 @@ export default function AgendaPage() {
                   view === v ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                 }`}
               >
-                {v === 'month' ? 'Mes' : v === 'week' ? 'Semana' : 'Dia'}
+                {{ month: 'Mes', week: 'Semana', day: 'Dia', posts: 'Postagens' }[v]}
               </button>
             ))}
           </div>
@@ -690,7 +851,8 @@ export default function AgendaPage() {
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         {view === 'month' && <MonthView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onDayClick={(d) => { setCurrentDate(d); setView('day'); }} onEventClick={openEditModal} allMembers={allMembers} />}
         {view === 'week' && <WeekView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} />}
-        {view === 'day' && <DayView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={() => openCreateModal(currentDate)} allMembers={allMembers} businessHours={businessHours} />}
+        {view === 'day' && <DayView currentDate={currentDate} today={today} getAllEventsForDay={getAllEventsForDay} onEventClick={openEditModal} onSlotClick={() => openCreateModal(currentDate)} allMembers={allMembers} businessHours={businessHours} dayViewMember={dayViewMember} setDayViewMember={setDayViewMember} />}
+        {view === 'posts' && <PostingsView contentPosts={contentPosts} createPost={createPostMutation} updatePost={updatePostMutation} deletePost={deletePostMutation} allMembers={allMembers} />}
       </div>
 
       {/* Quick Create Popover (estilo Google Calendar) */}
@@ -743,6 +905,16 @@ export default function AgendaPage() {
         </div>
       )}
 
+      {/* Modal de Detalhes do Evento */}
+      {viewingEvent && (
+        <EventDetailModal
+          event={viewingEvent}
+          allMembers={allMembers}
+          onClose={() => setViewingEvent(null)}
+          onNavigateOS={viewingEvent._isOS ? () => { setViewingEvent(null); routerNavigate('/financial'); } : null}
+        />
+      )}
+
       {/* Recurrence Action Modal (editar/excluir ocorrencia de serie) */}
       {recurrenceAction && (
         <RecurrenceEditModal
@@ -772,7 +944,8 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
       </div>
 
       {/* Grid de dias */}
-      <div className="flex-1 grid grid-cols-7 grid-rows-6">
+      <div className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-7">
         {days.map(({ date, isCurrentMonth }, i) => {
           const dayEvents = getEventsForDay(date);
           const isToday = isSameDay(date, today);
@@ -792,33 +965,29 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
               </div>
 
               <div className="space-y-0.5">
-                {dayEvents.slice(0, 3).map(event => {
+                {dayEvents.map(event => {
                   const member = allMembers.find(m => m.id === event.assignee);
+                  const bgColor = member?.color || event.color || '#3b82f6';
                   return (
                     <div
                       key={event.id}
                       onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-                      className={`text-[10px] px-1.5 py-0.5 rounded truncate text-white font-medium cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5 ${event._isOS ? 'ring-1 ring-orange-300' : ''}`}
-                      style={{ backgroundColor: event.color || '#3b82f6' }}
+                      className={`text-[10px] px-1.5 py-0.5 rounded truncate text-white font-medium cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5 ${event._isOS ? 'ring-1 ring-white/30' : ''}`}
+                      style={{ backgroundColor: bgColor }}
                       title={`${event.title} - ${member?.name || ''}`}
                     >
                       {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                       {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
                       <span className={`truncate ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>{formatTime(new Date(event.startDate))} {event.title}</span>
-                      {event._isOS && event._osStatus === 'available' && <span className="ml-auto text-[8px] bg-white/30 px-1 rounded shrink-0">A fazer</span>}
                       {event._isOS && event._osStatus === 'done' && <span className="ml-auto text-[8px] bg-white/30 px-1 rounded shrink-0">&#10003;</span>}
                     </div>
                   );
                 })}
-                {dayEvents.length > 3 && (
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium px-1">
-                    +{dayEvents.length - 3} mais
-                  </div>
-                )}
               </div>
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
@@ -828,6 +997,16 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
 
 function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotClick, allMembers, businessHours }) {
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
+  const SLOT_HEIGHT = 56; // h-14 = 56px
+  const FIRST_HOUR = HOURS[0]; // 7
+
+  // Pre-computar layout de overlap para cada dia da semana
+  const weekLayouts = useMemo(() => {
+    return weekDays.map(day => {
+      const dayEvents = getEventsForDay(day);
+      return computeOverlapLayout(dayEvents);
+    });
+  }, [weekDays, getEventsForDay]);
 
   return (
     <div className="h-full flex flex-col">
@@ -849,170 +1028,87 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
         })}
       </div>
 
-      {/* Grid horarios */}
+      {/* Body: colunas de hora + colunas de dia com overlay de eventos */}
       <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-[60px_repeat(7,1fr)]">
-          {HOURS.map(hour => {
-            const isOffHours = hour < businessHours.start || hour >= businessHours.end;
-            return (
-            <div key={hour} className="contents">
-              {/* Label hora */}
-              <div className={`h-14 border-r border-b border-slate-100 dark:border-slate-700 flex items-start justify-end pr-2 pt-0.5 ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}>
-                <span className={`text-[10px] font-medium ${isOffHours ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400 dark:text-slate-500'}`}>{String(hour).padStart(2, '0')}:00</span>
-              </div>
-
-              {/* Celulas por dia */}
-              {weekDays.map((day, dayIdx) => {
-                const dayEvents = getEventsForDay(day);
-                const hourEvents = dayEvents.filter(e => new Date(e.startDate).getHours() === hour);
-
-                return (
-                  <div
-                    key={dayIdx}
-                    onClick={() => {
-                      const d = new Date(day);
-                      d.setHours(hour, 0, 0, 0);
-                      onSlotClick(d);
-                    }}
-                    className={`h-14 border-r border-b border-slate-100 dark:border-slate-700 relative cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-colors ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}
-                  >
-                    {hourEvents.map(event => {
-                      const start = new Date(event.startDate);
-                      const end = new Date(event.endDate);
-                      const durationHours = Math.max((end - start) / 3600000, 0.5);
-                      const topOffset = (start.getMinutes() / 60) * 56;
-                      const height = Math.min(durationHours * 56, 56 * 4);
-                      const member = allMembers.find(m => m.id === event.assignee);
-
-                      return (
-                        <div
-                          key={event.id}
-                          onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-                          className={`absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-white text-[10px] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm ${event._isOS ? 'ring-1 ring-orange-300' : ''}`}
-                          style={{
-                            backgroundColor: event.color || '#3b82f6',
-                            top: `${topOffset}px`,
-                            height: `${height}px`,
-                            minHeight: '20px',
-                          }}
-                          title={`${event.title} - ${member?.name || ''}`}
-                        >
-                          <div className="font-semibold truncate flex items-center gap-0.5">
-                            {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
-                            {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
-                            <span className={`truncate ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>{event.title}</span>
-                            {event._isOS && event._osStatus === 'available' && <span className="text-[8px] bg-white/30 px-1 rounded shrink-0 ml-auto">A fazer</span>}
-                            {event._isOS && event._osStatus === 'done' && <span className="text-[8px] bg-white/30 px-1 rounded shrink-0 ml-auto">&#10003;</span>}
-                          </div>
-                          <div className="opacity-80 truncate">{formatTime(start)} - {formatTime(end)}</div>
-                          {member && <div className="opacity-70 truncate">{shortName(member.name)}</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ==================== VIEW DIARIA ====================
-
-function DayView({ currentDate, today, getEventsForDay, onEventClick, onSlotClick, allMembers, businessHours }) {
-  const dayEvents = useMemo(() => getEventsForDay(currentDate), [getEventsForDay, currentDate]);
-  const isToday = isSameDay(currentDate, today);
-
-  return (
-    <div className="h-full flex flex-col">
-      {/* Header do dia */}
-      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3">
-        <div className={`w-12 h-12 rounded-full flex flex-col items-center justify-center ${
-          isToday ? 'bg-fyness-primary text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-        }`}>
-          <span className="text-[10px] uppercase leading-none">{DAYS_PT[currentDate.getDay()]}</span>
-          <span className="text-lg font-bold leading-none">{currentDate.getDate()}</span>
-        </div>
-        <div>
-          <span className="text-sm text-slate-500 dark:text-slate-400">
-            {dayEvents.length} evento{dayEvents.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-      </div>
-
-      {/* Timeline */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-[60px_1fr]">
-          {HOURS.map(hour => {
-            const hourEvents = dayEvents.filter(e => new Date(e.startDate).getHours() === hour);
-            const isOffHours = hour < businessHours.start || hour >= businessHours.end;
-
-            return (
-              <div key={hour} className="contents">
-                <div className={`h-16 border-r border-b border-slate-100 dark:border-slate-700 flex items-start justify-end pr-2 pt-1 ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}>
-                  <span className={`text-xs font-medium ${isOffHours ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400 dark:text-slate-500'}`}>{String(hour).padStart(2, '0')}:00</span>
+        <div className="flex">
+          {/* Coluna de labels de hora */}
+          <div className="w-[60px] shrink-0">
+            {HOURS.map(hour => {
+              const isOffHours = hour < businessHours.start || hour >= businessHours.end;
+              return (
+                <div key={hour} className={`h-14 border-r border-b border-slate-100 dark:border-slate-700 flex items-start justify-end pr-2 pt-0.5 ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}>
+                  <span className={`text-[10px] font-medium ${isOffHours ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400 dark:text-slate-500'}`}>{String(hour).padStart(2, '0')}:00</span>
                 </div>
-                <div
-                  onClick={onSlotClick}
-                  className={`h-16 border-b border-slate-100 dark:border-slate-700 relative cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-colors ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}
-                >
-                  {hourEvents.map(event => {
+              );
+            })}
+          </div>
+
+          {/* Colunas de dia (cada uma com grid de horas + overlay de eventos) */}
+          {weekDays.map((day, dayIdx) => {
+            const layoutEvents = weekLayouts[dayIdx];
+
+            return (
+              <div key={dayIdx} className="flex-1 relative min-w-0">
+                {/* Grid de horas (visual + click) */}
+                {HOURS.map(hour => {
+                  const isOffHours = hour < businessHours.start || hour >= businessHours.end;
+                  return (
+                    <div
+                      key={hour}
+                      onClick={() => {
+                        const d = new Date(day);
+                        d.setHours(hour, 0, 0, 0);
+                        onSlotClick(d);
+                      }}
+                      className={`h-14 border-r border-b border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-colors ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}
+                    />
+                  );
+                })}
+
+                {/* Overlay de eventos (absoluto sobre a coluna do dia) */}
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                  {layoutEvents.map(event => {
                     const start = new Date(event.startDate);
                     const end = new Date(event.endDate);
-                    const durationMin = (end - start) / 60000;
-                    const topOffset = (start.getMinutes() / 60) * 64;
-                    const height = Math.max((durationMin / 60) * 64, 28);
+                    const startHour = start.getHours() + start.getMinutes() / 60;
+                    const endHour = end.getHours() + end.getMinutes() / 60;
+                    const clampedStart = Math.max(startHour, FIRST_HOUR);
+                    const clampedEnd = Math.min(endHour, FIRST_HOUR + HOURS.length);
+                    if (clampedEnd <= clampedStart) return null;
+
+                    const top = (clampedStart - FIRST_HOUR) * SLOT_HEIGHT;
+                    const height = Math.max((clampedEnd - clampedStart) * SLOT_HEIGHT, 20);
+
+                    // Colunas de overlap
+                    const colWidth = 100 / event._totalCols;
+                    const left = event._col * colWidth;
+
+                    // Cor do membro (na semana, distinguir por pessoa)
                     const member = allMembers.find(m => m.id === event.assignee);
-                    const eventType = EVENT_TYPES.find(t => t.id === event.type);
+                    const bgColor = member?.color || event.color || '#3b82f6';
 
                     return (
                       <div
                         key={event.id}
                         onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-                        className={`absolute left-1 right-4 rounded-lg px-3 py-1.5 text-white overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm ${event._isOS ? 'ring-2 ring-orange-300' : ''}`}
+                        className={`absolute rounded px-1 py-0.5 text-white text-[10px] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm pointer-events-auto ${event._isOS ? 'ring-1 ring-white/30' : ''}`}
                         style={{
-                          backgroundColor: event.color || '#3b82f6',
-                          top: `${topOffset}px`,
-                          minHeight: `${height}px`,
+                          backgroundColor: bgColor,
+                          top: `${top}px`,
+                          height: `${height}px`,
+                          left: `calc(${left}% + 1px)`,
+                          width: `calc(${colWidth}% - 2px)`,
                         }}
+                        title={`${event.title} - ${member?.name || ''} ${formatTime(start)}-${formatTime(end)}`}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`font-semibold text-sm truncate flex items-center gap-1 ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>
-                            {event._isOS && <svg className="w-3 h-3 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
-                            {event._parentId && !event._isOS && <svg className="w-3 h-3 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
-                            {event.title}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            {event._isOS && event._osStatus === 'available' && (
-                              <span className="text-[9px] bg-blue-400/30 text-blue-100 px-1.5 py-0.5 rounded-full whitespace-nowrap font-semibold">A fazer</span>
-                            )}
-                            {event._isOS && event._osStatus === 'in_progress' && (
-                              <span className="text-[9px] bg-yellow-400/30 text-yellow-100 px-1 py-0.5 rounded-full whitespace-nowrap font-semibold">Em andamento</span>
-                            )}
-                            {event._isOS && event._osStatus === 'done' && (
-                              <span className="text-[9px] bg-green-400/30 text-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap font-semibold">&#10003; Concluida</span>
-                            )}
-                            {event._isOS && event._osStatus === 'blocked' && (
-                              <span className="text-[9px] bg-red-400/30 text-red-100 px-1.5 py-0.5 rounded-full whitespace-nowrap font-semibold">Bloqueada</span>
-                            )}
-                            {eventType && (
-                              <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                                {eventType.label}
-                              </span>
-                            )}
-                          </div>
+                        <div className="font-semibold truncate flex items-center gap-0.5">
+                          {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+                          {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                          <span className={`truncate ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>{event.title}</span>
+                          {event._isOS && event._osStatus === 'done' && <span className="text-[8px] bg-white/30 px-1 rounded shrink-0 ml-auto">&#10003;</span>}
                         </div>
-                        <div className="text-xs opacity-80 mt-0.5">
-                          {formatTime(start)} - {formatTime(end)}
-                          {member && <span className="ml-2">{shortName(member.name)}</span>}
-                        </div>
-                        {event.description && (
-                          <div className="text-xs opacity-70 mt-0.5 truncate">{event.description}</div>
-                        )}
+                        <div className="opacity-80 truncate">{formatTime(start)} - {formatTime(end)}</div>
+                        {member && <div className="opacity-70 truncate">{shortName(member.name)}</div>}
                       </div>
                     );
                   })}
@@ -1026,7 +1122,276 @@ function DayView({ currentDate, today, getEventsForDay, onEventClick, onSlotClic
   );
 }
 
-// ==================== MODAL EVENTO ====================
+// ==================== VIEW DIARIA ====================
+
+function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotClick, allMembers, businessHours, dayViewMember, setDayViewMember }) {
+  const allDayEvents = useMemo(() => getAllEventsForDay(currentDate), [getAllEventsForDay, currentDate]);
+
+  // Filtra apenas eventos do membro selecionado
+  const dayEvents = useMemo(() => {
+    if (!dayViewMember) return allDayEvents;
+    return allDayEvents.filter(e => e.assignee === dayViewMember);
+  }, [allDayEvents, dayViewMember]);
+
+  // Layout de overlap (colunas lado a lado)
+  const layoutEvents = useMemo(() => computeOverlapLayout(dayEvents), [dayEvents]);
+
+  const isToday = isSameDay(currentDate, today);
+  const SLOT_HEIGHT = 64; // h-16 = 64px
+  const FIRST_HOUR = HOURS[0]; // 7
+
+  const selectedMember = allMembers.find(m => m.id === dayViewMember);
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header: info do dia + seletor de membro */}
+      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`w-12 h-12 rounded-full flex flex-col items-center justify-center ${
+            isToday ? 'bg-fyness-primary text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+          }`}>
+            <span className="text-[10px] uppercase leading-none">{DAYS_PT[currentDate.getDay()]}</span>
+            <span className="text-lg font-bold leading-none">{currentDate.getDate()}</span>
+          </div>
+          <div>
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              {dayEvents.length} evento{dayEvents.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+
+        {/* Seletor de membro */}
+        <div className="flex items-center gap-2">
+          {selectedMember && (
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ backgroundColor: selectedMember.color || '#3b82f6' }}>
+              {(selectedMember.name || '?').charAt(0).toUpperCase()}
+            </div>
+          )}
+          <select
+            value={dayViewMember || ''}
+            onChange={(e) => setDayViewMember(e.target.value)}
+            className="px-3 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+          >
+            {allMembers.map(m => (
+              <option key={m.id} value={m.id}>{shortName(m.name)}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Timeline */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-[60px_1fr] relative">
+          {/* Grid de horas (apenas visual + click) */}
+          {HOURS.map(hour => {
+            const isOffHours = hour < businessHours.start || hour >= businessHours.end;
+            return (
+              <div key={hour} className="contents">
+                <div className={`h-16 border-r border-b border-slate-100 dark:border-slate-700 flex items-start justify-end pr-2 pt-1 ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}>
+                  <span className={`text-xs font-medium ${isOffHours ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400 dark:text-slate-500'}`}>{String(hour).padStart(2, '0')}:00</span>
+                </div>
+                <div
+                  onClick={onSlotClick}
+                  className={`h-16 border-b border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-colors ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}
+                />
+              </div>
+            );
+          })}
+
+          {/* Camada de eventos (absoluta sobre a grid inteira) */}
+          <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: '60px', right: '0px' }}>
+            {layoutEvents.map(event => {
+              const start = new Date(event.startDate);
+              const end = new Date(event.endDate);
+              const startHour = start.getHours() + start.getMinutes() / 60;
+              const endHour = end.getHours() + end.getMinutes() / 60;
+              // Clamp ao range visivel
+              const clampedStart = Math.max(startHour, FIRST_HOUR);
+              const clampedEnd = Math.min(endHour, FIRST_HOUR + HOURS.length);
+              if (clampedEnd <= clampedStart) return null;
+
+              const top = (clampedStart - FIRST_HOUR) * SLOT_HEIGHT;
+              const height = Math.max((clampedEnd - clampedStart) * SLOT_HEIGHT, 28);
+
+              // Colunas de overlap
+              const colWidth = 100 / event._totalCols;
+              const left = event._col * colWidth;
+
+              const eventType = EVENT_TYPES.find(t => t.id === event.type);
+
+              return (
+                <div
+                  key={event.id}
+                  onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                  className={`absolute rounded-lg px-3 py-1.5 text-white overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm pointer-events-auto ${event._isOS ? 'ring-2 ring-orange-300' : ''}`}
+                  style={{
+                    backgroundColor: event.color || '#3b82f6',
+                    top: `${top}px`,
+                    height: `${height}px`,
+                    left: `calc(${left}% + 2px)`,
+                    width: `calc(${colWidth}% - 6px)`,
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`font-semibold text-sm truncate flex items-center gap-1 ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>
+                      {event._isOS && <svg className="w-3 h-3 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+                      {event._parentId && !event._isOS && <svg className="w-3 h-3 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                      {event.title}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {event._isOS && event._osStatus === 'available' && (
+                        <span className="text-[9px] bg-blue-400/30 text-blue-100 px-1.5 py-0.5 rounded-full whitespace-nowrap font-semibold">A fazer</span>
+                      )}
+                      {event._isOS && event._osStatus === 'in_progress' && (
+                        <span className="text-[9px] bg-yellow-400/30 text-yellow-100 px-1 py-0.5 rounded-full whitespace-nowrap font-semibold">Em andamento</span>
+                      )}
+                      {event._isOS && event._osStatus === 'done' && (
+                        <span className="text-[9px] bg-green-400/30 text-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap font-semibold">&#10003; Concluida</span>
+                      )}
+                      {event._isOS && event._osStatus === 'blocked' && (
+                        <span className="text-[9px] bg-red-400/30 text-red-100 px-1.5 py-0.5 rounded-full whitespace-nowrap font-semibold">Bloqueada</span>
+                      )}
+                      {eventType && (
+                        <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                          {eventType.label}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-xs opacity-80 mt-0.5">
+                    {formatTime(start)} - {formatTime(end)}
+                  </div>
+                  {event.description && (
+                    <div className="text-xs opacity-70 mt-0.5 truncate">{event.description}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== MODAL DETALHES DO EVENTO ====================
+
+function EventDetailModal({ event, allMembers, onClose, onNavigateOS }) {
+  const start = new Date(event.startDate);
+  const end = new Date(event.endDate);
+  const member = allMembers.find(m => m.id === event.assignee);
+  const eventType = EVENT_TYPES.find(t => t.id === event.type);
+
+  const STATUS_LABELS = { available: 'A fazer', in_progress: 'Em andamento', done: 'Concluida', blocked: 'Bloqueada' };
+  const PRIORITY_LABELS = { urgent: 'Urgente', high: 'Alta', medium: 'Media', low: 'Baixa' };
+
+  return (
+    <>
+      {/* Backdrop transparente pra fechar ao clicar fora */}
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+
+      {/* Painel lateral direito */}
+      <div className="fixed top-0 right-0 h-full w-[340px] max-w-[85vw] bg-white dark:bg-slate-800 shadow-2xl z-50 flex flex-col animate-slide-in-right border-l border-slate-200 dark:border-slate-700">
+        {/* Barra colorida no topo */}
+        <div className="h-1.5 shrink-0" style={{ backgroundColor: member?.color || event.color || '#3b82f6' }} />
+
+        {/* Header */}
+        <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            {event._isOS && (
+              <svg className="w-5 h-5 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            )}
+            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 leading-snug">{event.title}</h2>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors shrink-0">
+            <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Conteudo scrollavel */}
+        <div className="flex-1 overflow-y-auto px-5 pb-4">
+          <div className="space-y-3 text-sm">
+            {/* Data e hora */}
+            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
+              <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>
+                {start.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                {' — '}
+                {formatTime(start)} ate {formatTime(end)}
+              </span>
+            </div>
+
+            {/* Responsavel */}
+            {member && (
+              <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
+                <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: member.color || '#3b82f6' }} />
+                <span>{member.name}</span>
+              </div>
+            )}
+
+            {/* Tipo */}
+            {eventType && (
+              <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
+                <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                <span>{eventType.label}</span>
+              </div>
+            )}
+
+            {/* Status e Prioridade (OS) */}
+            {event._isOS && (
+              <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
+                <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium text-white" style={{ backgroundColor: event.color }}>
+                    {STATUS_LABELS[event._osStatus] || event._osStatus}
+                  </span>
+                  {event._osPriority && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                      {PRIORITY_LABELS[event._osPriority] || event._osPriority}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Descricao */}
+            {event.description && (
+              <div className="pt-3 mt-1 border-t border-slate-100 dark:border-slate-700">
+                <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{event.description}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        {onNavigateOS && (
+          <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700 shrink-0">
+            <button
+              onClick={onNavigateOS}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors font-medium"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Ver O.S.
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
 
 // ==================== QUICK CREATE (estilo Google Calendar) ====================
 
@@ -1726,6 +2091,717 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete, allMemb
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ==================== VIEW POSTAGENS (Calendario de Conteudo) ====================
+
+const PLATFORM_ICONS = {
+  instagram: (size = 12) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+    </svg>
+  ),
+  facebook: (size = 12) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+    </svg>
+  ),
+  tiktok: (size = 12) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.46V13a8.28 8.28 0 005.58 2.16v-3.44a4.85 4.85 0 01-3.59-1.44V6.69h3.59z"/>
+    </svg>
+  ),
+  youtube: (size = 12) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+    </svg>
+  ),
+};
+
+const PLATFORMS = [
+  { id: 'instagram', label: 'Instagram', color: '#E1306C', short: 'IG' },
+  { id: 'facebook', label: 'Facebook', color: '#1877F2', short: 'FB' },
+  { id: 'tiktok', label: 'TikTok', color: '#000000', short: 'TT' },
+  { id: 'youtube', label: 'YouTube', color: '#FF0000', short: 'YT' },
+];
+
+const MEDIA_TYPES = [
+  { id: 'image', label: 'Imagem' },
+  { id: 'video', label: 'Video' },
+  { id: 'carousel', label: 'Carrossel' },
+  { id: 'story', label: 'Story' },
+  { id: 'reel', label: 'Reel' },
+];
+
+function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMembers }) {
+  const today = new Date();
+  const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [filterPlatform, setFilterPlatform] = useState('all');
+  const [editingPost, setEditingPost] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [postForm, setPostForm] = useState({
+    title: '', description: '', scheduledDate: '', scheduledTime: '12:00',
+    platform: 'instagram', mediaType: null, assignee: '',
+  });
+  const [recurrence, setRecurrence] = useState({ enabled: false, type: 'weekly', daysOfWeek: [], monthsAhead: 3 });
+
+  const days = useMemo(() => getMonthDays(currentMonth.getFullYear(), currentMonth.getMonth()), [currentMonth]);
+
+  const filteredPosts = useMemo(() => {
+    let posts = contentPosts || [];
+    if (filterPlatform !== 'all') {
+      posts = posts.filter(p => p.platform === filterPlatform);
+    }
+    return posts;
+  }, [contentPosts, filterPlatform]);
+
+  const getPostsForDay = useCallback((date) => {
+    const key = toLocalDateString(date);
+    return filteredPosts
+      .filter(p => p.scheduledDate === key)
+      .sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || ''));
+  }, [filteredPosts]);
+
+  const navigateMonth = (dir) => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + dir, 1));
+  };
+
+  const goTodayMonth = () => {
+    setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+  };
+
+  const togglePublished = (e, post) => {
+    e.stopPropagation();
+    if (post.status === 'published') {
+      updatePost.mutate({ id: post.id, updates: { status: 'scheduled', publishedAt: null } });
+    } else {
+      updatePost.mutate({ id: post.id, updates: { status: 'published', publishedAt: new Date().toISOString() } });
+    }
+  };
+
+  const openNewPost = (date) => {
+    setPostForm({
+      title: '', description: '',
+      scheduledDate: date ? toLocalDateString(date) : toLocalDateString(today),
+      scheduledTime: '12:00', platform: 'instagram', mediaType: null, assignee: '',
+    });
+    setRecurrence({ enabled: false, type: 'weekly', daysOfWeek: [], monthsAhead: 3 });
+    setEditingPost({});
+  };
+
+  const openEditPost = (e, post) => {
+    e.stopPropagation();
+    setPostForm({
+      title: post.title || '',
+      description: post.description || '',
+      scheduledDate: post.scheduledDate || '',
+      scheduledTime: post.scheduledTime || '12:00',
+      platform: post.platform || 'instagram',
+      mediaType: post.mediaType || null,
+      assignee: post.assignee || '',
+    });
+    setEditingPost(post);
+  };
+
+  // Gerar datas recorrentes a partir da data base
+  const generateRecurrenceDates = useCallback((baseDate, rec) => {
+    const dates = [];
+    const start = new Date(baseDate + 'T00:00:00');
+    const endLimit = new Date(start);
+    endLimit.setMonth(endLimit.getMonth() + rec.monthsAhead);
+
+    if (rec.type === 'weekly' && rec.daysOfWeek.length > 0) {
+      // Para cada semana ate o limite, gerar nos dias selecionados
+      const cursor = new Date(start);
+      // Voltar pro domingo da semana atual
+      cursor.setDate(cursor.getDate() - cursor.getDay());
+      while (cursor <= endLimit) {
+        for (const dow of rec.daysOfWeek) {
+          const d = new Date(cursor);
+          d.setDate(d.getDate() + dow);
+          if (d >= start && d <= endLimit) {
+            dates.push(toLocalDateString(d));
+          }
+        }
+        cursor.setDate(cursor.getDate() + 7);
+      }
+    } else if (rec.type === 'biweekly' && rec.daysOfWeek.length > 0) {
+      const cursor = new Date(start);
+      cursor.setDate(cursor.getDate() - cursor.getDay());
+      let weekCount = 0;
+      while (cursor <= endLimit) {
+        if (weekCount % 2 === 0) {
+          for (const dow of rec.daysOfWeek) {
+            const d = new Date(cursor);
+            d.setDate(d.getDate() + dow);
+            if (d >= start && d <= endLimit) {
+              dates.push(toLocalDateString(d));
+            }
+          }
+        }
+        cursor.setDate(cursor.getDate() + 7);
+        weekCount++;
+      }
+    } else if (rec.type === 'monthly') {
+      // Mesmo dia do mes, a cada mes
+      const dayOfMonth = start.getDate();
+      const cursor = new Date(start);
+      while (cursor <= endLimit) {
+        dates.push(toLocalDateString(cursor));
+        cursor.setMonth(cursor.getMonth() + 1);
+        // Ajustar se o mes nao tem esse dia (ex: 31 em fevereiro)
+        const maxDay = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+        cursor.setDate(Math.min(dayOfMonth, maxDay));
+      }
+    }
+
+    // Remover duplicatas e ordenar
+    return [...new Set(dates)].sort();
+  }, []);
+
+  const handleSave = async () => {
+    if (!postForm.title.trim() || !postForm.scheduledDate) return;
+    try {
+      if (editingPost?.id) {
+        // Edicao simples (sem recorrencia)
+        await updatePost.mutateAsync({ id: editingPost.id, updates: postForm });
+      } else if (recurrence.enabled) {
+        // Criacao com recorrencia: gerar multiplos posts
+        const dates = generateRecurrenceDates(postForm.scheduledDate, recurrence);
+        if (dates.length === 0) {
+          await createPost.mutateAsync(postForm);
+        } else {
+          const groupId = `recgroup_${Date.now()}`;
+          for (const date of dates) {
+            await createPost.mutateAsync({
+              ...postForm,
+              scheduledDate: date,
+              recurrenceGroupId: groupId,
+            });
+          }
+        }
+      } else {
+        await createPost.mutateAsync(postForm);
+      }
+      setEditingPost(null);
+    } catch (err) {
+      console.error('Erro ao salvar postagem:', err);
+    }
+  };
+
+  const handleDeletePost = async (id) => {
+    try {
+      await deletePost.mutateAsync(id);
+      setEditingPost(null);
+      setShowDeleteConfirm(null);
+    } catch (err) {
+      console.error('Erro ao excluir postagem:', err);
+    }
+  };
+
+  const handleDeleteSeries = async (groupId) => {
+    try {
+      const postsInGroup = (contentPosts || []).filter(p => p.recurrenceGroupId === groupId);
+      for (const p of postsInGroup) {
+        await deletePost.mutateAsync(p.id);
+      }
+      setEditingPost(null);
+      setShowDeleteConfirm(null);
+    } catch (err) {
+      console.error('Erro ao excluir serie:', err);
+    }
+  };
+
+  const getPlatform = (id) => PLATFORMS.find(p => p.id === id) || PLATFORMS[0];
+
+  // Contadores por status para o header
+  const stats = useMemo(() => {
+    const all = contentPosts || [];
+    const monthKey = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+    const monthPosts = all.filter(p => p.scheduledDate?.startsWith(monthKey));
+    return {
+      total: monthPosts.length,
+      published: monthPosts.filter(p => p.status === 'published').length,
+      scheduled: monthPosts.filter(p => p.status === 'scheduled').length,
+      missed: monthPosts.filter(p => {
+        if (p.status === 'published') return false;
+        const d = new Date(p.scheduledDate + 'T23:59:59');
+        return d < today;
+      }).length,
+    };
+  }, [contentPosts, currentMonth, today]);
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header interno: navegacao + filtro + botao */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <button onClick={() => navigateMonth(-1)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+              <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button onClick={goTodayMonth} className="px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+              Hoje
+            </button>
+            <button onClick={() => navigateMonth(1)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+              <svg className="w-4 h-4 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+            {MONTHS_PT[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+          </h3>
+
+          {/* Stats badges */}
+          <div className="hidden sm:flex items-center gap-1.5 ml-2">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium">{stats.total} total</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">{stats.published} publicados</span>
+            {stats.missed > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-medium">{stats.missed} atrasados</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Filtro por plataforma */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
+            <button
+              onClick={() => setFilterPlatform('all')}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                filterPlatform === 'all' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+              }`}
+            >
+              Todas
+            </button>
+            {PLATFORMS.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setFilterPlatform(p.id)}
+                className={`px-2 py-1.5 rounded-md transition-colors flex items-center justify-center ${
+                  filterPlatform === p.id ? 'text-white shadow-sm' : 'hover:text-slate-600'
+                }`}
+                style={filterPlatform === p.id ? { backgroundColor: p.color, color: '#fff' } : { color: p.color }}
+                title={p.label}
+              >
+                {PLATFORM_ICONS[p.id]?.(16)}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => openNewPost(null)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-xs font-medium shadow-sm"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Nova Postagem
+          </button>
+        </div>
+      </div>
+
+      {/* Grid mensal */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Dias da semana */}
+        <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700">
+          {DAYS_PT.map(day => (
+            <div key={day} className="px-2 py-1.5 text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Celulas dos dias */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-7">
+            {days.map(({ date, isCurrentMonth }, i) => {
+              const dayPosts = getPostsForDay(date);
+              const isToday = isSameDay(date, today);
+              const isPast = date < today && !isToday;
+
+              return (
+                <div
+                  key={i}
+                  onClick={() => openNewPost(date)}
+                  className={`border-b border-r border-slate-100 dark:border-slate-700 p-1 min-h-[90px] cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-700/30 transition-colors ${
+                    !isCurrentMonth ? 'bg-slate-50/50 dark:bg-slate-800/50' : ''
+                  }`}
+                >
+                  <div className={`text-[10px] font-medium mb-1 w-5 h-5 flex items-center justify-center rounded-full ${
+                    isToday ? 'bg-fyness-primary text-white' : isCurrentMonth ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'
+                  }`}>
+                    {date.getDate()}
+                  </div>
+
+                  <div className="space-y-0.5">
+                    {dayPosts.map(post => {
+                      const plat = getPlatform(post.platform);
+                      const isPublished = post.status === 'published';
+                      const isMissed = !isPublished && isPast && isCurrentMonth;
+
+                      return (
+                        <div
+                          key={post.id}
+                          onClick={(e) => openEditPost(e, post)}
+                          className={`group relative flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-all hover:shadow-sm ${
+                            isPublished
+                              ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                              : isMissed
+                              ? 'bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800'
+                              : 'bg-white dark:bg-slate-800 border dark:border-slate-600'
+                          }`}
+                          style={{ borderLeftWidth: '3px', borderLeftColor: plat.color }}
+                        >
+                          {/* Checkbox publicado */}
+                          <button
+                            onClick={(e) => togglePublished(e, post)}
+                            className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                              isPublished
+                                ? 'bg-green-500 border-green-500 text-white'
+                                : 'border-slate-300 dark:border-slate-500 hover:border-green-400'
+                            }`}
+                          >
+                            {isPublished && (
+                              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </button>
+
+                          {/* Icone plataforma */}
+                          <span className="shrink-0" style={{ color: plat.color }}>
+                            {PLATFORM_ICONS[plat.id]?.(14)}
+                          </span>
+
+                          {/* Titulo + horario */}
+                          <span className={`truncate font-medium ${
+                            isPublished ? 'text-green-700 dark:text-green-400 line-through opacity-70' : isMissed ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'
+                          }`}>
+                            {post.scheduledTime && <span className="text-slate-400 dark:text-slate-500 mr-0.5">{post.scheduledTime}</span>}
+                            {post.title}
+                          </span>
+
+                          {/* Indicador atrasado */}
+                          {isMissed && (
+                            <svg className="w-3 h-3 text-red-500 shrink-0 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal de criacao/edicao de postagem */}
+      {editingPost !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setEditingPost(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {/* Header modal */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                {editingPost?.id ? 'Editar Postagem' : 'Nova Postagem'}
+              </h3>
+              <button onClick={() => setEditingPost(null)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                <svg className="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* Titulo */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Titulo *</label>
+                <input
+                  type="text"
+                  value={postForm.title}
+                  onChange={(e) => setPostForm(f => ({ ...f, title: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-sm"
+                  placeholder="Ex: Post sobre lancamento..."
+                  autoFocus
+                />
+              </div>
+
+              {/* Descricao */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Descricao</label>
+                <textarea
+                  value={postForm.description}
+                  onChange={(e) => setPostForm(f => ({ ...f, description: e.target.value }))}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-sm resize-none"
+                  placeholder="Legenda, copy, observacoes..."
+                />
+              </div>
+
+              {/* Data + Horario */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Data *</label>
+                  <input
+                    type="date"
+                    value={postForm.scheduledDate}
+                    onChange={(e) => setPostForm(f => ({ ...f, scheduledDate: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Horario</label>
+                  <input
+                    type="time"
+                    value={postForm.scheduledTime}
+                    onChange={(e) => setPostForm(f => ({ ...f, scheduledTime: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Plataforma */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Plataforma</label>
+                <div className="flex gap-2">
+                  {PLATFORMS.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPostForm(f => ({ ...f, platform: p.id }))}
+                      className={`flex-1 flex flex-col items-center justify-center gap-1 px-3 py-2.5 rounded-lg text-[10px] font-bold transition-all border-2 ${
+                        postForm.platform === p.id
+                          ? 'text-white shadow-md scale-105'
+                          : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                      }`}
+                      style={postForm.platform === p.id ? { backgroundColor: p.color, borderColor: p.color, color: '#fff' } : { color: p.color }}
+                    >
+                      {PLATFORM_ICONS[p.id]?.(20)}
+                      <span>{p.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tipo de midia */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Tipo de Midia</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {MEDIA_TYPES.map(mt => (
+                    <button
+                      key={mt.id}
+                      type="button"
+                      onClick={() => setPostForm(f => ({ ...f, mediaType: f.mediaType === mt.id ? null : mt.id }))}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                        postForm.mediaType === mt.id
+                          ? 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-800'
+                          : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                      }`}
+                    >
+                      {mt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Responsavel */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Responsavel</label>
+                <select
+                  value={postForm.assignee}
+                  onChange={(e) => setPostForm(f => ({ ...f, assignee: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-sm"
+                >
+                  <option value="">Nenhum</option>
+                  {allMembers.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Recorrencia (apenas criacao) */}
+              {!editingPost?.id && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={recurrence.enabled}
+                      onChange={(e) => setRecurrence(r => ({ ...r, enabled: e.target.checked }))}
+                      className="w-4 h-4 rounded border-slate-300 text-fyness-primary focus:ring-fyness-primary"
+                    />
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-200">Postagem recorrente</span>
+                  </label>
+
+                  {recurrence.enabled && (
+                    <>
+                      {/* Frequencia */}
+                      <div>
+                        <label className="block text-[10px] font-medium text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wide">Frequencia</label>
+                        <div className="flex gap-1.5">
+                          {[
+                            { id: 'weekly', label: 'Semanal' },
+                            { id: 'biweekly', label: 'Quinzenal' },
+                            { id: 'monthly', label: 'Mensal' },
+                          ].map(f => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => setRecurrence(r => ({ ...r, type: f.id }))}
+                              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                recurrence.type === f.id
+                                  ? 'bg-fyness-primary text-white shadow-sm'
+                                  : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
+                              }`}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Dias da semana (semanal / quinzenal) */}
+                      {(recurrence.type === 'weekly' || recurrence.type === 'biweekly') && (
+                        <div>
+                          <label className="block text-[10px] font-medium text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wide">Nos dias</label>
+                          <div className="flex gap-1">
+                            {DAYS_PT.map((day, i) => {
+                              const selected = recurrence.daysOfWeek.includes(i);
+                              return (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => {
+                                    setRecurrence(r => ({
+                                      ...r,
+                                      daysOfWeek: selected
+                                        ? r.daysOfWeek.filter(d => d !== i)
+                                        : [...r.daysOfWeek, i].sort(),
+                                    }));
+                                  }}
+                                  className={`w-9 h-9 rounded-full text-[10px] font-bold transition-all ${
+                                    selected
+                                      ? 'bg-fyness-primary text-white shadow-sm'
+                                      : 'bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600'
+                                  }`}
+                                >
+                                  {day}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Mensal info */}
+                      {recurrence.type === 'monthly' && postForm.scheduledDate && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Repete todo dia <strong>{new Date(postForm.scheduledDate + 'T00:00:00').getDate()}</strong> de cada mes
+                        </p>
+                      )}
+
+                      {/* Quantidade de meses */}
+                      <div>
+                        <label className="block text-[10px] font-medium text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wide">Gerar para os proximos</label>
+                        <div className="flex gap-1.5">
+                          {[3, 6, 12].map(m => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setRecurrence(r => ({ ...r, monthsAhead: m }))}
+                              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                recurrence.monthsAhead === m
+                                  ? 'bg-fyness-primary text-white shadow-sm'
+                                  : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
+                              }`}
+                            >
+                              {m} meses
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Preview quantidade */}
+                      {recurrence.enabled && postForm.scheduledDate && (() => {
+                        const dates = generateRecurrenceDates(postForm.scheduledDate, recurrence);
+                        return dates.length > 0 ? (
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            {dates.length} postagens serao criadas
+                          </p>
+                        ) : (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            Selecione ao menos um dia da semana
+                          </p>
+                        );
+                      })()}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Indicador de serie (edicao) */}
+              {editingPost?.id && editingPost?.recurrenceGroupId && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="text-xs text-blue-700 dark:text-blue-300">Esta postagem faz parte de uma serie recorrente</span>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                {editingPost?.id && (
+                  showDeleteConfirm === editingPost.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-red-600 dark:text-red-400">Confirmar?</span>
+                      <button onClick={() => handleDeletePost(editingPost.id)} className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-colors">
+                        So esta
+                      </button>
+                      {editingPost.recurrenceGroupId && (
+                        <button onClick={() => handleDeleteSeries(editingPost.recurrenceGroupId)} className="px-2 py-1 bg-red-700 text-white text-xs rounded hover:bg-red-800 transition-colors">
+                          Toda serie
+                        </button>
+                      )}
+                      <button onClick={() => setShowDeleteConfirm(null)} className="px-2 py-1 text-xs text-slate-500 hover:text-slate-700 transition-colors">
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowDeleteConfirm(editingPost.id)}
+                      className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
+                    >
+                      Excluir
+                    </button>
+                  )
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setEditingPost(null)} className="px-3 py-1.5 text-xs border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={!postForm.title.trim() || !postForm.scheduledDate}
+                  className="px-4 py-1.5 text-xs bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {editingPost?.id ? 'Salvar' : 'Criar Postagem'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

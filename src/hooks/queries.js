@@ -7,6 +7,10 @@ import { getClients, createClient, updateClient, deleteClient } from '../lib/cli
 import { getAllActivities } from '../lib/activityLogService';
 import { getHistory as getKPIHistory } from '../lib/kpiSnapshotService';
 import { getEapProjects, createEapProject, updateEapProject, deleteEapProject, getEapTasks, createEapTask, updateEapTask, deleteEapTask } from '../lib/eapService';
+import { getCommentsByOrder, addComment, getChatSummaries, markConversationRead, getConversationReads } from '../lib/commentService';
+import { getPenalties, createPenalty, deletePenalty } from '../lib/penaltyService';
+import { getContentPosts, createContentPost, updateContentPost, deleteContentPost } from '../lib/contentService';
+import { supabase } from '../lib/supabase';
 
 // ==================== QUERY KEYS ====================
 
@@ -23,6 +27,7 @@ export const queryKeys = {
   kpiHistory: ['kpiHistory'],
   eapProjects: ['eapProjects'],
   eapTasks: ['eapTasks'],
+  contentPosts: ['contentPosts'],
 };
 
 // ==================== OS ORDERS ====================
@@ -371,5 +376,134 @@ export function useDeleteEapTask() {
   return useMutation({
     mutationFn: deleteEapTask,
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapTasks }),
+  });
+}
+
+// ==================== MEMBER AVATARS ====================
+
+export function useMemberAvatars(teamMembers) {
+  const authIds = (teamMembers || []).filter(m => m.authUserId).map(m => m.authUserId);
+  return useQuery({
+    queryKey: ['memberAvatars', authIds.sort().join(',')],
+    queryFn: async () => {
+      if (authIds.length === 0) return {};
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('id, avatar')
+        .in('id', authIds);
+      const map = {};
+      (data || []).forEach(p => { if (p.avatar) map[p.id] = p.avatar; });
+      return map;
+    },
+    enabled: authIds.length > 0,
+    staleTime: 5 * 60_000,
+  });
+}
+
+// ==================== OS CHAT (COMMENTS) ====================
+
+export function useOSComments(orderId) {
+  return useQuery({
+    queryKey: ['osComments', orderId],
+    queryFn: () => getCommentsByOrder(orderId),
+    enabled: !!orderId,
+    staleTime: 10_000,
+  });
+}
+
+export function useAddOSComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: addComment,
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['osComments', variables.orderId] });
+      qc.invalidateQueries({ queryKey: ['chatSummaries'] });
+    },
+  });
+}
+
+export function useChatSummaries() {
+  return useQuery({
+    queryKey: ['chatSummaries'],
+    queryFn: getChatSummaries,
+    staleTime: 30_000,
+  });
+}
+
+// ==================== READ RECEIPTS ====================
+
+export function useConversationReads(orderId) {
+  return useQuery({
+    queryKey: ['conversationReads', orderId],
+    queryFn: () => getConversationReads(orderId),
+    enabled: !!orderId,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
+  });
+}
+
+export function useMarkConversationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, userId, userName }) => markConversationRead(orderId, userId, userName),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['conversationReads', variables.orderId] });
+    },
+  });
+}
+
+// ==================== PENALTIES (PUNICOES) ====================
+
+export function usePenalties() {
+  return useQuery({
+    queryKey: ['penalties'],
+    queryFn: getPenalties,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreatePenalty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createPenalty,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['penalties'] }),
+  });
+}
+
+export function useDeletePenalty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deletePenalty,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['penalties'] }),
+  });
+}
+
+// ==================== CONTENT POSTS (Calendario de Postagens) ====================
+
+export function useContentPosts() {
+  return useQuery({ queryKey: queryKeys.contentPosts, queryFn: getContentPosts, staleTime: 30_000 });
+}
+
+export function useCreateContentPost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createContentPost,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contentPosts }),
+  });
+}
+
+export function useUpdateContentPost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateContentPost(id, updates),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contentPosts }),
+  });
+}
+
+export function useDeleteContentPost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteContentPost,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contentPosts }),
   });
 }

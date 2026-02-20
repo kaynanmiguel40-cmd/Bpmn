@@ -1,5 +1,9 @@
 import { forwardRef, useMemo, useState, useRef, useCallback, useEffect } from 'react';
 
+// ==================== CONSTANTES ====================
+
+const HOURS_PER_DAY = 10; // 08:00-18:00
+
 // ==================== UTILIDADES ====================
 
 function daysBetween(d1, d2) {
@@ -138,7 +142,7 @@ function generateWeekGroups(columns) {
 
 // ==================== COMPONENTE BARRA ====================
 
-function GanttBar({ task, x, y, width, height, isSummary, isMilestone, isCritical, isSelected, onMouseDown }) {
+function GanttBar({ task, x, y, width, height, isSummary, isMilestone, isCritical, isSelected, onMouseDown, onLinkStart }) {
   const barHeight = isSummary ? 6 : 18;
   const barY = y + (height - barHeight) / 2;
   const progressWidth = Math.max(0, (task.progress / 100) * width);
@@ -213,6 +217,20 @@ function GanttBar({ task, x, y, width, height, isSummary, isMilestone, isCritica
       )}
       <rect x={x + Math.max(4, width) - 4} y={barY} width={8} height={barHeight} fill="transparent" className="cursor-ew-resize" data-resize="end" />
       <rect x={x - 4} y={barY} width={8} height={barHeight} fill="transparent" className="cursor-ew-resize" data-resize="start" />
+      {/* Conector para criar link (circulo na borda direita) */}
+      <circle
+        cx={x + Math.max(4, width)}
+        cy={y + height / 2}
+        r={5}
+        fill="#3b82f6"
+        stroke="#1d4ed8"
+        strokeWidth={1}
+        opacity={0}
+        className="hover:opacity-100 cursor-crosshair"
+        style={{ transition: 'opacity 0.15s' }}
+        onMouseDown={(e) => { e.stopPropagation(); onLinkStart?.(e, task.id); }}
+        data-link-handle="true"
+      />
     </g>
   );
 }
@@ -298,6 +316,7 @@ const GanttTimeline = forwardRef(function GanttTimeline({
   summaryIds,
   criticalIds,
   showCriticalPath,
+  showAssigneeOnBar,
   selectedTaskIds,
   dateRange,
   zoom,
@@ -305,12 +324,14 @@ const GanttTimeline = forwardRef(function GanttTimeline({
   rowHeight,
   onSelectTask,
   onBarDrag,
+  onLinkTasks,
   onScroll,
 }, ref) {
 
   const svgRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const [dragState, setDragState] = useState(null);
+  const [linkDrag, setLinkDrag] = useState(null); // { fromTaskId, fromX, fromY, mouseX, mouseY }
   const hasScrolled = useRef(false);
 
   const colWidth = zoomConfig.colWidth;
@@ -349,7 +370,12 @@ const GanttTimeline = forwardRef(function GanttTimeline({
   // day e week usam colunas por dia; month usa proporcional
   const dateToX = useCallback((dateStr) => {
     if (!dateStr) return 0;
-    const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+    // Usar apenas a parte da data (YYYY-MM-DD) para posicionamento — ignorar horas
+    // Isso evita que T08:00 vs T18:00 cause arredondamento errado no daysBetween
+    const dateOnly = typeof dateStr === 'string' && dateStr.includes('T')
+      ? dateStr.split('T')[0] + 'T00:00:00'
+      : (typeof dateStr === 'string' ? dateStr + 'T00:00:00' : dateStr);
+    const date = new Date(dateOnly);
     const days = daysBetween(dateRange.start, date);
 
     if (zoom === 'day' || zoom === 'week') {
@@ -399,11 +425,21 @@ const GanttTimeline = forwardRef(function GanttTimeline({
     if (!task.startDate) return null;
 
     const x = dateToX(task.startDate);
-    const endX = task.endDate ? dateToX(task.endDate) : x;
-    const barWidth = Math.max(4, endX - x + colWidth);
+    let barWidth;
+    if (task.isMilestone) {
+      barWidth = 0;
+    } else if (summaryIds.has(task.id)) {
+      // Summary: largura baseada em datas (abrange todos os filhos)
+      const endX = task.endDate ? dateToX(task.endDate) : x;
+      barWidth = Math.max(4, endX - x + colWidth);
+    } else {
+      // Folha: largura proporcional as horas uteis
+      const taskHours = (task.durationDays || 1) * HOURS_PER_DAY;
+      barWidth = Math.max(4, (taskHours / HOURS_PER_DAY) * colWidth);
+    }
 
     return { x, y: idx * rowHeight, width: barWidth, height: rowHeight };
-  }, [tasks, dateToX, colWidth, rowHeight]);
+  }, [tasks, dateToX, colWidth, rowHeight, summaryIds]);
 
   const todayX = useMemo(() => {
     const days = daysBetween(dateRange.start, today);
@@ -453,6 +489,54 @@ const GanttTimeline = forwardRef(function GanttTimeline({
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
   }, [dateToX, xToDate, colWidth, summaryIds, onBarDrag]);
+
+  // ==================== LINK DRAG (arrastar para criar predecessora) ====================
+
+  const handleLinkStart = useCallback((e, fromTaskId) => {
+    e.preventDefault();
+    const svgRect = svgRef.current?.getBoundingClientRect();
+    const scrollEl = scrollContainerRef.current;
+    if (!svgRect || !scrollEl) return;
+
+    // Posicao do ponto de origem (borda direita da barra)
+    const pos = getTaskPosition(fromTaskId);
+    if (!pos) return;
+    const fromX = pos.x + pos.width;
+    const fromY = pos.y + pos.height / 2;
+
+    const getMouseSvg = (ev) => ({
+      x: ev.clientX - svgRect.left + scrollEl.scrollLeft,
+      y: ev.clientY - svgRect.top + scrollEl.scrollTop,
+    });
+
+    const initial = getMouseSvg(e);
+    setLinkDrag({ fromTaskId, fromX, fromY, mouseX: initial.x, mouseY: initial.y, targetTaskId: null });
+
+    const onMouseMove = (ev) => {
+      const m = getMouseSvg(ev);
+      // Detectar tarefa-alvo pelo Y
+      const targetIdx = Math.floor(m.y / rowHeight);
+      const targetTask = tasks[targetIdx];
+      const targetTaskId = (targetTask && targetTask.id !== fromTaskId && !summaryIds.has(targetTask.id) && !targetTask.isMilestone)
+        ? targetTask.id : null;
+      setLinkDrag({ fromTaskId, fromX, fromY, mouseX: m.x, mouseY: m.y, targetTaskId });
+    };
+
+    const onMouseUp = (ev) => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      const m = getMouseSvg(ev);
+      const targetIdx = Math.floor(m.y / rowHeight);
+      const targetTask = tasks[targetIdx];
+      if (targetTask && targetTask.id !== fromTaskId && !summaryIds.has(targetTask.id) && !targetTask.isMilestone) {
+        onLinkTasks?.(fromTaskId, targetTask.id);
+      }
+      setLinkDrag(null);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [getTaskPosition, tasks, rowHeight, summaryIds, onLinkTasks]);
 
   // ==================== RENDER HEADER ====================
 
@@ -569,6 +653,9 @@ const GanttTimeline = forwardRef(function GanttTimeline({
             <marker id="arrowhead-critical" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
               <polygon points="0 0, 8 3, 0 6" fill="#ef4444" />
             </marker>
+            <marker id="arrowhead-link" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+              <polygon points="0 0, 10 4, 0 8" fill="#3b82f6" />
+            </marker>
           </defs>
 
           {/* Grid verticais */}
@@ -622,7 +709,17 @@ const GanttTimeline = forwardRef(function GanttTimeline({
 
             const x = dateToX(displayTask.startDate);
             const endX = displayTask.endDate ? dateToX(displayTask.endDate) : x;
-            const barWidth = task.isMilestone ? 0 : Math.max(4, endX - x + colWidth);
+            let barWidth;
+            if (task.isMilestone) {
+              barWidth = 0;
+            } else if (isSummary || dragState?.taskId === task.id) {
+              // Summary ou sendo arrastada: largura por datas
+              barWidth = Math.max(4, endX - x + colWidth);
+            } else {
+              // Folha: largura proporcional as horas uteis
+              const taskHours = (task.durationDays || 1) * HOURS_PER_DAY;
+              barWidth = Math.max(4, (taskHours / HOURS_PER_DAY) * colWidth);
+            }
 
             return (
               <g key={task.id} onClick={(e) => onSelectTask(task.id, e)}>
@@ -637,10 +734,43 @@ const GanttTimeline = forwardRef(function GanttTimeline({
                   isCritical={isCritical}
                   isSelected={isSelected}
                   onMouseDown={(e) => handleBarMouseDown(e, task)}
+                  onLinkStart={!isSummary && !task.isMilestone ? handleLinkStart : undefined}
                 />
+                {/* Nome do responsavel ao lado da barra */}
+                {showAssigneeOnBar && task.assignedTo && !isSummary && (
+                  <text
+                    x={x + barWidth + 6}
+                    y={idx * rowHeight + rowHeight / 2 + 3}
+                    className="fill-slate-500 dark:fill-slate-400"
+                    style={{ fontSize: '9px', pointerEvents: 'none' }}
+                  >
+                    {task.assignedTo}
+                  </text>
+                )}
               </g>
             );
           })}
+
+          {/* Link drag visual: linha + highlight alvo */}
+          {linkDrag && (
+            <g>
+              {/* Highlight da row alvo */}
+              {linkDrag.targetTaskId && (() => {
+                const targetIdx = tasks.findIndex(t => t.id === linkDrag.targetTaskId);
+                if (targetIdx === -1) return null;
+                return <rect x={0} y={targetIdx * rowHeight} width={totalWidth} height={rowHeight} fill="#3b82f6" opacity={0.08} />;
+              })()}
+              {/* Linha do ponto de origem ao cursor */}
+              <line
+                x1={linkDrag.fromX} y1={linkDrag.fromY}
+                x2={linkDrag.mouseX} y2={linkDrag.mouseY}
+                stroke="#3b82f6" strokeWidth={2} strokeDasharray="6,3"
+                markerEnd="url(#arrowhead-link)"
+              />
+              {/* Circulo no ponto de origem */}
+              <circle cx={linkDrag.fromX} cy={linkDrag.fromY} r={4} fill="#3b82f6" stroke="#1d4ed8" strokeWidth={1} />
+            </g>
+          )}
         </svg>
       </div>
     </div>

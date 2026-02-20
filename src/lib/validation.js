@@ -91,6 +91,7 @@ export const osOrderSchema = z.object({
   notes: z.string().optional().default(''),
   assignee: nullableStr,
   assignedTo: nullableStr,
+  supervisor: nullableStr,
   estimatedStart: nullableStr,
   estimatedEnd: nullableStr,
   actualStart: nullableStr,
@@ -183,6 +184,7 @@ export const eapTaskSchema = z.object({
   estimatedHours: z.number().nullable().optional().default(null),
   progress: z.number().min(0).max(100).optional().default(0),
   assignedTo: z.string().optional().default(''),
+  supervisor: z.string().optional().default(''),
   predecessors: z.array(z.object({
     taskId: z.string(),
     type: z.enum(['FS', 'SS', 'FF', 'SF']).default('FS'),
@@ -192,6 +194,18 @@ export const eapTaskSchema = z.object({
   attachments: z.array(z.any()).optional().default([]),
   color: z.string().optional().default(''),
   osOrderId: z.string().nullable().optional().default(null),
+}).passthrough();
+
+export const contentPostSchema = z.object({
+  title: z.string().min(1, 'Titulo e obrigatorio'),
+  description: z.string().optional().default(''),
+  scheduledDate: z.string().min(1, 'Data e obrigatoria'),
+  scheduledTime: z.string().optional().default('12:00'),
+  platform: z.enum(['instagram', 'facebook', 'tiktok', 'youtube']).default('instagram'),
+  status: z.enum(['scheduled', 'published', 'missed']).default('scheduled'),
+  assignee: z.string().optional().default(''),
+  mediaType: z.enum(['image', 'video', 'carousel', 'story', 'reel']).nullable().optional().default(null),
+  recurrenceGroupId: z.string().nullable().optional().default(null),
 }).passthrough();
 
 // ==================== VALIDACAO + SANITIZACAO ====================

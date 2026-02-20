@@ -48,6 +48,7 @@ function dbToTask(row) {
     estimatedHours: row.estimated_hours ?? null,
     progress: row.progress ?? 0,
     assignedTo: row.assigned_to || '',
+    supervisor: row.supervisor || '',
     predecessors: Array.isArray(row.predecessors) ? row.predecessors : [],
     notes: row.notes || '',
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
@@ -99,6 +100,7 @@ const taskService = createCRUDService({
     estimatedHours: 'estimated_hours',
     progress: 'progress',
     assignedTo: 'assigned_to',
+    supervisor: 'supervisor',
     predecessors: 'predecessors',
     notes: 'notes',
     attachments: 'attachments',
@@ -290,6 +292,7 @@ export async function generateOSFromTask(task, projectName, allTasks = []) {
     priority: 'medium',
     category: 'internal',
     assignedTo: task.assignedTo || '',
+    supervisor: task.supervisor || null,
     estimatedStart: task.startDate || '',
     estimatedEnd: task.endDate || '',
     projectId: osProjectId,
@@ -368,8 +371,13 @@ function formatLocalDateTime(d) {
  * Retorna array de { id, wbsNumber } para update em batch.
  */
 export function recalculateWBS(tasks) {
-  const sorted = [...tasks].sort((a, b) => a.sortOrder - b.sortOrder);
+  // Ordenar por level primeiro (pais antes de filhos), depois por sortOrder
+  const sorted = [...tasks].sort((a, b) => {
+    if ((a.level || 0) !== (b.level || 0)) return (a.level || 0) - (b.level || 0);
+    return (a.sortOrder || 0) - (b.sortOrder || 0);
+  });
   const counters = {};
+  const wbsMap = new Map(); // id → wbs calculado nesta iteracao
   const updates = [];
 
   for (const task of sorted) {
@@ -381,11 +389,11 @@ export function recalculateWBS(tasks) {
     if (!task.parentId) {
       wbs = String(counters[parentKey]);
     } else {
-      const parent = sorted.find(t => t.id === task.parentId);
-      const parentWbs = parent ? parent.wbsNumber : '';
+      const parentWbs = wbsMap.get(task.parentId) || '';
       wbs = parentWbs ? `${parentWbs}.${counters[parentKey]}` : String(counters[parentKey]);
     }
 
+    wbsMap.set(task.id, wbs);
     updates.push({ id: task.id, wbsNumber: wbs });
   }
   return updates;
@@ -687,25 +695,26 @@ export function calcEndDate(startDate, durationDays) {
     }
   }
 
-  // Preservar hora original se tinha
+  // Se a data de inicio tinha hora, retornar o fim com hora 18:00 (fim do expediente)
   if (startDate.includes('T')) {
-    // Manter a hora do inicio, so mudar a data
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${formatLocalDate(result)}T${pad(start.getHours())}:${pad(start.getMinutes())}`;
+    return `${formatLocalDate(result)}T18:00`;
   }
   return formatLocalDate(result);
 }
 
 /**
  * Calcula a duracao em dias uteis entre duas datas.
+ * Inicio e termino no mesmo dia = 1 dia.
  */
 export function calcDuration(startDate, endDate) {
   if (!startDate || !endDate) return 1;
-  const start = toDate(startDate);
-  const end = toDate(endDate);
-  // Contar dias uteis entre as datas (ignorando hora)
-  const s = new Date(start); s.setHours(0, 0, 0, 0);
-  const e = new Date(end); e.setHours(0, 0, 0, 0);
+  // Extrair apenas a parte da data (YYYY-MM-DD), ignorando horas completamente
+  const startStr = String(startDate).split('T')[0];
+  const endStr = String(endDate).split('T')[0];
+  const s = new Date(startStr + 'T12:00:00'); // meio-dia para evitar problemas de DST
+  const e = new Date(endStr + 'T12:00:00');
+  if (isNaN(s) || isNaN(e) || e < s) return 1;
+
   let days = 0;
   const current = new Date(s);
 
@@ -959,7 +968,10 @@ export function autoScheduleTasks(tasks) {
     }
 
     if (maxStartStr) {
-      const newStart = maxStartStr;
+      // Normalizar horario de inicio para 08:00 (inicio do expediente)
+      const newStart = maxStartStr.includes('T')
+        ? maxStartStr.split('T')[0] + 'T08:00'
+        : maxStartStr;
       const newEnd = calcEndDate(newStart, task.durationDays || 1);
 
       // Comparar apenas a parte da data (ignorar diferenca de formato com/sem hora)

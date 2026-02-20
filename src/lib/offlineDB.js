@@ -32,6 +32,10 @@ db.version(3).stores({
   eap_undo_history: 'id',
 });
 
+db.version(4).stores({
+  os_comments: 'id, order_id, user_id, created_at',
+});
+
 // ==================== OPERACOES ====================
 
 /**

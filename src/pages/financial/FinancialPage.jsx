@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useMemo, useRef, memo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useOSOrders, useOSSectors, useOSProjects, useTeamMembers, useAgendaEvents, useClients, queryKeys,
@@ -21,9 +22,11 @@ import { getProfile } from '../../lib/profileService';
 import { shortName } from '../../lib/teamService';
 import { namesMatch } from '../../lib/kpiUtils';
 import { MANAGER_ROLES } from '../../lib/roleUtils';
+import { notifyOSAssigned, notifyOSCompleted, notifyOSBlocked } from '../../lib/notificationTriggers';
 import { usePermissions } from '../../contexts/PermissionContext';
 import logoFyness from '../../assets/logo-fyness.png';
 import { useRealtimeOSOrders, useRealtimeTeamMembers } from '../../hooks/useRealtimeSubscription';
+import ChatHistoryDocument from '../../components/chat/ChatHistoryDocument';
 
 // ==================== CONSTANTES ====================
 
@@ -78,6 +81,7 @@ const EMPTY_FORM = {
   location: '',
   notes: '',
   assignedTo: '',
+  supervisor: '',
   estimatedStart: '',
   estimatedEnd: '',
   attachments: [],
@@ -193,10 +197,16 @@ function calcOSHours(order) {
     const hours = calcWorkingHoursBetween(order.actualStart, order.actualEnd);
     if (hours > 0) return hours;
   }
-  // Prioridade 2: soma do checklist (quando nao tem datas reais)
+  // Prioridade 2: soma real do checklist usando timestamps (startedAt/completedAt)
   const cl = order.checklist || [];
-  const totalChecklistMin = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
-  if (totalChecklistMin > 0) return totalChecklistMin / 60;
+  let totalMin = 0;
+  for (const item of cl) {
+    if (item.startedAt && item.completedAt) {
+      const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
+      if (diff > 0) totalMin += diff;
+    }
+  }
+  if (totalMin > 0) return totalMin / 60;
   return 0;
 }
 
@@ -241,6 +251,7 @@ function InboxIcon({ size = 40 }) {
 
 export default function FinancialPage() {
   const queryClient = useQueryClient();
+  const location = useLocation();
 
   // React Query: data fetching
   const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
@@ -264,6 +275,19 @@ export default function FinancialPage() {
   const loading = loadingOrders || loadingProjects || loadingSectors || loadingMembers || loadingEvents;
 
   const [viewingOrder, setViewingOrder] = useState(null);
+
+  // Auto-abrir OS quando navegado da EAP com state.openOsId
+  useEffect(() => {
+    const osId = location.state?.openOsId;
+    if (!osId || loading) return;
+    const os = orders.find(o => o.id === osId);
+    if (os) {
+      setViewingOrder(os);
+      // Limpar o state para nao reabrir ao voltar
+      window.history.replaceState({}, '');
+    }
+  }, [location.state?.openOsId, orders, loading]);
+
   const [selectedProject, setSelectedProject] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState(null);
@@ -438,6 +462,7 @@ export default function FinancialPage() {
       location: order.location || '',
       notes: order.notes || '',
       assignedTo: order.assignedTo || '',
+      supervisor: order.supervisor || '',
       estimatedStart: order.estimatedStart || '',
       estimatedEnd: order.estimatedEnd || '',
       attachments: order.attachments || [],
@@ -604,6 +629,10 @@ export default function FinancialPage() {
     if (updated) {
       queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
       if (viewingOrder?.id === orderId) setViewingOrder(updated);
+      // Notificar managers quando OS e concluida
+      if (order.status === 'in_progress' && updates.status === 'done') {
+        notifyOSCompleted(updated, allMembers, currentUser, profile.id);
+      }
     }
   };
 
@@ -695,8 +724,8 @@ export default function FinancialPage() {
   };
 
   const handleSaveProject = async () => {
-    if (!projectForm.name.trim()) return;
-    const payload = { ...projectForm, sector: projectForm.sector || null };
+    if (!projectForm.name.trim() || !projectForm.sector) return;
+    const payload = { ...projectForm };
 
     if (editingProject) {
       const updated = await updateOSProject(editingProject.id, payload);
@@ -817,6 +846,7 @@ export default function FinancialPage() {
           canViewCosts={canViewCosts}
           profileName={profile.name || ''}
           profileCpf={profile.cpf || ''}
+          profileId={profile.id || null}
           teamMembers={allMembers}
           allOrders={orders}
           onBack={() => setViewingOrder(null)}
@@ -828,6 +858,7 @@ export default function FinancialPage() {
           onDelete={canDeleteOS ? () => setShowDeleteModal(viewingOrder.id) : null}
           onViewOrder={(order) => setViewingOrder(order)}
           onUpdateOrder={async (id, updates) => {
+            const oldOrder = orders.find(o => o.id === id);
             // Update otimista: atualiza UI imediatamente
             setViewingOrder(prev => prev ? { ...prev, ...updates, updatedAt: new Date().toISOString() } : prev);
             queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === id ? { ...o, ...updates, updatedAt: new Date().toISOString() } : o));
@@ -837,6 +868,16 @@ export default function FinancialPage() {
               // Sincronizar com dados reais do servidor
               queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === id ? saved : o));
               setViewingOrder(prev => (prev && prev.id === id) ? saved : prev);
+              // Gatilhos de notificacao
+              if (updates.assignedTo && updates.assignedTo !== oldOrder?.assignedTo) {
+                notifyOSAssigned(saved, updates.assignedTo, allMembers, profile.id);
+              }
+              if (updates.status === 'blocked' && oldOrder?.status !== 'blocked') {
+                notifyOSBlocked(saved, updates.blockReason, allMembers, profile.id);
+              }
+              if (updates.status === 'done' && oldOrder?.status !== 'done') {
+                notifyOSCompleted(saved, allMembers, currentUser, profile.id);
+              }
             } else {
               // Falhou: refetch para restaurar estado correto
               toast('Erro ao salvar alteracao', 'error');
@@ -1144,11 +1185,10 @@ export default function FinancialPage() {
                                   return mins > 0 ? `${hrs}h${mins}m` : `${hrs}h`;
                                 };
                                 const realHours = calcOSHours(order);
-                                // Previsto: estimatedStart/End ou leadTimeHours
+                                // Previsto: estimatedStart/End (horas uteis) ou leadTimeHours
                                 let estHours = 0;
                                 if (order.estimatedStart && order.estimatedEnd) {
-                                  const diffMs = new Date(order.estimatedEnd) - new Date(order.estimatedStart);
-                                  if (diffMs > 0) estHours = diffMs / (1000 * 60 * 60);
+                                  estHours = calcWorkingHoursBetween(order.estimatedStart, order.estimatedEnd);
                                 }
                                 if (!estHours && order.leadTimeHours) estHours = order.leadTimeHours;
 
@@ -1817,7 +1857,7 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
 
 // ==================== DOCUMENTO O.S. ====================
 
-function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, onRelease, onMoveForward, onMoveBack, onDelete, isManager, canEditOS, canDeleteOS, canViewCosts, profileName, profileCpf, teamMembers, allOrders = [], onViewOrder, onUpdateOrder }) {
+function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, onRelease, onMoveForward, onMoveBack, onDelete, isManager, canEditOS, canDeleteOS, canViewCosts, profileName, profileCpf, profileId, teamMembers, allOrders = [], onViewOrder, onUpdateOrder }) {
   // Ref para manter checklist mais recente e evitar closures obsoletas
   const checklistRef = useRef(order.checklist || []);
   checklistRef.current = order.checklist || [];
@@ -1830,6 +1870,40 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
     return next;
   });
 
+  // Estado de edicao de grupos (pastas)
+  const [editingGroupKey, setEditingGroupKey] = useState(null);
+
+  const renameGroupInOrder = (oldKey, newName) => {
+    if (!newName.trim() || newName.trim() === oldKey || !onUpdateOrder) return;
+    const latestCl = checklistRef.current;
+    const updated = latestCl.map(i =>
+      (i.group || '__ungrouped__') === oldKey ? { ...i, group: newName.trim() } : i
+    );
+    onUpdateOrder(order.id, { checklist: updated });
+    setEditingGroupKey(null);
+  };
+
+  const removeGroupFromOrder = (groupKey) => {
+    if (!onUpdateOrder) return;
+    const latestCl = checklistRef.current;
+    const updated = latestCl.filter(i => (i.group || '__ungrouped__') !== groupKey);
+    onUpdateOrder(order.id, { checklist: updated });
+  };
+
+  const addGroupToOrder = (groupName) => {
+    if (!groupName.trim() || !onUpdateOrder) return;
+    const taskName = prompt(`Primeira tarefa da pasta "${groupName.trim()}":`);
+    if (!taskName || !taskName.trim()) return;
+    const latestCl = checklistRef.current;
+    const newItem = {
+      id: Date.now() + Math.random(),
+      text: taskName.trim(),
+      group: groupName.trim(),
+      done: false, startedAt: null, completedAt: null, durationMin: null,
+    };
+    onUpdateOrder(order.id, { checklist: [...latestCl, newItem] });
+  };
+
   const teamMember = teamMembers.find(m => m.id === order.assignee || namesMatch(m.name, order.assignee));
   const member = teamMember || (order.assignee ? { id: order.assignee, name: order.assignee, color: '#3b82f6' } : null);
   const priority = PRIORITIES.find(p => p.id === order.priority) || PRIORITIES[1];
@@ -1838,6 +1912,8 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
   const isEmergency = order.type === 'emergency';
   const parentOrder = isEmergency && order.parentOrderId ? allOrders.find(o => o.id === order.parentOrderId) : null;
   const childEmergencies = allOrders.filter(o => o.type === 'emergency' && o.parentOrderId === order.id);
+
+  const [showChatHistory, setShowChatHistory] = useState(false);
 
   const handlePrint = () => {
     window.print();
@@ -1875,6 +1951,12 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           {onEdit && (
             <button onClick={onEdit} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">Editar</button>
           )}
+          <button onClick={() => setShowChatHistory(true)} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            Conversas
+          </button>
           <button onClick={handlePrint} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors flex items-center gap-1.5">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -2064,6 +2146,23 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
             </div>
           </div>
 
+          {/* Supervisor */}
+          <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2.5 bg-amber-50/30 dark:bg-amber-900/10">
+            <svg className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <label className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Supervisor</label>
+            {order.supervisor ? (
+              <div className="flex items-center gap-2 ml-1">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold bg-amber-500">{order.supervisor.charAt(0)}</div>
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{order.supervisor}</span>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 dark:text-slate-500 ml-1 italic">Nenhum</p>
+            )}
+          </div>
+
           {/* Titulo */}
           <div className="p-6 border-b border-slate-200 dark:border-slate-700">
             <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Titulo do Servico</label>
@@ -2082,13 +2181,13 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           {(order.checklist || []).length > 0 && (() => {
             const cl = order.checklist || [];
             const doneCount = cl.filter(i => i.done).length;
-            // Calcular duracao real a partir dos timestamps (ignora durationMin corrompido)
+            // Calcular duracao real a partir dos timestamps
             const realDuration = (item) => {
               if (item.startedAt && item.completedAt) {
                 const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
-                if (diff > 0 && diff < 1440) return Math.round(diff);
+                if (diff > 0) return Math.round(diff);
               }
-              return item.durationMin || 0;
+              return 0;
             };
             const totalTime = cl.reduce((sum, i) => sum + realDuration(i), 0);
             const fmtTime = (min) => {
@@ -2186,32 +2285,25 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
               if (arrIdx === -1) return;
               let updated;
               if (!item.done) {
-                // Marcar como feito: calcular duracao desde o startedAt da task
-                // Prioridade: startedAt da task > completedAt da anterior > actualStart da O.S.
-                // NUNCA usar createdAt (pode ser dias atras)
-                const prevItem = arrIdx > 0 ? latestCl[arrIdx - 1] : null;
-                const startRef = item.startedAt || (prevItem?.completedAt) || order.actualStart || now;
+                // Marcar como feito: calcular duracao desde o startedAt da tarefa
+                const startRef = item.startedAt || now;
                 const diffMs = new Date(now) - new Date(startRef);
                 const durationMin = Math.max(0, Math.round(diffMs / 60000));
-                // Encontrar a proxima task nao-feita para iniciar seu timer
-                let nextIdx = -1;
-                for (let ni = arrIdx + 1; ni < latestCl.length; ni++) {
-                  if (!latestCl[ni].done) { nextIdx = ni; break; }
-                }
-                updated = latestCl.map((i, iIdx) => {
+                updated = latestCl.map((i, idx) => {
                   if (i.id === item.id) return { ...i, done: true, startedAt: startRef, completedAt: now, durationMin };
-                  if (iIdx === nextIdx) return { ...i, startedAt: now };
                   return i;
                 });
-              } else {
-                // Desmarcar: limpar duracao e tambem limpar startedAt da proxima (se nao esta feita)
-                let nextIdx = -1;
-                for (let ni = arrIdx + 1; ni < latestCl.length; ni++) {
-                  if (!latestCl[ni].done) { nextIdx = ni; break; }
+                // Iniciar cronometro da proxima tarefa pendente (para medir tempo individual)
+                const nextUndone = updated.findIndex((i, idx) => idx > arrIdx && !i.done);
+                if (nextUndone >= 0 && !updated[nextUndone].startedAt) {
+                  updated = updated.map((i, idx) =>
+                    idx === nextUndone ? { ...i, startedAt: now } : i
+                  );
                 }
-                updated = latestCl.map((i, iIdx) => {
+              } else {
+                // Desmarcar: limpar duracao e startedAt da proxima (que foi auto-setado)
+                updated = latestCl.map(i => {
                   if (i.id === item.id) return { ...i, done: false, completedAt: null, durationMin: null };
-                  if (iIdx === nextIdx) return { ...i, startedAt: null };
                   return i;
                 });
               }
@@ -2259,42 +2351,82 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                           isGrouped ? 'border-slate-200 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-800/30' :
                           'border-slate-100 dark:border-slate-700/40'
                         }`}>
-                          {/* Header do bloco — clicavel para colapsar/expandir */}
-                          <button
-                            onClick={() => toggleGroupCollapse(groupKey)}
-                            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100/50 dark:hover:bg-slate-700/30 transition-colors text-left"
-                          >
-                            <svg className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'} ${
-                              allGroupDone ? 'text-emerald-500 dark:text-emerald-400' : 'text-indigo-500 dark:text-indigo-400'
-                            }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                            {isGrouped ? (
-                              <svg className={`w-4 h-4 shrink-0 ${allGroupDone ? 'text-emerald-500 dark:text-emerald-400' : 'text-indigo-500 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                          {/* Header do bloco — clicavel para colapsar/expandir + edicao */}
+                          <div className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100/50 dark:hover:bg-slate-700/30 transition-colors group/grphdr">
+                            <button onClick={() => toggleGroupCollapse(groupKey)} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+                              <svg className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'} ${
+                                allGroupDone ? 'text-emerald-500 dark:text-emerald-400' : 'text-indigo-500 dark:text-indigo-400'
+                              }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                               </svg>
-                            ) : (
-                              <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                              </svg>
+                              {isGrouped ? (
+                                <svg className={`w-4 h-4 shrink-0 ${allGroupDone ? 'text-emerald-500 dark:text-emerald-400' : 'text-indigo-500 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                </svg>
+                              ) : (
+                                <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                </svg>
+                              )}
+                              {editingGroupKey === groupKey && isGrouped ? null : (
+                                <span className={`text-xs font-semibold flex-1 truncate ${
+                                  allGroupDone ? 'text-emerald-700 dark:text-emerald-300' : 'text-indigo-700 dark:text-indigo-300'
+                                }`}>
+                                  {isGrouped ? groupKey : 'Tarefas'}
+                                </span>
+                              )}
+                            </button>
+                            {/* Input de renomear grupo (inline) */}
+                            {editingGroupKey === groupKey && isGrouped && (
+                              <input
+                                type="text"
+                                autoFocus
+                                defaultValue={groupKey}
+                                onBlur={(e) => renameGroupInOrder(groupKey, e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') e.target.blur();
+                                  if (e.key === 'Escape') setEditingGroupKey(null);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-600 rounded px-2 py-0.5 flex-1 min-w-0 outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500"
+                              />
                             )}
-                            <span className={`text-xs font-semibold flex-1 ${
-                              allGroupDone ? 'text-emerald-700 dark:text-emerald-300' : 'text-indigo-700 dark:text-indigo-300'
-                            }`}>
-                              {isGrouped ? groupKey : 'Tarefas'}
-                            </span>
+                            {/* Botoes de acao do grupo */}
+                            {canEditOS && isGrouped && editingGroupKey !== groupKey && (
+                              <div className="flex items-center gap-1 opacity-0 group-hover/grphdr:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setEditingGroupKey(groupKey); }}
+                                  className="p-1 text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors rounded"
+                                  title="Renomear pasta"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confirm(`Remover pasta "${groupKey}" e todas as suas ${groupItems.length} tarefas?`)) {
+                                      removeGroupFromOrder(groupKey);
+                                    }
+                                  }}
+                                  className="p-1 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors rounded"
+                                  title="Remover pasta"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                              </div>
+                            )}
                             {groupTime > 0 && (
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500">{fmtTime(groupTime)}</span>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{fmtTime(groupTime)}</span>
                             )}
                             {hasAttachments && (
-                              <span className="flex items-center gap-0.5 text-[10px] text-violet-500 dark:text-violet-400">
+                              <span className="flex items-center gap-0.5 text-[10px] text-violet-500 dark:text-violet-400 shrink-0">
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                                 </svg>
                                 {(grpOutput.links?.length || 0) + (grpOutput.files?.length || 0)}
                               </span>
                             )}
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${
                               allGroupDone ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' :
                               'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
                             }`}>
@@ -2305,7 +2437,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                               </svg>
                             )}
-                          </button>
+                          </div>
 
                           {/* Conteudo colapsavel: tarefas + entregaveis */}
                           {!isCollapsed && (
@@ -2314,22 +2446,18 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                               <div className="px-2 py-1.5 space-y-1">
                                 {groupItems.map((item) => {
                                   const arrIdx = cl.findIndex(i => i.id === item.id);
-                                  const isActive = !item.done && (arrIdx === 0 || cl[arrIdx - 1]?.done);
                                   return (
                                     <button
                                       key={item.id}
                                       onClick={() => handleToggle(item)}
-                                      disabled={!item.done && !isActive}
                                       className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors text-left ${
-                                        isActive ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800' :
-                                        item.done ? 'hover:bg-slate-50 dark:hover:bg-slate-700/50' :
-                                        'opacity-50 cursor-not-allowed'
+                                        !item.done ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30' :
+                                        'hover:bg-slate-50 dark:hover:bg-slate-700/50'
                                       }`}
                                     >
                                       <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
                                         item.done ? 'bg-emerald-500 border-emerald-500' :
-                                        isActive ? 'border-blue-400 dark:border-blue-500 animate-pulse' :
-                                        'border-slate-300 dark:border-slate-600'
+                                        'border-blue-400 dark:border-blue-500'
                                       }`}>
                                         {item.done && (
                                           <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2338,15 +2466,12 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                                         )}
                                       </div>
                                       <span className="text-xs text-slate-400 dark:text-slate-500 font-mono w-5 shrink-0">{arrIdx + 1}.</span>
-                                      <span className={`text-sm flex-1 ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : isActive ? 'text-blue-700 dark:text-blue-300 font-medium' : 'text-slate-700 dark:text-slate-200'}`}>{item.text}</span>
+                                      <span className={`text-sm flex-1 ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : 'text-blue-700 dark:text-blue-300 font-medium'}`}>{item.text}</span>
                                       {item.done && realDuration(item) > 0 && (
                                         <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(realDuration(item))}</span>
                                       )}
                                       {item.done && item.completedAt && (
                                         <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{fmtHour(item.completedAt)}</span>
-                                      )}
-                                      {isActive && !item.done && (
-                                        <span className="text-[10px] text-blue-500 dark:text-blue-400 font-medium shrink-0">Em andamento</span>
                                       )}
                                     </button>
                                   );
@@ -2476,6 +2601,20 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                       );
                     });
                   })()}
+                  {/* Botao para adicionar nova pasta */}
+                  {canEditOS && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = prompt('Nome da nova pasta:');
+                        if (name) addGroupToOrder(name);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 hover:border-indigo-400 hover:text-indigo-500 dark:hover:border-indigo-500 dark:hover:text-indigo-400 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                      Nova Pasta
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -2649,6 +2788,11 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           </div>
         </div>
       </div>
+
+      {/* Chat History Document (fullscreen overlay) */}
+      {showChatHistory && (
+        <ChatHistoryDocument order={order} onClose={() => setShowChatHistory(false)} />
+      )}
     </div>
   );
 }
@@ -2832,9 +2976,9 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
             const realDuration = (item) => {
               if (item.startedAt && item.completedAt) {
                 const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
-                if (diff > 0 && diff < 1440) return Math.round(diff);
+                if (diff > 0) return Math.round(diff);
               }
-              return item.durationMin || 0;
+              return 0;
             };
             const totalTime = cl.reduce((sum, i) => sum + realDuration(i), 0);
             const fmtTime = (min) => {
@@ -3089,6 +3233,9 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
   const [linkLabel, setLinkLabel] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+  const [dragTaskId, setDragTaskId] = useState(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState(null);
+  const [pendingNewGroup, setPendingNewGroup] = useState(null);
   const checklistTextareaRef = useRef(null);
 
   // Helper: parseia linhas de texto em itens de checklist
@@ -3227,22 +3374,42 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
             <input type="text" value={form.location} onChange={(e) => update('location', e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Ex: Servidor AWS, Producao, etc." />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Atribuir a</label>
-            <div className="relative">
-              <select
-                value={form.assignedTo || ''}
-                onChange={(e) => update('assignedTo', e.target.value || null)}
-                className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-              >
-                <option value="">Ninguem (disponivel para todos)</option>
-                {teamMembers.map(m => (
-                  <option key={m.id} value={m.name}>{shortName(m.name)}</option>
-                ))}
-              </select>
-              <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Atribuir a</label>
+              <div className="relative">
+                <select
+                  value={form.assignedTo || ''}
+                  onChange={(e) => update('assignedTo', e.target.value || null)}
+                  className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+                >
+                  <option value="">Ninguem (disponivel para todos)</option>
+                  {teamMembers.map(m => (
+                    <option key={m.id} value={m.name}>{shortName(m.name)}</option>
+                  ))}
+                </select>
+                <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Supervisor</label>
+              <div className="relative">
+                <select
+                  value={form.supervisor || ''}
+                  onChange={(e) => update('supervisor', e.target.value || null)}
+                  className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+                >
+                  <option value="">Sem supervisor</option>
+                  {teamMembers.map(m => (
+                    <option key={m.id} value={m.name}>{shortName(m.name)}</option>
+                  ))}
+                </select>
+                <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
           </div>
 
@@ -3353,6 +3520,28 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                 update('checklist', cl.filter(i => i.id !== taskId));
               };
 
+              // Editar texto de uma tarefa existente
+              const updateTaskText = (taskId, newText) => {
+                if (!newText.trim()) return;
+                update('checklist', cl.map(i => i.id === taskId ? { ...i, text: newText.trim() } : i));
+              };
+
+              // Mover tarefa via drag-and-drop (reordenar no array)
+              const handleTaskDrop = (draggedId, targetId) => {
+                if (!draggedId || !targetId || draggedId === targetId) return;
+                const fromIdx = cl.findIndex(i => i.id === draggedId);
+                const toIdx = cl.findIndex(i => i.id === targetId);
+                if (fromIdx === -1 || toIdx === -1) return;
+                const newList = [...cl];
+                const [moved] = newList.splice(fromIdx, 1);
+                // Atribuir o grupo do destino para permitir mover entre grupos
+                moved.group = newList[toIdx > fromIdx ? toIdx - 1 : toIdx]?.group ?? moved.group;
+                newList.splice(toIdx, 0, moved);
+                update('checklist', newList);
+                setDragTaskId(null);
+                setDragOverTaskId(null);
+              };
+
               // Remover grupo inteiro
               const removeGroup = (groupName) => {
                 update('checklist', cl.filter(i => (i.group || '__sem_grupo__') !== groupName));
@@ -3406,9 +3595,33 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                         {/* Tarefas do grupo */}
                         <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
                           {items.map((item, idx) => (
-                            <div key={item.id} className="flex items-center gap-2.5 px-4 py-2 group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                            <div
+                              key={item.id}
+                              draggable
+                              onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragTaskId(item.id); }}
+                              onDragEnd={() => { setDragTaskId(null); setDragOverTaskId(null); }}
+                              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverTaskId(item.id); }}
+                              onDrop={(e) => { e.preventDefault(); handleTaskDrop(dragTaskId, item.id); }}
+                              className={`flex items-center gap-2.5 px-4 py-2 group transition-colors ${
+                                dragTaskId === item.id ? 'opacity-40' :
+                                dragOverTaskId === item.id && dragTaskId ? 'bg-fyness-primary/10 dark:bg-blue-500/10 border-t-2 border-fyness-primary dark:border-blue-400' :
+                                'hover:bg-slate-50 dark:hover:bg-slate-800/30'
+                              }`}
+                            >
+                              {/* Grip handle */}
+                              <svg className="w-4 h-4 text-slate-300 dark:text-slate-600 cursor-grab active:cursor-grabbing shrink-0 hover:text-slate-500 dark:hover:text-slate-400 transition-colors" fill="currentColor" viewBox="0 0 24 24">
+                                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                              </svg>
                               <span className="w-5 h-5 rounded-md bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary text-[10px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
-                              <span className="text-sm text-slate-700 dark:text-slate-200 flex-1">{item.text}</span>
+                              <input
+                                type="text"
+                                defaultValue={item.text}
+                                onBlur={(e) => updateTaskText(item.id, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                className="text-sm text-slate-700 dark:text-slate-200 flex-1 bg-transparent border-none outline-none focus:ring-0 p-0 hover:bg-slate-100 dark:hover:bg-slate-700/40 focus:bg-slate-100 dark:focus:bg-slate-700/40 rounded px-1 -mx-1 transition-colors"
+                              />
                               <button type="button" onClick={() => removeTask(item.id)} className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                               </button>
@@ -3425,6 +3638,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                               className="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' && e.target.value.trim()) {
+                                  e.preventDefault();
                                   addTaskToGroup(groupName, e.target.value);
                                   e.target.value = '';
                                 }
@@ -3451,6 +3665,56 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                     );
                   })}
 
+                  {/* Pasta recem-criada aguardando primeira tarefa */}
+                  {pendingNewGroup && !groupNames.includes(pendingNewGroup) && (
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
+                        <svg className="w-4 h-4 text-fyness-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                        </svg>
+                        <span className="text-xs font-semibold text-fyness-primary dark:text-blue-400 flex-1">{pendingNewGroup}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">0 tarefas</span>
+                        <button type="button" onClick={() => setPendingNewGroup(null)} className="p-1 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Cancelar pasta">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                      <div className="px-3 py-2 bg-slate-50/50 dark:bg-slate-800/40">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder="Digitar nome da tarefa e pressionar Enter..."
+                            className="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && e.target.value.trim()) {
+                                e.preventDefault();
+                                addTaskToGroup(pendingNewGroup, e.target.value);
+                                e.target.value = '';
+                                setPendingNewGroup(null);
+                              }
+                              if (e.key === 'Escape') setPendingNewGroup(null);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              const input = e.currentTarget.previousElementSibling;
+                              if (input.value.trim()) {
+                                addTaskToGroup(pendingNewGroup, input.value);
+                                input.value = '';
+                                setPendingNewGroup(null);
+                              }
+                            }}
+                            className="p-1.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-primary/90 transition-colors"
+                            title="Adicionar tarefa"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Input inline para novo grupo */}
                   {showNewGroupInput && (
                     <div className="flex items-center gap-2 p-3 rounded-xl border-2 border-fyness-primary/30 dark:border-blue-500/30 bg-fyness-primary/5 dark:bg-blue-900/10">
@@ -3464,7 +3728,8 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                         className="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && newGroupName.trim()) {
-                            addTaskToGroup(newGroupName.trim(), 'Nova tarefa');
+                            e.preventDefault();
+                            setPendingNewGroup(newGroupName.trim());
                             setNewGroupName('');
                             setShowNewGroupInput(false);
                           }
@@ -3478,7 +3743,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                         type="button"
                         onClick={() => {
                           if (newGroupName.trim()) {
-                            addTaskToGroup(newGroupName.trim(), 'Nova tarefa');
+                            setPendingNewGroup(newGroupName.trim());
                           }
                           setNewGroupName('');
                           setShowNewGroupInput(false);
@@ -3499,24 +3764,15 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 
                   {/* Botoes de acao */}
                   <div className="flex items-center gap-2">
-                    {/* Adicionar tarefa rapida (sem grupo) */}
-                    {!groupNames.includes('__sem_grupo__') && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          update('checklist', [...cl, {
-                            id: Date.now() + Math.random(),
-                            text: 'Nova tarefa',
-                            group: null,
-                            done: false, startedAt: null, completedAt: null, durationMin: null,
-                          }]);
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 hover:border-fyness-primary hover:text-fyness-primary dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                        Tarefa
-                      </button>
-                    )}
+                    {/* Botao rapido Nova Tarefa */}
+                    <button
+                      type="button"
+                      onClick={() => addTaskToGroup('__sem_grupo__', 'Nova tarefa')}
+                      className="flex items-center gap-1.5 px-3 py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 hover:border-fyness-primary hover:text-fyness-primary dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                      Nova Tarefa
+                    </button>
 
                     {/* Adicionar novo grupo */}
                     {!showNewGroupInput && (
@@ -3723,14 +3979,14 @@ function ProjectFormModal({ form, setForm, editing, sectors, onSave, onClose, on
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Setor</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Setor *</label>
             <div className="relative">
               <select
                 value={form.sector}
                 onChange={(e) => update('sector', e.target.value)}
                 className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               >
-                <option value="">Sem setor</option>
+                <option value="">Selecione um setor</option>
                 {sectors.map(s => (
                   <option key={s.id} value={s.id}>{s.label}</option>
                 ))}
@@ -3775,7 +4031,7 @@ function ProjectFormModal({ form, setForm, editing, sectors, onSave, onClose, on
           </div>
           <div className="flex gap-3">
             <button onClick={onClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm">Cancelar</button>
-            <button onClick={onSave} disabled={!form.name.trim()} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+            <button onClick={onSave} disabled={!form.name.trim() || !form.sector} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
               {editing ? 'Salvar' : 'Criar Projeto'}
             </button>
           </div>

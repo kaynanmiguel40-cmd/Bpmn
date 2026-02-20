@@ -92,12 +92,14 @@ function EditableCell({ value, field, taskId, isEditing, onStartEdit, onFinish, 
     );
   }
 
+  const displayText = displayValue ?? value ?? '';
   return (
     <div
       className={`w-full h-full flex items-center px-1 cursor-text truncate ${className}`}
       onDoubleClick={() => onStartEdit({ taskId, field })}
+      title={field === 'name' && displayText.length > 20 ? displayText : undefined}
     >
-      {displayValue ?? value ?? ''}
+      {displayText}
     </div>
   );
 }
@@ -383,23 +385,31 @@ function TaskDetailCell({ notes, attachments = [], taskId, onFinish }) {
 
 // ==================== COLUMNS CONFIG ====================
 
-const HOURS_PER_DAY = 8;
+const HOURS_PER_DAY = 10; // 08:00-18:00
 
 const COLUMNS = [
   { key: 'rowNumber', label: '#', width: 28 },
   { key: 'wbsNumber', label: 'WBS', width: 42 },
   { key: 'name', label: 'Nome da Tarefa', width: 160, flex: true },
-  { key: 'durationDays', label: 'Dur.', width: 45, type: 'number' },
-  { key: 'estimatedHours', label: 'Horas', width: 50, type: 'number' },
+  { key: 'durationDays', label: 'Horas', width: 50, type: 'number' },
   { key: 'startDate', label: 'Inicio', width: 110, type: 'datetime-local' },
   { key: 'endDate', label: 'Termino', width: 110, type: 'datetime-local' },
   { key: 'predecessors', label: 'Pred.', width: 58 },
   { key: 'assignedTo', label: 'Resp.', width: 80 },
+  { key: 'supervisor', label: 'Superv.', width: 80 },
   { key: 'notes', label: 'Notas', width: 60 },
   { key: 'progress', label: '%', width: 50 },
 ];
 
 // ==================== COMPONENTE PRINCIPAL ====================
+
+const GripIcon = () => (
+  <svg className="w-3 h-3" viewBox="0 0 6 10" fill="currentColor">
+    <circle cx="1" cy="1" r="0.9"/><circle cx="5" cy="1" r="0.9"/>
+    <circle cx="1" cy="5" r="0.9"/><circle cx="5" cy="5" r="0.9"/>
+    <circle cx="1" cy="9" r="0.9"/><circle cx="5" cy="9" r="0.9"/>
+  </svg>
+);
 
 const TaskTable = forwardRef(function TaskTable({
   tasks,
@@ -420,6 +430,8 @@ const TaskTable = forwardRef(function TaskTable({
   onToggleCollapse,
   onEditCell,
   onCellChange,
+  onReorderTask,
+  onOpenOS,
   onScroll,
 }, ref) {
 
@@ -427,8 +439,8 @@ const TaskTable = forwardRef(function TaskTable({
   const dragRef = useRef(null); // { startIdx }
 
   const handleRowMouseDown = (e, idx) => {
-    if (e.button !== 0) return; // so botao esquerdo
-    if (e.target.closest('input, select, button')) return; // nao interceptar inputs
+    if (e.button !== 0) return;
+    if (e.target.closest('input, select, button, [data-drag-handle]')) return;
     dragRef.current = { startIdx: idx };
   };
 
@@ -436,7 +448,6 @@ const TaskTable = forwardRef(function TaskTable({
     if (!dragRef.current) return;
     const from = Math.min(dragRef.current.startIdx, idx);
     const to = Math.max(dragRef.current.startIdx, idx);
-    // So ativar drag-select se moveu pelo menos 1 row
     if (from !== to) {
       const ids = tasks.slice(from, to + 1).map(t => t.id);
       onDragSelect(ids);
@@ -449,8 +460,189 @@ const TaskTable = forwardRef(function TaskTable({
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
+  // ==================== DRAG REORDER ====================
+  const reorderRef = useRef(null); // { task, startIdx }
+  const dropIndicatorRef = useRef(null); // ref espelho do state (para closure do mouseup)
+  const bodyRef = useRef(null);
+  const [dropIndicator, setDropIndicator] = useState(null); // { y } posicao absoluta
+  const [draggingId, setDraggingId] = useState(null);
+
+  const handleDragReorderStart = (e, task, rowIdx) => {
+    e.stopPropagation();
+    e.preventDefault();
+    reorderRef.current = { task, startIdx: rowIdx, startY: e.clientY };
+    setDraggingId(task.id);
+
+    const handleMove = (ev) => {
+      const body = bodyRef.current;
+      if (!body || !reorderRef.current) return;
+      const rect = body.getBoundingClientRect();
+      const scrollTop = body.scrollTop;
+      const relY = ev.clientY - rect.top + scrollTop;
+      const targetIdx = Math.max(0, Math.min(tasks.length - 1, Math.floor(relY / rowHeight)));
+      const targetTask = tasks[targetIdx];
+      const draggedTask = reorderRef.current.task;
+
+      // So permitir drop entre irmaos (mesmo parentId)
+      if (!targetTask || targetTask.parentId !== draggedTask.parentId) {
+        dropIndicatorRef.current = null;
+        setDropIndicator(null);
+        return;
+      }
+      if (targetTask.id === draggedTask.id) {
+        dropIndicatorRef.current = null;
+        setDropIndicator(null);
+        return;
+      }
+
+      // Determinar se acima ou abaixo do meio da row
+      const rowMiddle = (targetIdx + 0.5) * rowHeight;
+      const position = relY < rowMiddle ? 'above' : 'below';
+      const indicatorY = position === 'above' ? targetIdx * rowHeight : (targetIdx + 1) * rowHeight;
+
+      const indicator = { targetIdx, position, y: indicatorY };
+      dropIndicatorRef.current = indicator;
+      setDropIndicator(indicator);
+    };
+
+    const handleUp = () => {
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleUp);
+      document.body.style.cursor = '';
+
+      const indicator = dropIndicatorRef.current;
+      if (indicator && reorderRef.current && onReorderTask) {
+        const draggedTask = reorderRef.current.task;
+        const targetTask = tasks[indicator.targetIdx];
+
+        if (targetTask && targetTask.id !== draggedTask.id) {
+          // Pegar irmaos ordenados por sortOrder
+          const siblings = allTasks
+            .filter(t => t.parentId === draggedTask.parentId)
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+          // Remover o arrastado e inserir na nova posicao
+          const withoutDragged = siblings.filter(s => s.id !== draggedTask.id);
+          const targetSiblingIdx = withoutDragged.findIndex(s => s.id === targetTask.id);
+
+          if (targetSiblingIdx !== -1) {
+            const insertAt = indicator.position === 'above' ? targetSiblingIdx : targetSiblingIdx + 1;
+            withoutDragged.splice(insertAt, 0, draggedTask);
+
+            // Calcular updates de sortOrder
+            const updates = [];
+            withoutDragged.forEach((t, i) => {
+              if (t.sortOrder !== i) {
+                updates.push({
+                  taskId: t.id,
+                  before: { sortOrder: t.sortOrder },
+                  after: { sortOrder: i },
+                });
+              }
+            });
+
+            if (updates.length > 0) {
+              onReorderTask(updates);
+            }
+          }
+        }
+      }
+
+      reorderRef.current = null;
+      dropIndicatorRef.current = null;
+      setDraggingId(null);
+      setDropIndicator(null);
+    };
+
+    document.body.style.cursor = 'grabbing';
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+  };
+
   // Filtrar colunas visiveis
   const visibleColumns = COLUMNS.filter(col => !hiddenColumns.has(col.key));
+
+  // ==================== COLUMN RESIZE ====================
+  const [columnWidths, setColumnWidths] = useState(() => {
+    const initial = {};
+    COLUMNS.forEach(col => { initial[col.key] = col.width; });
+    return initial;
+  });
+  const resizeRef = useRef(null); // { colKey, startX, startWidth }
+
+  const handleColumnResizeStart = (e, colKey) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startWidth = columnWidths[colKey] || COLUMNS.find(c => c.key === colKey)?.width || 60;
+    resizeRef.current = { colKey, startX: e.clientX, startWidth };
+
+    const handleMove = (ev) => {
+      if (!resizeRef.current) return;
+      const diff = ev.clientX - resizeRef.current.startX;
+      const newWidth = Math.max(28, resizeRef.current.startWidth + diff);
+      setColumnWidths(prev => ({ ...prev, [resizeRef.current.colKey]: newWidth }));
+    };
+
+    const handleUp = () => {
+      resizeRef.current = null;
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleUp);
+      document.body.style.cursor = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+  };
+
+  // Funcao para obter largura efetiva de uma coluna
+  const getColWidth = (col) => columnWidths[col.key] || col.width;
+
+  // Auto-fit: duplo clique na borda do header ajusta largura ao conteudo
+  const handleColumnAutoFit = (colKey) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = '11px ui-monospace, monospace';
+
+    let maxWidth = 40; // minimo
+
+    for (const task of tasks) {
+      let text = '';
+      if (colKey === 'name') {
+        text = task.name || '';
+        const indent = (task.level || 0) * 20 + 30; // indent + icone + padding
+        const measured = ctx.measureText(text).width + indent;
+        if (measured > maxWidth) maxWidth = measured;
+        continue;
+      } else if (colKey === 'wbsNumber') {
+        text = task.wbsNumber || '';
+      } else if (colKey === 'durationDays') {
+        const hrs = (task.durationDays || 1) * HOURS_PER_DAY;
+        text = hrs > 0 ? formatHours(hrs) : '';
+      } else if (colKey === 'startDate' || colKey === 'endDate') {
+        const d = colKey === 'startDate' ? task.startDate : task.endDate;
+        if (d) {
+          const date = new Date(d.includes?.('T') ? d : d + 'T00:00:00');
+          if (!isNaN(date)) {
+            text = `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${String(date.getFullYear()).slice(-2)} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+          }
+        }
+      } else if (colKey === 'predecessors') {
+        text = taskRowMap ? formatPredecessors(task.predecessors, taskRowMap) : '';
+      } else if (colKey === 'assignedTo') {
+        text = task.assignedTo || '';
+      } else if (colKey === 'supervisor') {
+        text = task.supervisor || '';
+      } else if (colKey === 'progress') {
+        text = task.progress != null ? task.progress + '%' : '';
+      }
+
+      const measured = ctx.measureText(text).width + 16;
+      if (measured > maxWidth) maxWidth = measured;
+    }
+
+    setColumnWidths(prev => ({ ...prev, [colKey]: Math.ceil(maxWidth) }));
+  };
 
   const formatDate = (d) => {
     if (!d) return '';
@@ -476,20 +668,39 @@ const TaskTable = forwardRef(function TaskTable({
         {visibleColumns.map(col => (
           <div
             key={col.key}
-            className={`flex items-center justify-center px-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide border-r border-slate-200 dark:border-slate-700 h-full overflow-hidden ${col.flex ? 'flex-1 min-w-0' : 'shrink-0'}`}
-            style={col.flex ? { minWidth: col.width } : { width: col.width }}
+            className={`relative flex items-center justify-center px-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide border-r border-slate-200 dark:border-slate-700 h-full overflow-hidden ${col.flex ? 'flex-1 min-w-0' : 'shrink-0'}`}
+            style={col.flex ? { minWidth: getColWidth(col) } : { width: getColWidth(col) }}
           >
             <span className="truncate">{col.label}</span>
+            {/* Resize handle */}
+            {col.key !== 'rowNumber' && (
+              <div
+                className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/40 z-10"
+                onMouseDown={(e) => handleColumnResizeStart(e, col.key)}
+                onDoubleClick={(e) => { e.stopPropagation(); handleColumnAutoFit(col.key); }}
+              />
+            )}
           </div>
         ))}
       </div>
 
       {/* Body */}
       <div
-        ref={ref}
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        ref={(el) => {
+          bodyRef.current = el;
+          if (typeof ref === 'function') ref(el);
+          else if (ref) ref.current = el;
+        }}
+        className="flex-1 overflow-y-auto overflow-x-hidden relative"
         onScroll={onScroll}
       >
+        {/* Drop indicator line */}
+        {dropIndicator && (
+          <div
+            className="absolute left-0 right-0 h-0.5 bg-blue-500 pointer-events-none z-10"
+            style={{ top: dropIndicator.y }}
+          />
+        )}
         {tasks.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-sm text-slate-400 dark:text-slate-500">
             Nenhuma tarefa. Clique em + Tarefa para comecar.
@@ -505,6 +716,8 @@ const TaskTable = forwardRef(function TaskTable({
               <div
                 key={task.id}
                 className={`flex items-center border-b border-slate-100 dark:border-slate-800 transition-colors select-none ${
+                  draggingId === task.id ? 'opacity-40' : ''
+                } ${
                   isSelected
                     ? 'bg-blue-50 dark:bg-blue-900/20'
                     : isCritical
@@ -524,10 +737,17 @@ const TaskTable = forwardRef(function TaskTable({
                     return (
                       <div
                         key={col.key}
-                        className="flex items-center justify-center text-[11px] text-slate-400 dark:text-slate-500 border-r border-slate-100 dark:border-slate-800 h-full font-mono shrink-0"
-                        style={{ width: col.width }}
+                        className="group/grip flex items-center justify-center text-[11px] text-slate-400 dark:text-slate-500 border-r border-slate-100 dark:border-slate-800 h-full font-mono shrink-0"
+                        style={{ width: getColWidth(col) }}
                       >
-                        {taskRowMap?.get(task.id) || '-'}
+                        <span
+                          data-drag-handle
+                          className="cursor-grab opacity-0 group-hover/grip:opacity-60 hover:!opacity-100 select-none"
+                          onMouseDown={(e) => handleDragReorderStart(e, task, rowIdx)}
+                        >
+                          <GripIcon />
+                        </span>
+                        <span className="group-hover/grip:hidden">{taskRowMap?.get(task.id) || '-'}</span>
                       </div>
                     );
                   }
@@ -538,7 +758,7 @@ const TaskTable = forwardRef(function TaskTable({
                       <div
                         key={col.key}
                         className="flex items-center justify-center text-[11px] text-slate-400 dark:text-slate-500 border-r border-slate-100 dark:border-slate-800 h-full font-mono shrink-0"
-                        style={{ width: col.width }}
+                        style={{ width: getColWidth(col) }}
                       >
                         {task.wbsNumber || '-'}
                       </div>
@@ -552,7 +772,7 @@ const TaskTable = forwardRef(function TaskTable({
                       <div
                         key={col.key}
                         className={`flex items-center h-full border-r border-slate-100 dark:border-slate-800 min-w-0 flex-1 ${isSummary ? 'font-semibold' : ''} ${isCritical ? 'text-red-700 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'}`}
-                        style={{ minWidth: col.width, paddingLeft: indent + 4 }}
+                        style={{ minWidth: getColWidth(col), paddingLeft: indent + 4 }}
                       >
                         {/* Toggle / Icon */}
                         <div className="w-5 flex-shrink-0 flex items-center justify-center">
@@ -579,7 +799,7 @@ const TaskTable = forwardRef(function TaskTable({
                           className={`text-xs ${isSummary ? 'font-semibold' : ''}`}
                         />
 
-                        {/* Badge OS vinculada */}
+                        {/* Badge OS vinculada — clicavel para abrir OS */}
                         {task.osOrderId && osMap && (() => {
                           const os = osMap.get(task.osOrderId);
                           const statusColor = os
@@ -589,65 +809,40 @@ const TaskTable = forwardRef(function TaskTable({
                             : 'bg-slate-400'
                             : 'bg-slate-400';
                           return (
-                            <span
-                              title={os ? `OS: ${os.title} (${os.status})` : 'OS vinculada'}
-                              className={`ml-1 px-1 py-0 text-[9px] font-bold text-white rounded ${statusColor} flex-shrink-0`}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onOpenOS?.(task.osOrderId); }}
+                              title={os ? `Abrir OS: ${os.title} (${os.status})` : 'Abrir OS vinculada'}
+                              className={`ml-1 px-1 py-0 text-[9px] font-bold text-white rounded ${statusColor} flex-shrink-0 hover:opacity-80 cursor-pointer transition-opacity`}
                             >
                               OS
-                            </span>
+                            </button>
                           );
                         })()}
                       </div>
                     );
                   }
 
-                  // Duracao
+                  // Duracao em horas uteis (10h/dia)
                   if (col.key === 'durationDays') {
-                    const isEstimated = !task.estimatedHours;
-                    const durLabel = task.isMilestone ? '0' : `${task.durationDays || 1}${isEstimated ? '?' : 'd'}`;
+                    // Horas sempre derivadas de durationDays (que vem de calcDuration entre datas)
+                    const hours = (task.durationDays || (task.isMilestone ? 0 : 1)) * HOURS_PER_DAY;
+                    const durLabel = task.isMilestone ? '0h' : formatHours(hours);
                     return (
                       <div
                         key={col.key}
                         className="flex items-center justify-center text-xs text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 h-full shrink-0"
-                        style={{ width: col.width }}
+                        style={{ width: getColWidth(col) }}
                       >
                         {!isSummary && !task.isMilestone ? (
                           <EditableCell
-                            value={task.durationDays}
+                            value={parseFloat(hours.toFixed(1))}
                             displayValue={durLabel}
-                            field="durationDays"
-                            taskId={task.id}
-                            isEditing={isEditingThis}
-                            onStartEdit={onEditCell}
-                            onFinish={(id, f, v) => id ? onCellChange(id, f, parseInt(v, 10) || 1) : onEditCell(null)}
-                            type="number"
-                            className="text-center"
-                          />
-                        ) : (
-                          <span className="text-[11px]">{task.isMilestone ? '0' : `${task.durationDays || 0}d`}</span>
-                        )}
-                      </div>
-                    );
-                  }
-
-                  // Horas (estimatedHours - campo real armazenado no banco)
-                  if (col.key === 'estimatedHours') {
-                    const hours = task.estimatedHours ?? (task.durationDays || 0) * HOURS_PER_DAY;
-                    return (
-                      <div
-                        key={col.key}
-                        className="flex items-center justify-center text-xs text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 h-full shrink-0"
-                        style={{ width: col.width }}
-                      >
-                        {!isSummary ? (
-                          <EditableCell
-                            value={parseFloat(hours.toFixed(2))}
-                            displayValue={formatHours(hours)}
                             field="estimatedHours"
                             taskId={task.id}
                             isEditing={isEditingThis}
                             onStartEdit={onEditCell}
-                            onFinish={(id, f, v) => id ? onCellChange(id, f, parseFloat(v) || 0) : onEditCell(null)}
+                            onFinish={(id, f, v) => id ? onCellChange(id, f, parseFloat(v) || HOURS_PER_DAY) : onEditCell(null)}
                             type="number"
                             className="text-center"
                           />
@@ -664,7 +859,7 @@ const TaskTable = forwardRef(function TaskTable({
                       <div
                         key={col.key}
                         className="flex items-center text-[10px] text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 h-full shrink-0"
-                        style={{ width: col.width }}
+                        style={{ width: getColWidth(col) }}
                       >
                         {!isSummary ? (
                           <EditableCell
@@ -690,7 +885,7 @@ const TaskTable = forwardRef(function TaskTable({
                       <div
                         key={col.key}
                         className="flex items-center text-xs text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 h-full shrink-0"
-                        style={{ width: col.width }}
+                        style={{ width: getColWidth(col) }}
                       >
                         <ProgressCell
                           value={task.progress}
@@ -708,7 +903,7 @@ const TaskTable = forwardRef(function TaskTable({
                       <div
                         key={col.key}
                         className="flex items-center text-[11px] text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 h-full shrink-0"
-                        style={{ width: col.width }}
+                        style={{ width: getColWidth(col) }}
                       >
                         {!isSummary ? (
                           <EditableCell
@@ -733,11 +928,33 @@ const TaskTable = forwardRef(function TaskTable({
                       <div
                         key={col.key}
                         className="flex items-center text-xs text-slate-600 dark:text-slate-400 h-full shrink-0 border-r border-slate-100 dark:border-slate-800"
-                        style={{ width: col.width }}
+                        style={{ width: getColWidth(col) }}
                       >
                         <EditableCell
                           value={task.assignedTo}
                           field="assignedTo"
+                          taskId={task.id}
+                          isEditing={isEditingThis}
+                          onStartEdit={onEditCell}
+                          onFinish={(id, f, v) => id ? onCellChange(id, f, v) : onEditCell(null)}
+                          type="select"
+                          options={assigneeOptions}
+                        />
+                      </div>
+                    );
+                  }
+
+                  // Supervisor
+                  if (col.key === 'supervisor') {
+                    return (
+                      <div
+                        key={col.key}
+                        className="flex items-center text-xs text-slate-600 dark:text-slate-400 h-full shrink-0 border-r border-slate-100 dark:border-slate-800"
+                        style={{ width: getColWidth(col) }}
+                      >
+                        <EditableCell
+                          value={task.supervisor}
+                          field="supervisor"
                           taskId={task.id}
                           isEditing={isEditingThis}
                           onStartEdit={onEditCell}
@@ -755,7 +972,7 @@ const TaskTable = forwardRef(function TaskTable({
                       <div
                         key={col.key}
                         className="flex items-center justify-center text-xs text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 h-full shrink-0"
-                        style={{ width: col.width }}
+                        style={{ width: getColWidth(col) }}
                       >
                         <TaskDetailCell
                           notes={task.notes}

@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { buildTaskTree, flattenTree, recalculateWBS, calculateSummaryDates, calcEndDate, calcDuration, calcWorkHours, calculateCriticalPath, generateOSFromTask, syncProgressFromOS, parsePredecessors, autoScheduleTasks, detectCircularDependency, saveUndoStacks, loadUndoStacks } from '../../../lib/eapService';
 import { deleteOSOrder, updateOSOrder } from '../../../lib/osService';
@@ -24,6 +25,7 @@ const ZOOM_CONFIGS = {
 
 export default function GanttChart({ project, tasks, teamMembers, osOrders = [], onCreateTask, onUpdateTask, onDeleteTask, invalidateEapTasks }) {
   const { addToast } = useToast();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const containerRef = useRef(null);
   const tableRef = useRef(null);
@@ -39,8 +41,9 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
   const [tableWidth, setTableWidth] = useState(DEFAULT_TABLE_WIDTH);
   const [isResizingTable, setIsResizingTable] = useState(false);
   const [showCriticalPath, setShowCriticalPath] = useState(true);
+  const [showAssigneeOnBar, setShowAssigneeOnBar] = useState(false);
   const [filterAssignee, setFilterAssignee] = useState('all');
-  const [hiddenColumns, setHiddenColumns] = useState(new Set(['wbsNumber']));
+  const [hiddenColumns, setHiddenColumns] = useState(new Set());
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // ==================== UNDO / REDO ====================
@@ -86,6 +89,17 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     return { changes, completedOps };
   }, [onUpdateTask]);
 
+  // Recalcula WBS de todas as tarefas e persiste no banco
+  const applyWBS = useCallback(async (currentTasks) => {
+    const wbsUpdates = recalculateWBS(currentTasks);
+    for (const u of wbsUpdates) {
+      const task = currentTasks.find(t => t.id === u.id);
+      if (task && task.wbsNumber !== u.wbsNumber) {
+        await onUpdateTask(u.id, { wbsNumber: u.wbsNumber }, true);
+      }
+    }
+  }, [onUpdateTask]);
+
   // Carregar stacks do IndexedDB ao montar
   useEffect(() => {
     if (undoLoadedRef.current) return;
@@ -97,6 +111,14 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
       }
     });
   }, [project.id]);
+
+  // Recalcular WBS ao carregar tarefas (corrige dados existentes com WBS errado)
+  const wbsInitRef = useRef(false);
+  useEffect(() => {
+    if (tasks.length === 0 || wbsInitRef.current) return;
+    wbsInitRef.current = true;
+    applyWBS(tasks).then(() => invalidateEapTasks());
+  }, [tasks, applyWBS, invalidateEapTasks]);
 
   const recordUndo = useCallback((changes) => {
     if (changes.length === 0) return;
@@ -390,7 +412,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     const level = parentTask ? parentTask.level + 1 : 0;
 
     const today = new Date().toISOString().split('T')[0] + 'T08:00';
-    const endDate = calcEndDate(today.split('T')[0], 1) + 'T17:00';
+    const endDate = calcEndDate(today, 1);
 
     const newTask = {
       projectId: project.id,
@@ -401,7 +423,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
       startDate: today,
       endDate,
       durationDays: 1,
-      estimatedHours: 0,
+      estimatedHours: 10,
       progress: 0,
       assignedTo: '',
       predecessors: [],
@@ -409,6 +431,11 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
 
     const result = await onCreateTask(newTask);
     if (result) {
+      // Recalcular WBS com a nova tarefa incluida
+      const updatedTasks = [...tasks, { ...newTask, id: result.id, wbsNumber: '' }];
+      await applyWBS(updatedTasks);
+      invalidateEapTasks();
+
       // Subtarefa: manter selecao no pai (facilita criar varias sub seguidas)
       const isSubtask = parentId && selectedTaskIds.has(parentId);
       if (!isSubtask) {
@@ -424,7 +451,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
         });
       }
     }
-  }, [tasks, project.id, onCreateTask, selectedTaskIds]);
+  }, [tasks, project.id, onCreateTask, selectedTaskIds, applyWBS, invalidateEapTasks]);
 
   const handleAddMilestone = useCallback(async () => {
     const maxSort = tasks.reduce((m, t) => Math.max(m, t.sortOrder || 0), 0);
@@ -447,11 +474,15 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
 
     const result = await onCreateTask(newTask);
     if (result) {
+      const updatedTasks = [...tasks, { ...newTask, id: result.id, wbsNumber: '' }];
+      await applyWBS(updatedTasks);
+      invalidateEapTasks();
+
       setSelectedTaskIds(new Set([result.id]));
       lastSelectedRef.current = result.id;
       setEditingCell({ taskId: result.id, field: 'name' });
     }
-  }, [tasks, project.id, onCreateTask]);
+  }, [tasks, project.id, onCreateTask, applyWBS, invalidateEapTasks]);
 
   // Mapa de OS vinculadas (precisa estar antes de handleDeleteSelectedTask)
   const osMap = useMemo(() => {
@@ -461,6 +492,12 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     }
     return map;
   }, [osOrders]);
+
+  // Navegar para a OS vinculada no FinancialPage
+  const handleOpenOS = useCallback((osId) => {
+    if (!osId) return;
+    navigate('/financial', { state: { openOsId: osId } });
+  }, [navigate]);
 
   const handleDeleteSelectedTask = useCallback(async () => {
     if (selectedTaskIds.size === 0) return;
@@ -538,7 +575,12 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
       ? `${count} tarefas excluidas${osDeleted > 0 ? ` (${osDeleted} OS removida${osDeleted > 1 ? 's' : ''})` : ''}${osFailedIds.length > 0 ? ` (${osFailedIds.length} mantida${osFailedIds.length > 1 ? 's' : ''} por erro na OS)` : ''}`
       : `Tarefa excluida${osDeleted > 0 ? ` (${osDeleted} OS removida${osDeleted > 1 ? 's' : ''})` : ''}`;
     addToast(msg, 'success');
-  }, [selectedTaskIds, tasks, osMap, onDeleteTask, addToast, queryClient]);
+
+    // Recalcular WBS apos exclusao
+    const remainingTasks = tasks.filter(t => !idsToDelete.has(t.id));
+    await applyWBS(remainingTasks);
+    invalidateEapTasks();
+  }, [selectedTaskIds, tasks, osMap, onDeleteTask, addToast, queryClient, applyWBS, invalidateEapTasks]);
 
   const handleIndent = useCallback(async () => {
     if (selectedTaskIds.size === 0 || isProcessingRef.current) return;
@@ -571,14 +613,22 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
         });
       }
 
-      if (undoChanges.length > 0) recordUndo(undoChanges);
+      if (undoChanges.length > 0) {
+        recordUndo(undoChanges);
+        // Recalcular WBS com a hierarquia atualizada
+        const updatedTasks = tasks.map(t => {
+          const change = undoChanges.find(c => c.taskId === t.id);
+          return change ? { ...t, ...change.after } : t;
+        });
+        await applyWBS(updatedTasks);
+      }
     } catch (err) {
       addToast('Erro ao indentar: ' + (err.message || 'erro'), 'error');
     } finally {
       isProcessingRef.current = false;
       invalidateEapTasks();
     }
-  }, [selectedTaskIds, flatTasks, tasks, onUpdateTask, recordUndo, addToast, invalidateEapTasks]);
+  }, [selectedTaskIds, flatTasks, tasks, onUpdateTask, recordUndo, addToast, invalidateEapTasks, applyWBS]);
 
   const handleOutdent = useCallback(async () => {
     if (selectedTaskIds.size === 0 || isProcessingRef.current) return;
@@ -601,14 +651,47 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
         await onUpdateTask(task.id, after, true); // skipInvalidation
       }
 
-      if (undoChanges.length > 0) recordUndo(undoChanges);
+      if (undoChanges.length > 0) {
+        recordUndo(undoChanges);
+        // Recalcular WBS com a hierarquia atualizada
+        const updatedTasks = tasks.map(t => {
+          const change = undoChanges.find(c => c.taskId === t.id);
+          return change ? { ...t, ...change.after } : t;
+        });
+        await applyWBS(updatedTasks);
+      }
     } catch (err) {
       addToast('Erro ao desindentar: ' + (err.message || 'erro'), 'error');
     } finally {
       isProcessingRef.current = false;
       invalidateEapTasks();
     }
-  }, [selectedTaskIds, flatTasks, tasks, onUpdateTask, recordUndo, addToast, invalidateEapTasks]);
+  }, [selectedTaskIds, flatTasks, tasks, onUpdateTask, recordUndo, addToast, invalidateEapTasks, applyWBS]);
+
+  // Reordenar tarefas via drag & drop
+  const handleReorderTask = useCallback(async (reorderUpdates) => {
+    if (reorderUpdates.length === 0 || isProcessingRef.current) return;
+    isProcessingRef.current = true;
+
+    try {
+      for (const { taskId, after } of reorderUpdates) {
+        await onUpdateTask(taskId, after, true);
+      }
+
+      recordUndo(reorderUpdates);
+
+      const updatedTasks = tasks.map(t => {
+        const change = reorderUpdates.find(c => c.taskId === t.id);
+        return change ? { ...t, ...change.after } : t;
+      });
+      await applyWBS(updatedTasks);
+    } catch (err) {
+      addToast('Erro ao reordenar: ' + (err.message || 'erro'), 'error');
+    } finally {
+      isProcessingRef.current = false;
+      invalidateEapTasks();
+    }
+  }, [tasks, onUpdateTask, recordUndo, applyWBS, addToast, invalidateEapTasks]);
 
   const handleCellEdit = useCallback(async (taskId, field, value) => {
     const task = tasks.find(t => t.id === taskId);
@@ -635,7 +718,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     // Auto-calculo de datas/duracao
     if (field === 'estimatedHours') {
       updates.estimatedHours = value;
-      const days = Math.max(1, Math.ceil(value / 8));
+      const days = Math.max(1, Math.ceil(value / 10));
       updates.durationDays = days;
       if (task.startDate) {
         updates.endDate = calcEndDate(task.startDate, days);
@@ -644,17 +727,17 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
       if (task.endDate) {
         const days = calcDuration(value, task.endDate);
         updates.durationDays = days;
-        updates.estimatedHours = calcWorkHours(value, task.endDate);
+        updates.estimatedHours = days * 10;
       } else if (task.durationDays > 0) {
         updates.endDate = calcEndDate(value, task.durationDays);
       }
     } else if (field === 'endDate' && task.startDate) {
       const days = calcDuration(task.startDate, value);
       updates.durationDays = days;
-      updates.estimatedHours = calcWorkHours(task.startDate, value);
+      updates.estimatedHours = days * 10;
     } else if (field === 'durationDays' && task.startDate) {
       updates.endDate = calcEndDate(task.startDate, value);
-      updates.estimatedHours = calcWorkHours(task.startDate, calcEndDate(task.startDate, value));
+      updates.estimatedHours = value * 10;
     }
 
     // Undo: capturar estado anterior da tarefa principal
@@ -806,6 +889,62 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     }
   }, [tasks, onUpdateTask, recordUndo, addToast, invalidateEapTasks, propagateSummaryUp]);
 
+  // ==================== LINK DRAG (arrastar barra → criar predecessora FS) ====================
+
+  const handleLinkTasks = useCallback(async (fromTaskId, toTaskId) => {
+    if (isProcessingRef.current) return;
+    const toTask = tasks.find(t => t.id === toTaskId);
+    if (!toTask) return;
+
+    // Verificar se ja existe essa predecessora
+    const existing = toTask.predecessors || [];
+    if (existing.some(p => p.taskId === fromTaskId)) {
+      addToast('Essa predecessora ja existe', 'warning');
+      return;
+    }
+
+    // Verificar dependencia circular
+    if (detectCircularDependency(toTaskId, [...existing, { taskId: fromTaskId, type: 'FS', lag: 0 }], tasks)) {
+      addToast('Dependencia circular detectada', 'error');
+      return;
+    }
+
+    isProcessingRef.current = true;
+    const undoChanges = [];
+    try {
+      const newPreds = [...existing, { taskId: fromTaskId, type: 'FS', lag: 0 }];
+      undoChanges.push({
+        taskId: toTaskId,
+        before: { predecessors: existing },
+        after: { predecessors: newPreds },
+      });
+      await onUpdateTask(toTaskId, { predecessors: newPreds });
+
+      // Auto-scheduling
+      const updatedTasks = tasks.map(t => t.id === toTaskId ? { ...t, predecessors: newPreds } : t);
+      const scheduleUpdates = autoScheduleTasks(updatedTasks);
+      for (const su of scheduleUpdates) {
+        const suTask = tasks.find(t => t.id === su.id);
+        if (suTask) {
+          undoChanges.push({
+            taskId: su.id,
+            before: { startDate: suTask.startDate, endDate: suTask.endDate },
+            after: { startDate: su.startDate, endDate: su.endDate },
+          });
+        }
+        await onUpdateTask(su.id, { startDate: su.startDate, endDate: su.endDate }, true);
+      }
+
+      recordUndo(undoChanges);
+      addToast('Predecessora FS criada', 'success');
+    } catch (err) {
+      addToast('Erro ao criar predecessora: ' + (err.message || 'erro'), 'error');
+    } finally {
+      isProcessingRef.current = false;
+      invalidateEapTasks();
+    }
+  }, [tasks, onUpdateTask, recordUndo, addToast, invalidateEapTasks]);
+
   // ==================== PONTE EAP → OS ====================
 
   // Gerar OS a partir da tarefa selecionada (usa a primeira da selecao)
@@ -954,6 +1093,8 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
         onOutdent={handleOutdent}
         showCriticalPath={showCriticalPath}
         onToggleCriticalPath={() => setShowCriticalPath(p => !p)}
+        showAssigneeOnBar={showAssigneeOnBar}
+        onToggleAssigneeOnBar={() => setShowAssigneeOnBar(p => !p)}
         hasSelection={selectedTaskIds.size > 0}
         selectionCount={selectedTaskIds.size}
         teamMembers={teamMembers}
@@ -973,7 +1114,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Tabela de Tarefas (esquerda) */}
         <div
-          className="flex-shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col"
+          className="flex-shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden"
           style={{ width: tableWidth }}
         >
           <TaskTable
@@ -996,6 +1137,8 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
             onToggleCollapse={handleToggleCollapse}
             onEditCell={setEditingCell}
             onCellChange={handleCellEdit}
+            onReorderTask={handleReorderTask}
+            onOpenOS={handleOpenOS}
             onScroll={handleTableScroll}
           />
         </div>
@@ -1015,6 +1158,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
             summaryIds={summaryIds}
             criticalIds={criticalIds}
             showCriticalPath={showCriticalPath}
+            showAssigneeOnBar={showAssigneeOnBar}
             selectedTaskIds={selectedTaskIds}
             dateRange={dateRange}
             zoom={zoom}
@@ -1022,6 +1166,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
             rowHeight={ROW_HEIGHT}
             onSelectTask={handleSelectTask}
             onBarDrag={handleBarDrag}
+            onLinkTasks={handleLinkTasks}
             onScroll={handleTimelineScroll}
           />
         </div>

@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { showLocalNotification } from '../lib/pushNotifications';
+import { showLocalNotification, playChatSound } from '../lib/pushNotifications';
 
 /**
  * Hook generico para Supabase Realtime.
@@ -66,25 +66,62 @@ export function useRealtimeAgendaEvents(enabled = true) {
 }
 
 /**
+ * Hook para Realtime em content_posts (Calendario de Postagens).
+ */
+export function useRealtimeContentPosts(enabled = true) {
+  useRealtimeSubscription('content_posts', ['contentPosts'], { enabled });
+}
+
+/**
  * Hook para Realtime em notifications.
+ * Filtra por user_id para so receber notificacoes do usuario logado.
  */
 export function useRealtimeNotifications(enabled = true) {
-  useRealtimeSubscription('notifications', ['notifications', 'unreadCount'], {
-    enabled,
-    onInsert: (row) => {
-      // Push nativa quando chega notificacao via Realtime (outro usuario enviou)
-      if (row && row.title) {
-        showLocalNotification({
-          title: row.title,
-          body: row.message || '',
-          type: row.type || 'info',
-          entityType: row.entity_type,
-          entityId: row.entity_id,
-          tag: `fyness-rt-${row.id}`,
-        });
-      }
-    },
-  });
+  const queryClient = useQueryClient();
+  const [userId, setUserId] = useState(null);
+
+  // Pegar user_id da sessao atual
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserId(session?.user?.id || null);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !userId) return;
+
+    const channel = supabase
+      .channel(`realtime-notifications-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+          queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+
+          if (payload.eventType === 'INSERT' && payload.new?.title) {
+            showLocalNotification({
+              title: payload.new.title,
+              body: payload.new.message || '',
+              type: payload.new.type || 'info',
+              entityType: payload.new.entity_type,
+              entityId: payload.new.entity_id,
+              tag: `fyness-rt-${payload.new.id}`,
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [enabled, userId, queryClient]);
 }
 
 /**
@@ -92,4 +129,72 @@ export function useRealtimeNotifications(enabled = true) {
  */
 export function useRealtimeTeamMembers(enabled = true) {
   useRealtimeSubscription('team_members', ['teamMembers'], { enabled });
+}
+
+/**
+ * Hook global que toca som de "pop" quando chega mensagem de chat de outro usuario.
+ * Roda no MainLayout para funcionar em qualquer pagina.
+ */
+export function useRealtimeChatSound(enabled = true) {
+  const [userId, setUserId] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserId(session?.user?.id || null);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !userId) return;
+
+    const channel = supabase
+      .channel('realtime-chat-sound')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'os_comments' },
+        (payload) => {
+          // So tocar som se a mensagem e de outro usuario
+          if (payload.new?.user_id && payload.new.user_id !== userId) {
+            playChatSound();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [enabled, userId]);
+}
+
+/**
+ * Hook para Realtime nos comentarios/chat de uma OS especifica.
+ * Filtra por order_id para so receber eventos da OS sendo visualizada.
+ */
+export function useRealtimeComments(orderId, enabled = true) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!enabled || !orderId) return;
+
+    const channel = supabase
+      .channel(`realtime-os_comments-${orderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'os_comments',
+          filter: `order_id=eq.${orderId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['osComments', orderId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orderId, enabled, queryClient]);
 }

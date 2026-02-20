@@ -83,6 +83,96 @@ export async function showLocalNotification({ title, body, type = 'info', entity
   }
 }
 
+// ==================== SOM DE NOTIFICACAO ====================
+
+let audioCtx = null;
+
+/**
+ * Toca um som de "ding" usando Web Audio API.
+ * Nao precisa de arquivo externo — gera o som programaticamente.
+ */
+export function playNotificationSound() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    // Retomar contexto se estiver suspenso (requer interacao do usuario)
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    const now = audioCtx.currentTime;
+
+    // Oscilador principal — tom agudo e limpo
+    const osc1 = audioCtx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(880, now);        // A5
+    osc1.frequency.setValueAtTime(1174.66, now + 0.08); // D6
+
+    // Segundo oscilador — harmonica sutil
+    const osc2 = audioCtx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1318.51, now + 0.08); // E6
+
+    // Envelope de volume (fade in rapido, fade out suave)
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.3, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+    const gain2 = audioCtx.createGain();
+    gain2.gain.setValueAtTime(0, now + 0.08);
+    gain2.gain.linearRampToValueAtTime(0.15, now + 0.1);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+
+    osc1.connect(gain).connect(audioCtx.destination);
+    osc2.connect(gain2).connect(audioCtx.destination);
+
+    osc1.start(now);
+    osc1.stop(now + 0.4);
+    osc2.start(now + 0.08);
+    osc2.stop(now + 0.5);
+  } catch {
+    // Web Audio API nao disponivel — silenciar
+  }
+}
+
+/**
+ * Toca um som de "pop" curto para mensagens de chat.
+ * Tom mais grave e curto que o ding de notificacao.
+ */
+export function playChatSound() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    const now = audioCtx.currentTime;
+
+    // Tom descendente rapido — efeito "pop"
+    const osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(660, now);        // E5
+    osc.frequency.exponentialRampToValueAtTime(440, now + 0.1); // A4
+
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.25, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  } catch {
+    // Web Audio API nao disponivel
+  }
+}
+
 // ==================== HELPERS ====================
 
 const NOTIFICATION_TYPE_MAP = {

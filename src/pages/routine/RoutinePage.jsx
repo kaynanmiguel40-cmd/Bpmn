@@ -10,10 +10,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useOSOrders, useOSProjects } from '../../hooks/queries';
+import { useOSOrders, useOSProjects, useTeamMembers } from '../../hooks/queries';
 import { updateOSOrder } from '../../lib/osService';
 import { getProfile } from '../../lib/profileService';
 import { namesMatch } from '../../lib/kpiUtils';
+import { notifyOSCompleted } from '../../lib/notificationTriggers';
 
 const PRIORITIES = {
   urgent: { label: 'Urgente', color: 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400', dot: 'bg-red-500' },
@@ -43,6 +44,7 @@ export function RoutinePage() {
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
   const { data: projects = [], isLoading: loadingProjects } = useOSProjects();
+  const { data: teamMembers = [] } = useTeamMembers();
   const [profile, setProfile] = useState({});
   const [loadingProfile, setLoadingProfile] = useState(true);
 
@@ -130,6 +132,7 @@ export function RoutinePage() {
     });
     if (updated) {
       queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+      notifyOSCompleted(updated, teamMembers, userName, profile.id);
     }
   };
 

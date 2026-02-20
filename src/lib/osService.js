@@ -22,6 +22,7 @@ export function dbToOrder(row) {
     notes: row.notes || '',
     assignee: row.assignee || null,
     assignedTo: row.assigned_to || null,
+    supervisor: row.supervisor || null,
     sortOrder: row.sort_order ?? 0,
     estimatedStart: row.estimated_start || '',
     estimatedEnd: row.estimated_end || '',
@@ -142,6 +143,7 @@ const orderService = createCRUDService({
     type: 'type',
     parentOrderId: 'parent_order_id',
     emergencyNumber: 'emergency_number',
+    supervisor: 'supervisor',
   },
 });
 

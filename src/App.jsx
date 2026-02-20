@@ -18,6 +18,7 @@ const FinancialPage = lazy(() => import('./pages/financial/FinancialPage'))
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'))
 const ReportPage = lazy(() => import('./pages/reports/ReportPage'))
 const EapPage = lazy(() => import('./pages/eap/EapPage'))
+const EapGanttPage = lazy(() => import('./pages/eap/EapGanttPage'))
 
 function LoadingSpinner() {
   return (
@@ -78,6 +79,7 @@ function App() {
                 <Route path="/agenda" element={<ErrorBoundary><AgendaPage /></ErrorBoundary>} />
                 <Route path="/financial" element={<ErrorBoundary><FinancialPage /></ErrorBoundary>} />
                 <Route path="/eap" element={<ErrorBoundary><EapPage /></ErrorBoundary>} />
+                <Route path="/eap/:projectId" element={<ErrorBoundary><EapGanttPage /></ErrorBoundary>} />
                 <Route path="/reports" element={<ErrorBoundary><ReportPage /></ErrorBoundary>} />
                 <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
               </Route>
