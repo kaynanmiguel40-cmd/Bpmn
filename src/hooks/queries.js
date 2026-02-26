@@ -10,6 +10,7 @@ import { getEapProjects, createEapProject, updateEapProject, deleteEapProject, g
 import { getCommentsByOrder, addComment, getChatSummaries, markConversationRead, getConversationReads } from '../lib/commentService';
 import { getPenalties, createPenalty, deletePenalty } from '../lib/penaltyService';
 import { getContentPosts, createContentPost, updateContentPost, deleteContentPost } from '../lib/contentService';
+import { getProcessOrdersByProject, getProcessOrderByElement, createProcessOrder, updateProcessOrder, deleteProcessOrder } from '../lib/processOrderService';
 import { supabase } from '../lib/supabase';
 
 // ==================== QUERY KEYS ====================
@@ -28,6 +29,7 @@ export const queryKeys = {
   eapProjects: ['eapProjects'],
   eapTasks: ['eapTasks'],
   contentPosts: ['contentPosts'],
+  processOrders: ['processOrders'],
 };
 
 // ==================== OS ORDERS ====================
@@ -505,5 +507,49 @@ export function useDeleteContentPost() {
   return useMutation({
     mutationFn: deleteContentPost,
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contentPosts }),
+  });
+}
+
+// ==================== PROCESS ORDERS (Ordem de Processo) ====================
+
+export function useProcessOrdersByProject(projectId) {
+  return useQuery({
+    queryKey: [...queryKeys.processOrders, 'project', projectId],
+    queryFn: () => getProcessOrdersByProject(projectId),
+    enabled: !!projectId,
+    staleTime: 30_000,
+  });
+}
+
+export function useProcessOrderByElement(projectId, elementId) {
+  return useQuery({
+    queryKey: [...queryKeys.processOrders, 'element', projectId, elementId],
+    queryFn: () => getProcessOrderByElement(projectId, elementId),
+    enabled: !!projectId && !!elementId,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateProcessOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createProcessOrder,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.processOrders }),
+  });
+}
+
+export function useUpdateProcessOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateProcessOrder(id, updates),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.processOrders }),
+  });
+}
+
+export function useDeleteProcessOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteProcessOrder,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.processOrders }),
   });
 }

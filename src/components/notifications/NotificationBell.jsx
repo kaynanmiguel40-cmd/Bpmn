@@ -46,8 +46,13 @@ export function NotificationBell() {
   const handleOpen = () => {
     const willOpen = !isOpen;
     setIsOpen(willOpen);
-    if (willOpen && getPermissionStatus() === 'default') {
-      requestPermission();
+    if (willOpen) {
+      if (getPermissionStatus() === 'default') {
+        requestPermission();
+      }
+      if (unreadCount > 0) {
+        markAllAsReadMutation.mutate();
+      }
     }
   };
 

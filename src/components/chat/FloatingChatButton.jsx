@@ -1,13 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useChatSummaries } from '../../hooks/queries';
 import { getProfile } from '../../lib/profileService';
 import { getUnreadCount } from '../../lib/commentService';
+import { showLocalNotification, playChatSound } from '../../lib/pushNotifications';
 import ChatSidePanel from './ChatSidePanel';
 
 export default function FloatingChatButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [profile, setProfile] = useState({});
   const { data: summaries = {} } = useChatSummaries();
+  const onLoadNotified = useRef(false);
 
   useEffect(() => {
     getProfile().then(p => p && setProfile(p));
@@ -19,6 +21,20 @@ export default function FloatingChatButton() {
       (sum, [orderId, s]) => sum + getUnreadCount(orderId, profile.id, s.count), 0
     );
   }, [summaries, profile.id]);
+
+  // Ao abrir o app: se houver mensagens nao lidas, tocar som e push nativa
+  useEffect(() => {
+    if (onLoadNotified.current || !profile.id || unreadCount === 0) return;
+    onLoadNotified.current = true;
+
+    playChatSound();
+    showLocalNotification({
+      title: `${unreadCount} mensagen${unreadCount === 1 ? '' : 's'} nao lida${unreadCount === 1 ? '' : 's'}`,
+      body: 'Voce tem mensagens pendentes no chat',
+      type: 'info',
+      tag: 'chat-onload',
+    });
+  }, [unreadCount, profile.id]);
 
   return (
     <div className="print:hidden">

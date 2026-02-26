@@ -107,7 +107,74 @@ export async function notifyOSBlocked(order, reason, teamMembers, triggeredByUse
   }
 }
 
-// ==================== 4. NOVO COMENTARIO ====================
+// ==================== 4. OS EDITADA ====================
+
+/**
+ * Notifica o responsavel quando campos importantes da OS sao alterados.
+ * Campos monitorados: title, description, priority, estimatedEnd, checklist, status.
+ */
+export async function notifyOSUpdated(order, changes, teamMembers, triggeredByUserId) {
+  if (!order?.assignee || !teamMembers?.length) return;
+
+  const assigneeMember = findMemberByName(order.assignee, teamMembers);
+  if (!assigneeMember?.authUserId || assigneeMember.authUserId === triggeredByUserId) return;
+
+  // Campos que valem notificacao
+  const TRACKED = ['title', 'description', 'priority', 'estimatedEnd', 'checklist', 'status', 'category', 'location'];
+  const changedKeys = Object.keys(changes).filter(k => TRACKED.includes(k));
+  if (changedKeys.length === 0) return;
+
+  const LABELS = {
+    title: 'titulo',
+    description: 'descricao',
+    priority: 'prioridade',
+    estimatedEnd: 'prazo',
+    checklist: 'tarefas',
+    status: 'status',
+    category: 'categoria',
+    location: 'local',
+  };
+  const summary = changedKeys.map(k => LABELS[k] || k).join(', ');
+
+  try {
+    await notify({
+      userId: assigneeMember.authUserId,
+      type: 'os_updated',
+      title: `O.S. #${order.number || ''} atualizada`,
+      message: `Alterado: ${summary}`,
+      entityType: 'os_order',
+      entityId: order.id,
+    });
+  } catch { /* silenciar */ }
+}
+
+// ==================== 5. OS CRIADA ====================
+
+/**
+ * Notifica managers quando uma nova OS e criada.
+ */
+export async function notifyOSCreated(order, teamMembers, triggeredByUserId) {
+  if (!teamMembers?.length) return;
+
+  const managers = getManagers(teamMembers);
+
+  for (const manager of managers) {
+    if (!manager.authUserId || manager.authUserId === triggeredByUserId) continue;
+
+    try {
+      await notify({
+        userId: manager.authUserId,
+        type: 'os_created',
+        title: `Nova O.S. #${order.number || ''} criada`,
+        message: order.title || 'Ordem de servico',
+        entityType: 'os_order',
+        entityId: order.id,
+      });
+    } catch { /* silenciar */ }
+  }
+}
+
+// ==================== 6. NOVO COMENTARIO ====================
 
 /**
  * Notifica o assignee da OS quando alguem comenta (se nao foi @mencionado).
@@ -132,7 +199,7 @@ export async function notifyCommentToAssignee({ orderId, orderNumber, orderTitle
   } catch { /* silenciar */ }
 }
 
-// ==================== 5. EVENTO CRIADO ====================
+// ==================== 7. EVENTO CRIADO ====================
 
 /**
  * Notifica participantes quando um evento e criado/atualizado.
@@ -161,7 +228,7 @@ export async function notifyEventCreated(event, attendeeIds, teamMembers, create
   }
 }
 
-// ==================== 6. VERIFICACAO DE PRAZOS ====================
+// ==================== 8. VERIFICACAO DE PRAZOS ====================
 
 const DEADLINE_STORAGE_KEY = 'fyness_deadline_notified';
 

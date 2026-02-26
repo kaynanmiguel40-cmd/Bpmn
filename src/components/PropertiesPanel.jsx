@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 // Paleta de cores disponíveis
 const COLOR_PALETTE = [
@@ -35,11 +35,21 @@ const getImageData = (el) => {
   return null;
 };
 
-export default function PropertiesPanel({ element, onUpdate, onColorChange }) {
+export default function PropertiesPanel({ element, onUpdate, onColorChange, onOpenProcessOrder }) {
   const [name, setName] = useState('');
   const [documentation, setDocumentation] = useState('');
   const [selectedColor, setSelectedColor] = useState(null);
   const [imageData, setImageData] = useState(null);
+  const docRef = useRef(null);
+
+  const resizeDoc = useCallback(() => {
+    const el = docRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }, []);
+
+  useEffect(() => { resizeDoc(); }, [documentation, resizeDoc]);
 
   // Atualizar campos quando elemento mudar
   useEffect(() => {
@@ -312,12 +322,14 @@ export default function PropertiesPanel({ element, onUpdate, onColorChange }) {
             Documentação
           </label>
           <textarea
+            ref={docRef}
             value={documentation}
             onChange={handleDocChange}
             onBlur={handleDocBlur}
+            onInput={resizeDoc}
             placeholder="Adicione uma descrição ou notas..."
-            rows={4}
-            className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent resize-none"
+            rows={2}
+            className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent overflow-hidden"
           />
           <p className="text-xs text-slate-400 mt-1">Clique fora para salvar</p>
         </div>
@@ -351,6 +363,33 @@ export default function PropertiesPanel({ element, onUpdate, onColorChange }) {
                 Cor selecionada: {selectedColor.name}
               </p>
             )}
+          </div>
+        )}
+
+        {/* Ordem de Processo - apenas para Tasks, SubProcess, CallActivity */}
+        {element.type && (
+          element.type.includes('Task') ||
+          element.type.includes('SubProcess') ||
+          element.type.includes('CallActivity')
+        ) && onOpenProcessOrder && (
+          <div className="pt-4 border-t border-slate-200">
+            <button
+              onClick={onOpenProcessOrder}
+              className="w-full flex items-center gap-3 px-3 py-3 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg hover:from-indigo-100 hover:to-purple-100 dark:hover:from-indigo-900/30 dark:hover:to-purple-900/30 transition-all group"
+            >
+              <div className="w-8 h-8 bg-indigo-500/10 dark:bg-indigo-500/20 rounded-lg flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-500/20 transition-colors flex-shrink-0">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div className="text-left flex-1 min-w-0">
+                <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Ordem de Processo</p>
+                <p className="text-[10px] text-indigo-500 dark:text-indigo-400/70">Documentar planejamento e execucao</p>
+              </div>
+              <svg className="w-4 h-4 text-indigo-400 dark:text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         )}
 

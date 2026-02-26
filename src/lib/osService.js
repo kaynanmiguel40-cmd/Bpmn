@@ -49,6 +49,7 @@ export function dbToOSProject(row) {
     sector: row.sector_id || '',
     color: row.color || '#3b82f6',
     description: row.description || '',
+    status: row.status || 'active',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -99,6 +100,7 @@ const projectService = createCRUDService({
     sector: 'sector_id',
     color: 'color',
     description: 'description',
+    status: 'status',
   },
 });
 

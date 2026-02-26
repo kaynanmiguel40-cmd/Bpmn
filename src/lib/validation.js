@@ -148,6 +148,7 @@ export const osProjectSchema = z.object({
   sectorId: z.string().optional().default(''),
   color: z.string().optional().default('#3b82f6'),
   description: z.string().optional().default(''),
+  status: z.enum(['active', 'finished']).default('active'),
 }).passthrough();
 
 export const clientSchema = z.object({
@@ -206,6 +207,53 @@ export const contentPostSchema = z.object({
   assignee: z.string().optional().default(''),
   mediaType: z.enum(['image', 'video', 'carousel', 'story', 'reel']).nullable().optional().default(null),
   recurrenceGroupId: z.string().nullable().optional().default(null),
+}).passthrough();
+
+// ==================== PROCESS ORDERS (Ordem de Processo) ====================
+
+const processOrderStepItem = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  order: z.number().min(0).default(0),
+  text: z.string().default(''),
+  details: z.string().optional().default(''),
+  required: z.boolean().default(true),
+}).passthrough();
+
+const processOrderRiskItem = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  description: z.string().default(''),
+  mitigation: z.string().optional().default(''),
+  severity: z.enum(['low', 'medium', 'high']).default('medium'),
+}).passthrough();
+
+const processOrderImprovementItem = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  date: z.string().optional().default(''),
+  description: z.string().default(''),
+  result: z.string().optional().default(''),
+  author: z.string().optional().default(''),
+}).passthrough();
+
+export const processOrderSchema = z.object({
+  projectId: z.string().min(1, 'Projeto e obrigatorio'),
+  elementId: z.string().min(1, 'Elemento BPMN e obrigatorio'),
+  elementType: z.string().optional().default(''),
+  title: z.string().min(1, 'Titulo e obrigatorio'),
+  description: z.string().optional().default(''),
+  objective: z.string().optional().default(''),
+  steps: z.array(processOrderStepItem).default([]),
+  inputs: z.string().optional().default(''),
+  outputs: z.string().optional().default(''),
+  toolsResources: z.string().optional().default(''),
+  responsible: z.string().optional().default(''),
+  participants: z.string().optional().default(''),
+  acceptanceCriteria: z.string().optional().default(''),
+  risks: z.array(processOrderRiskItem).default([]),
+  improvements: z.array(processOrderImprovementItem).default([]),
+  lessonsLearned: z.string().optional().default(''),
+  status: z.enum(['draft', 'active', 'review', 'archived']).default('draft'),
+  version: z.number().optional().default(1),
+  notes: z.string().optional().default(''),
 }).passthrough();
 
 // ==================== VALIDACAO + SANITIZACAO ====================

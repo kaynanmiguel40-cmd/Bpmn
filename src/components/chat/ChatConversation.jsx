@@ -1,9 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useOSComments, useAddOSComment, useMemberAvatars, useConversationReads, useMarkConversationRead } from '../../hooks/queries';
 import { useRealtimeComments } from '../../hooks/useRealtimeSubscription';
-import { shortName } from '../../lib/teamService';
-import { namesMatch } from '../../lib/kpiUtils';
-import { notify } from '../../lib/notificationService';
 import { extractMentions } from './chatUtils';
 import ChatAvatar from './ChatAvatar';
 import ChatBubble from './ChatBubble';
@@ -122,42 +119,8 @@ export default function ChatConversation({ order, userName, userId, teamMembers,
     });
     setText('');
 
-    const mentionedAuthIds = [];
-    for (const mention of mentions) {
-      const member = teamMembers.find(m => m.id === mention.memberId);
-      if (member?.authUserId && member.authUserId !== userId) {
-        mentionedAuthIds.push(member.authUserId);
-        try {
-          await notify({
-            userId: member.authUserId,
-            type: 'mention',
-            title: `${shortName(userName)} mencionou voce`,
-            message: `"${content.slice(0, 80)}${content.length > 80 ? '...' : ''}"`,
-            entityType: 'os_order',
-            entityId: order.id,
-          });
-        } catch { /* ok */ }
-      }
-    }
-
-    // Notificar assignee se nao foi mencionado e nao e o autor
-    if (order.assignee) {
-      const assigneeMember = teamMembers.find(m => namesMatch(m.name, order.assignee));
-      if (assigneeMember?.authUserId
-          && assigneeMember.authUserId !== userId
-          && !mentionedAuthIds.includes(assigneeMember.authUserId)) {
-        try {
-          await notify({
-            userId: assigneeMember.authUserId,
-            type: 'comment_added',
-            title: `Novo comentario na OS #${order.number || ''}`,
-            message: `${shortName(userName)}: "${content.slice(0, 60)}${content.length > 60 ? '...' : ''}"`,
-            entityType: 'os_order',
-            entityId: order.id,
-          });
-        } catch { /* ok */ }
-      }
-    }
+    // Notificacoes de chat aparecem no icone do chat (FloatingChatButton)
+    // via realtime subscription — nao no sino de notificacoes.
   }, [addMutation, order.id, order.number, order.assignee, userName, userId, teamMembers]);
 
   const grouped = groupMessages(messages);

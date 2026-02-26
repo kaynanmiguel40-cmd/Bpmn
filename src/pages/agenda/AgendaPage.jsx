@@ -12,6 +12,7 @@ import { expandRecurrences, toDateKey } from '../../lib/recurrenceUtils';
 import { downloadICS } from '../../lib/icsExporter';
 import { useRealtimeAgendaEvents, useRealtimeContentPosts } from '../../hooks/useRealtimeSubscription';
 import { notifyEventCreated } from '../../lib/notificationTriggers';
+import AutoTextarea from '../../components/ui/AutoTextarea';
 
 // ==================== CONSTANTES ====================
 
@@ -1964,11 +1965,11 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete, allMemb
           {/* Descricao */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Descricao</label>
-            <textarea
+            <AutoTextarea
               value={form.description}
               onChange={(e) => updateField('description', e.target.value)}
-              rows={3}
-              className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none dark:placeholder-slate-500"
+              minRows={3}
+              className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm dark:placeholder-slate-500"
               placeholder="Detalhes do evento..."
             />
           </div>
@@ -1984,11 +1985,11 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete, allMemb
                   Anotacoes / Ata da Reuniao
                 </span>
               </label>
-              <textarea
+              <AutoTextarea
                 value={form.notes}
                 onChange={(e) => updateField('notes', e.target.value)}
-                rows={5}
-                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-y dark:placeholder-slate-500"
+                minRows={5}
+                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm dark:placeholder-slate-500"
                 placeholder="Pauta, decisoes, pendencias..."
               />
             </div>
@@ -2550,11 +2551,11 @@ function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMem
               {/* Descricao */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Descricao</label>
-                <textarea
+                <AutoTextarea
                   value={postForm.description}
                   onChange={(e) => setPostForm(f => ({ ...f, description: e.target.value }))}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-sm resize-none"
+                  minRows={2}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-sm"
                   placeholder="Legenda, copy, observacoes..."
                 />
               </div>

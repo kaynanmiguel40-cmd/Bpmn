@@ -22,11 +22,12 @@ import { getProfile } from '../../lib/profileService';
 import { shortName } from '../../lib/teamService';
 import { namesMatch } from '../../lib/kpiUtils';
 import { MANAGER_ROLES } from '../../lib/roleUtils';
-import { notifyOSAssigned, notifyOSCompleted, notifyOSBlocked } from '../../lib/notificationTriggers';
+import { notifyOSAssigned, notifyOSCompleted, notifyOSBlocked, notifyOSUpdated, notifyOSCreated } from '../../lib/notificationTriggers';
 import { usePermissions } from '../../contexts/PermissionContext';
 import logoFyness from '../../assets/logo-fyness.png';
 import { useRealtimeOSOrders, useRealtimeTeamMembers } from '../../hooks/useRealtimeSubscription';
 import ChatHistoryDocument from '../../components/chat/ChatHistoryDocument';
+import AutoTextarea from '../../components/ui/AutoTextarea';
 
 // ==================== CONSTANTES ====================
 
@@ -95,6 +96,7 @@ const EMPTY_PROJECT_FORM = {
   sector: '',
   color: '#3b82f6',
   description: '',
+  status: 'active',
 };
 
 function formatDate(iso) {
@@ -313,6 +315,7 @@ export default function FinancialPage() {
   const [projectForm, setProjectForm] = useState({ ...EMPTY_PROJECT_FORM });
   const [sectorFilter, setSectorFilter] = useState('all');
   const [projectSearch, setProjectSearch] = useState('');
+  const [showFinished, setShowFinished] = useState(false);
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(null);
   // Sector management
   const [showSectorForm, setShowSectorForm] = useState(false);
@@ -418,6 +421,9 @@ export default function FinancialPage() {
   // Projetos filtrados
   const filteredProjects = useMemo(() => {
     let list = projects;
+    if (!showFinished) {
+      list = list.filter(p => p.status !== 'finished');
+    }
     if (sectorFilter !== 'all') {
       list = list.filter(p => p.sector === sectorFilter);
     }
@@ -426,7 +432,7 @@ export default function FinancialPage() {
       list = list.filter(p => p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
     }
     return list;
-  }, [projects, sectorFilter, projectSearch]);
+  }, [projects, sectorFilter, projectSearch, showFinished]);
 
   // O.S. sem projeto
   const orphanOrders = useMemo(() => {
@@ -485,6 +491,7 @@ export default function FinancialPage() {
         if (viewingOrder?.id === editingOrder.id) {
           setViewingOrder(updated);
         }
+        notifyOSUpdated(updated, currentForm, allMembers, profile.id);
       }
       setShowCreateForm(false);
     } else {
@@ -528,6 +535,7 @@ export default function FinancialPage() {
     const newOrder = await createOSOrder(orderData);
     if (newOrder) {
       queryClient.setQueryData(queryKeys.osOrders, prev => [...(prev || []), newOrder]);
+      notifyOSCreated(newOrder, allMembers, profile.id);
     }
     setPendingOrder(null);
   };
@@ -719,6 +727,7 @@ export default function FinancialPage() {
       sector: project.sector,
       color: project.color,
       description: project.description || '',
+      status: project.status || 'active',
     });
     setShowProjectForm(true);
   };
@@ -878,6 +887,7 @@ export default function FinancialPage() {
               if (updates.status === 'done' && oldOrder?.status !== 'done') {
                 notifyOSCompleted(saved, allMembers, currentUser, profile.id);
               }
+              notifyOSUpdated(saved, updates, allMembers, profile.id);
             } else {
               // Falhou: refetch para restaurar estado correto
               toast('Erro ao salvar alteracao', 'error');
@@ -1528,6 +1538,21 @@ export default function FinancialPage() {
             </button>
           )}
         </div>
+
+        {/* Toggle finalizados */}
+        <button
+          onClick={() => setShowFinished(!showFinished)}
+          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+            showFinished
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+              : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Finalizados
+        </button>
       </div>
 
       {/* Grid de Projetos */}
@@ -1542,29 +1567,75 @@ export default function FinancialPage() {
             const percent = total > 0 ? Math.round((done / total) * 100) : 0;
             const sector = sectors.find(s => s.id === project.sector);
 
+            const isFinished = project.status === 'finished';
+
             return (
               <div
                 key={project.id}
                 onClick={() => setSelectedProject(project)}
-                className="group bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 hover:-translate-y-0.5"
+                className={`group bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 hover:-translate-y-0.5 ${isFinished ? 'opacity-60' : ''}`}
               >
                 {/* Icone + Acoes */}
                 <div className="flex items-start justify-between mb-3">
-                  <FolderIcon color={project.color} size={40} />
-                  {canManageProjects && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEditProject(project); }}
-                      className="p-1 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                      </svg>
-                    </button>
-                  )}
+                  <div className="relative">
+                    <FolderIcon color={project.color} size={40} />
+                    {isFinished && (
+                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    {canManageProjects && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newStatus = isFinished ? 'active' : 'finished';
+                          updateOSProject(project.id, { status: newStatus }).then(() => {
+                            queryClient.invalidateQueries({ queryKey: queryKeys.osProjects });
+                            toast(isFinished ? 'Projeto reaberto' : 'Projeto finalizado', 'success');
+                          });
+                        }}
+                        className={`p-1 rounded transition-colors opacity-0 group-hover:opacity-100 ${
+                          isFinished
+                            ? 'text-amber-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                            : 'text-green-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
+                        }`}
+                        title={isFinished ? 'Reabrir projeto' : 'Finalizar projeto'}
+                      >
+                        {isFinished ? (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                    {canManageProjects && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEditProject(project); }}
+                        className="p-1 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Nome + Setor */}
-                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1 group-hover:text-fyness-primary transition-colors">{project.name}</h3>
+                {/* Nome + Badge + Setor */}
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 group-hover:text-fyness-primary transition-colors">{project.name}</h3>
+                  {isFinished && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 shrink-0">Finalizado</span>
+                  )}
+                </div>
                 {sector && (
                   <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full text-white mb-2" style={{ backgroundColor: sector.color }}>
                     {sector.label}
@@ -2540,13 +2611,13 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                                     )}
                                     {/* Inputs para adicionar entregavel ao bloco */}
                                     <div className="space-y-1.5 mt-1">
-                                      <textarea
+                                      <AutoTextarea
                                         placeholder="Descreva o que foi entregue neste bloco..."
-                                        rows={1}
+                                        minRows={1}
                                         defaultValue={grpOutput.text || ''}
                                         key={`grp_text_${groupKey}_${grpOutput.text?.length || 0}`}
                                         onBlur={(e) => handleGroupOutputUpdate(groupKey, { text: e.target.value })}
-                                        className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-violet-400 focus:border-transparent resize-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                                        className="w-full px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-violet-400 focus:border-transparent placeholder:text-slate-300 dark:placeholder:text-slate-600"
                                       />
                                       <div className="flex gap-1.5">
                                         <input
@@ -3484,7 +3555,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Descricao do Servico</label>
-            <textarea value={form.description} onChange={(e) => update('description', e.target.value)} rows={3} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none" placeholder="Descreva o servico a ser executado..." />
+            <AutoTextarea value={form.description} onChange={(e) => update('description', e.target.value)} minRows={3} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Descreva o servico a ser executado..." />
           </div>
 
           {/* Bloco de Tarefas - Visual Builder */}
@@ -3812,7 +3883,8 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                         ref={checklistTextareaRef}
                         placeholder={"Preparacao\n- Separar materiais\n- Verificar estoque\n\nExecucao\n- Instalar equipamento\n- Testar funcionamento"}
                         rows={5}
-                        className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none leading-relaxed font-mono"
+                        className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm overflow-hidden leading-relaxed font-mono"
+                        onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                             e.preventDefault();
@@ -3852,7 +3924,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Observacoes</label>
-            <textarea value={form.notes} onChange={(e) => update('notes', e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none" placeholder="Observacoes adicionais..." />
+            <AutoTextarea value={form.notes} onChange={(e) => update('notes', e.target.value)} minRows={2} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Observacoes adicionais..." />
           </div>
 
           {/* Anexos */}
@@ -4015,14 +4087,48 @@ function ProjectFormModal({ form, setForm, editing, sectors, onSave, onClose, on
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Descricao</label>
-            <textarea
+            <AutoTextarea
               value={form.description}
               onChange={(e) => update('description', e.target.value)}
-              rows={3}
-              className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm resize-none"
+              minRows={3}
+              className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               placeholder="Descricao breve do projeto..."
             />
           </div>
+
+          {editing && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">Status</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => update('status', 'active')}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                    form.status === 'active'
+                      ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400'
+                      : 'border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <div className={`w-2 h-2 rounded-full ${form.status === 'active' ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                  Ativo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => update('status', 'finished')}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                    form.status === 'finished'
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400'
+                      : 'border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <svg className={`w-3.5 h-3.5 ${form.status === 'finished' ? 'text-green-500' : 'text-slate-300 dark:text-slate-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Finalizado
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="p-6 bg-slate-50 dark:bg-slate-900 flex items-center justify-between">

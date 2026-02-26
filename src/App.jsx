@@ -20,6 +20,19 @@ const ReportPage = lazy(() => import('./pages/reports/ReportPage'))
 const EapPage = lazy(() => import('./pages/eap/EapPage'))
 const EapGanttPage = lazy(() => import('./pages/eap/EapGanttPage'))
 
+// CRM Module (lazy loaded — app dentro do app)
+const CrmLayout = lazy(() => import('./modules/crm/components/layout/CrmLayout'))
+const CrmDashboardPage = lazy(() => import('./modules/crm/pages/CrmDashboardPage'))
+const CrmPipelinePage = lazy(() => import('./modules/crm/pages/CrmPipelinePage'))
+const CrmDealsPage = lazy(() => import('./modules/crm/pages/CrmDealsPage'))
+const CrmContactsPage = lazy(() => import('./modules/crm/pages/CrmContactsPage'))
+const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage'))
+const CrmActivitiesPage = lazy(() => import('./modules/crm/pages/CrmActivitiesPage'))
+const CrmProposalsPage = lazy(() => import('./modules/crm/pages/CrmProposalsPage'))
+const CrmReportsPage = lazy(() => import('./modules/crm/pages/CrmReportsPage'))
+const CrmForecastPage = lazy(() => import('./modules/crm/pages/CrmForecastPage'))
+const CrmSettingsPage = lazy(() => import('./modules/crm/pages/CrmSettingsPage'))
+
 function LoadingSpinner() {
   return (
     <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">
@@ -66,6 +79,23 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route path="/sales/editor/:id?" element={<Editor />} />
               <Route path="/editor/:id?" element={<Editor />} />
+            </Route>
+
+            {/* CRM — layout proprio (app dentro do app) — protegido */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/crm" element={<CrmLayout />}>
+                <Route index element={<ErrorBoundary><CrmDashboardPage /></ErrorBoundary>} />
+                <Route path="pipeline" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
+                <Route path="pipeline/:pipelineId" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
+                <Route path="deals" element={<ErrorBoundary><CrmDealsPage /></ErrorBoundary>} />
+                <Route path="contacts" element={<ErrorBoundary><CrmContactsPage /></ErrorBoundary>} />
+                <Route path="companies" element={<ErrorBoundary><CrmCompaniesPage /></ErrorBoundary>} />
+                <Route path="activities" element={<ErrorBoundary><CrmActivitiesPage /></ErrorBoundary>} />
+                <Route path="proposals" element={<ErrorBoundary><CrmProposalsPage /></ErrorBoundary>} />
+                <Route path="reports" element={<ErrorBoundary><CrmReportsPage /></ErrorBoundary>} />
+                <Route path="forecast" element={<ErrorBoundary><CrmForecastPage /></ErrorBoundary>} />
+                <Route path="settings" element={<ErrorBoundary><CrmSettingsPage /></ErrorBoundary>} />
+              </Route>
             </Route>
 
             {/* Rotas com Layout (Sidebar) — protegidas */}

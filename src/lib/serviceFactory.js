@@ -155,21 +155,21 @@ export function createCRUDService(config) {
     }
 
     const now = new Date().toISOString();
-    const row = {
-      id: generateLocalId(idPrefix),
+    const snakeData = {
       ...toSnakeCase(item, fieldMap),
       ...extraRow,
     };
 
     const { data, error } = await supabase
       .from(table)
-      .insert([row])
+      .insert([snakeData])
       .select()
       .single();
 
     if (error) {
       console.error(`[${table}] CREATE erro:`, error.message, error.code, error.details, error.hint);
-      const newItem = { ...row, created_at: now, updated_at: now };
+      const localId = generateLocalId(idPrefix);
+      const newItem = { id: localId, ...snakeData, created_at: now, updated_at: now };
       await putOffline(table, newItem);
       await markPendingSync(table, newItem.id, 'upsert');
       toast(`Salvo localmente: ${error.message || 'sem conexao'}`, 'warning');

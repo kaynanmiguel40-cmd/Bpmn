@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import BpmnEditor from '../components/BpmnEditor';
 import PropertiesPanel from '../components/PropertiesPanel';
+import ProcessOrderPanel from '../components/ProcessOrderPanel';
 import { EMPTY_DIAGRAM_XML } from '../utils/fynessTemplate';
 import {
   getProjects,
@@ -10,6 +11,7 @@ import {
   createProject as createProjectDB,
   updateProject as updateProjectDB,
 } from '../lib/supabase';
+import { generateTemplateProcessOrders, getTemplateProcessOrderCount } from '../lib/templateProcessOrders';
 
 export default function Editor() {
   const { id } = useParams();
@@ -39,11 +41,13 @@ export default function Editor() {
   const [imageFormat, setImageFormat] = useState('square'); // square, rounded, circle
   const [showErrorToast, setShowErrorToast] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfOrientation, setPdfOrientation] = useState('auto');
   const [pdfScale, setPdfScale] = useState(2);
+  const [showProcessOrder, setShowProcessOrder] = useState(false);
 
   // Carregar todos os projetos para o painel de dependências
   useEffect(() => {
@@ -174,6 +178,8 @@ export default function Editor() {
   // Handler para seleção de elemento
   const handleElementSelect = useCallback((element) => {
     setSelectedElement(element);
+    // Fechar painel de ordem de processo ao trocar/limpar elemento
+    if (!element) setShowProcessOrder(false);
   }, []);
 
   // Salvar projeto
@@ -540,6 +546,35 @@ export default function Editor() {
           {/* Right: Actions */}
           <div className="flex items-center gap-2">
             <button
+              onClick={async () => {
+                if (window.confirm('Isso vai substituir o diagrama atual pelo Template Comercial V9. Deseja continuar?')) {
+                  const ok = await bpmnEditorRef.current?.loadComercialTemplate();
+                  if (ok && projectIdRef.current) {
+                    const total = getTemplateProcessOrderCount();
+                    const { created, errors } = await generateTemplateProcessOrders(projectIdRef.current);
+                    if (created > 0) {
+                      setSuccessMessage(`${created}/${total} Ordens de Processo criadas!`);
+                      setShowSaveToast(true);
+                      setTimeout(() => { setShowSaveToast(false); setSuccessMessage(''); }, 3000);
+                    }
+                    if (errors > 0) {
+                      setErrorMessage(`${errors} ordens falharam ao criar.`);
+                      setShowErrorToast(true);
+                      setTimeout(() => setShowErrorToast(false), 4000);
+                    }
+                  }
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-2 border border-amber-300 bg-amber-50 rounded-lg text-amber-700 hover:bg-amber-100 transition-colors text-sm"
+              title="Aplicar Template Comercial V9"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              <span>Template</span>
+            </button>
+
+            <button
               onClick={() => setShowPdfModal(true)}
               disabled={isExportingPdf}
               className="flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -804,12 +839,21 @@ export default function Editor() {
           />
         </div>
 
-        {/* Properties Panel - sempre visível */}
-        <PropertiesPanel
-          element={selectedElement}
-          onUpdate={handleElementUpdate}
-          onColorChange={handleColorChange}
-        />
+        {/* Right Panel - toggle entre Properties e Ordem de Processo */}
+        {showProcessOrder && selectedElement ? (
+          <ProcessOrderPanel
+            element={selectedElement}
+            projectId={project?.id}
+            onClose={() => setShowProcessOrder(false)}
+          />
+        ) : (
+          <PropertiesPanel
+            element={selectedElement}
+            onUpdate={handleElementUpdate}
+            onColorChange={handleColorChange}
+            onOpenProcessOrder={() => setShowProcessOrder(true)}
+          />
+        )}
       </div>
 
       {/* Save Toast */}
@@ -818,7 +862,7 @@ export default function Editor() {
           <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          <span>Projeto salvo com sucesso!</span>
+          <span>{successMessage || 'Projeto salvo com sucesso!'}</span>
         </div>
       )}
 

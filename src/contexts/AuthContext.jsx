@@ -17,26 +17,31 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Buscar perfil do usuario (com timeout de 5s)
+  // Buscar perfil do usuario (non-blocking, com AbortController)
   const fetchProfile = async (userId) => {
-    try {
-      const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout ao buscar perfil')), 5000)
-      );
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
 
-      const query = supabase
+    try {
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .single()
+        .abortSignal(controller.signal);
 
-      const { data, error } = await Promise.race([query, timeout]);
-
+      clearTimeout(timer);
       if (error) throw error;
       setProfile(data);
       return data;
     } catch (err) {
-      console.error('Erro ao buscar perfil:', err);
+      clearTimeout(timer);
+      // Silenciar abort — não é erro real, só timeout
+      if (err.name === 'AbortError' || controller.signal.aborted) {
+        console.warn('Perfil: timeout (8s). App continua sem perfil.');
+      } else {
+        console.warn('Perfil: erro ao buscar:', err.message);
+      }
       return null;
     }
   };
@@ -50,7 +55,8 @@ export function AuthProvider({ children }) {
 
         if (session?.user) {
           setUser(session.user);
-          await fetchProfile(session.user.id);
+          // Perfil carrega em background — não bloqueia o app
+          fetchProfile(session.user.id);
         }
       } catch (err) {
         console.error('Erro ao inicializar auth:', err);
@@ -69,7 +75,8 @@ export function AuthProvider({ children }) {
 
         if (session?.user) {
           setUser(session.user);
-          await fetchProfile(session.user.id);
+          // Perfil carrega em background — não bloqueia transições de auth
+          fetchProfile(session.user.id);
         } else {
           setUser(null);
           setProfile(null);

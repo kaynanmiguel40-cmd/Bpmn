@@ -13,6 +13,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getProfile, saveProfile } from '../../lib/profileService';
 import { useOSOrders, useTeamMembers, usePenalties, useCreatePenalty, useDeletePenalty, queryKeys } from '../../hooks/queries';
+import AutoTextarea from '../../components/ui/AutoTextarea';
 import { createTeamMember, updateTeamMember, deleteTeamMember, MEMBER_COLORS } from '../../lib/teamService';
 import { supabase, getCompanies, createCompany, updateCompany, deleteCompany, createAuthUser, updateProfileRole } from '../../lib/supabase';
 import { isManagerRole } from '../../lib/roleUtils';
@@ -1353,12 +1354,12 @@ export function SettingsPage() {
                 {canAdd && (
                   <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 rounded-b-2xl">
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">Aplicar Novo Cartao</p>
-                    <textarea
+                    <AutoTextarea
                       value={penaltyReason}
                       onChange={(e) => setPenaltyReason(e.target.value)}
                       placeholder="Descreva o motivo da punicao (minimo 10 caracteres)..."
-                      rows={3}
-                      className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent resize-none"
+                      minRows={3}
+                      className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                     />
                     <div className="flex items-center justify-between mt-3">
                       <span className="text-[10px] text-slate-400 dark:text-slate-500">

@@ -548,6 +548,7 @@ const HOURS_PER_DAY = 10; // 08:00-18:00
 const COLUMNS = [
   { key: 'rowNumber', label: '#', width: 28 },
   { key: 'wbsNumber', label: 'WBS', width: 42 },
+  { key: 'notes', label: 'Notas', width: 50 },
   { key: 'name', label: 'Nome da Tarefa', width: 160, flex: true },
   { key: 'durationDays', label: 'Horas', width: 50, type: 'number' },
   { key: 'startDate', label: 'Inicio', width: 110, type: 'datetime-local' },
@@ -555,7 +556,6 @@ const COLUMNS = [
   { key: 'predecessors', label: 'Pred.', width: 58 },
   { key: 'assignedTo', label: 'Resp.', width: 80 },
   { key: 'supervisor', label: 'Superv.', width: 80 },
-  { key: 'notes', label: 'Notas', width: 50 },
   { key: 'progress', label: '%', width: 50 },
 ];
 

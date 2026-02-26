@@ -36,6 +36,22 @@ db.version(4).stores({
   os_comments: 'id, order_id, user_id, created_at',
 });
 
+db.version(5).stores({
+  process_orders: 'id, project_id, element_id, status, created_at',
+});
+
+db.version(6).stores({
+  crm_companies: 'id, name, segment, created_by, deleted_at',
+  crm_contacts: 'id, name, email, company_id, status, created_by, deleted_at',
+  crm_pipelines: 'id, name, is_default, created_by',
+  crm_pipeline_stages: 'id, pipeline_id, position',
+  crm_deals: 'id, pipeline_id, stage_id, contact_id, company_id, status, created_by, deleted_at',
+  crm_activities: 'id, contact_id, deal_id, type, completed, start_date, created_by, deleted_at',
+  crm_proposals: 'id, deal_id, status, created_by, deleted_at',
+  crm_proposal_items: 'id, proposal_id',
+  crm_settings: 'id, user_id',
+});
+
 // ==================== OPERACOES ====================
 
 /**

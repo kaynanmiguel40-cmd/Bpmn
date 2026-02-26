@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { FYNESS_TEMPLATE_XML, EMPTY_DIAGRAM_XML } from '../utils/fynessTemplate';
+import { COMERCIAL_DIAGRAM_XML } from '../utils/comercialTemplate';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   getCompanies,
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const [showDeleteModal, setShowDeleteModal] = useState(null);
   const [newProjectName, setNewProjectName] = useState('');
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [newProjectTemplate, setNewProjectTemplate] = useState('empty');
   const [showDependencyModal, setShowDependencyModal] = useState(null);
   const [selectedParent, setSelectedParent] = useState('');
   const [cardPositions, setCardPositions] = useState({});
@@ -240,13 +242,15 @@ export default function Dashboard() {
   const handleCreateBlank = (companyId) => {
     setSelectedCompanyForProject(companyId);
     setNewProjectName('Novo Diagrama');
+    setNewProjectTemplate('empty');
     setShowNewProjectModal(true);
   };
 
   const handleConfirmCreate = async () => {
+    const xmlToUse = newProjectTemplate === 'comercial' ? COMERCIAL_DIAGRAM_XML : EMPTY_DIAGRAM_XML;
     const result = await createProjectDB({
       name: newProjectName,
-      xml: EMPTY_DIAGRAM_XML,
+      xml: xmlToUse,
       companyId: selectedCompanyForProject,
       level: 0,
       parentId: null,
@@ -257,6 +261,7 @@ export default function Dashboard() {
     if (result) {
       setShowNewProjectModal(false);
       setNewProjectName('');
+      setNewProjectTemplate('empty');
       setSelectedCompanyForProject(null);
       navigate(`/editor/${result.id}`);
     }
@@ -857,22 +862,67 @@ export default function Dashboard() {
               <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Novo Fluxo</h3>
             </div>
 
-            <div className="p-6">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
-                Nome do Fluxo
-              </label>
-              <input
-                type="text"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent dark:bg-slate-800 dark:text-slate-200"
-                placeholder="Ex: Processo de Vendas"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newProjectName.trim()) handleConfirmCreate();
-                  if (e.key === 'Escape') setShowNewProjectModal(false);
-                }}
-              />
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                  Nome do Fluxo
+                </label>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent dark:bg-slate-800 dark:text-slate-200"
+                  placeholder="Ex: Processo de Vendas"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newProjectName.trim()) handleConfirmCreate();
+                    if (e.key === 'Escape') setShowNewProjectModal(false);
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                  Template Inicial
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectTemplate('empty')}
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${
+                      newProjectTemplate === 'empty'
+                        ? 'border-fyness-primary bg-fyness-primary/5 dark:bg-fyness-primary/10'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Vazio</span>
+                    </div>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">Diagrama em branco</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectTemplate('comercial')}
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${
+                      newProjectTemplate === 'comercial'
+                        ? 'border-fyness-primary bg-fyness-primary/5 dark:bg-fyness-primary/10'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                      </svg>
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Comercial V9</span>
+                    </div>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">Jornada completa de vendas</p>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex gap-3 justify-end">

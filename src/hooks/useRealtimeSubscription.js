@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { showLocalNotification, playChatSound } from '../lib/pushNotifications';
@@ -137,6 +137,9 @@ export function useRealtimeTeamMembers(enabled = true) {
  */
 export function useRealtimeChatSound(enabled = true) {
   const [userId, setUserId] = useState(null);
+  const queryClient = useQueryClient();
+  // Acumula mensagens recentes para consolidar push
+  const pendingRef = useRef({ count: 0, lastSender: '', timer: null });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -153,18 +156,55 @@ export function useRealtimeChatSound(enabled = true) {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'os_comments' },
         (payload) => {
-          // So tocar som se a mensagem e de outro usuario
+          // So notificar se a mensagem e de outro usuario
           if (payload.new?.user_id && payload.new.user_id !== userId) {
             playChatSound();
+
+            // Acumular e consolidar push (debounce de 2s)
+            const p = pendingRef.current;
+            p.count++;
+            p.lastSender = payload.new.user_name || 'Alguem';
+            p.lastContent = payload.new.content || '';
+
+            if (p.timer) clearTimeout(p.timer);
+            p.timer = setTimeout(() => {
+              const { count, lastSender, lastContent } = p;
+              const preview = lastContent.length > 80 ? lastContent.slice(0, 80) + '...' : lastContent;
+
+              if (count === 1) {
+                showLocalNotification({
+                  title: `${lastSender} enviou uma mensagem`,
+                  body: preview || 'Nova mensagem no chat',
+                  type: 'info',
+                  tag: 'chat-unread',
+                });
+              } else {
+                showLocalNotification({
+                  title: `${count} novas mensagens`,
+                  body: `Ultima de ${lastSender}: ${preview || 'Nova mensagem'}`,
+                  type: 'info',
+                  tag: 'chat-unread',
+                });
+              }
+
+              p.count = 0;
+              p.lastSender = '';
+              p.lastContent = '';
+              p.timer = null;
+            }, 2000);
+
+            // Atualizar badge do FloatingChatButton
+            queryClient.invalidateQueries({ queryKey: ['chatSummaries'] });
           }
         }
       )
       .subscribe();
 
     return () => {
+      if (pendingRef.current.timer) clearTimeout(pendingRef.current.timer);
       supabase.removeChannel(channel);
     };
-  }, [enabled, userId]);
+  }, [enabled, userId, queryClient]);
 }
 
 /**
