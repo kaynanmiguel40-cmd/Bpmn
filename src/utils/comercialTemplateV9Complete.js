@@ -22,10 +22,10 @@ export const COMERCIAL_V9_COMPLETE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 Lead veio por conteúdo educativo (webinar, aula gratuita, post sobre gestão).
 
 ⚡ ESTRATÉGIA: FUNIL INVERTIDO
-Não vende primeiro. ENTREGA VALOR primeiro.
-1. D0: Entrega Aula Secreta (resultado real)
-2. D1: Follow-up consultivo ("Conseguiu aplicar?")
-3. D3: Demo do Fyness ("Quer automatizar o que aprendeu?")
+Não vende primeiro. MOSTRA O PROBLEMA primeiro.
+1. D0: Entrega Aula Secreta (mostra POR QUE precisa de gestão)
+2. D1: Follow-up consultivo ("O que achou?")
+3. D3: Demo do Fyness ("Quer ver a SOLUÇÃO na prática?")
 4. D7: Escassez ("Turma fecha em X dias")
 
 A VENDA É CONSEQUÊNCIA do valor entregue.
@@ -53,19 +53,24 @@ Separei uma Aula Secreta exclusiva pra você:
 🔒 'Os 3 Erros que Fazem Empresários Perderem Dinheiro Sem Saber'
 [Link da Aula Secreta]
 
-É prática — você vai aplicar no seu negócio agora.
-Depois me conta como foi!"
+Vai abrir seus olhos sobre o que tá acontecendo no seu negócio.
+Depois me conta o que achou!"
 
-CONTEÚDO DA AULA SECRETA (20-25 min):
-1. Os 3 erros fatais de gestão financeira (5 min)
-2. O que é DRE e por que 90% dos MEIs não fazem (5 min)
-3. Passo a passo: montar DRE com receitas e despesas reais (7 min)
-4. Como ler o resultado: você tá lucrando ou perdendo? (3 min)
+CONTEÚDO DA AULA SECRETA (20-25 min) — FOCO NO PORQUÊ:
+1. Por que 60% das empresas fecham nos primeiros 5 anos? (5 min)
+2. Os 3 erros fatais que drenam dinheiro sem você perceber (7 min)
+3. O que empresários de sucesso fazem DIFERENTE (5 min)
+4. O diagnóstico: como saber se SEU negócio está em risco (5 min)
 5. CTA FINAL → CURSO COMPLETO (2-3 min):
-   "Isso foi só 1 módulo. O curso completo tem X módulos:
-   Fluxo de Caixa, Precificação, Impostos, Indicadores...
+   "Agora você sabe o PROBLEMA. O curso ensina a SOLUÇÃO:
+   DRE, Fluxo de Caixa, Precificação, Indicadores...
    E de BÔNUS você ganha o Fyness (software que automatiza tudo).
    [Botão: Quero o Curso Completo]"
+
+⚠️ A AULA SECRETA MOSTRA O PORQUÊ, NÃO O COMO.
+Se ensinar o como, o lead não precisa do curso.
+O objetivo é ele sair pensando: "Preciso resolver isso, mas não sei como."
+A solução é o Curso + Fyness.
 
 ⏱️ TRIGGER DE WATCH-TIME (10 MINUTOS):
 → Quando o lead assistir 10+ min (40%) da Aula Secreta:
@@ -89,24 +94,25 @@ NÃO LIGAR. NÃO VENDER. Só entregar.</bpmn2:documentation>
         <bpmn2:timeDuration>P1D</bpmn2:timeDuration>
       </bpmn2:timerEventDefinition>
     </bpmn2:intermediateCatchEvent>
-    <bpmn2:sendTask id="Task_Edu_D1_Followup" name="D1 - Follow-up: Conseguiu Aplicar?">
+    <bpmn2:sendTask id="Task_Edu_D1_Followup" name="D1 - Follow-up: O que Achou?">
       <bpmn2:documentation>📱 D1 — FOLLOW-UP CONSULTIVO (NÃO VENDE):
 
 WHATSAPP:
-"E aí [Nome], conseguiu montar o DRE?
+"E aí [Nome], o que achou da Aula Secreta?
 
-Se fez: Qual foi o resultado? Lucro ou prejuízo?
-Se não fez: Normal, posso te ajudar. Qual sua maior dúvida?"
+Alguma daquelas situações acontece no seu negócio?
+Se sim: qual te preocupou mais?"
 
 → SE RESPONDEU:
-  Conversa natural. Ajuda de verdade. Não menciona produto.
-  Se ele perguntar "como automatizar?": "Posso te mostrar amanhã em 15 min."
-  
+  Conversa natural. Validar a preocupação dele.
+  "Isso é mais comum do que você imagina. Tem solução."
+  Se ele perguntar "como resolver?": "Posso te mostrar amanhã em 15 min."
+
 → SE NÃO RESPONDEU:
   Seguir cadência. Não insistir.
 
-REGRA DE OURO: Se o lead pedir ajuda, AJUDE.
-A venda vem depois. Confiança primeiro.</bpmn2:documentation>
+REGRA DE OURO: Se o lead compartilhar uma dor, VALIDE.
+Ele acabou de descobrir um problema. Confiança primeiro.</bpmn2:documentation>
       <bpmn2:incoming>Flow_Edu_Timer_D1</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Edu_D1</bpmn2:outgoing>
     </bpmn2:sendTask>
@@ -117,26 +123,26 @@ A venda vem depois. Confiança primeiro.</bpmn2:documentation>
         <bpmn2:timeDuration>P2D</bpmn2:timeDuration>
       </bpmn2:timerEventDefinition>
     </bpmn2:intermediateCatchEvent>
-    <bpmn2:task id="Task_Edu_D3_Demo" name="D3 - Demo: Automatizar com Fyness">
-      <bpmn2:documentation>🎬 D3 — PONTO DE VIRADA (MOSTRAR O SOFTWARE DENTRO DO CURSO):
+    <bpmn2:task id="Task_Edu_D3_Demo" name="D3 - Demo: A Solução na Prática">
+      <bpmn2:documentation>🎬 D3 — PONTO DE VIRADA (MOSTRAR A SOLUÇÃO):
 
-O lead já aprendeu o conceito (DRE na Aula Secreta). Agora mostrar
-que o SOFTWARE FAZ PARTE DO CURSO — não é separado, é integrado.
+O lead já ENTENDEU O PROBLEMA (Aula Secreta mostrou o porquê).
+Agora é hora de mostrar a SOLUÇÃO: o Curso + Fyness integrado.
 
 WHATSAPP + LIGAÇÃO:
-"[Nome], lembra do DRE que você montou na Aula Secreta?
+"[Nome], lembra dos problemas que você viu na Aula Secreta?
 
-Imagina se em vez de fazer na mão, você falasse por áudio
-e o sistema montasse sozinho. Em 10 segundos.
+Aqueles erros que drenam dinheiro do negócio?
+Posso te mostrar em 15 min como resolver TODOS eles.
 
-Isso é o Fyness — e ele já vem DENTRO do curso.
-Posso te mostrar em 15 min como funciona?"
+É o Fyness — e ele já vem DENTRO do curso.
+Posso te mostrar como funciona?"
 
 DEMO (15 min):
 1. Abrir Fyness → lançar receita por ÁUDIO (momento WOW)
-2. Gráfico aparece automaticamente → "Esse é o DRE que você fez na mão"
-3. Mostrar DRE automático + Fluxo de Caixa + Alertas
-4. OFERTA: "O curso ensina o método. O Fyness, que vem dentro, automatiza tudo."
+2. DRE automático aparece → "Isso aqui mostra se você tá lucrando ou não"
+3. Mostrar Fluxo de Caixa + Alertas → "Nunca mais perde prazo"
+4. OFERTA: "O curso ensina COMO fazer. O Fyness, que vem dentro, AUTOMATIZA."
 
 ⚠️ IMPORTANTE: NÃO EXISTE TRIAL SEPARADO DO SOFTWARE.
 O Fyness está DENTRO da plataforma de Educação.
@@ -152,8 +158,8 @@ OFERTA COMPLETA:
 BANCO DE DEMOS POR SETOR:
 → Contabilidade | Comércio | Clínica | Prestador | Academia | Restaurante
 
-A VENDA AQUI É NATURAL: lead já viu o valor manual,
-agora vê o valor automatizado. A compra é óbvia.</bpmn2:documentation>
+A VENDA AQUI É NATURAL: lead já entendeu o problema,
+agora vê a solução funcionando. A compra é óbvia.</bpmn2:documentation>
       <bpmn2:incoming>Flow_Edu_Timer_D3</bpmn2:incoming>
       <bpmn2:outgoing>Flow_Edu_D3</bpmn2:outgoing>
     </bpmn2:task>
@@ -193,8 +199,8 @@ Se abandonar o checkout → Fluxo de Abandono de Carrinho cuida.</bpmn2:document
 WHATSAPP:
 "[Nome], última mensagem sobre o método.
 
-Lembra do DRE que você aprendeu a montar?
-Os alunos que automatizaram com o Fyness estão economizando
+Lembra dos problemas que mostrei na Aula Secreta?
+Os alunos que resolveram com o curso + Fyness estão economizando
 em média 8 horas por mês em gestão financeira.
 
 Estamos fechando as vagas da turma de [mês].
@@ -304,7 +310,7 @@ assistiu a Aula Secreta, se inscreveu no curso, e em 30 dias
 identificou R$ 2.800 em gastos invisíveis no negócio dele.
 
 E lembra que assinando você GANHA o Fyness (software
-de gestão financeira) de bônus? O método ensina, o software automatiza.
+de gestão financeira) de bônus? O curso ensina a solução, o software automatiza.
 
 Seu acesso ainda tá reservado: [Link do checkout]"
 
@@ -429,16 +435,16 @@ Ele precisa de um empurrão consultivo, não de venda.
 WHATSAPP:
 "[Nome], vi que você assistiu a Aula Secreta inteira! 💪
 
-Qual parte foi mais útil pro seu negócio?
-O DRE? O fluxo de caixa? A leitura de resultado?
+Qual parte te chamou mais atenção?
+Os erros fatais? O diagnóstico? Os cases de sucesso?
 
 Pergunto porque dependendo da sua resposta, posso
 te indicar o próximo passo mais certeiro."
 
 → SE RESPONDEU:
   Conversa natural. Baseado na resposta dele:
-  - Se falou DRE: "Quer ver como o Fyness monta o DRE automático? Posso te mostrar em 15 min."
-  - Se falou fluxo: "Tem um módulo inteiro sobre isso no curso. Quer ver o conteúdo?"
+  - Se falou erros: "Quer ver como evitar esses erros na prática? Posso te mostrar em 15 min."
+  - Se falou diagnóstico: "Tem um módulo no curso que resolve exatamente isso. Quer ver?"
   - Se fez pergunta: Responder e direcionar pro curso naturalmente
 
 → SE NÃO RESPONDEU:
