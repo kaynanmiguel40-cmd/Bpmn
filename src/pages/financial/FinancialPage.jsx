@@ -18,7 +18,7 @@ import {
   clearProjectFromOrders, clearSectorFromProjects,
 } from '../../lib/osService';
 import { toast } from '../../contexts/ToastContext';
-import { getProfile } from '../../lib/profileService';
+import { useProfile } from '../../hooks/useProfile';
 import { shortName } from '../../lib/teamService';
 import { namesMatch } from '../../lib/kpiUtils';
 import { MANAGER_ROLES } from '../../lib/roleUtils';
@@ -28,48 +28,27 @@ import logoFyness from '../../assets/logo-fyness.png';
 import { useRealtimeOSOrders, useRealtimeTeamMembers } from '../../hooks/useRealtimeSubscription';
 import ChatHistoryDocument from '../../components/chat/ChatHistoryDocument';
 import AutoTextarea from '../../components/ui/AutoTextarea';
+import NotionEditor from '../../components/ui/NotionEditor';
+import { sanitizeRichText } from '../../lib/validation';
+import {
+  PRIORITIES_LIST as PRIORITIES, OS_STATUS_LABELS as STATUS_LABELS,
+  PRIORITY_COLUMNS, CATEGORIES, BLOCK_REASONS,
+  SECTOR_COLORS, PROJECT_COLORS,
+} from '../../constants/colors';
 
-// ==================== CONSTANTES ====================
-
-const PRIORITIES = [
-  { id: 'low', label: 'Baixa', color: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300', dot: 'bg-slate-400' },
-  { id: 'medium', label: 'Media', color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400', dot: 'bg-yellow-400' },
-  { id: 'high', label: 'Alta', color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400', dot: 'bg-orange-500' },
-  { id: 'urgent', label: 'Urgente', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400', dot: 'bg-red-500' },
-];
-
-const STATUS_LABELS = {
-  available: 'Disponivel',
-  in_progress: 'Em Andamento',
-  done: 'Concluida',
-};
-
-const PRIORITY_COLUMNS = [
-  { id: 'red', title: 'Urgente / Alta', color: 'from-red-500 to-red-600', priorities: ['urgent', 'high'], emptyText: 'Nenhuma O.S. urgente' },
-  { id: 'yellow', title: 'Media', color: 'from-yellow-400 to-amber-500', priorities: ['medium'], emptyText: 'Nenhuma O.S. media' },
-  { id: 'green', title: 'Baixa', color: 'from-green-500 to-emerald-600', priorities: ['low'], emptyText: 'Nenhuma O.S. de baixa prioridade' },
-];
-
-const CATEGORIES = [
-  { id: 'internal', label: 'Interno', color: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300' },
-  { id: 'bug', label: 'Bug', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
-  { id: 'feature', label: 'Feature', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
-  { id: 'support', label: 'Suporte', color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' },
-  { id: 'compliance', label: 'Compliance', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
-  { id: 'campaign', label: 'Campanha', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
-];
-
-const BLOCK_REASONS = [
-  { id: 'material', label: 'Aguardando Material' },
-  { id: 'approval', label: 'Aguardando Aprovacao' },
-  { id: 'resource', label: 'Aguardando Recurso' },
-  { id: 'dependency', label: 'Dependencia de Outro Time' },
-  { id: 'other', label: 'Outro' },
-];
-
-const SECTOR_COLORS = ['#2563eb', '#3b82f6', '#f97316', '#10b981', '#ec4899', '#eab308', '#ef4444', '#06b6d4', '#84cc16', '#f43f5e'];
-
-const PROJECT_COLORS = ['#3b82f6', '#3b82f6', '#10b981', '#f97316', '#ec4899', '#eab308', '#ef4444', '#2563eb'];
+/** Renderiza conteudo rich text (HTML do TipTap) ou texto puro (backward compatible). */
+function RichTextDisplay({ content, className = '' }) {
+  if (!content) return null;
+  if (/<[a-z][\s\S]*>/i.test(content)) {
+    return (
+      <div
+        className={`notion-editor-content ${className}`}
+        dangerouslySetInnerHTML={{ __html: sanitizeRichText(content) }}
+      />
+    );
+  }
+  return <p className={`whitespace-pre-wrap ${className}`}>{content}</p>;
+}
 
 const EMPTY_FORM = {
   title: '',
@@ -99,54 +78,18 @@ const EMPTY_PROJECT_FORM = {
   status: 'active',
 };
 
-function formatDate(iso) {
-  if (!iso) return '-';
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function formatDateShort(dateStr) {
-  if (!dateStr) return '-';
-  const hasTime = dateStr.includes('T') && dateStr.length > 10;
-  const d = new Date(dateStr + (dateStr.length === 10 ? 'T12:00:00' : ''));
-  const opts = { day: '2-digit', month: '2-digit', year: 'numeric' };
-  if (hasTime) { opts.hour = '2-digit'; opts.minute = '2-digit'; }
-  return d.toLocaleDateString('pt-BR', opts);
-}
-
-const MESES_PT = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-
-function formatCpf(value) {
-  const d = (value || '').replace(/\D/g, '');
-  if (d.length !== 11) return value || '';
-  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-}
-
-function formatSignatureDateTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const dia = d.getDate();
-  const mes = MESES_PT[d.getMonth()];
-  const ano = d.getFullYear();
-  return `${h} horas e ${m} minutos do dia ${dia} do mes de ${mes} do ano de ${ano}`;
-}
+import { formatDateTime as formatDate, formatDateSmart as formatDateShort, formatCurrency, formatCpf, formatSignatureDateTime } from '../../lib/formatters';
+import { WORK_START_HOUR, WORK_END_HOUR, WORK_HOURS_PER_DAY, STANDARD_MONTHLY_HOURS } from '../../constants/sla';
+import { FolderIcon, InboxIcon } from '../../components/icons/FinancialIcons';
 
 const EMPTY_SECTOR_FORM = {
   label: '',
   color: '#3b82f6',
 };
 
-function formatCurrency(value) {
-  return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
-// Calcula horas uteis entre duas datas (seg-sex, 08:00-18:00)
+// Calcula horas uteis entre duas datas (seg-sex, horario comercial)
 function calcWorkingHoursBetween(startStr, endStr) {
-  const WORK_START = 8;  // 08:00
-  const WORK_END = 18;   // 18:00
-  const WORK_HOURS_PER_DAY = WORK_END - WORK_START; // 10h
-
   const start = new Date(startStr);
   const end = new Date(endStr);
   if (end <= start) return 0;
@@ -155,8 +98,8 @@ function calcWorkingHoursBetween(startStr, endStr) {
   if (start.toDateString() === end.toDateString()) {
     const day = start.getDay();
     if (day === 0 || day === 6) return 0; // fim de semana
-    const s = Math.max(start.getHours() + start.getMinutes() / 60, WORK_START);
-    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END);
+    const s = Math.max(start.getHours() + start.getMinutes() / 60, WORK_START_HOUR);
+    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END_HOUR);
     return Math.max(0, e - s);
   }
 
@@ -164,13 +107,13 @@ function calcWorkingHoursBetween(startStr, endStr) {
   let totalHours = 0;
   const current = new Date(start);
 
-  // Primeiro dia: do inicio ate 18:00
+  // Primeiro dia: do inicio ate fim do expediente
   if (current.getDay() !== 0 && current.getDay() !== 6) {
-    const s = Math.max(current.getHours() + current.getMinutes() / 60, WORK_START);
-    totalHours += Math.max(0, WORK_END - s);
+    const s = Math.max(current.getHours() + current.getMinutes() / 60, WORK_START_HOUR);
+    totalHours += Math.max(0, WORK_END_HOUR - s);
   }
 
-  // Dias intermediarios: 10h cada dia util
+  // Dias intermediarios: horas uteis por dia
   current.setDate(current.getDate() + 1);
   current.setHours(0, 0, 0, 0);
   const endDay = new Date(end);
@@ -184,10 +127,10 @@ function calcWorkingHoursBetween(startStr, endStr) {
     current.setDate(current.getDate() + 1);
   }
 
-  // Ultimo dia: de 08:00 ate o fim
+  // Ultimo dia: do inicio do expediente ate o fim
   if (end.getDay() !== 0 && end.getDay() !== 6) {
-    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END);
-    totalHours += Math.max(0, e - WORK_START);
+    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END_HOUR);
+    totalHours += Math.max(0, e - WORK_START_HOUR);
   }
 
   return totalHours;
@@ -214,7 +157,7 @@ function calcOSHours(order) {
 
 function getMemberHourlyRate(member) {
   const salary = parseFloat(member.salaryMonth || member.salary_month || 0);
-  const hours = parseFloat(member.hoursMonth || member.hours_month || 176);
+  const hours = parseFloat(member.hoursMonth || member.hours_month || STANDARD_MONTHLY_HOURS);
   if (salary <= 0 || hours <= 0) return 0;
   return salary / hours;
 }
@@ -228,25 +171,6 @@ function calcOSCost(order, membersList) {
   const laborCost = hours * hourlyRate;
   const materialCost = (order.expenses || []).reduce((acc, e) => acc + (e.value || 0) * (e.quantity || 1), 0);
   return { laborCost, materialCost, totalCost: laborCost + materialCost, hours, hourlyRate, memberFound: !!member };
-}
-
-// ==================== ICONES SVG ====================
-
-function FolderIcon({ color = 'currentColor', size = 40 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" fill={color} fillOpacity={0.15} />
-    </svg>
-  );
-}
-
-function InboxIcon({ size = 40 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
-      <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" />
-    </svg>
-  );
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
@@ -263,11 +187,8 @@ export default function FinancialPage() {
   const { data: agendaEvents = [], isLoading: loadingEvents } = useAgendaEvents();
   const { data: clients = [] } = useClients();
 
-  // Perfil do usuario (sem hook React Query disponivel)
-  const [profile, setProfile] = useState({});
-  useEffect(() => {
-    getProfile().then(data => setProfile(data || {})).catch(() => {});
-  }, []);
+  // Perfil do usuario
+  const { profile } = useProfile();
 
   // Realtime: atualiza automaticamente quando dados mudam no Supabase
   useRealtimeOSOrders();
@@ -1641,6 +1562,12 @@ export default function FinancialPage() {
                     {sector.label}
                   </span>
                 )}
+                {project.eapProjectId && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 mb-2 ml-1">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                    EAP
+                  </span>
+                )}
 
                 {/* Descricao */}
                 {project.description && (
@@ -2244,7 +2171,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           {order.description && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Descricao do Servico</label>
-              <p className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed whitespace-pre-wrap">{order.description}</p>
+              <RichTextDisplay content={order.description} className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed" />
             </div>
           )}
 
@@ -2694,7 +2621,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           {order.notes && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">
               <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Observacoes</label>
-              <p className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed whitespace-pre-wrap">{order.notes}</p>
+              <RichTextDisplay content={order.notes} className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed" />
             </div>
           )}
 
@@ -3036,7 +2963,7 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
           {order.description && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Descricao do Servico</label>
-              <p className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed whitespace-pre-wrap">{order.description}</p>
+              <RichTextDisplay content={order.description} className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed" />
             </div>
           )}
 
@@ -3200,7 +3127,7 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
           {order.notes && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">
               <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Observacoes</label>
-              <p className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed whitespace-pre-wrap">{order.notes}</p>
+              <RichTextDisplay content={order.notes} className="text-sm text-slate-700 dark:text-slate-200 mt-2 leading-relaxed" />
             </div>
           )}
 
@@ -3555,7 +3482,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Descricao do Servico</label>
-            <AutoTextarea value={form.description} onChange={(e) => update('description', e.target.value)} minRows={3} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Descreva o servico a ser executado..." />
+            <NotionEditor content={form.description} onChange={(html) => update('description', html)} placeholder="Descreva o servico a ser executado..." minHeight="100px" />
           </div>
 
           {/* Bloco de Tarefas - Visual Builder */}
@@ -3924,7 +3851,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Observacoes</label>
-            <AutoTextarea value={form.notes} onChange={(e) => update('notes', e.target.value)} minRows={2} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Observacoes adicionais..." />
+            <NotionEditor content={form.notes} onChange={(html) => update('notes', html)} placeholder="Observacoes adicionais..." minHeight="60px" />
           </div>
 
           {/* Anexos */}

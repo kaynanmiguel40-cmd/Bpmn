@@ -964,7 +964,7 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     }
 
     try {
-      const os = await generateOSFromTask(task, project.name, tasks);
+      const os = await generateOSFromTask(task, project.name, tasks, project.id);
       if (os) {
         queryClient.invalidateQueries({ queryKey: queryKeys.osOrders });
         queryClient.invalidateQueries({ queryKey: queryKeys.osProjects });

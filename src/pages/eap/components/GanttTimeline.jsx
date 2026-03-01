@@ -583,7 +583,7 @@ const GanttTimeline = forwardRef(function GanttTimeline({
                 key={i}
                 className={`flex items-center justify-center border-r text-[10px] font-medium ${
                   col.isWeekend
-                    ? 'bg-amber-50 dark:bg-amber-900/15 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700'
+                    ? 'bg-amber-50 dark:bg-amber-800/40 text-slate-400 dark:text-amber-200/60 border-slate-200 dark:border-slate-700'
                     : 'text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
                 } ${isSameDay(col.date, today) ? 'bg-blue-100 dark:bg-blue-900/30 font-bold text-blue-600 dark:text-blue-400' : ''}`}
                 style={{ width: colWidth }}
@@ -619,7 +619,7 @@ const GanttTimeline = forwardRef(function GanttTimeline({
               key={i}
               className={`flex items-center justify-center border-r border-slate-200 dark:border-slate-700 text-[10px] ${
                 col.isWeekend
-                  ? 'bg-slate-200/50 dark:bg-slate-700/50 text-slate-400 dark:text-slate-500'
+                  ? 'bg-slate-200/50 dark:bg-amber-800/40 text-slate-400 dark:text-amber-200/60'
                   : 'text-slate-500 dark:text-slate-400'
               } ${isSameDay(col.date, today) ? 'bg-blue-100 dark:bg-blue-900/30 font-bold text-blue-600 dark:text-blue-400' : ''}`}
               style={{ width: colWidth }}
@@ -664,10 +664,10 @@ const GanttTimeline = forwardRef(function GanttTimeline({
               <line
                 x1={i * colWidth} y1={0} x2={i * colWidth} y2={totalHeight}
                 stroke={col.isWeekend ? '#e2e8f0' : '#f1f5f9'} strokeWidth={0.5}
-                className="dark:stroke-slate-800"
+                className={col.isWeekend ? 'dark:stroke-slate-600' : 'dark:stroke-slate-800'}
               />
               {col.isWeekend && (zoom === 'day' || zoom === 'week') && (
-                <rect x={i * colWidth} y={0} width={colWidth} height={totalHeight} fill="#fef3c7" className="dark:fill-amber-900/10" opacity={0.4} />
+                <rect x={i * colWidth} y={0} width={colWidth} height={totalHeight} fill="#fef3c7" className="dark:fill-amber-900/30" opacity={0.5} />
               )}
             </g>
           ))}

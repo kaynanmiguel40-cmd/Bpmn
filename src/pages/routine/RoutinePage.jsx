@@ -7,37 +7,17 @@
  * - Concluido: finalizei
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOSOrders, useOSProjects, useTeamMembers } from '../../hooks/queries';
 import { updateOSOrder } from '../../lib/osService';
-import { getProfile } from '../../lib/profileService';
 import { namesMatch } from '../../lib/kpiUtils';
+import { useProfile } from '../../hooks/useProfile';
 import { notifyOSCompleted } from '../../lib/notificationTriggers';
-
-const PRIORITIES = {
-  urgent: { label: 'Urgente', color: 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400', dot: 'bg-red-500' },
-  high: { label: 'Alta', color: 'bg-orange-100 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400', dot: 'bg-orange-500' },
-  medium: { label: 'Media', color: 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400', dot: 'bg-yellow-400' },
-  low: { label: 'Baixa', color: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300', dot: 'bg-slate-400' },
-};
-
-const COLUMNS = [
-  { id: 'todo', title: 'Por Fazer', color: 'from-slate-400 to-slate-500', emptyText: 'Nenhuma O.S. pendente' },
-  { id: 'doing', title: 'Em Andamento', color: 'from-blue-500 to-blue-600', emptyText: 'Nenhuma O.S. em andamento' },
-  { id: 'done', title: 'Concluido', color: 'from-green-500 to-emerald-600', emptyText: 'Nenhuma O.S. concluida' },
-];
-
-function formatDate(iso) {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-}
-
-function formatCurrency(value) {
-  return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
+import { PRIORITIES, ROUTINE_COLUMNS as COLUMNS } from '../../constants/colors';
+import { formatDateShortMonth as formatDate, formatCurrency } from '../../lib/formatters';
+import { sortByPriorityAndOrder } from '../../lib/orderSorting';
 
 export function RoutinePage() {
   const navigate = useNavigate();
@@ -45,21 +25,13 @@ export function RoutinePage() {
   const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
   const { data: projects = [], isLoading: loadingProjects } = useOSProjects();
   const { data: teamMembers = [] } = useTeamMembers();
-  const [profile, setProfile] = useState({});
-  const [loadingProfile, setLoadingProfile] = useState(true);
+  const { profile, isLoading: loadingProfile } = useProfile();
 
   // Expenses form
   const [expenseOpen, setExpenseOpen] = useState(null); // orderId com form aberto
   const [expName, setExpName] = useState('');
   const [expValue, setExpValue] = useState('');
   const [expQty, setExpQty] = useState('1');
-
-  useEffect(() => {
-    getProfile().then(prof => {
-      setProfile(prof);
-      setLoadingProfile(false);
-    });
-  }, []);
 
   const loading = loadingOrders || loadingProjects || loadingProfile;
 
@@ -86,13 +58,7 @@ export function RoutinePage() {
 
   // Mapa de sequencia: ordem de execucao (prioridade + sortOrder)
   const sequenceMap = useMemo(() => {
-    const PRIORITY_WEIGHT = { urgent: 0, high: 1, medium: 2, low: 3 };
-    const active = [...myOrders.todo, ...myOrders.doing].sort((a, b) => {
-      const pa = PRIORITY_WEIGHT[a.priority] ?? 9;
-      const pb = PRIORITY_WEIGHT[b.priority] ?? 9;
-      if (pa !== pb) return pa - pb;
-      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-    });
+    const active = [...myOrders.todo, ...myOrders.doing].sort(sortByPriorityAndOrder);
     const map = {};
     active.forEach((o, i) => { map[o.id] = i + 1; });
     return map;
@@ -194,17 +160,9 @@ export function RoutinePage() {
     );
   }
 
-  const PRIORITY_WEIGHT = { urgent: 0, high: 1, medium: 2, low: 3 };
-  const sortBySeq = (a, b) => {
-    const pa = PRIORITY_WEIGHT[a.priority] ?? 9;
-    const pb = PRIORITY_WEIGHT[b.priority] ?? 9;
-    if (pa !== pb) return pa - pb;
-    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-  };
-
   const columnData = {
-    todo: [...myOrders.todo].sort(sortBySeq),
-    doing: [...myOrders.doing].sort(sortBySeq),
+    todo: [...myOrders.todo].sort(sortByPriorityAndOrder),
+    doing: [...myOrders.doing].sort(sortByPriorityAndOrder),
     done: myOrders.done,
   };
 

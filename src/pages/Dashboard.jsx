@@ -12,16 +12,7 @@ import {
   updateProject as updateProjectDB,
   deleteProject as deleteProjectDB,
 } from '../lib/supabase';
-
-// Cores para empresas
-const COMPANY_COLORS = [
-  { bg: 'bg-blue-500', light: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-700', gradient: 'from-blue-500 to-blue-600' },
-  { bg: 'bg-emerald-500', light: 'bg-emerald-50', border: 'border-emerald-300', text: 'text-emerald-700', gradient: 'from-emerald-500 to-emerald-600' },
-  { bg: 'bg-amber-500', light: 'bg-amber-50', border: 'border-amber-300', text: 'text-amber-700', gradient: 'from-amber-500 to-amber-600' },
-  { bg: 'bg-rose-500', light: 'bg-rose-50', border: 'border-rose-300', text: 'text-rose-700', gradient: 'from-rose-500 to-rose-600' },
-  { bg: 'bg-cyan-500', light: 'bg-cyan-50', border: 'border-cyan-300', text: 'text-cyan-700', gradient: 'from-cyan-500 to-cyan-600' },
-  { bg: 'bg-violet-500', light: 'bg-violet-50', border: 'border-violet-300', text: 'text-violet-700', gradient: 'from-violet-500 to-violet-600' },
-];
+import { COMPANY_COLORS } from '../constants/colors';
 
 export default function Dashboard() {
   const navigate = useNavigate();

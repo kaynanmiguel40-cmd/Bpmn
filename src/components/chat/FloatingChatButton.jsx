@@ -1,19 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useChatSummaries } from '../../hooks/queries';
-import { getProfile } from '../../lib/profileService';
+import { useProfile } from '../../hooks/useProfile';
 import { getUnreadCount } from '../../lib/commentService';
 import { showLocalNotification, playChatSound } from '../../lib/pushNotifications';
 import ChatSidePanel from './ChatSidePanel';
 
 export default function FloatingChatButton() {
   const [isOpen, setIsOpen] = useState(false);
-  const [profile, setProfile] = useState({});
+  const { profile } = useProfile();
   const { data: summaries = {} } = useChatSummaries();
   const onLoadNotified = useRef(false);
-
-  useEffect(() => {
-    getProfile().then(p => p && setProfile(p));
-  }, []);
 
   // Count total unread messages
   const unreadCount = useMemo(() => {

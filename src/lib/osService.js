@@ -1,6 +1,7 @@
 import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabase';
 import { osOrderSchema, sectorSchema, osProjectSchema } from './validation';
+import { SLA_HOURS, DEFAULT_SLA_HOURS } from '../constants/sla';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -50,6 +51,7 @@ export function dbToOSProject(row) {
     color: row.color || '#3b82f6',
     description: row.description || '',
     status: row.status || 'active',
+    eapProjectId: row.eap_project_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -101,6 +103,7 @@ const projectService = createCRUDService({
     color: 'color',
     description: 'description',
     status: 'status',
+    eapProjectId: 'eap_project_id',
   },
 });
 
@@ -117,6 +120,7 @@ const orderService = createCRUDService({
   idPrefix: 'os',
   transform: dbToOrder,
   schema: osOrderSchema,
+  richFields: ['description', 'notes'],
   fieldMap: {
     number: 'number',
     title: 'title',
@@ -155,43 +159,33 @@ export const deleteOSOrder = (id) => orderService.remove(id);
 
 // ==================== FUNÇÕES ESPECIAIS (não cabem na factory) ====================
 
-export async function getNextOrderNumber() {
-  const { data, error } = await supabase
-    .from('os_orders')
-    .select('number')
-    .order('number', { ascending: false })
-    .limit(1);
+/** Busca o proximo numero sequencial de uma coluna na tabela os_orders */
+async function getNextSequentialNumber(column, filter = null) {
+  let query = supabase.from('os_orders').select(column).order(column, { ascending: false }).limit(1);
+  if (filter) query = query.eq(filter.column, filter.value);
+
+  const { data, error } = await query;
 
   if (error || !data || data.length === 0) {
-    const local = JSON.parse(localStorage.getItem('os_orders') || '[]');
-    const maxNum = local.reduce((acc, o) => Math.max(acc, o.number || 0), 0);
+    let local = JSON.parse(localStorage.getItem('os_orders') || '[]');
+    if (filter) local = local.filter(o => o[filter.column] === filter.value);
+    const maxNum = local.reduce((acc, o) => Math.max(acc, o[column] || 0), 0);
     return maxNum + 1;
   }
-  return (data[0].number || 0) + 1;
+  return (data[0][column] || 0) + 1;
 }
 
-export async function getNextEmergencyNumber() {
-  const { data, error } = await supabase
-    .from('os_orders')
-    .select('emergency_number')
-    .eq('type', 'emergency')
-    .order('emergency_number', { ascending: false })
-    .limit(1);
+export function getNextOrderNumber() {
+  return getNextSequentialNumber('number');
+}
 
-  if (error || !data || data.length === 0) {
-    const local = JSON.parse(localStorage.getItem('os_orders') || '[]');
-    const maxNum = local
-      .filter(o => o.type === 'emergency')
-      .reduce((acc, o) => Math.max(acc, o.emergency_number || 0), 0);
-    return maxNum + 1;
-  }
-  return (data[0].emergency_number || 0) + 1;
+export function getNextEmergencyNumber() {
+  return getNextSequentialNumber('emergency_number', { column: 'type', value: 'emergency' });
 }
 
 /** Calcula SLA deadline baseado na prioridade (horas a partir de agora) */
 export function calcSLADeadline(priority) {
-  const slaHours = { urgent: 4, high: 24, medium: 72, low: 168 };
-  const hours = slaHours[priority] || 72;
+  const hours = SLA_HOURS[priority] || DEFAULT_SLA_HOURS;
   const deadline = new Date();
   deadline.setHours(deadline.getHours() + hours);
   return deadline.toISOString();

@@ -3,10 +3,7 @@ import { getOSOrders } from '../../lib/osService';
 import { getDeadlineStatus, getAlertOrders } from '../../lib/deadlineUtils';
 import { getRecentActivities } from '../../lib/activityLogService';
 import { getNotifications, getUnreadCount } from '../../lib/notificationService';
-
-function formatDate(d) {
-  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
-}
+import { formatDateLong } from '../../lib/formatters';
 
 function KpiMini({ label, value, color }) {
   return (
@@ -77,7 +74,7 @@ export default function MyDayPage() {
         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
           Bom dia, {profileName}
         </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 capitalize">{formatDate(today)}</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 capitalize">{formatDateLong(today)}</p>
       </div>
 
       {/* KPIs */}

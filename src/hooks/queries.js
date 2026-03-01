@@ -6,12 +6,38 @@ import { getNotifications, markAsRead, markAllAsRead, deleteNotification, getUnr
 import { getClients, createClient, updateClient, deleteClient } from '../lib/clientService';
 import { getAllActivities } from '../lib/activityLogService';
 import { getHistory as getKPIHistory } from '../lib/kpiSnapshotService';
-import { getEapProjects, createEapProject, updateEapProject, deleteEapProject, getEapTasks, createEapTask, updateEapTask, deleteEapTask } from '../lib/eapService';
+import { getEapFolders, createEapFolder, updateEapFolder, deleteEapFolder, getEapProjects, createEapProject, updateEapProject, deleteEapProject, getEapTasks, createEapTask, updateEapTask, deleteEapTask } from '../lib/eapService';
 import { getCommentsByOrder, addComment, getChatSummaries, markConversationRead, getConversationReads } from '../lib/commentService';
 import { getPenalties, createPenalty, deletePenalty } from '../lib/penaltyService';
 import { getContentPosts, createContentPost, updateContentPost, deleteContentPost } from '../lib/contentService';
 import { getProcessOrdersByProject, getProcessOrderByElement, createProcessOrder, updateProcessOrder, deleteProcessOrder } from '../lib/processOrderService';
 import { supabase } from '../lib/supabase';
+
+// ==================== HOOK FACTORIES ====================
+
+/** Cria um hook de query simples */
+function makeQueryHook(key, fn, staleTime) {
+  return () => useQuery({ queryKey: key, queryFn: fn, staleTime });
+}
+
+/** Cria um hook de mutation simples (create/delete) */
+function makeMutationHook(fn, key) {
+  return () => {
+    const qc = useQueryClient();
+    return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: key }) });
+  };
+}
+
+/** Cria um hook de update mutation ({ id, updates } -> updateFn(id, updates)) */
+function makeUpdateHook(fn, key) {
+  return () => {
+    const qc = useQueryClient();
+    return useMutation({
+      mutationFn: ({ id, updates }) => fn(id, updates),
+      onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    });
+  };
+}
 
 // ==================== QUERY KEYS ====================
 
@@ -26,6 +52,7 @@ export const queryKeys = {
   activities: ['activities'],
   clients: ['clients'],
   kpiHistory: ['kpiHistory'],
+  eapFolders: ['eapFolders'],
   eapProjects: ['eapProjects'],
   eapTasks: ['eapTasks'],
   contentPosts: ['contentPosts'],
@@ -34,191 +61,43 @@ export const queryKeys = {
 
 // ==================== OS ORDERS ====================
 
-export function useOSOrders() {
-  return useQuery({
-    queryKey: queryKeys.osOrders,
-    queryFn: getOSOrders,
-    staleTime: 30_000,
-  });
-}
-
-export function useOSSectors() {
-  return useQuery({
-    queryKey: queryKeys.osSectors,
-    queryFn: getOSSectors,
-    staleTime: 60_000,
-  });
-}
-
-export function useOSProjects() {
-  return useQuery({
-    queryKey: queryKeys.osProjects,
-    queryFn: getOSProjects,
-    staleTime: 60_000,
-  });
-}
-
-export function useCreateOSOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createOSOrder,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osOrders }),
-  });
-}
-
-export function useUpdateOSOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateOSOrder(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osOrders }),
-  });
-}
-
-export function useDeleteOSOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteOSOrder,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osOrders }),
-  });
-}
+export const useOSOrders = makeQueryHook(queryKeys.osOrders, getOSOrders, 30_000);
+export const useCreateOSOrder = makeMutationHook(createOSOrder, queryKeys.osOrders);
+export const useUpdateOSOrder = makeUpdateHook(updateOSOrder, queryKeys.osOrders);
+export const useDeleteOSOrder = makeMutationHook(deleteOSOrder, queryKeys.osOrders);
 
 // ==================== OS SECTORS ====================
 
-export function useCreateOSSector() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createOSSector,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osSectors }),
-  });
-}
-
-export function useUpdateOSSector() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateOSSector(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osSectors }),
-  });
-}
-
-export function useDeleteOSSector() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteOSSector,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osSectors }),
-  });
-}
+export const useOSSectors = makeQueryHook(queryKeys.osSectors, getOSSectors, 60_000);
+export const useCreateOSSector = makeMutationHook(createOSSector, queryKeys.osSectors);
+export const useUpdateOSSector = makeUpdateHook(updateOSSector, queryKeys.osSectors);
+export const useDeleteOSSector = makeMutationHook(deleteOSSector, queryKeys.osSectors);
 
 // ==================== OS PROJECTS ====================
 
-export function useCreateOSProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createOSProject,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osProjects }),
-  });
-}
-
-export function useUpdateOSProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateOSProject(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osProjects }),
-  });
-}
-
-export function useDeleteOSProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteOSProject,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osProjects }),
-  });
-}
+export const useOSProjects = makeQueryHook(queryKeys.osProjects, getOSProjects, 60_000);
+export const useCreateOSProject = makeMutationHook(createOSProject, queryKeys.osProjects);
+export const useUpdateOSProject = makeUpdateHook(updateOSProject, queryKeys.osProjects);
+export const useDeleteOSProject = makeMutationHook(deleteOSProject, queryKeys.osProjects);
 
 // ==================== TEAM MEMBERS ====================
 
-export function useTeamMembers() {
-  return useQuery({
-    queryKey: queryKeys.teamMembers,
-    queryFn: getTeamMembers,
-    staleTime: 60_000,
-  });
-}
-
-export function useCreateTeamMember() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createTeamMember,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.teamMembers }),
-  });
-}
-
-export function useUpdateTeamMember() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateTeamMember(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.teamMembers }),
-  });
-}
-
-export function useDeleteTeamMember() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteTeamMember,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.teamMembers }),
-  });
-}
+export const useTeamMembers = makeQueryHook(queryKeys.teamMembers, getTeamMembers, 60_000);
+export const useCreateTeamMember = makeMutationHook(createTeamMember, queryKeys.teamMembers);
+export const useUpdateTeamMember = makeUpdateHook(updateTeamMember, queryKeys.teamMembers);
+export const useDeleteTeamMember = makeMutationHook(deleteTeamMember, queryKeys.teamMembers);
 
 // ==================== AGENDA EVENTS ====================
 
-export function useAgendaEvents() {
-  return useQuery({
-    queryKey: queryKeys.agendaEvents,
-    queryFn: getAgendaEvents,
-    staleTime: 30_000,
-  });
-}
-
-export function useCreateAgendaEvent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createAgendaEvent,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.agendaEvents }),
-  });
-}
-
-export function useUpdateAgendaEvent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateAgendaEvent(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.agendaEvents }),
-  });
-}
-
-export function useDeleteAgendaEvent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteAgendaEvent,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.agendaEvents }),
-  });
-}
+export const useAgendaEvents = makeQueryHook(queryKeys.agendaEvents, getAgendaEvents, 30_000);
+export const useCreateAgendaEvent = makeMutationHook(createAgendaEvent, queryKeys.agendaEvents);
+export const useUpdateAgendaEvent = makeUpdateHook(updateAgendaEvent, queryKeys.agendaEvents);
+export const useDeleteAgendaEvent = makeMutationHook(deleteAgendaEvent, queryKeys.agendaEvents);
 
 // ==================== NOTIFICATIONS ====================
 
-export function useNotifications() {
-  return useQuery({
-    queryKey: queryKeys.notifications,
-    queryFn: getNotifications,
-    staleTime: 10_000,
-  });
-}
-
-export function useUnreadCount() {
-  return useQuery({
-    queryKey: queryKeys.unreadCount,
-    queryFn: getUnreadCount,
-    staleTime: 10_000,
-  });
-}
+export const useNotifications = makeQueryHook(queryKeys.notifications, getNotifications, 10_000);
+export const useUnreadCount = makeQueryHook(queryKeys.unreadCount, getUnreadCount, 10_000);
 
 export function useMarkAsRead() {
   const qc = useQueryClient();
@@ -255,37 +134,10 @@ export function useDeleteNotification() {
 
 // ==================== CLIENTS ====================
 
-export function useClients() {
-  return useQuery({
-    queryKey: queryKeys.clients,
-    queryFn: getClients,
-    staleTime: 60_000,
-  });
-}
-
-export function useCreateClient() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createClient,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.clients }),
-  });
-}
-
-export function useUpdateClient() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateClient(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.clients }),
-  });
-}
-
-export function useDeleteClient() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteClient,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.clients }),
-  });
-}
+export const useClients = makeQueryHook(queryKeys.clients, getClients, 60_000);
+export const useCreateClient = makeMutationHook(createClient, queryKeys.clients);
+export const useUpdateClient = makeUpdateHook(updateClient, queryKeys.clients);
+export const useDeleteClient = makeMutationHook(deleteClient, queryKeys.clients);
 
 // ==================== ACTIVITIES ====================
 
@@ -307,65 +159,31 @@ export function useKPIHistory(limit = 12) {
   });
 }
 
+// ==================== EAP FOLDERS ====================
+
+export const useEapFolders = makeQueryHook(queryKeys.eapFolders, getEapFolders, 30_000);
+export const useCreateEapFolder = makeMutationHook(createEapFolder, queryKeys.eapFolders);
+export const useUpdateEapFolder = makeUpdateHook(updateEapFolder, queryKeys.eapFolders);
+export const useDeleteEapFolder = makeMutationHook(deleteEapFolder, queryKeys.eapFolders);
+
 // ==================== EAP PROJECTS ====================
 
-export function useEapProjects() {
-  return useQuery({
-    queryKey: queryKeys.eapProjects,
-    queryFn: getEapProjects,
-    staleTime: 30_000,
-  });
-}
-
-export function useCreateEapProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createEapProject,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapProjects }),
-  });
-}
-
-export function useUpdateEapProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateEapProject(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapProjects }),
-  });
-}
-
-export function useDeleteEapProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteEapProject,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapProjects }),
-  });
-}
+export const useEapProjects = makeQueryHook(queryKeys.eapProjects, getEapProjects, 30_000);
+export const useCreateEapProject = makeMutationHook(createEapProject, queryKeys.eapProjects);
+export const useUpdateEapProject = makeUpdateHook(updateEapProject, queryKeys.eapProjects);
+export const useDeleteEapProject = makeMutationHook(deleteEapProject, queryKeys.eapProjects);
 
 // ==================== EAP TASKS ====================
 
-export function useEapTasks() {
-  return useQuery({
-    queryKey: queryKeys.eapTasks,
-    queryFn: getEapTasks,
-    staleTime: 15_000,
-  });
-}
+export const useEapTasks = makeQueryHook(queryKeys.eapTasks, getEapTasks, 15_000);
+export const useCreateEapTask = makeMutationHook(createEapTask, queryKeys.eapTasks);
 
-export function useCreateEapTask() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createEapTask,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapTasks }),
-  });
-}
-
+// Custom: skipInvalidation para operacoes batch (auto-scheduling, undo)
 export function useUpdateEapTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, updates }) => updateEapTask(id, updates),
     onSuccess: (_, variables) => {
-      // Em operacoes batch (auto-scheduling, undo), pular invalidacao individual
-      // O chamador invalida uma vez no final
       if (!variables.skipInvalidation) {
         qc.invalidateQueries({ queryKey: queryKeys.eapTasks });
       }
@@ -373,13 +191,7 @@ export function useUpdateEapTask() {
   });
 }
 
-export function useDeleteEapTask() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteEapTask,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.eapTasks }),
-  });
-}
+export const useDeleteEapTask = makeMutationHook(deleteEapTask, queryKeys.eapTasks);
 
 // ==================== MEMBER AVATARS ====================
 
@@ -424,13 +236,7 @@ export function useAddOSComment() {
   });
 }
 
-export function useChatSummaries() {
-  return useQuery({
-    queryKey: ['chatSummaries'],
-    queryFn: getChatSummaries,
-    staleTime: 30_000,
-  });
-}
+export const useChatSummaries = makeQueryHook(['chatSummaries'], getChatSummaries, 30_000);
 
 // ==================== READ RECEIPTS ====================
 
@@ -456,59 +262,16 @@ export function useMarkConversationRead() {
 
 // ==================== PENALTIES (PUNICOES) ====================
 
-export function usePenalties() {
-  return useQuery({
-    queryKey: ['penalties'],
-    queryFn: getPenalties,
-    staleTime: 30_000,
-  });
-}
-
-export function useCreatePenalty() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createPenalty,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['penalties'] }),
-  });
-}
-
-export function useDeletePenalty() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deletePenalty,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['penalties'] }),
-  });
-}
+export const usePenalties = makeQueryHook(['penalties'], getPenalties, 30_000);
+export const useCreatePenalty = makeMutationHook(createPenalty, ['penalties']);
+export const useDeletePenalty = makeMutationHook(deletePenalty, ['penalties']);
 
 // ==================== CONTENT POSTS (Calendario de Postagens) ====================
 
-export function useContentPosts() {
-  return useQuery({ queryKey: queryKeys.contentPosts, queryFn: getContentPosts, staleTime: 30_000 });
-}
-
-export function useCreateContentPost() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createContentPost,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contentPosts }),
-  });
-}
-
-export function useUpdateContentPost() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateContentPost(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contentPosts }),
-  });
-}
-
-export function useDeleteContentPost() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteContentPost,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contentPosts }),
-  });
-}
+export const useContentPosts = makeQueryHook(queryKeys.contentPosts, getContentPosts, 30_000);
+export const useCreateContentPost = makeMutationHook(createContentPost, queryKeys.contentPosts);
+export const useUpdateContentPost = makeUpdateHook(updateContentPost, queryKeys.contentPosts);
+export const useDeleteContentPost = makeMutationHook(deleteContentPost, queryKeys.contentPosts);
 
 // ==================== PROCESS ORDERS (Ordem de Processo) ====================
 
@@ -530,26 +293,6 @@ export function useProcessOrderByElement(projectId, elementId) {
   });
 }
 
-export function useCreateProcessOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: createProcessOrder,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.processOrders }),
-  });
-}
-
-export function useUpdateProcessOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateProcessOrder(id, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.processOrders }),
-  });
-}
-
-export function useDeleteProcessOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: deleteProcessOrder,
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.processOrders }),
-  });
-}
+export const useCreateProcessOrder = makeMutationHook(createProcessOrder, queryKeys.processOrders);
+export const useUpdateProcessOrder = makeUpdateHook(updateProcessOrder, queryKeys.processOrders);
+export const useDeleteProcessOrder = makeMutationHook(deleteProcessOrder, queryKeys.processOrders);

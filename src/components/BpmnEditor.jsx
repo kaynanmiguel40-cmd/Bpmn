@@ -5,7 +5,6 @@ import customResizeModule from '../utils/customResizeProvider';
 import connectionCrossingsModule from '../utils/connectionCrossings';
 import { COMERCIAL_DIAGRAM_XML } from '../utils/comercialTemplate'; // Usa V8 automaticamente
 import { indicacoesTemplate } from '../utils/indicacoesTemplate';
-// import { highlightLinkCatch } from '../utils/linkEvents'; // Será usado futuramente
 
 // Dicionário completo de traduções para tooltips
 const tooltipTranslations = {

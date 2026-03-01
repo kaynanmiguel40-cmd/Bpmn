@@ -4,6 +4,17 @@
  * Extraídas do DashboardPage para reutilização e testabilidade.
  */
 
+import {
+  MS_PER_HOUR,
+  HOURS_PER_WORKDAY,
+  WORK_DAYS_PER_WEEK,
+  DAYS_PER_WEEK,
+  REWORK_THRESHOLD,
+} from '../constants/sla';
+
+// Re-exportar formatters para manter compatibilidade com imports existentes
+export { formatCurrency, formatLateTime, timeAgo } from './formatters';
+
 // ─── Helpers de Data ─────────────────────────────────────────────
 
 export function isCurrentMonth(dateStr) {
@@ -86,35 +97,8 @@ export function calcOSCost(order, membersList) {
 }
 
 // ─── Formatação ──────────────────────────────────────────────────
-
-export function formatCurrency(value) {
-  const num = parseFloat(value);
-  if (isNaN(num)) return 'R$ 0,00';
-  return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-export function formatLateTime(totalMinutes) {
-  if (totalMinutes <= 0) return '0min';
-  const hours = Math.floor(totalMinutes / 60);
-  const mins = totalMinutes % 60;
-  if (hours === 0) return `${mins}min`;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}min`;
-}
-
-export function timeAgo(dateStr) {
-  if (!dateStr) return '';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'agora';
-  if (mins < 60) return `ha ${mins}min`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `ha ${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  if (days === 1) return 'ontem';
-  if (days < 7) return `ha ${days} dias`;
-  return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-}
+// formatCurrency, formatLateTime e timeAgo foram movidos para src/lib/formatters.js
+// e sao re-exportados no topo deste arquivo para manter compatibilidade.
 
 /** Remove acentos e normaliza texto para comparacao de nomes */
 export function normName(str) {
@@ -215,7 +199,7 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
       .filter(e => e.type === 'meeting' && e.startDate && e.endDate && periodFn(e.startDate))
       .reduce((sum, e) => {
         const diffMs = new Date(e.endDate) - new Date(e.startDate);
-        return sum + Math.max(0, diffMs / 3600000);
+        return sum + Math.max(0, diffMs / MS_PER_HOUR);
       }, 0);
   };
   const meetingHoursMonth = calcMeetingHours(eventsList, isCurrentMonth);
@@ -247,13 +231,13 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
   const workload = inProgress.length;
 
   // Utilizacao
-  const workDaysSoFar = Math.max(1, Math.floor(dayOfMonth * 5 / 7));
-  const availableHoursSoFar = workDaysSoFar * 8;
+  const workDaysSoFar = Math.max(1, Math.floor(dayOfMonth * WORK_DAYS_PER_WEEK / DAYS_PER_WEEK));
+  const availableHoursSoFar = workDaysSoFar * HOURS_PER_WORKDAY;
   const utilization = availableHoursSoFar > 0 ? Math.min((hoursMonth / availableHoursSoFar) * 100, 100) : 0;
 
   // Taxa de retrabalho
   const doneWithEstimate = done.filter(o => calcEstimatedHours(o) > 0 && calcOSHours(o) > 0);
-  const reworkOrders = doneWithEstimate.filter(o => calcOSHours(o) > calcEstimatedHours(o) * 1.3);
+  const reworkOrders = doneWithEstimate.filter(o => calcOSHours(o) > calcEstimatedHours(o) * REWORK_THRESHOLD);
   const reworkRate = doneWithEstimate.length > 0 ? (reworkOrders.length / doneWithEstimate.length) * 100 : 0;
 
   // Presenca e pontualidade em reunioes

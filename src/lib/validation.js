@@ -28,16 +28,42 @@ export function sanitize(text) {
     .replace(/<[^>]*>/g, '');
 }
 
+// ==================== SANITIZACAO RICH TEXT ====================
+
+const RICH_TEXT_TAGS = [
+  'p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre',
+  'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'hr',
+  'span', 'div', 'label', 'input',
+];
+const RICH_TEXT_ATTRS = [
+  'class', 'data-type', 'data-checked', 'type', 'checked',
+];
+
+/** Sanitiza HTML permitindo tags seguras de formatacao (para TipTap). */
+export function sanitizeRichText(text) {
+  if (typeof text !== 'string') return text;
+  if (purify && typeof purify.sanitize === 'function') {
+    return purify.sanitize(text, {
+      ALLOWED_TAGS: RICH_TEXT_TAGS,
+      ALLOWED_ATTR: RICH_TEXT_ATTRS,
+    });
+  }
+  return text
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '');
+}
+
 /**
  * Sanitiza todos os campos string de um objeto.
+ * richFields: Set de nomes de campos que permitem HTML (TipTap).
  */
-function sanitizeObject(obj) {
+function sanitizeObject(obj, richFields = null) {
   if (!obj || typeof obj !== 'object') return obj;
 
   const result = {};
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === 'string') {
-      result[key] = sanitize(value);
+      result[key] = (richFields && richFields.has(key)) ? sanitizeRichText(value) : sanitize(value);
     } else if (Array.isArray(value)) {
       result[key] = value.map(item =>
         typeof item === 'string' ? sanitize(item) :
@@ -149,6 +175,7 @@ export const osProjectSchema = z.object({
   color: z.string().optional().default('#3b82f6'),
   description: z.string().optional().default(''),
   status: z.enum(['active', 'finished']).default('active'),
+  eapProjectId: z.string().nullable().optional().default(null),
 }).passthrough();
 
 export const clientSchema = z.object({
@@ -161,6 +188,14 @@ export const clientSchema = z.object({
 
 // ==================== EAP / GANTT ====================
 
+export const eapFolderSchema = z.object({
+  name: z.string().min(1, 'Nome do projeto e obrigatorio'),
+  description: z.string().optional().default(''),
+  color: z.string().optional().default('#3b82f6'),
+  status: z.enum(['planning', 'active', 'completed', 'on_hold']).default('planning'),
+  createdBy: z.string().optional().default(''),
+}).passthrough();
+
 export const eapProjectSchema = z.object({
   name: z.string().min(1, 'Nome do projeto e obrigatorio'),
   description: z.string().optional().default(''),
@@ -169,6 +204,7 @@ export const eapProjectSchema = z.object({
   status: z.enum(['planning', 'active', 'completed', 'on_hold']).default('planning'),
   color: z.string().optional().default('#3b82f6'),
   createdBy: z.string().optional().default(''),
+  folderId: z.string().nullable().optional().default(null),
 }).passthrough();
 
 export const eapTaskSchema = z.object({
@@ -262,10 +298,10 @@ export const processOrderSchema = z.object({
  * Valida dados contra um schema Zod e sanitiza strings.
  * Retorna { success, data, error }.
  */
-export function validateAndSanitize(schema, data) {
+export function validateAndSanitize(schema, data, options = {}) {
   try {
-    // Sanitizar strings primeiro
-    const sanitized = sanitizeObject(data);
+    const richFields = options.richFields ? new Set(options.richFields) : null;
+    const sanitized = sanitizeObject(data, richFields);
     // Validar contra schema
     const parsed = schema.parse(sanitized);
     return { success: true, data: parsed, error: null };
@@ -283,9 +319,10 @@ export function validateAndSanitize(schema, data) {
  * So retorna os campos que estavam no input original — evita que
  * .default() do Zod injete valores e sobrescreva dados existentes.
  */
-export function validatePartial(schema, data) {
+export function validatePartial(schema, data, options = {}) {
   try {
-    const sanitized = sanitizeObject(data);
+    const richFields = options.richFields ? new Set(options.richFields) : null;
+    const sanitized = sanitizeObject(data, richFields);
     const inputKeys = new Set(Object.keys(sanitized));
     const partialSchema = schema.partial();
     const parsed = partialSchema.parse(sanitized);

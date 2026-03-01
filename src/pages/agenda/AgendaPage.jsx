@@ -7,12 +7,15 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAgendaEvents, useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent, useTeamMembers, useOSOrders, useContentPosts, useCreateContentPost, useUpdateContentPost, useDeleteContentPost } from '../../hooks/queries';
 import { shortName } from '../../lib/teamService';
-import { getProfile } from '../../lib/profileService';
+import { useProfile } from '../../hooks/useProfile';
 import { expandRecurrences, toDateKey } from '../../lib/recurrenceUtils';
 import { downloadICS } from '../../lib/icsExporter';
 import { useRealtimeAgendaEvents, useRealtimeContentPosts } from '../../hooks/useRealtimeSubscription';
 import { notifyEventCreated } from '../../lib/notificationTriggers';
 import AutoTextarea from '../../components/ui/AutoTextarea';
+import { OS_STATUS_COLORS } from '../../constants/colors';
+import { SLA_HOURS, WORK_START_HOUR, WORK_END_HOUR } from '../../constants/sla';
+import { DAYS_PT, DAYS_FULL_PT, MONTHS_PT } from '../../constants/localization';
 
 // ==================== CONSTANTES ====================
 
@@ -24,14 +27,7 @@ const EVENT_TYPES = [
 ];
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 7); // 07h - 22h
-const BUSINESS_HOURS = { start: 8, end: 18 }; // Horario comercial: 08h - 18h
-
-const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
-const DAYS_FULL_PT = ['domingo', 'segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sabado'];
-const MONTHS_PT = [
-  'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-];
+const BUSINESS_HOURS = { start: WORK_START_HOUR, end: WORK_END_HOUR };
 
 // ==================== HELPERS DE DATA ====================
 
@@ -182,7 +178,7 @@ export default function AgendaPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(null);
   const [quickCreate, setQuickCreate] = useState(null); // { date, startTime, endTime }
   const [recurrenceAction, setRecurrenceAction] = useState(null); // { event, action: 'edit'|'delete' }
-  const [profile, setProfile] = useState({});
+  const { profile } = useProfile();
   const [activeFilters, setActiveFilters] = useState([]); // inicializa vazio, preenche ao carregar
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [dayViewMember, setDayViewMember] = useState(null);
@@ -240,10 +236,6 @@ export default function AgendaPage() {
     attachments: [],
   });
 
-  // Carregar perfil (unico dado sem React Query hook)
-  useEffect(() => {
-    getProfile().then(prof => setProfile(prof));
-  }, []);
 
   // Inicializar filtros quando teamMembers e profile estiverem prontos
   useEffect(() => {
@@ -528,8 +520,6 @@ export default function AgendaPage() {
   const goToday = () => setCurrentDate(new Date());
 
   // O.S. convertidas em eventos do calendario (TODAS as O.S. com assignee)
-  const OS_STATUS_COLORS = { available: '#3b82f6', in_progress: '#f97316', done: '#22c55e', blocked: '#ef4444' };
-  const SLA_HOURS = { urgent: 4, high: 24, medium: 72, low: 168 };
   const BIZ_START_H = 8;  // inicio expediente
   const BIZ_END_H = 18;   // fim expediente
 

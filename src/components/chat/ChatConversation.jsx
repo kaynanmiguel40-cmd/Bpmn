@@ -5,23 +5,9 @@ import { extractMentions } from './chatUtils';
 import ChatAvatar from './ChatAvatar';
 import ChatBubble from './ChatBubble';
 import ChatInput from './ChatInput';
+import { formatChatTime } from '../../lib/formatters';
 
 // ==================== HELPERS ====================
-
-function formatChatTime(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now - d;
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-
-  if (diffMin < 1) return 'Agora';
-  if (diffMin < 60) return `${diffMin}m`;
-  if (diffHours < 24) return `${diffHours}h`;
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-    + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
 
 function groupMessages(messages) {
   const groups = [];

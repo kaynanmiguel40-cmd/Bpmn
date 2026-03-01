@@ -5,10 +5,8 @@ import { formatCurrency } from '../../lib/kpiUtils';
 import { useToast } from '../../contexts/ToastContext';
 import { ScheduleForm } from '../../components/reports/ScheduleForm';
 import { exportOSToExcel, exportKPIsToExcel } from '../../lib/excelExporter';
-
-function toInputDate(date) {
-  return date.toISOString().split('T')[0];
-}
+import { toInputDate } from '../../lib/formatters';
+import { STANDARD_MONTHLY_HOURS } from '../../constants/sla';
 
 export default function ReportPage() {
   const { addToast } = useToast();
@@ -36,7 +34,7 @@ export default function ReportPage() {
     return getReportPreview({
       orders, events, members,
       startDate, endDate, filterMember,
-      targetHours: 176,
+      targetHours: STANDARD_MONTHLY_HOURS,
     });
   }, [orders, events, members, startDate, endDate, filterMember]);
 
@@ -46,7 +44,7 @@ export default function ReportPage() {
       const result = generateReport({
         orders, events, members,
         startDate, endDate, filterMember,
-        targetHours: 176,
+        targetHours: STANDARD_MONTHLY_HOURS,
       });
       addToast(`Relatorio gerado: ${result.fileName}`, 'success');
     } catch (err) {
@@ -67,7 +65,7 @@ export default function ReportPage() {
       const result = generateAllReports({
         orders, events, members,
         startDate, endDate,
-        targetHours: 176,
+        targetHours: STANDARD_MONTHLY_HOURS,
       });
       addToast(`${result.count} relatorios gerados em: ${result.fileName}`, 'success');
     } catch (err) {

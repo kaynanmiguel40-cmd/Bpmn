@@ -18,6 +18,8 @@ import { createTeamMember, updateTeamMember, deleteTeamMember, MEMBER_COLORS } f
 import { supabase, getCompanies, createCompany, updateCompany, deleteCompany, createAuthUser, updateProfileRole } from '../../lib/supabase';
 import { isManagerRole } from '../../lib/roleUtils';
 import { NotificationPreferences } from '../../components/communication/NotificationPreferences';
+import { COMPANY_BADGE_COLORS as COMPANY_COLORS } from '../../constants/colors';
+import { formatCurrency } from '../../lib/formatters';
 
 // Mascara de CPF: 000.000.000-00
 function maskCpf(value) {
@@ -28,13 +30,6 @@ function maskCpf(value) {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
 }
 
-// Formatar moeda BRL
-function formatCurrency(value) {
-  const num = parseFloat(value);
-  if (isNaN(num)) return 'R$ 0,00';
-  return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
 // Calcular valor/hora
 function calcHourlyRate(salaryMonth, hoursMonth) {
   const salary = parseFloat(salaryMonth);
@@ -42,16 +37,6 @@ function calcHourlyRate(salaryMonth, hoursMonth) {
   if (isNaN(salary) || isNaN(hours) || hours === 0) return 0;
   return salary / hours;
 }
-
-// Cores das empresas (mesmo do Dashboard) — com variantes dark
-const COMPANY_COLORS = [
-  { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-800', dot: 'bg-blue-500' },
-  { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200 dark:border-emerald-800', dot: 'bg-emerald-500' },
-  { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-800', dot: 'bg-amber-500' },
-  { bg: 'bg-rose-100 dark:bg-rose-900/30', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200 dark:border-rose-800', dot: 'bg-rose-500' },
-  { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-300', border: 'border-cyan-200 dark:border-cyan-800', dot: 'bg-cyan-500' },
-  { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-300', border: 'border-purple-200 dark:border-purple-800', dot: 'bg-purple-500' },
-];
 
 // Cargos predefinidos — "Gestor" e similares concedem acesso de gestao automaticamente
 const CARGO_OPTIONS = [

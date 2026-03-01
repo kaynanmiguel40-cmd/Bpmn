@@ -60,6 +60,7 @@ export function createCRUDService(config) {
     transform,
     fieldMap,
     schema,
+    richFields,
     orderBy = 'created_at',
     orderAsc = true,
   } = config;
@@ -146,7 +147,7 @@ export function createCRUDService(config) {
   async function create(item, extraRow = {}) {
     // Validar com schema Zod se disponivel
     if (schema) {
-      const validation = validateAndSanitize(schema, item);
+      const validation = validateAndSanitize(schema, item, { richFields });
       if (!validation.success) {
         toast(validation.error, 'error');
         return null;
@@ -155,7 +156,9 @@ export function createCRUDService(config) {
     }
 
     const now = new Date().toISOString();
+    const generatedId = extraRow.id || generateLocalId(idPrefix);
     const snakeData = {
+      id: generatedId,
       ...toSnakeCase(item, fieldMap),
       ...extraRow,
     };
@@ -184,7 +187,7 @@ export function createCRUDService(config) {
   async function update(id, updates) {
     // Validar parcialmente com schema Zod se disponivel
     if (schema) {
-      const validation = validatePartial(schema, updates);
+      const validation = validatePartial(schema, updates, { richFields });
       if (!validation.success) {
         toast(validation.error, 'error');
         return null;
