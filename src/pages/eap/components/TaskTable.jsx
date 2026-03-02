@@ -1,6 +1,7 @@
 import { forwardRef, useState, useRef, useEffect, useCallback } from 'react';
 import { formatPredecessors } from '../../../lib/eapService';
 import NotionEditor, { stripHtml } from '../../../components/ui/NotionEditor';
+import { toast } from '../../../contexts/ToastContext';
 
 // ==================== ICONS ====================
 
@@ -225,7 +226,7 @@ function TaskDetailCell({ notes, attachments = [], taskId, taskName, wbsNumber, 
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > MAX_FILE_SIZE) {
-      alert('Arquivo muito grande (max 2MB)');
+      toast.warning('Arquivo muito grande (max 2MB)');
       return;
     }
     const reader = new FileReader();
@@ -368,7 +369,7 @@ function TaskDetailCell({ notes, attachments = [], taskId, taskName, wbsNumber, 
                     className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     onKeyDown={e => { if (e.key === 'Enter') addLink(); }}
                   />
-                  <button onClick={addLink} className="text-xs px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 shrink-0 font-medium">+</button>
+                  <button onClick={addLink} className="text-xs px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-fyness-primary shrink-0 font-medium">+</button>
                 </div>
                 {linkUrl && (
                   <input
@@ -401,7 +402,7 @@ function TaskDetailCell({ notes, attachments = [], taskId, taskName, wbsNumber, 
                 <button onClick={() => { setLocalNotes(notes || ''); setLocalAtts(attachments); setOpen(false); }} className="text-xs px-3 py-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleSave} className="text-xs px-4 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium transition-colors">
+                <button onClick={handleSave} className="text-xs px-4 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-fyness-primary font-medium transition-colors">
                   Salvar
                 </button>
               </div>

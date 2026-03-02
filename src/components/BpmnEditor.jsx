@@ -5,6 +5,7 @@ import customResizeModule from '../utils/customResizeProvider';
 import connectionCrossingsModule from '../utils/connectionCrossings';
 import { COMERCIAL_DIAGRAM_XML } from '../utils/comercialTemplate'; // Usa V8 automaticamente
 import { indicacoesTemplate } from '../utils/indicacoesTemplate';
+import { toast } from '../contexts/ToastContext';
 
 // Dicionário completo de traduções para tooltips
 const tooltipTranslations = {
@@ -176,7 +177,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
               targetParent = participants[0];
             } else {
               console.error('Colaboração sem participantes');
-              alert('Adicione uma Pool/Participante ao diagrama antes de adicionar fluxos.');
+              toast.warning('Adicione uma Pool/Participante ao diagrama antes de adicionar fluxos.');
               return null;
             }
           }
@@ -218,7 +219,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
         return shape;
       } catch (e) {
         console.error('Erro ao criar CallActivity:', e);
-        alert('Erro ao criar elemento: ' + e.message);
+        toast.error('Erro ao criar elemento: ' + e.message);
         return null;
       }
     },
@@ -451,7 +452,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
               console.log('Usando Participant como pai:', targetParent.id);
             } else {
               console.error('Colaboração sem participantes - não é possível adicionar elementos');
-              alert('Adicione uma Pool/Participante ao diagrama antes de inserir imagens.');
+              toast.warning('Adicione uma Pool/Participante ao diagrama antes de inserir imagens.');
               return null;
             }
           }
@@ -672,7 +673,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
       const parseError = currentDoc.querySelector('parsererror');
       if (parseError) {
         console.error('Erro ao parsear XML atual:', parseError.textContent);
-        alert('Erro ao processar diagrama atual');
+        toast.error('Erro ao processar diagrama atual');
         return;
       }
 
@@ -683,7 +684,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
       const indicacoesParseError = indicacoesDoc.querySelector('parsererror');
       if (indicacoesParseError) {
         console.error('Erro ao parsear template indicações:', indicacoesParseError.textContent);
-        alert('Erro no template de indicações');
+        toast.error('Erro no template de indicacoes');
         return;
       }
 
@@ -706,7 +707,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
       });
 
       if (!currentProcess || !currentLaneSet || !currentDiagram) {
-        alert('Por favor, carregue um diagrama com Lanes primeiro (ex: Comercial)');
+        toast.warning('Por favor, carregue um diagrama com Lanes primeiro (ex: Comercial)');
         return;
       }
 
@@ -728,7 +729,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
 
       if (!indicacoesLane || !indicacoesProcess || !indicacoesDiagram) {
         console.error('Elementos de indicações não encontrados');
-        alert('Erro: template de indicações inválido');
+        toast.error('Erro: template de indicacoes invalido');
         return;
       }
 
@@ -929,18 +930,18 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
         if (onXmlChange) onXmlChange(finalXml);
 
         console.log('=== RAIA INDICAÇÕES ADICIONADA COM SUCESSO ===');
-        alert('Raia de Indicações adicionada com sucesso!');
+        toast.success('Raia de Indicacoes adicionada com sucesso!');
       } catch (importError) {
         console.error('Erro ao importar XML:', importError);
         console.error('Mensagem:', importError.message);
         // Log mais detalhes do XML para debug
         console.log('XML completo para debug (primeiros 2000 chars):', mergedXml.substring(0, 2000));
-        alert('Erro ao importar diagrama: ' + importError.message);
+        toast.error('Erro ao importar diagrama: ' + importError.message);
       }
     } catch (e) {
       console.error('Erro ao adicionar raia de indicações:', e);
       console.error('Stack:', e.stack);
-      alert('Erro ao adicionar raia: ' + e.message);
+      toast.error('Erro ao adicionar raia: ' + e.message);
     }
   }, [onXmlChange]);
 

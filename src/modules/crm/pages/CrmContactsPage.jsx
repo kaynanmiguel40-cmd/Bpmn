@@ -10,7 +10,7 @@ import {
   Users, Plus, Search, Upload, Download, Pencil, Trash2,
   Filter, X,
 } from 'lucide-react';
-import { CrmPageHeader, CrmDataTable, CrmAvatar, CrmBadge, CrmConfirmDialog } from '../components/ui';
+import { CrmPageHeader, CrmDataTable, CrmBadge, CrmConfirmDialog } from '../components/ui';
 import {
   useCrmContacts, useDeleteCrmContact, useImportCrmContacts,
   useCrmCompanies,
@@ -30,7 +30,7 @@ const STATUS_MAP = {
   lead: { label: 'Lead', variant: 'info' },
   active: { label: 'Ativo', variant: 'success' },
   inactive: { label: 'Inativo', variant: 'neutral' },
-  customer: { label: 'Cliente', variant: 'indigo' },
+  customer: { label: 'Cliente', variant: 'blue' },
 };
 
 function useDebounce(value, delay = 300) {
@@ -142,12 +142,9 @@ export function CrmContactsPage() {
       label: 'Contato',
       sortable: true,
       render: (val, row) => (
-        <div className="flex items-center gap-2.5">
-          <CrmAvatar name={val} size="sm" color={row.avatarColor} />
-          <div className="min-w-0">
-            <div className="font-medium text-slate-800 dark:text-slate-200 truncate">{val}</div>
-            <div className="text-xs text-slate-400 truncate">{row.email || ''}</div>
-          </div>
+        <div className="min-w-0">
+          <div className="font-medium text-slate-800 dark:text-slate-200 truncate">{val}</div>
+          <div className="text-xs text-slate-400 truncate">{row.email || ''}</div>
         </div>
       ),
     },
@@ -155,7 +152,7 @@ export function CrmContactsPage() {
       key: 'phone',
       label: 'Telefone',
       render: (val) => val ? (
-        <a href={`tel:${val}`} className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400">{val}</a>
+        <a href={`tel:${val}`} className="text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400">{val}</a>
       ) : <span className="text-slate-300 dark:text-slate-600">—</span>,
     },
     {
@@ -164,7 +161,7 @@ export function CrmContactsPage() {
       render: (val, row) => row.company?.name ? (
         <button
           onClick={(e) => { e.stopPropagation(); navigate(`/crm/companies/${row.company.id}`); }}
-          className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm"
+          className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
         >
           {row.company.name}
         </button>
@@ -208,7 +205,7 @@ export function CrmContactsPage() {
         <div className="flex items-center gap-1">
           <button
             onClick={(e) => { e.stopPropagation(); handleEdit(row); }}
-            className="p-1.5 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+            className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
             title="Editar"
           >
             <Pencil size={14} />
@@ -240,7 +237,7 @@ export function CrmContactsPage() {
                 placeholder="Buscar contato..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 pr-4 py-2 w-56 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                className="pl-9 pr-4 py-2 w-56 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:border-transparent focus:outline-none"
               />
             </div>
 
@@ -249,14 +246,14 @@ export function CrmContactsPage() {
               onClick={() => setShowFilters(v => !v)}
               className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-colors ${
                 hasActiveFilters
-                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400'
+                  ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
                   : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
               <Filter size={14} />
               Filtros
               {hasActiveFilters && (
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400" />
+                <span className="w-1.5 h-1.5 rounded-full bg-fyness-primary dark:bg-blue-400" />
               )}
             </button>
 
@@ -285,7 +282,7 @@ export function CrmContactsPage() {
             {/* New contact */}
             <button
               onClick={handleNew}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-fyness-primary hover:bg-fyness-secondary text-white text-sm font-medium rounded-lg transition-colors"
             >
               <Plus size={16} />
               Novo Contato
@@ -300,7 +297,7 @@ export function CrmContactsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:outline-none"
           >
             {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -308,7 +305,7 @@ export function CrmContactsPage() {
           <select
             value={companyFilter}
             onChange={(e) => setCompanyFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:outline-none"
           >
             <option value="">Todas empresas</option>
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -319,7 +316,7 @@ export function CrmContactsPage() {
             placeholder="Filtrar por tag..."
             value={tagFilter}
             onChange={(e) => setTagFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:outline-none"
           />
 
           {hasActiveFilters && (

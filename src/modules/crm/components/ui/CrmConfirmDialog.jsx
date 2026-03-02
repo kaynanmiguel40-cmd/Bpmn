@@ -30,9 +30,9 @@ const variantConfig = {
   },
   info: {
     icon: Info,
-    iconBg: 'bg-indigo-100 dark:bg-indigo-900/30',
-    iconColor: 'text-indigo-600 dark:text-indigo-400',
-    btnClass: 'bg-indigo-600 hover:bg-indigo-700 text-white',
+    iconBg: 'bg-blue-100 dark:bg-blue-900/30',
+    iconColor: 'text-blue-600 dark:text-blue-400',
+    btnClass: 'bg-fyness-primary hover:bg-fyness-secondary text-white',
   },
 };
 

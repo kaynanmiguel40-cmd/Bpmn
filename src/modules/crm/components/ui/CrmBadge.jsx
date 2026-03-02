@@ -2,7 +2,7 @@
  * CrmBadge - Badge de status reutilizavel.
  *
  * Props:
- * - variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'indigo' | 'violet'
+ * - variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'blue' | 'violet'
  * - size: 'sm' | 'md'
  * - children: texto
  * - dot: boolean - mostra ponto colorido antes do texto
@@ -14,7 +14,7 @@ const variants = {
   danger: 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400',
   info: 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400',
   neutral: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400',
-  indigo: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
+  blue: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
   violet: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400',
 };
 
@@ -24,7 +24,7 @@ const dotVariants = {
   danger: 'bg-rose-500',
   info: 'bg-sky-500',
   neutral: 'bg-slate-400',
-  indigo: 'bg-indigo-500',
+  blue: 'bg-blue-500',
   violet: 'bg-violet-500',
 };
 

@@ -24,7 +24,7 @@ const CONTACT_STATUS = {
   lead: { label: 'Lead', variant: 'info' },
   active: { label: 'Ativo', variant: 'success' },
   inactive: { label: 'Inativo', variant: 'neutral' },
-  customer: { label: 'Cliente', variant: 'indigo' },
+  customer: { label: 'Cliente', variant: 'blue' },
 };
 
 const SIZE_MAP = { micro: 'Microempresa', small: 'Pequena', medium: 'Media', large: 'Grande' };
@@ -69,7 +69,7 @@ export function CrmCompanyDetailPage() {
     return (
       <div className="text-center py-16">
         <p className="text-slate-500 dark:text-slate-400 mb-4">Empresa nao encontrada</p>
-        <button onClick={() => navigate('/crm/companies')} className="text-sm text-indigo-600 hover:underline">Voltar para empresas</button>
+        <button onClick={() => navigate('/crm/companies')} className="text-sm text-blue-600 hover:underline">Voltar para empresas</button>
       </div>
     );
   }
@@ -81,7 +81,7 @@ export function CrmCompanyDetailPage() {
         <button onClick={() => navigate('/crm/companies')} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
           <ArrowLeft size={16} /> Empresas
         </button>
-        <button onClick={() => setEditOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg">
+        <button onClick={() => setEditOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-fyness-primary hover:bg-fyness-secondary text-white text-sm font-medium rounded-lg">
           <Pencil size={14} /> Editar
         </button>
       </div>
@@ -102,8 +102,8 @@ export function CrmCompanyDetailPage() {
       {/* Info cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {company.phone && (
-          <a href={`tel:${company.phone}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-indigo-300 transition-colors group">
-            <Phone size={16} className="text-slate-400 group-hover:text-indigo-500" />
+          <a href={`tel:${company.phone}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 transition-colors group">
+            <Phone size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div>
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Telefone</div>
               <div className="text-sm text-slate-700 dark:text-slate-300">{company.phone}</div>
@@ -111,8 +111,8 @@ export function CrmCompanyDetailPage() {
           </a>
         )}
         {company.email && (
-          <a href={`mailto:${company.email}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-indigo-300 transition-colors group">
-            <Mail size={16} className="text-slate-400 group-hover:text-indigo-500" />
+          <a href={`mailto:${company.email}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 transition-colors group">
+            <Mail size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Email</div>
               <div className="text-sm text-slate-700 dark:text-slate-300 truncate">{company.email}</div>
@@ -120,11 +120,11 @@ export function CrmCompanyDetailPage() {
           </a>
         )}
         {company.website && (
-          <a href={company.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-indigo-300 transition-colors group">
-            <Globe size={16} className="text-slate-400 group-hover:text-indigo-500" />
+          <a href={company.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 transition-colors group">
+            <Globe size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Website</div>
-              <div className="text-sm text-indigo-600 dark:text-indigo-400 truncate">{company.website}</div>
+              <div className="text-sm text-blue-600 dark:text-blue-400 truncate">{company.website}</div>
             </div>
           </a>
         )}
@@ -150,7 +150,7 @@ export function CrmCompanyDetailPage() {
               Contatos ({(company.contacts || []).length})
             </h3>
           </div>
-          <button onClick={() => setNewContactOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">
+          <button onClick={() => setNewContactOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg">
             <Plus size={12} /> Novo Contato
           </button>
         </div>

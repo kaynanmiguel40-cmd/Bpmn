@@ -4,6 +4,7 @@ import { getDeadlineStatus, getAlertOrders } from '../../lib/deadlineUtils';
 import { getRecentActivities } from '../../lib/activityLogService';
 import { getNotifications, getUnreadCount } from '../../lib/notificationService';
 import { formatDateLong } from '../../lib/formatters';
+import { namesMatch } from '../../lib/kpiUtils';
 
 function KpiMini({ label, value, color }) {
   return (
@@ -39,18 +40,19 @@ export default function MyDayPage() {
   }, []);
 
   const today = new Date();
-  const myOrders = orders.filter(o => o.status !== 'done');
-  const inProgress = orders.filter(o => o.status === 'in_progress');
-  const alerts = getAlertOrders(orders);
+  const isMyOrder = (o) => namesMatch(profileName, o.assignee) || namesMatch(profileName, o.assignedTo);
+  const myOrders = orders.filter(o => o.status !== 'done' && isMyOrder(o));
+  const inProgress = orders.filter(o => o.status === 'in_progress' && isMyOrder(o));
+  const alerts = getAlertOrders(orders.filter(isMyOrder));
   const completedToday = orders.filter(o => {
-    if (o.status !== 'done' || !o.actualEnd) return false;
+    if (o.status !== 'done' || !o.actualEnd || !isMyOrder(o)) return false;
     const d = new Date(o.actualEnd);
     return d.toDateString() === today.toDateString();
   });
 
   // Prazos proximos (proximos 7 dias)
   const upcoming = orders
-    .filter(o => o.status !== 'done' && o.estimatedEnd)
+    .filter(o => o.status !== 'done' && o.estimatedEnd && isMyOrder(o))
     .map(o => ({ ...o, deadline: getDeadlineStatus(o) }))
     .filter(o => o.deadline.status !== 'none' && o.deadline.daysLeft !== null && o.deadline.daysLeft <= 7)
     .sort((a, b) => (a.deadline.daysLeft || 0) - (b.deadline.daysLeft || 0))

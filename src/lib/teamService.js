@@ -17,6 +17,7 @@ export function dbToMember(row) {
     hoursMonth: row.hours_month || 176,
     email: row.email || '',
     authUserId: row.auth_user_id || null,
+    crmRole: row.crm_role || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -59,6 +60,7 @@ const memberService = createCRUDService({
     hoursMonth: 'hours_month',
     email: 'email',
     authUserId: 'auth_user_id',
+    crmRole: 'crm_role',
   },
 });
 

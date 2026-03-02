@@ -8,8 +8,10 @@ import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmP
 import { getCrmDeals, getDealsByPipeline, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost } from '../services/crmDealsService';
 import { getCrmActivities, getActivitiesForCalendar, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity } from '../services/crmActivitiesService';
 import { getCrmProposals, getCrmProposalById, createCrmProposal, updateCrmProposal, softDeleteCrmProposal, updateCrmProposalStatus } from '../services/crmProposalsService';
-import { getCrmDashboardKPIs } from '../services/crmDashboardService';
-import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport } from '../services/crmReportsService';
+import { getCrmDashboardKPIs, getSalesRanking } from '../services/crmDashboardService';
+import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
+import { getCrmGoals, getCrmGoalById, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
+import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities } from '../services/crmReportsService';
 
 // ==================== QUERY KEYS ====================
 
@@ -27,11 +29,20 @@ export const crmQueryKeys = {
   calendarActivities: (start, end) => ['crm', 'calendarActivities', start, end],
   proposals: ['crm', 'proposals'],
   proposal: (id) => ['crm', 'proposal', id],
+  goals: ['crm', 'goals'],
+  goal: (id) => ['crm', 'goal', id],
+  goalsProgress: ['crm', 'goalsProgress'],
   dashboard: ['crm', 'dashboard'],
+  salesRanking: (start, end) => ['crm', 'salesRanking', start, end],
   salesReport: (start, end) => ['crm', 'salesReport', start, end],
   funnelReport: (id) => ['crm', 'funnelReport', id],
   forecastReport: ['crm', 'forecastReport'],
+  learnedProbabilities: (pipelineId) => ['crm', 'learnedProbabilities', pipelineId || 'all'],
   activitiesReport: (start, end) => ['crm', 'activitiesReport', start, end],
+  traffic: ['crm', 'traffic'],
+  trafficKPIs: ['crm', 'trafficKPIs'],
+  trafficByChannel: ['crm', 'trafficByChannel'],
+  trafficOverTime: ['crm', 'trafficOverTime'],
 };
 
 // ==================== COMPANIES ====================
@@ -311,11 +322,86 @@ export function useMoveCrmDeal() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ dealId, stageId }) => moveDealToStage(dealId, stageId),
+    onMutate: async ({ dealId, stageId }) => {
+      // Cancelar refetches em andamento para nao sobrescrever o optimistic update
+      await qc.cancelQueries({ queryKey: ['crm', 'pipelineDeals'] });
+
+      // Snapshot do cache atual (copia profunda para rollback seguro)
+      const allQueries = qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] });
+      const snapshot = allQueries
+        .filter(([, d]) => d != null)
+        .map(([key, d]) => [key, JSON.parse(JSON.stringify(d))]);
+
+      // Optimistic update: mover deal de um stage para outro no cache
+      allQueries.forEach(([queryKey, oldData]) => {
+        if (!oldData?.stages) return;
+        let movedDeal = null;
+        const updatedStages = oldData.stages.map(stage => {
+          const deal = stage.deals?.find(d => d.id === dealId);
+          if (deal) {
+            movedDeal = { ...deal };
+            return {
+              ...stage,
+              deals: stage.deals.filter(d => d.id !== dealId),
+              totalValue: stage.totalValue - (deal.value || 0),
+            };
+          }
+          return stage;
+        });
+
+        if (movedDeal) {
+          const finalStages = updatedStages.map(stage => {
+            if (stage.id === stageId) {
+              return {
+                ...stage,
+                deals: [...(stage.deals || []), movedDeal],
+                totalValue: (stage.totalValue || 0) + (movedDeal.value || 0),
+              };
+            }
+            return stage;
+          });
+          qc.setQueryData(queryKey, { ...oldData, stages: finalStages });
+        }
+      });
+
+      return { snapshot };
+    },
     onSuccess: () => {
+      // Sucesso: so invalida queries secundarias (nao o kanban — optimistic ja esta certo)
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
-      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       qc.invalidateQueries({ queryKey: ['crm', 'dealsByPipeline'] });
     },
+    onError: (err, _vars, context) => {
+      // Rollback: restaurar snapshot original
+      if (context?.snapshot) {
+        context.snapshot.forEach(([queryKey, oldData]) => {
+          qc.setQueryData(queryKey, oldData);
+        });
+      }
+      // Refetch para garantir estado correto
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      toast(`Erro ao mover negocio: ${err.message}`, 'error');
+    },
+  });
+}
+
+// Helper: remover deal do cache do kanban (optimistic)
+function removeDealFromPipelineCache(qc, dealId) {
+  const allQueries = qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] });
+  allQueries.forEach(([queryKey, oldData]) => {
+    if (!oldData?.stages) return;
+    const updatedStages = oldData.stages.map(stage => {
+      const deal = stage.deals?.find(d => d.id === dealId);
+      if (deal) {
+        return {
+          ...stage,
+          deals: stage.deals.filter(d => d.id !== dealId),
+          totalValue: stage.totalValue - (deal.value || 0),
+        };
+      }
+      return stage;
+    });
+    qc.setQueryData(queryKey, { ...oldData, stages: updatedStages });
   });
 }
 
@@ -323,10 +409,15 @@ export function useMarkDealWon() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: markDealAsWon,
-    onSuccess: () => {
+    onMutate: async (dealId) => {
+      await qc.cancelQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      removeDealFromPipelineCache(qc, dealId);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'learnedProbabilities'] });
       toast('Negocio marcado como ganho!', 'success');
     },
   });
@@ -336,10 +427,15 @@ export function useMarkDealLost() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ dealId, reason }) => markDealAsLost(dealId, reason),
-    onSuccess: () => {
+    onMutate: async ({ dealId }) => {
+      await qc.cancelQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      removeDealFromPipelineCache(qc, dealId);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'learnedProbabilities'] });
       toast('Negocio marcado como perdido', 'warning');
     },
   });
@@ -475,12 +571,86 @@ export function useUpdateCrmProposalStatus() {
   });
 }
 
+// ==================== GOALS ====================
+
+export function useCrmGoals(filters = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.goals, filters],
+    queryFn: () => getCrmGoals(filters),
+    staleTime: 30_000,
+  });
+}
+
+export function useCrmGoal(id) {
+  return useQuery({
+    queryKey: crmQueryKeys.goal(id),
+    queryFn: () => getCrmGoalById(id),
+    enabled: !!id,
+    staleTime: 30_000,
+  });
+}
+
+export function useGoalsProgress(goals) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.goalsProgress, goals?.map(g => g.id).join(',')],
+    queryFn: () => getGoalsProgress(goals),
+    enabled: !!goals && goals.length > 0,
+    staleTime: 60_000,
+  });
+}
+
+export function useCreateCrmGoal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createCrmGoal,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.goals });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.goalsProgress });
+      toast('Meta criada com sucesso', 'success');
+    },
+  });
+}
+
+export function useUpdateCrmGoal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateCrmGoal(id, updates),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.goals });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.goal(id) });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.goalsProgress });
+      toast('Meta atualizada', 'success');
+    },
+  });
+}
+
+export function useDeleteCrmGoal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: softDeleteCrmGoal,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.goals });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.goalsProgress });
+      toast('Meta excluida', 'success');
+    },
+  });
+}
+
 // ==================== DASHBOARD ====================
 
 export function useCrmDashboardKPIs() {
   return useQuery({
     queryKey: crmQueryKeys.dashboard,
     queryFn: getCrmDashboardKPIs,
+    staleTime: 60_000,
+  });
+}
+
+export function useSalesRanking(startDate, endDate) {
+  return useQuery({
+    queryKey: crmQueryKeys.salesRanking(startDate, endDate),
+    queryFn: () => getSalesRanking(startDate, endDate),
+    enabled: !!startDate && !!endDate,
     staleTime: 60_000,
   });
 }
@@ -513,11 +683,95 @@ export function useForecastReport() {
   });
 }
 
+export function useLearnedProbabilities(pipelineId = null) {
+  return useQuery({
+    queryKey: crmQueryKeys.learnedProbabilities(pipelineId),
+    queryFn: () => getLearnedProbabilities(pipelineId),
+    staleTime: 120_000,
+  });
+}
+
 export function useActivitiesReport(startDate, endDate) {
   return useQuery({
     queryKey: crmQueryKeys.activitiesReport(startDate, endDate),
     queryFn: () => getActivitiesReport(startDate, endDate),
     enabled: !!startDate && !!endDate,
     staleTime: 120_000,
+  });
+}
+
+// ==================== PAID TRAFFIC ====================
+
+export function useCrmTraffic(filters = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.traffic, filters],
+    queryFn: () => getTrafficEntries(filters),
+    staleTime: 30_000,
+  });
+}
+
+export function useCrmTrafficKPIs(filters = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.trafficKPIs, filters],
+    queryFn: () => getTrafficKPIs(filters),
+    staleTime: 60_000,
+  });
+}
+
+export function useCrmTrafficByChannel(filters = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.trafficByChannel, filters],
+    queryFn: () => getTrafficByChannel(filters),
+    staleTime: 60_000,
+  });
+}
+
+export function useCrmTrafficOverTime(filters = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.trafficOverTime, filters],
+    queryFn: () => getTrafficOverTime(filters),
+    staleTime: 60_000,
+  });
+}
+
+export function useCreateCrmTraffic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createTrafficEntry,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.traffic });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.trafficKPIs });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.trafficByChannel });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.trafficOverTime });
+      toast('Registro de trafego criado', 'success');
+    },
+  });
+}
+
+export function useUpdateCrmTraffic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateTrafficEntry(id, updates),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.traffic });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.trafficKPIs });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.trafficByChannel });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.trafficOverTime });
+      toast('Registro atualizado', 'success');
+    },
+  });
+}
+
+export function useDeleteCrmTraffic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: softDeleteTrafficEntry,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.traffic });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.trafficKPIs });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.trafficByChannel });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.trafficOverTime });
+      toast('Registro excluido', 'success');
+    },
   });
 }

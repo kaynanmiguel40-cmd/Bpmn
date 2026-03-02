@@ -25,12 +25,14 @@ DECLARE
   action_text TEXT;
   entity_title TEXT;
   log_id TEXT;
+  rec_jsonb JSONB;
 BEGIN
   log_id := 'log_' || extract(epoch from now())::bigint || '_' || floor(random() * 1000)::int;
 
   IF TG_OP = 'UPDATE' THEN
     action_text := 'updated';
-    entity_title := COALESCE(NEW.title, NEW.name, NEW.label, '');
+    rec_jsonb := to_jsonb(NEW);
+    entity_title := COALESCE(rec_jsonb->>'title', rec_jsonb->>'name', rec_jsonb->>'label', '');
 
     INSERT INTO public.activity_logs (id, user_name, action, entity_type, entity_id, entity_title, old_values, new_values, created_at)
     VALUES (
@@ -41,14 +43,15 @@ BEGIN
       NEW.id,
       entity_title,
       to_jsonb(OLD),
-      to_jsonb(NEW),
+      rec_jsonb,
       NOW()
     );
     RETURN NEW;
 
   ELSIF TG_OP = 'DELETE' THEN
     action_text := 'deleted';
-    entity_title := COALESCE(OLD.title, OLD.name, OLD.label, '');
+    rec_jsonb := to_jsonb(OLD);
+    entity_title := COALESCE(rec_jsonb->>'title', rec_jsonb->>'name', rec_jsonb->>'label', '');
 
     INSERT INTO public.activity_logs (id, user_name, action, entity_type, entity_id, entity_title, old_values, new_values, created_at)
     VALUES (
@@ -58,7 +61,7 @@ BEGIN
       TG_TABLE_NAME,
       OLD.id,
       entity_title,
-      to_jsonb(OLD),
+      rec_jsonb,
       NULL,
       NOW()
     );

@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import MentionDropdown from './MentionDropdown';
 import { getMentionQuery, getMentionStart, filterMembersByQuery } from './chatUtils';
 import { shortName } from '../../lib/teamService';
+import { toast } from '../../contexts/ToastContext';
 
 // ==================== FILE PREVIEW STRIP ====================
 
@@ -165,11 +166,11 @@ export default function ChatInput({ text, setText, onSend, isPending, teamMember
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 3 * 1024 * 1024) {
-      alert('Arquivo muito grande! Maximo: 3MB.');
+      toast.warning('Arquivo muito grande! Maximo: 3MB.');
       return;
     }
     if (pendingFiles.length >= 5) {
-      alert('Maximo 5 arquivos por mensagem.');
+      toast.warning('Maximo 5 arquivos por mensagem.');
       return;
     }
     const reader = new FileReader();
@@ -221,7 +222,7 @@ export default function ChatInput({ text, setText, onSend, isPending, teamMember
         setRecordDuration(prev => prev + 1);
       }, 1000);
     } catch {
-      alert('Nao foi possivel acessar o microfone. Verifique as permissoes.');
+      toast.error('Nao foi possivel acessar o microfone. Verifique as permissoes.');
     }
   }, []);
 
@@ -236,7 +237,7 @@ export default function ChatInput({ text, setText, onSend, isPending, teamMember
 
       const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
       if (blob.size > 3 * 1024 * 1024) {
-        alert('Audio muito longo! Maximo: 3MB.');
+        toast.warning('Audio muito longo! Maximo: 3MB.');
         setIsRecording(false);
         return;
       }

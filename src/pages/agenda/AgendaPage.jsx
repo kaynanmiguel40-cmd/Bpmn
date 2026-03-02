@@ -12,6 +12,7 @@ import { expandRecurrences, toDateKey } from '../../lib/recurrenceUtils';
 import { downloadICS } from '../../lib/icsExporter';
 import { useRealtimeAgendaEvents, useRealtimeContentPosts } from '../../hooks/useRealtimeSubscription';
 import { notifyEventCreated } from '../../lib/notificationTriggers';
+import { toast } from '../../contexts/ToastContext';
 import AutoTextarea from '../../components/ui/AutoTextarea';
 import { OS_STATUS_COLORS } from '../../constants/colors';
 import { SLA_HOURS, WORK_START_HOUR, WORK_END_HOUR } from '../../constants/sla';
@@ -2039,7 +2040,7 @@ function EventModal({ form, setForm, editing, onSave, onClose, onDelete, allMemb
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    if (file.size > 3 * 1024 * 1024) { alert('Arquivo muito grande! Maximo: 3MB.'); return; }
+                    if (file.size > 3 * 1024 * 1024) { toast.warning('Arquivo muito grande! Maximo: 3MB.'); return; }
                     const reader = new FileReader();
                     reader.onload = (ev) => {
                       const isImage = file.type.startsWith('image/');

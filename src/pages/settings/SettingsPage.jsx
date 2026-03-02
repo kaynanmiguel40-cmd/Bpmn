@@ -20,6 +20,7 @@ import { isManagerRole } from '../../lib/roleUtils';
 import { NotificationPreferences } from '../../components/communication/NotificationPreferences';
 import { COMPANY_BADGE_COLORS as COMPANY_COLORS } from '../../constants/colors';
 import { formatCurrency } from '../../lib/formatters';
+import { toast } from '../../contexts/ToastContext';
 
 // Mascara de CPF: 000.000.000-00
 function maskCpf(value) {
@@ -156,7 +157,7 @@ export function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 1 * 1024 * 1024) {
-      alert('Imagem muito grande! Maximo: 1MB.');
+      toast.warning('Imagem muito grande! Maximo: 1MB.');
       return;
     }
     const reader = new FileReader();
@@ -279,31 +280,31 @@ export function SettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Nome completo</label>
-                <input type="text" value={profile.name || myTeamMember?.name || ''} onChange={(e) => handleChange('name', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Seu nome completo" />
+                <input type="text" value={profile.name || myTeamMember?.name || ''} onChange={(e) => handleChange('name', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent" placeholder="Seu nome completo" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Cargo</label>
-                <input type="text" value={profile.role || myTeamMember?.role || ''} onChange={(e) => handleChange('role', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: Gestor, Operador" />
+                <input type="text" value={profile.role || myTeamMember?.role || ''} onChange={(e) => handleChange('role', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent" placeholder="Ex: Gestor, Operador" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">CPF</label>
-                <input type="text" value={maskCpf(profile.cpf)} onChange={(e) => handleChange('cpf', e.target.value.replace(/\D/g, '').slice(0, 11))} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="000.000.000-00" maxLength={14} />
+                <input type="text" value={maskCpf(profile.cpf)} onChange={(e) => handleChange('cpf', e.target.value.replace(/\D/g, '').slice(0, 11))} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent" placeholder="000.000.000-00" maxLength={14} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">E-mail</label>
-                <input type="email" value={profile.email || ''} onChange={(e) => handleChange('email', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="email@exemplo.com" />
+                <input type="email" value={profile.email || ''} onChange={(e) => handleChange('email', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent" placeholder="email@exemplo.com" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Telefone</label>
-                <input type="text" value={profile.phone || ''} onChange={(e) => handleChange('phone', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="(00) 00000-0000" />
+                <input type="text" value={profile.phone || ''} onChange={(e) => handleChange('phone', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent" placeholder="(00) 00000-0000" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Data de inicio</label>
-                <input type="date" value={profile.startDate || ''} onChange={(e) => handleChange('startDate', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                <input type="date" value={profile.startDate || ''} onChange={(e) => handleChange('startDate', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent" />
               </div>
             </div>
             <div className="mt-4 flex justify-end">
-              <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">Salvar Dados</button>
+              <button onClick={handleSave} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">Salvar Dados</button>
             </div>
           </div>
 
@@ -344,16 +345,16 @@ export function SettingsPage() {
                     <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Salario Mensal</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500">R$</span>
-                      <input type="number" value={profile.salaryMonth || ''} onChange={(e) => handleChange('salaryMonth', e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="3000" min="0" step="100" />
+                      <input type="number" value={profile.salaryMonth || ''} onChange={(e) => handleChange('salaryMonth', e.target.value)} className="w-full pl-8 pr-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent" placeholder="3000" min="0" step="100" />
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Horas/Mes</label>
-                    <input type="number" value={profile.hoursMonth || ''} onChange={(e) => handleChange('hoursMonth', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="176" min="1" />
+                    <input type="number" value={profile.hoursMonth || ''} onChange={(e) => handleChange('hoursMonth', e.target.value)} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent" placeholder="176" min="1" />
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end">
-                  <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">Salvar</button>
+                  <button onClick={handleSave} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">Salvar</button>
                 </div>
               </div>
             )}
@@ -367,7 +368,7 @@ export function SettingsPage() {
                 <span className="text-xs text-slate-400 dark:text-slate-500">{companies.length} empresa{companies.length !== 1 ? 's' : ''}</span>
                 <button
                   onClick={() => { setShowCompanyForm(!showCompanyForm); setEditingCompany(null); setCompanyName(''); setCompanyColor(0); setCompanyImage(null); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-xs font-medium"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                   Nova Empresa
@@ -384,7 +385,7 @@ export function SettingsPage() {
                   type="text"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                   placeholder="Nome da empresa"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && companyName.trim()) {
@@ -438,7 +439,7 @@ export function SettingsPage() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 500 * 1024) { alert('Imagem muito grande! Max 500KB.'); return; }
+                      if (file.size > 500 * 1024) { toast.warning('Imagem muito grande! Max 500KB.'); return; }
                       const reader = new FileReader();
                       reader.onload = (ev) => setCompanyImage(ev.target.result);
                       reader.readAsDataURL(file);
@@ -463,7 +464,7 @@ export function SettingsPage() {
                   setShowCompanyForm(false);
                 }}
                 disabled={!companyName.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap disabled:opacity-50"
+                className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium whitespace-nowrap disabled:opacity-50"
               >
                 {editingCompany ? 'Salvar' : 'Criar'}
               </button>
@@ -566,7 +567,7 @@ export function SettingsPage() {
               {isManager && (
                 <button
                   onClick={() => setShowAddMemberModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                   Novo Funcionario
@@ -602,7 +603,7 @@ export function SettingsPage() {
                       type="text"
                       value={newMemberName}
                       onChange={(e) => setNewMemberName(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                       placeholder="Ex: Robert Silva"
                     />
                   </div>
@@ -615,7 +616,7 @@ export function SettingsPage() {
                         type="email"
                         value={newMemberEmail}
                         onChange={(e) => setNewMemberEmail(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                         placeholder="email@empresa.com"
                       />
                     </div>
@@ -625,7 +626,7 @@ export function SettingsPage() {
                         type="password"
                         value={newMemberPassword}
                         onChange={(e) => setNewMemberPassword(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                         placeholder="Min. 6 caracteres"
                       />
                     </div>
@@ -641,7 +642,7 @@ export function SettingsPage() {
                             type="text"
                             value={newMemberRole}
                             onChange={(e) => setNewMemberRole(e.target.value)}
-                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                             placeholder="Digite o cargo"
                             autoFocus
                           />
@@ -661,7 +662,7 @@ export function SettingsPage() {
                               setNewMemberRole(e.target.value);
                             }
                           }}
-                          className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                         >
                           <option value="">Selecione...</option>
                           {CARGO_OPTIONS.map(c => (
@@ -700,14 +701,14 @@ export function SettingsPage() {
                         type="time"
                         value={newMemberWorkStart}
                         onChange={(e) => setNewMemberWorkStart(e.target.value)}
-                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                       />
                       <span className="text-xs text-slate-400 dark:text-slate-500">ate</span>
                       <input
                         type="time"
                         value={newMemberWorkEnd}
                         onChange={(e) => setNewMemberWorkEnd(e.target.value)}
-                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                       />
                     </div>
                   </div>
@@ -723,7 +724,7 @@ export function SettingsPage() {
                             type="number"
                             value={newMemberSalary}
                             onChange={(e) => setNewMemberSalary(e.target.value)}
-                            className="w-full pl-8 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full pl-8 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                             placeholder="3000"
                             min="0"
                             step="100"
@@ -735,7 +736,7 @@ export function SettingsPage() {
                             type="number"
                             value={newMemberHours}
                             onChange={(e) => setNewMemberHours(e.target.value)}
-                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 text-center focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                             placeholder="176"
                             min="1"
                           />
@@ -785,9 +786,9 @@ export function SettingsPage() {
                   <button
                     disabled={creatingMember}
                     onClick={async () => {
-                      if (!newMemberName.trim()) { alert('Nome e obrigatorio.'); return; }
-                      if (!newMemberEmail.trim()) { alert('Email e obrigatorio para criar a conta.'); return; }
-                      if (!newMemberPassword || newMemberPassword.length < 6) { alert('Senha deve ter no minimo 6 caracteres.'); return; }
+                      if (!newMemberName.trim()) { toast.warning('Nome e obrigatorio.'); return; }
+                      if (!newMemberEmail.trim()) { toast.warning('Email e obrigatorio para criar a conta.'); return; }
+                      if (!newMemberPassword || newMemberPassword.length < 6) { toast.warning('Senha deve ter no minimo 6 caracteres.'); return; }
 
                       setCreatingMember(true);
                       try {
@@ -795,7 +796,7 @@ export function SettingsPage() {
                         const profileRole = newMemberIsGestor ? 'manager' : 'collaborator';
                         const authResult = await createAuthUser(newMemberEmail.trim(), newMemberPassword, newMemberName.trim(), profileRole);
                         if (!authResult.success) {
-                          alert('Erro ao criar conta: ' + authResult.error);
+                          toast.error('Erro ao criar conta: ' + authResult.error);
                           setCreatingMember(false);
                           return;
                         }
@@ -827,15 +828,15 @@ export function SettingsPage() {
                           setNewMemberHours('176');
                           setNewMemberColor(MEMBER_COLORS[(teamMembers.length + 1) % MEMBER_COLORS.length]);
                         } else {
-                          alert('Conta criada mas houve erro ao salvar na equipe. Tente novamente.');
+                          toast.error('Conta criada mas houve erro ao salvar na equipe. Tente novamente.');
                         }
                       } catch (err) {
-                        alert('Erro inesperado: ' + err.message);
+                        toast.error('Erro inesperado: ' + err.message);
                       } finally {
                         setCreatingMember(false);
                       }
                     }}
-                    className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-6 py-2.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {creatingMember ? (
                       <>
@@ -1033,7 +1034,7 @@ export function SettingsPage() {
                       type="text"
                       value={editingMember.name}
                       onChange={(e) => setEditingMember(prev => ({ ...prev, name: e.target.value }))}
-                      className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                     />
                   </div>
 
@@ -1047,7 +1048,7 @@ export function SettingsPage() {
                             type="text"
                             value={editingMember.role}
                             onChange={(e) => setEditingMember(prev => ({ ...prev, role: e.target.value }))}
-                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                             placeholder="Digite o cargo"
                             autoFocus
                           />
@@ -1066,7 +1067,7 @@ export function SettingsPage() {
                               setEditingMember(prev => ({ ...prev, role: e.target.value }));
                             }
                           }}
-                          className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                         >
                           <option value="">Selecione...</option>
                           {CARGO_OPTIONS.map(c => (
@@ -1105,14 +1106,14 @@ export function SettingsPage() {
                         type="time"
                         value={editingMember.workStart || '08:00'}
                         onChange={(e) => setEditingMember(prev => ({ ...prev, workStart: e.target.value }))}
-                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                       />
                       <span className="text-xs text-slate-400 dark:text-slate-500">ate</span>
                       <input
                         type="time"
                         value={editingMember.workEnd || '18:00'}
                         onChange={(e) => setEditingMember(prev => ({ ...prev, workEnd: e.target.value }))}
-                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="flex-1 px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                       />
                     </div>
                   </div>
@@ -1128,7 +1129,7 @@ export function SettingsPage() {
                             type="number"
                             value={editingMember.salaryMonth || ''}
                             onChange={(e) => setEditingMember(prev => ({ ...prev, salaryMonth: e.target.value }))}
-                            className="w-full pl-8 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full pl-8 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                             placeholder="3000"
                             min="0"
                             step="100"
@@ -1140,7 +1141,7 @@ export function SettingsPage() {
                             type="number"
                             value={editingMember.hoursMonth || ''}
                             onChange={(e) => setEditingMember(prev => ({ ...prev, hoursMonth: e.target.value }))}
-                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-700 text-center focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                             placeholder="176"
                             min="1"
                           />
@@ -1176,7 +1177,7 @@ export function SettingsPage() {
                   </button>
                   <button
                     onClick={async () => {
-                      if (!editingMember.name?.trim()) { alert('Nome e obrigatorio.'); return; }
+                      if (!editingMember.name?.trim()) { toast.warning('Nome e obrigatorio.'); return; }
                       const updated = await updateTeamMember(editingMember.id, {
                         name: editingMember.name.trim(),
                         role: editingMember.role?.trim() || '',
@@ -1198,7 +1199,7 @@ export function SettingsPage() {
                       }
                       setEditingMember(null);
                     }}
-                    className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    className="px-6 py-2.5 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium"
                   >
                     Salvar Alteracoes
                   </button>

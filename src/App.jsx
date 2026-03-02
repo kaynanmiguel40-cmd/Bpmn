@@ -29,8 +29,10 @@ const CrmContactsPage = lazy(() => import('./modules/crm/pages/CrmContactsPage')
 const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage'))
 const CrmActivitiesPage = lazy(() => import('./modules/crm/pages/CrmActivitiesPage'))
 const CrmProposalsPage = lazy(() => import('./modules/crm/pages/CrmProposalsPage'))
+const CrmGoalsPage = lazy(() => import('./modules/crm/pages/CrmGoalsPage'))
 const CrmReportsPage = lazy(() => import('./modules/crm/pages/CrmReportsPage'))
 const CrmForecastPage = lazy(() => import('./modules/crm/pages/CrmForecastPage'))
+const CrmTrafficPage = lazy(() => import('./modules/crm/pages/CrmTrafficPage'))
 const CrmSettingsPage = lazy(() => import('./modules/crm/pages/CrmSettingsPage'))
 
 function LoadingSpinner() {
@@ -47,7 +49,7 @@ function UnauthorizedPage() {
       <div className="text-6xl font-bold text-slate-300 dark:text-slate-600">403</div>
       <h1 className="text-xl font-semibold text-slate-700 dark:text-slate-200">Acesso Negado</h1>
       <p className="text-slate-500 dark:text-slate-400">Voce nao tem permissao para acessar esta pagina.</p>
-      <a href="/dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+      <a href="/dashboard" className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors">
         Voltar ao Dashboard
       </a>
     </div>
@@ -94,6 +96,8 @@ function App() {
                 <Route path="proposals" element={<ErrorBoundary><CrmProposalsPage /></ErrorBoundary>} />
                 <Route path="reports" element={<ErrorBoundary><CrmReportsPage /></ErrorBoundary>} />
                 <Route path="forecast" element={<ErrorBoundary><CrmForecastPage /></ErrorBoundary>} />
+                <Route path="goals" element={<ErrorBoundary><CrmGoalsPage /></ErrorBoundary>} />
+                <Route path="traffic" element={<ErrorBoundary><CrmTrafficPage /></ErrorBoundary>} />
                 <Route path="settings" element={<ErrorBoundary><CrmSettingsPage /></ErrorBoundary>} />
               </Route>
             </Route>

@@ -48,7 +48,7 @@ export function SaveAsTemplate({ order, className = '' }) {
                 placeholder="Nome do template..."
                 autoFocus
                 onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               />
             </div>
             <div className="p-4 bg-slate-50 dark:bg-slate-900 flex gap-3 justify-end border-t border-slate-100 dark:border-slate-700">

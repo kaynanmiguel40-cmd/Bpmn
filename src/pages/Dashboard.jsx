@@ -13,6 +13,7 @@ import {
   deleteProject as deleteProjectDB,
 } from '../lib/supabase';
 import { COMPANY_COLORS } from '../constants/colors';
+import { toast } from '../contexts/ToastContext';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -206,7 +207,7 @@ export default function Dashboard() {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 500 * 1024) {
-      alert('Imagem muito grande. Máximo 500KB.');
+      toast.warning('Imagem muito grande. Maximo 500KB.');
       return;
     }
     const reader = new FileReader();

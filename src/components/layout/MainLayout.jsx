@@ -85,7 +85,7 @@ function searchLocalStorage(query) {
   return results.slice(0, 8);
 }
 
-function Header() {
+function Header({ onMenuToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
@@ -142,21 +142,34 @@ function Header() {
   const breadcrumb = getBreadcrumb();
 
   return (
-    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-6 flex items-center justify-between">
-      {/* Breadcrumb */}
-      <div>
-        <nav className="flex items-center gap-2 text-sm">
-          <span className="text-slate-400 dark:text-slate-500">Inicio</span>
-          {breadcrumb.map((item, index) => (
-            <span key={item.path} className="flex items-center gap-2">
-              <span className="text-slate-300 dark:text-slate-600">/</span>
-              <span className={index === breadcrumb.length - 1 ? 'text-slate-800 dark:text-slate-100 font-medium' : 'text-slate-500 dark:text-slate-400'}>
-                {item.title}
+    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 flex items-center justify-between">
+      {/* Mobile menu + Breadcrumb */}
+      <div className="flex items-center gap-3">
+        {/* Hamburger - mobile only */}
+        <button
+          onClick={onMenuToggle}
+          className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors md:hidden"
+          aria-label="Abrir menu"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <div className="hidden md:block">
+          <nav className="flex items-center gap-2 text-sm">
+            <span className="text-slate-400 dark:text-slate-500">Inicio</span>
+            {breadcrumb.map((item, index) => (
+              <span key={item.path} className="flex items-center gap-2">
+                <span className="text-slate-300 dark:text-slate-600">/</span>
+                <span className={index === breadcrumb.length - 1 ? 'text-slate-800 dark:text-slate-100 font-medium' : 'text-slate-500 dark:text-slate-400'}>
+                  {item.title}
+                </span>
               </span>
-            </span>
-          ))}
-        </nav>
-        <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">{getTitle()}</h1>
+            ))}
+          </nav>
+          <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">{getTitle()}</h1>
+        </div>
+        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100 md:hidden">{getTitle()}</h1>
       </div>
 
       {/* Actions */}
@@ -171,7 +184,7 @@ function Header() {
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             onFocus={() => { if (searchQuery.length >= 2) setShowResults(true); }}
-            className="w-64 pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            className="w-64 pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
           />
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">
             <SearchIcon />
@@ -220,6 +233,8 @@ function Header() {
 }
 
 export function MainLayout() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   // Verificacao periodica de prazos e atrasos
   useDeadlineChecker();
   // Som de "pop" quando chega mensagem de chat de outro usuario
@@ -229,14 +244,14 @@ export function MainLayout() {
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 print:block print:bg-white">
       {/* Sidebar */}
       <div className="print:hidden">
-        <Sidebar />
+        <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden transition-all duration-300">
         {/* Header */}
         <div className="print:hidden">
-          <Header />
+          <Header onMenuToggle={() => setMobileMenuOpen(true)} />
         </div>
 
         {/* Page Content */}

@@ -27,6 +27,7 @@ const crmRouteTitles = {
   '/crm/proposals': 'Propostas',
   '/crm/reports': 'Relatorios',
   '/crm/forecast': 'Forecast',
+  '/crm/traffic': 'Trafego Pago',
   '/crm/settings': 'Configuracoes',
 };
 

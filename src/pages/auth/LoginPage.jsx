@@ -73,7 +73,7 @@ export function LoginPage() {
                 required
                 autoComplete="email"
                 aria-required="true"
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                 placeholder="seu@email.com"
               />
             </div>
@@ -92,7 +92,7 @@ export function LoginPage() {
                   required
                   autoComplete="current-password"
                   aria-required="true"
-                  className="w-full px-4 py-3 pr-12 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 pr-12 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
                   placeholder="••••••••"
                 />
                 <button
@@ -123,13 +123,13 @@ export function LoginPage() {
                 <input
                   id="remember"
                   type="checkbox"
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500"
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-fyness-primary focus:ring-fyness-primary"
                 />
                 <label htmlFor="remember" className="ml-2 text-sm text-slate-400">
                   Lembrar de mim
                 </label>
               </div>
-              <a href="#" className="text-sm text-blue-400 hover:text-blue-300">
+              <a href="#" className="text-sm text-fyness-primary hover:text-fyness-secondary">
                 Esqueceu a senha?
               </a>
             </div>
@@ -138,7 +138,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={isSubmitting || loading}
-              className="w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-blue-700 text-white font-medium rounded-lg hover:from-blue-600 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 px-4 bg-fyness-primary text-white font-medium rounded-lg hover:bg-fyness-secondary focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:ring-offset-2 focus:ring-offset-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <span className="flex items-center justify-center gap-2">
@@ -159,7 +159,7 @@ export function LoginPage() {
         {/* Footer */}
         <p className="text-center text-sm text-slate-500">
           Nao tem uma conta?{' '}
-          <span className="text-blue-400 font-medium">
+          <span className="text-fyness-primary font-medium">
             Fale com o administrador
           </span>
         </p>

@@ -78,7 +78,7 @@ function FormModal({ title, children, onClose, onSubmit, submitLabel, isSubmitti
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
             Cancelar
           </button>
-          <button onClick={onSubmit} disabled={isSubmitting} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
+          <button onClick={onSubmit} disabled={isSubmitting} className="px-4 py-2 text-sm bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors disabled:opacity-50">
             {isSubmitting ? 'Salvando...' : submitLabel}
           </button>
         </div>
@@ -532,7 +532,7 @@ export default function EapPage() {
               </p>
             </div>
           </div>
-          <button onClick={() => setShowCreateEap(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
+          <button onClick={() => setShowCreateEap(true)} className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
             <PlusIcon />
             Nova EAP
           </button>
@@ -544,7 +544,7 @@ export default function EapPage() {
             <FolderIcon className="w-16 h-16 text-slate-300 dark:text-slate-600 mb-4" />
             <h3 className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-1">Nenhuma EAP neste projeto</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Crie sua primeira EAP para comecar a gerenciar tarefas no Gantt.</p>
-            <button onClick={() => setShowCreateEap(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
+            <button onClick={() => setShowCreateEap(true)} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
               Criar Primeira EAP
             </button>
           </div>
@@ -581,7 +581,7 @@ export default function EapPage() {
             <PlusIcon />
             Nova EAP Avulsa
           </button>
-          <button onClick={() => setShowCreateFolder(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
+          <button onClick={() => setShowCreateFolder(true)} className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
             <PlusIcon />
             Novo Projeto
           </button>
@@ -593,7 +593,7 @@ export default function EapPage() {
           <FolderIcon className="w-16 h-16 text-slate-300 dark:text-slate-600 mb-4" />
           <h3 className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-1">Nenhum projeto ainda</h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Crie seu primeiro projeto para organizar suas EAPs.</p>
-          <button onClick={() => setShowCreateFolder(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
+          <button onClick={() => setShowCreateFolder(true)} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
             Criar Primeiro Projeto
           </button>
         </div>

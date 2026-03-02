@@ -240,7 +240,7 @@ export default function ReportPage() {
           <button
             onClick={handleGenerate}
             disabled={generating || generatingAll}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-fyness-primary text-white rounded-lg font-medium hover:bg-fyness-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             {generating ? (
               <>

@@ -1,8 +1,8 @@
 /**
  * CrmSidebar - Sidebar dedicada do modulo CRM
  *
- * Navegacao interna do CRM com visual dark/indigo.
- * Inclui botao "Voltar ao Fyness" e icones lucide-react.
+ * Mesmo padrao visual da sidebar principal (Fyness OS).
+ * Inclui logo Fyness, hover expand/collapse e botao pin.
  */
 
 import { useState } from 'react';
@@ -18,22 +18,37 @@ import {
   Settings,
   TrendingUp,
   ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
   Target,
+  Trophy,
+  Megaphone,
 } from 'lucide-react';
+import logoFyness from '../../../../assets/logo-fyness.png';
+
+const PinIcon = ({ pinned }) => (
+  <svg className="w-4 h-4" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+      d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+    />
+  </svg>
+);
 
 const crmNavItems = [
   { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { section: 'Comercial' },
   { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline' },
   { to: '/crm/deals', icon: Target, label: 'Negocios' },
+  { to: '/crm/proposals', icon: FileText, label: 'Propostas' },
+  { section: 'Cadastros' },
   { to: '/crm/contacts', icon: Users, label: 'Contatos' },
   { to: '/crm/companies', icon: Building2, label: 'Empresas' },
   { to: '/crm/activities', icon: CalendarCheck, label: 'Atividades' },
-  { to: '/crm/proposals', icon: FileText, label: 'Propostas' },
-  { divider: true },
+  { section: 'Marketing' },
+  { to: '/crm/traffic', icon: Megaphone, label: 'Trafego Pago' },
+  { section: 'Gestao' },
+  { to: '/crm/goals', icon: Trophy, label: 'Metas' },
   { to: '/crm/reports', icon: BarChart3, label: 'Relatorios' },
   { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },
+  { divider: true },
   { to: '/crm/settings', icon: Settings, label: 'Configuracoes' },
 ];
 
@@ -50,12 +65,12 @@ function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact }) {
       aria-current={isActive ? 'page' : undefined}
       aria-label={label}
       className={`
-        flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm
+        flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200
         ${isActive
-          ? 'bg-indigo-600/20 text-indigo-300 font-medium border-l-2 border-indigo-400'
-          : 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 border-l-2 border-transparent'
+          ? 'bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary dark:text-blue-400 font-medium'
+          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
         }
-        ${isCollapsed ? 'justify-center px-2' : ''}
+        ${isCollapsed ? 'justify-center' : ''}
       `}
       title={isCollapsed ? label : undefined}
     >
@@ -67,32 +82,53 @@ function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact }) {
 
 export function CrmSidebar() {
   const navigate = useNavigate();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isPinned, setIsPinned] = useState(() => {
+    try { return localStorage.getItem('crm-sidebar-pinned') === 'true'; } catch { return false; }
+  });
+  const [isCollapsed, setIsCollapsed] = useState(() => !isPinned);
+
+  const togglePin = () => {
+    const next = !isPinned;
+    setIsPinned(next);
+    setIsCollapsed(!next);
+    try { localStorage.setItem('crm-sidebar-pinned', String(next)); } catch {}
+  };
 
   return (
     <aside
+      onMouseEnter={() => { if (!isPinned) setIsCollapsed(false); }}
+      onMouseLeave={() => { if (!isPinned) setIsCollapsed(true); }}
       className={`
-        flex flex-col bg-slate-900 border-r border-slate-700/50 transition-all duration-300 h-screen sticky top-0
-        ${isCollapsed ? 'w-16' : 'w-56'}
+        flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 h-screen sticky top-0
+        ${isCollapsed ? 'w-16' : 'w-64'}
       `}
     >
-      {/* Header */}
-      <div className="h-14 flex items-center justify-between px-3 border-b border-slate-700/50">
-        {!isCollapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-              <Target size={14} className="text-white" />
+      {/* Logo Header */}
+      <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-700">
+        {isCollapsed ? (
+          <img src={logoFyness} alt="Fyness" className="w-8 h-8 object-contain mx-auto" />
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <img src={logoFyness} alt="Fyness" className="w-8 h-8 object-contain" />
+              <div>
+                <span className="font-bold text-slate-800 dark:text-slate-100">Fyness</span>
+                <span className="ml-1 text-xs font-medium text-fyness-primary">CRM</span>
+              </div>
             </div>
-            <span className="font-semibold text-sm text-slate-100">CRM</span>
-          </div>
+            <button
+              onClick={togglePin}
+              title={isPinned ? 'Desafixar menu' : 'Fixar menu aberto'}
+              className={`p-1.5 rounded-lg transition-colors ${
+                isPinned
+                  ? 'text-fyness-primary dark:text-blue-400 bg-fyness-primary/10 dark:bg-blue-900/30'
+                  : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <PinIcon pinned={isPinned} />
+            </button>
+          </>
         )}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
-          aria-label={isCollapsed ? 'Expandir sidebar' : 'Recolher sidebar'}
-        >
-          {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
       </div>
 
       {/* Voltar ao Fyness */}
@@ -100,8 +136,8 @@ export function CrmSidebar() {
         <button
           onClick={() => navigate('/dashboard')}
           className={`
-            flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-colors
-            ${isCollapsed ? 'justify-center' : ''}
+            flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors
+            ${isCollapsed ? 'justify-center px-2' : ''}
           `}
           title="Voltar ao Fyness"
         >
@@ -111,10 +147,18 @@ export function CrmSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto" role="navigation" aria-label="Menu CRM">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto" role="navigation" aria-label="Menu CRM">
         {crmNavItems.map((item, idx) =>
           item.divider ? (
-            <div key={`div-${idx}`} className="my-3 border-t border-slate-700/50" />
+            <div key={`div-${idx}`} className="my-3 border-t border-slate-200 dark:border-slate-700" />
+          ) : item.section ? (
+            !isCollapsed && (
+              <div key={`sec-${idx}`} className="pt-4 pb-1 px-3">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  {item.section}
+                </span>
+              </div>
+            )
           ) : (
             <CrmNavItem
               key={item.to}
@@ -129,9 +173,9 @@ export function CrmSidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-3 border-t border-slate-700/50">
+      <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-700">
         {!isCollapsed && (
-          <div className="text-[10px] text-slate-600 text-center">
+          <div className="text-[10px] text-slate-400 dark:text-slate-600 text-center">
             Fyness CRM v1.0
           </div>
         )}

@@ -69,7 +69,7 @@ export function DependencySelector({ orders = [], selected = [], onChange, curre
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar O.S...."
               autoFocus
-              className="w-full px-3 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-fyness-primary"
             />
           </div>
           <div className="overflow-y-auto">

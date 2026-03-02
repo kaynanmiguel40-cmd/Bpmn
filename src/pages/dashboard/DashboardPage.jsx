@@ -15,10 +15,11 @@ import { useOSOrders, useTeamMembers, useAgendaEvents } from '../../hooks/querie
 import {
   calcOSHours, calcEstimatedHours, calcOSCost, calcKPIs, getMemberHourlyRate,
   formatCurrency, formatLateTime, timeAgo,
-  isCurrentMonth, isLastMonth,
+  isCurrentMonth, isLastMonth, isInRange, filterByPeriod,
   loadProfileSync, findCurrentUser, namesMatch,
   calcCapacity, calcAvgLeadTime, calcSLACompliance, calcCategoryBreakdown,
 } from '../../lib/kpiUtils';
+import { toInputDate } from '../../lib/formatters';
 import { getHistory, calculateTrends, saveMonthlySnapshot } from '../../lib/kpiSnapshotService';
 import { TrendCard } from '../../components/trends/TrendCard';
 import { ProjectionWidget } from '../../components/trends/ProjectionWidget';
@@ -113,7 +114,7 @@ function GaugeChart({ value, max = 100, label, color = '#3b82f6', size = 120 }) 
         {/* Background arc */}
         <path
           d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
-          fill="none" stroke="#e2e8f0" strokeWidth="8" strokeLinecap="round"
+          fill="none" className="stroke-slate-200 dark:stroke-slate-600" strokeWidth="8" strokeLinecap="round"
         />
         {/* Value arc */}
         {pct > 0 && (
@@ -122,7 +123,7 @@ function GaugeChart({ value, max = 100, label, color = '#3b82f6', size = 120 }) 
             fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
           />
         )}
-        <text x={cx} y={cy - 8} textAnchor="middle" className="text-lg font-bold" fill="#1e293b" fontSize="18">
+        <text x={cx} y={cy - 8} textAnchor="middle" className="text-lg font-bold fill-slate-800 dark:fill-slate-100" fontSize="18">
           {value}{typeof max === 'number' && max <= 100 ? '%' : ''}
         </text>
       </svg>
@@ -149,19 +150,18 @@ function HorizontalBar({ label, value, maxValue, color, suffix = '' }) {
 
 // ─── Dashboard Colaborador ────────────────────────────────────────
 
-function CollaboratorDashboard({ profile, currentUser, orders, events }) {
+function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange }) {
   const now = new Date();
   const targetHours = profile.hoursMonth || 176;
   const [kpiHistory, setKpiHistory] = useState([]);
 
   const myOrders = useMemo(() => {
-    const userName = (currentUser.name || '').toLowerCase().trim();
     return orders.filter(o => {
       return o.assignee === currentUser.id || namesMatch(o.assignee, currentUser.name) || namesMatch(o.assignedTo, currentUser.name);
     });
   }, [orders, currentUser]);
   const myEvents = useMemo(() => events.filter(e => e.assignee === currentUser.id), [events, currentUser]);
-  const kpi = useMemo(() => calcKPIs(myOrders, myEvents, targetHours), [myOrders, myEvents, targetHours]);
+  const kpi = useMemo(() => calcKPIs(myOrders, myEvents, targetHours, dateRange), [myOrders, myEvents, targetHours, dateRange]);
 
   // Carregar historico de KPIs e salvar snapshot atual
   useEffect(() => {
@@ -350,8 +350,8 @@ function CollaboratorDashboard({ profile, currentUser, orders, events }) {
                     const gy = padT + chartH - ((v - minVal) / (maxVal - minVal)) * chartH;
                     return (
                       <g key={v}>
-                        <line x1={padL} y1={gy} x2={W - padR} y2={gy} stroke="#e2e8f0" strokeWidth="0.5" />
-                        <text x={padL - 6} y={gy + 4} textAnchor="end" fill="#94a3b8" fontSize="10">{v}%</text>
+                        <line x1={padL} y1={gy} x2={W - padR} y2={gy} className="stroke-slate-200 dark:stroke-slate-600" strokeWidth="0.5" />
+                        <text x={padL - 6} y={gy + 4} textAnchor="end" className="fill-slate-400 dark:fill-slate-500" fontSize="10">{v}%</text>
                       </g>
                     );
                   })}
@@ -363,12 +363,12 @@ function CollaboratorDashboard({ profile, currentUser, orders, events }) {
                   <path d={pathD} fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" filter="url(#glow)" />
                   {/* Month labels */}
                   {points.map((p, i) => (
-                    <text key={i} x={p.x} y={H - 8} textAnchor="middle" fill="#94a3b8" fontSize="10" className="capitalize">{p.label}</text>
+                    <text key={i} x={p.x} y={H - 8} textAnchor="middle" className="fill-slate-400 dark:fill-slate-500 capitalize" fontSize="10">{p.label}</text>
                   ))}
                   {/* Data points */}
                   {points.map((p, i) => (
                     <g key={i}>
-                      <circle cx={p.x} cy={p.y} r="5" fill="white" stroke="#3b82f6" strokeWidth="2.5" />
+                      <circle cx={p.x} cy={p.y} r="5" className="fill-white dark:fill-slate-800" stroke="#3b82f6" strokeWidth="2.5" />
                       {/* Value label on point */}
                       <text x={p.x} y={p.y - 10} textAnchor="middle" fill={p.val >= 90 ? '#059669' : p.val >= 60 ? '#2563eb' : '#ea580c'} fontSize="10" fontWeight="bold">
                         {p.val}%
@@ -376,7 +376,7 @@ function CollaboratorDashboard({ profile, currentUser, orders, events }) {
                     </g>
                   ))}
                   {/* Current value highlight */}
-                  <circle cx={lastPoint.x} cy={lastPoint.y} r="6" fill="#3b82f6" stroke="white" strokeWidth="2.5" filter="url(#glow)" />
+                  <circle cx={lastPoint.x} cy={lastPoint.y} r="6" fill="#3b82f6" className="stroke-white dark:stroke-slate-800" strokeWidth="2.5" filter="url(#glow)" />
                 </svg>
               );
             })()}
@@ -516,9 +516,12 @@ function CollaboratorDashboard({ profile, currentUser, orders, events }) {
 
 // ─── Dashboard Gestor ─────────────────────────────────────────────
 
-function ManagerDashboard({ profile, orders, events, selectedMember, onMemberChange, allMembers }) {
+function ManagerDashboard({ profile, orders, events, selectedMember, onMemberChange, allMembers, dateRange }) {
   const now = new Date();
   const targetHours = profile.hoursMonth || 176;
+
+  // Helper: check se data esta no periodo selecionado
+  const inPeriod = (dateStr) => dateRange ? isInRange(dateStr, dateRange.start, dateRange.end) : isCurrentMonth(dateStr);
 
   // Filtrar dados pelo membro selecionado
   const filteredOrders = useMemo(() => {
@@ -535,7 +538,7 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
     return events.filter(e => e.assignee === selectedMember);
   }, [events, selectedMember]);
 
-  const kpi = useMemo(() => calcKPIs(filteredOrders, filteredEvents, targetHours), [filteredOrders, filteredEvents, targetHours]);
+  const kpi = useMemo(() => calcKPIs(filteredOrders, filteredEvents, targetHours, dateRange), [filteredOrders, filteredEvents, targetHours, dateRange]);
 
   // KPIs por membro
   const memberKPIs = useMemo(() => {
@@ -544,10 +547,10 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
         o.assignee === member.id || namesMatch(member.name, o.assignee) || namesMatch(member.name, o.assignedTo)
       );
       const mEvents = events.filter(e => e.assignee === member.id);
-      const mk = calcKPIs(mOrders, mEvents, targetHours);
+      const mk = calcKPIs(mOrders, mEvents, targetHours, dateRange);
       return { member, kpi: mk };
     });
-  }, [orders, events, targetHours, allMembers]);
+  }, [orders, events, targetHours, allMembers, dateRange]);
 
   // Ranking por produtividade
   const ranking = useMemo(() => {
@@ -556,11 +559,18 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
 
   // Custos por O.S. (usando hourlyRate individual de cada membro)
   const costData = useMemo(() => {
-    const doneMonth = orders.filter(o => o.status === 'done' && isCurrentMonth(o.actualEnd));
-    const doneLastMonth = orders.filter(o => o.status === 'done' && isLastMonth(o.actualEnd));
+    const doneInPeriod = orders.filter(o => o.status === 'done' && inPeriod(o.actualEnd));
 
-    const costsMonth = doneMonth.map(o => calcOSCost(o, allMembers));
-    const costsLastMonth = doneLastMonth.map(o => calcOSCost(o, allMembers));
+    // Periodo anterior equivalente
+    const s = new Date(dateRange.start);
+    const e = new Date(dateRange.end);
+    const durationMs = e - s;
+    const prevEnd = new Date(s.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - durationMs);
+    const donePrev = orders.filter(o => o.status === 'done' && isInRange(o.actualEnd, prevStart.toISOString(), prevEnd.toISOString()));
+
+    const costsMonth = doneInPeriod.map(o => calcOSCost(o, allMembers));
+    const costsLastMonth = donePrev.map(o => calcOSCost(o, allMembers));
 
     const totalCostMonth = costsMonth.reduce((s, c) => s + c.totalCost, 0);
     const totalLaborMonth = costsMonth.reduce((s, c) => s + c.laborCost, 0);
@@ -573,12 +583,12 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
     const costChange = avgCostLastMonth > 0 ? ((avgCostMonth - avgCostLastMonth) / avgCostLastMonth) * 100 : 0;
 
     return { totalCostMonth, totalLaborMonth, totalMaterialMonth, avgCostMonth, costChange, countMonth: costsMonth.length };
-  }, [orders, allMembers]);
+  }, [orders, allMembers, dateRange]);
 
-  // Custo de reunioes do mes
+  // Custo de reunioes do periodo
   const meetingCostData = useMemo(() => {
     const monthMeetings = events.filter(e =>
-      e.type === 'meeting' && isCurrentMonth(e.startDate)
+      e.type === 'meeting' && inPeriod(e.startDate)
     );
     const costs = monthMeetings.map(meeting => {
       const start = new Date(meeting.startDate);
@@ -596,7 +606,7 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
     const total = costs.reduce((s, c) => s + c, 0);
     const avg = costs.length > 0 ? total / costs.length : 0;
     return { total, avg, count: monthMeetings.length };
-  }, [events, allMembers]);
+  }, [events, allMembers, dateRange]);
 
   // Atividade recente
   const recentActivity = useMemo(() => {
@@ -941,14 +951,14 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
       {/* Financial + Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Custo por Colaborador */}
-        <SectionCard title="Custo por Colaborador (Mes)">
+        <SectionCard title="Custo por Colaborador (Periodo)">
           {allMembers.some(m => getMemberHourlyRate(m) > 0) ? (
             <div className="p-5 space-y-3">
               {memberKPIs.map(({ member, kpi: mk }) => {
                 const rate = getMemberHourlyRate(member);
                 const laborCost = mk.hoursMonth * rate;
                 // Gastos materiais do membro neste mes
-                const memberOrders = orders.filter(o => o.status === 'done' && isCurrentMonth(o.actualEnd) && (o.assignee || '').toLowerCase().trim() === member.name.toLowerCase().trim());
+                const memberOrders = orders.filter(o => o.status === 'done' && inPeriod(o.actualEnd) && (o.assignee || '').toLowerCase().trim() === member.name.toLowerCase().trim());
                 const materialCost = memberOrders.reduce((s, o) => s + (o.expenses || []).reduce((a, e) => a + (e.value || 0) * (e.quantity || 1), 0), 0);
                 const totalCost = laborCost + materialCost;
                 const costPerOS = mk.doneMonth > 0 ? totalCost / mk.doneMonth : 0;
@@ -1044,14 +1054,72 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
 
 // ─── Componente Principal ─────────────────────────────────────────
 
+// ─── Filtro de Data ──────────────────────────────────────────────
+
+function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange }) {
+  const now = new Date();
+
+  const presets = [
+    { label: 'Este Mes', start: toInputDate(new Date(now.getFullYear(), now.getMonth(), 1)), end: toInputDate(now) },
+    { label: 'Mes Anterior', start: toInputDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)), end: toInputDate(new Date(now.getFullYear(), now.getMonth(), 0)) },
+    { label: 'Ultimos 7d', start: toInputDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)), end: toInputDate(now) },
+    { label: 'Ultimos 30d', start: toInputDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)), end: toInputDate(now) },
+  ];
+
+  const activePreset = presets.findIndex(p => p.start === startDate && p.end === endDate);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1.5">
+        <input
+          type="date"
+          value={startDate}
+          onChange={e => onStartChange(e.target.value)}
+          className="px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-slate-200"
+        />
+        <span className="text-xs text-slate-400">ate</span>
+        <input
+          type="date"
+          value={endDate}
+          onChange={e => onEndChange(e.target.value)}
+          className="px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-slate-200"
+        />
+      </div>
+      <div className="flex items-center gap-1">
+        {presets.map((p, i) => (
+          <button
+            key={i}
+            onClick={() => { onStartChange(p.start); onEndChange(p.end); }}
+            className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+              activePreset === i
+                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Componente Principal ─────────────────────────────────────────
+
 export function DashboardPage() {
   const [profile, setProfile] = useState({});
   const [selectedMember, setSelectedMember] = useState('all');
+
+  const now = new Date();
+  const [startDate, setStartDate] = useState(() => toInputDate(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [endDate, setEndDate] = useState(() => toInputDate(now));
 
   const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
   const { data: events = [], isLoading: loadingEvents } = useAgendaEvents();
   const { data: teamMembers = [], isLoading: loadingMembers } = useTeamMembers();
   const loading = loadingOrders || loadingEvents || loadingMembers;
+
+  const dateRange = useMemo(() => ({ start: startDate, end: endDate }), [startDate, endDate]);
 
   // Realtime: atualiza automaticamente quando dados mudam no Supabase
   useRealtimeOSOrders();
@@ -1096,10 +1164,16 @@ export function DashboardPage() {
   };
 
   const viewToggle = (
-    <div className="flex items-center justify-end mb-4">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onStartChange={setStartDate}
+        onEndChange={setEndDate}
+      />
       <button
         onClick={toggleView}
-        className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors shadow-sm"
+        className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors shadow-sm shrink-0"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={role === 'manager'
@@ -1158,6 +1232,7 @@ export function DashboardPage() {
           selectedMember={selectedMember}
           onMemberChange={setSelectedMember}
           allMembers={allMembers}
+          dateRange={dateRange}
         />
       </>
     );
@@ -1173,6 +1248,7 @@ export function DashboardPage() {
           currentUser={viewedMember}
           orders={orders}
           events={events}
+          dateRange={dateRange}
         />
       </>
     );
@@ -1186,6 +1262,7 @@ export function DashboardPage() {
         currentUser={currentUser}
         orders={orders}
         events={events}
+        dateRange={dateRange}
       />
     </>
   );

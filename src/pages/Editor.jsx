@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
+import { toast } from '../contexts/ToastContext';
 import BpmnEditor from '../components/BpmnEditor';
 import PropertiesPanel from '../components/PropertiesPanel';
 import ProcessOrderPanel from '../components/ProcessOrderPanel';
@@ -322,7 +323,7 @@ export default function Editor() {
 
     // Verificar se já foi adicionado
     if (bpmnEditorRef.current.hasFlowElement(flowToAdd.id)) {
-      alert('Este fluxo já foi adicionado ao canvas!');
+      toast.warning('Este fluxo ja foi adicionado ao canvas!');
       return;
     }
 
@@ -1028,7 +1029,7 @@ export default function Editor() {
                       const file = e.target.files?.[0];
                       if (file) {
                         if (file.size > 2 * 1024 * 1024) {
-                          alert('Imagem muito grande! Tamanho máximo: 2MB.');
+                          toast.warning('Imagem muito grande! Tamanho maximo: 2MB.');
                           e.target.value = '';
                           return;
                         }

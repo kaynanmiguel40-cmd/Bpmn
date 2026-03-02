@@ -7,15 +7,15 @@
  * - subtitle: Texto auxiliar (ex: "vs mes anterior")
  * - trend: { value: "+12%", up: true } para indicador de tendencia
  * - icon: Componente lucide-react
- * - color: 'indigo' | 'emerald' | 'amber' | 'rose' | 'violet'
+ * - color: 'blue' | 'emerald' | 'amber' | 'rose' | 'violet'
  * - loading: boolean
  */
 
 const colorMap = {
-  indigo: {
-    bg: 'bg-indigo-50 dark:bg-indigo-900/20',
-    icon: 'text-indigo-600 dark:text-indigo-400',
-    ring: 'ring-indigo-200 dark:ring-indigo-800',
+  blue: {
+    bg: 'bg-blue-50 dark:bg-blue-900/20',
+    icon: 'text-blue-600 dark:text-blue-400',
+    ring: 'ring-blue-200 dark:ring-blue-800',
   },
   emerald: {
     bg: 'bg-emerald-50 dark:bg-emerald-900/20',
@@ -54,8 +54,8 @@ const colorMap = {
   },
 };
 
-export function CrmKpiCard({ title, value, subtitle, trend, icon: Icon, color = 'indigo', loading }) {
-  const colors = colorMap[color] || colorMap.indigo;
+export function CrmKpiCard({ title, value, subtitle, trend, icon: Icon, color = 'blue', loading }) {
+  const colors = colorMap[color] || colorMap.blue;
 
   if (loading) {
     return (

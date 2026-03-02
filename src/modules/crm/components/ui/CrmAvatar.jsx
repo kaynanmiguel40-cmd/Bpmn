@@ -15,7 +15,7 @@ const sizeMap = {
 };
 
 const colors = [
-  'from-indigo-500 to-indigo-700',
+  'from-fyness-primary to-fyness-secondary',
   'from-violet-500 to-violet-700',
   'from-emerald-500 to-emerald-700',
   'from-amber-500 to-amber-700',

@@ -486,7 +486,7 @@ export default function ChatSidePanel({ isOpen, onClose, userName, userId }) {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Buscar conversa..."
-                      className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
                     />
                   </div>
                 </div>

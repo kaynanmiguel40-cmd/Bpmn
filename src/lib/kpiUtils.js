@@ -10,6 +10,9 @@ import {
   WORK_DAYS_PER_WEEK,
   DAYS_PER_WEEK,
   REWORK_THRESHOLD,
+  WORK_START_HOUR,
+  WORK_END_HOUR,
+  WORK_HOURS_PER_DAY,
 } from '../constants/sla';
 
 // Re-exportar formatters para manter compatibilidade com imports existentes
@@ -32,30 +35,85 @@ export function isLastMonth(dateStr) {
   return d.getMonth() === lastMonth.getMonth() && d.getFullYear() === lastMonth.getFullYear();
 }
 
+// ─── Helpers de Horas Uteis ──────────────────────────────────────
+
+/** Calcula horas uteis entre duas datas (seg-sex, 08h-18h) */
+export function calcWorkingHoursBetween(startStr, endStr) {
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  if (end <= start) return 0;
+
+  // Mesmo dia
+  if (start.toDateString() === end.toDateString()) {
+    const day = start.getDay();
+    if (day === 0 || day === 6) return 0;
+    const s = Math.max(start.getHours() + start.getMinutes() / 60, WORK_START_HOUR);
+    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END_HOUR);
+    return Math.max(0, e - s);
+  }
+
+  // Multiplos dias
+  let totalHours = 0;
+  const current = new Date(start);
+
+  // Primeiro dia: do inicio ate fim do expediente
+  if (current.getDay() !== 0 && current.getDay() !== 6) {
+    const s = Math.max(current.getHours() + current.getMinutes() / 60, WORK_START_HOUR);
+    totalHours += Math.max(0, WORK_END_HOUR - s);
+  }
+
+  // Dias intermediarios: horas uteis por dia
+  current.setDate(current.getDate() + 1);
+  current.setHours(0, 0, 0, 0);
+  const endDay = new Date(end);
+  endDay.setHours(0, 0, 0, 0);
+
+  while (current < endDay) {
+    const day = current.getDay();
+    if (day !== 0 && day !== 6) {
+      totalHours += WORK_HOURS_PER_DAY;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  // Ultimo dia: do inicio do expediente ate o fim
+  if (end.getDay() !== 0 && end.getDay() !== 6) {
+    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END_HOUR);
+    totalHours += Math.max(0, e - WORK_START_HOUR);
+  }
+
+  return totalHours;
+}
+
 // ─── Helpers de O.S. ─────────────────────────────────────────────
 
-/** Horas realizadas: usa actualStart->actualEnd (tempo real total), checklist como fallback */
+/** Horas realizadas: usa actualStart->actualEnd (horas uteis seg-sex 08-18h), checklist como fallback */
 export function calcOSHours(order) {
-  // Prioridade 1: diferenca real entre actualStart e actualEnd (mais confiavel)
+  // Prioridade 1: actualStart/actualEnd (horas uteis, 08-18h seg-sex)
   if (order.actualStart && order.actualEnd) {
-    const diffMs = new Date(order.actualEnd) - new Date(order.actualStart);
-    if (diffMs > 0) return diffMs / (1000 * 60 * 60);
+    const hours = calcWorkingHoursBetween(order.actualStart, order.actualEnd);
+    if (hours > 0) return hours;
   }
-  // Prioridade 2: soma do checklist (quando nao tem datas reais)
+  // Prioridade 2: soma real do checklist usando timestamps (startedAt/completedAt)
   const cl = order.checklist || [];
-  const totalChecklistMin = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
-  if (totalChecklistMin > 0) return totalChecklistMin / 60;
+  let totalMin = 0;
+  for (const item of cl) {
+    if (item.startedAt && item.completedAt) {
+      const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
+      if (diff > 0) totalMin += diff;
+    }
+  }
+  if (totalMin > 0) return totalMin / 60;
+  // Prioridade 3: soma de durationMin estimado
+  const estimatedMin = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
+  if (estimatedMin > 0) return estimatedMin / 60;
   return 0;
 }
 
-/** Horas previstas (estimatedStart -> estimatedEnd) em horas reais */
+/** Horas previstas (estimatedStart -> estimatedEnd) em horas uteis */
 export function calcEstimatedHours(order) {
   if (!order.estimatedStart || !order.estimatedEnd) return 0;
-  const start = new Date(order.estimatedStart);
-  const end = new Date(order.estimatedEnd);
-  const diffMs = end - start;
-  if (diffMs <= 0) return 0;
-  return diffMs / (1000 * 60 * 60);
+  return calcWorkingHoursBetween(order.estimatedStart, order.estimatedEnd);
 }
 
 /** Dias corridos entre duas datas (min 0) */
@@ -129,6 +187,17 @@ export function findCurrentUser(profile, teamMembers) {
 
 // ─── Filtro por Período ──────────────────────────────────────────
 
+/** Verifica se uma data string esta dentro de um range [start, end] */
+export function isInRange(dateStr, startDate, endDate) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const s = new Date(startDate);
+  const e = new Date(endDate);
+  s.setHours(0, 0, 0, 0);
+  e.setHours(23, 59, 59, 999);
+  return d >= s && d <= e;
+}
+
 /** Filtra ordens e eventos dentro de um range de datas */
 export function filterByPeriod(ordersList, eventsList, startDate, endDate) {
   const start = new Date(startDate);
@@ -165,12 +234,35 @@ export function filterByPeriod(ordersList, eventsList, startDate, endDate) {
 
 // ─── Cálculo Central de KPIs ─────────────────────────────────────
 
-/** Calcula todos os KPIs a partir de uma lista de O.S. e eventos */
-export function calcKPIs(ordersList, eventsList, targetHours) {
+/**
+ * Calcula todos os KPIs a partir de uma lista de O.S. e eventos.
+ * @param {Array} ordersList
+ * @param {Array} eventsList
+ * @param {number} targetHours
+ * @param {{ start: string, end: string }|null} dateRange - range customizado (null = mes atual)
+ */
+export function calcKPIs(ordersList, eventsList, targetHours, dateRange = null) {
   const now = new Date();
+
+  // Funcoes de periodo: usa range customizado ou mes atual/anterior
+  const inPeriod = dateRange
+    ? (dateStr) => isInRange(dateStr, dateRange.start, dateRange.end)
+    : isCurrentMonth;
+
+  // Periodo anterior equivalente (mesma duracao, recuado)
+  let prevPeriodFn = isLastMonth;
+  if (dateRange) {
+    const s = new Date(dateRange.start);
+    const e = new Date(dateRange.end);
+    const durationMs = e - s;
+    const prevEnd = new Date(s.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - durationMs);
+    prevPeriodFn = (dateStr) => isInRange(dateStr, prevStart.toISOString(), prevEnd.toISOString());
+  }
+
   const done = ordersList.filter(o => o.status === 'done');
-  const doneMonth = done.filter(o => isCurrentMonth(o.actualEnd));
-  const doneLastMonth = done.filter(o => isLastMonth(o.actualEnd));
+  const doneMonth = done.filter(o => inPeriod(o.actualEnd));
+  const doneLastMonth = done.filter(o => prevPeriodFn(o.actualEnd));
   const inProgress = ordersList.filter(o => o.status === 'in_progress');
   const available = ordersList.filter(o => o.status === 'available');
 
@@ -180,7 +272,7 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
   const deliveryThisMonth = doneMonth.map(o => calcDeliveryDays(o)).filter(d => d !== null);
   const avgDeliveryMonth = deliveryThisMonth.length > 0 ? deliveryThisMonth.reduce((s, d) => s + d, 0) / deliveryThisMonth.length : 0;
 
-  // Taxa de conclusao (mes)
+  // Taxa de conclusao (periodo)
   const totalMes = doneMonth.length + inProgress.length;
   const completionRate = totalMes > 0 ? (doneMonth.length / totalMes) * 100 : 0;
 
@@ -193,7 +285,7 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
   const delays = withEstimate.map(o => calcDelayDays(o)).filter(d => d > 0);
   const avgDelay = delays.length > 0 ? delays.reduce((s, d) => s + d, 0) / delays.length : 0;
 
-  // Horas de reuniao do mes (contam como trabalho)
+  // Horas de reuniao do periodo (contam como trabalho)
   const calcMeetingHours = (evts, periodFn) => {
     return evts
       .filter(e => e.type === 'meeting' && e.startDate && e.endDate && periodFn(e.startDate))
@@ -202,10 +294,10 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
         return sum + Math.max(0, diffMs / MS_PER_HOUR);
       }, 0);
   };
-  const meetingHoursMonth = calcMeetingHours(eventsList, isCurrentMonth);
-  const meetingHoursLastMonth = calcMeetingHours(eventsList, isLastMonth);
+  const meetingHoursMonth = calcMeetingHours(eventsList, inPeriod);
+  const meetingHoursLastMonth = calcMeetingHours(eventsList, prevPeriodFn);
 
-  // Horas do mes (O.S. + reunioes)
+  // Horas do periodo (O.S. + reunioes)
   const osHoursMonth = doneMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
   const osHoursLastMonth = doneLastMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
   const hoursMonth = osHoursMonth + meetingHoursMonth;
@@ -213,12 +305,11 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
   const hoursPercent = targetHours > 0 ? Math.min((hoursMonth / targetHours) * 100, 100) : 0;
 
   // Produtividade = Horas Previstas / Horas Realizadas * 100
-  const dayOfMonth = now.getDate();
   const realizedHours = done.reduce((sum, o) => sum + calcOSHours(o), 0);
   const estimatedHours = done.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
   const productivity = realizedHours > 0 ? (estimatedHours / realizedHours) * 100 : 0;
 
-  // Variacao mes anterior
+  // Variacao periodo anterior
   const realizedHoursMonth = doneMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
   const estimatedHoursMonth = doneMonth.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
   const productivityMonth = realizedHoursMonth > 0 ? (estimatedHoursMonth / realizedHoursMonth) * 100 : 0;
@@ -230,8 +321,11 @@ export function calcKPIs(ordersList, eventsList, targetHours) {
   // Carga de trabalho
   const workload = inProgress.length;
 
-  // Utilizacao
-  const workDaysSoFar = Math.max(1, Math.floor(dayOfMonth * WORK_DAYS_PER_WEEK / DAYS_PER_WEEK));
+  // Utilizacao: proporcionada ao range selecionado
+  const rangeStart = dateRange ? new Date(dateRange.start) : new Date(now.getFullYear(), now.getMonth(), 1);
+  const rangeEnd = dateRange ? new Date(dateRange.end) : now;
+  const rangeDays = Math.max(1, Math.round((rangeEnd - rangeStart) / (1000 * 60 * 60 * 24)) + 1);
+  const workDaysSoFar = Math.max(1, Math.floor(rangeDays * WORK_DAYS_PER_WEEK / DAYS_PER_WEEK));
   const availableHoursSoFar = workDaysSoFar * HOURS_PER_WORKDAY;
   const utilization = availableHoursSoFar > 0 ? Math.min((hoursMonth / availableHoursSoFar) * 100, 100) : 0;
 

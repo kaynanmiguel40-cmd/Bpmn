@@ -18,7 +18,7 @@ const STATUS_MAP = {
   lead: { label: 'Lead', variant: 'info' },
   active: { label: 'Ativo', variant: 'success' },
   inactive: { label: 'Inativo', variant: 'neutral' },
-  customer: { label: 'Cliente', variant: 'indigo' },
+  customer: { label: 'Cliente', variant: 'blue' },
 };
 
 const DEAL_STATUS = {
@@ -81,7 +81,7 @@ export function CrmContactDetailPage() {
     return (
       <div className="text-center py-16">
         <p className="text-slate-500 dark:text-slate-400 mb-4">Contato nao encontrado</p>
-        <button onClick={() => navigate('/crm/contacts')} className="text-sm text-indigo-600 hover:underline">Voltar para contatos</button>
+        <button onClick={() => navigate('/crm/contacts')} className="text-sm text-blue-600 hover:underline">Voltar para contatos</button>
       </div>
     );
   }
@@ -98,7 +98,7 @@ export function CrmContactDetailPage() {
         </button>
         <button
           onClick={() => setEditOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg"
+          className="flex items-center gap-2 px-4 py-2 bg-fyness-primary hover:bg-fyness-secondary text-white text-sm font-medium rounded-lg"
         >
           <Pencil size={14} /> Editar
         </button>
@@ -117,7 +117,7 @@ export function CrmContactDetailPage() {
             {contact.company && (
               <>
                 {contact.position && <span>·</span>}
-                <button onClick={() => navigate(`/crm/companies/${contact.company.id}`)} className="text-indigo-600 dark:text-indigo-400 hover:underline">
+                <button onClick={() => navigate(`/crm/companies/${contact.company.id}`)} className="text-blue-600 dark:text-blue-400 hover:underline">
                   {contact.company.name}
                 </button>
               </>
@@ -129,8 +129,8 @@ export function CrmContactDetailPage() {
       {/* Info cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {contact.email && (
-          <a href={`mailto:${contact.email}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors group">
-            <Mail size={16} className="text-slate-400 group-hover:text-indigo-500" />
+          <a href={`mailto:${contact.email}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 dark:hover:border-blue-700 transition-colors group">
+            <Mail size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Email</div>
               <div className="text-sm text-slate-700 dark:text-slate-300 truncate">{contact.email}</div>
@@ -138,8 +138,8 @@ export function CrmContactDetailPage() {
           </a>
         )}
         {contact.phone && (
-          <a href={`tel:${contact.phone}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors group">
-            <Phone size={16} className="text-slate-400 group-hover:text-indigo-500" />
+          <a href={`tel:${contact.phone}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 dark:hover:border-blue-700 transition-colors group">
+            <Phone size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Telefone</div>
               <div className="text-sm text-slate-700 dark:text-slate-300">{contact.phone}</div>
@@ -182,7 +182,7 @@ export function CrmContactDetailPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                   isActive
-                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
                     : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
               >
@@ -208,8 +208,8 @@ export function CrmContactDetailPage() {
                     const Icon = activityIcons[act.type] || CalendarCheck;
                     return (
                       <div key={act.id} className="flex items-start gap-3 py-2 relative">
-                        <div className="w-[22px] h-[22px] rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[17px]">
-                          <Icon size={11} className="text-indigo-600 dark:text-indigo-400" />
+                        <div className="w-[22px] h-[22px] rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[17px]">
+                          <Icon size={11} className="text-blue-600 dark:text-blue-400" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -239,7 +239,7 @@ export function CrmContactDetailPage() {
                 {contact.deals.map(deal => {
                   const ds = DEAL_STATUS[deal.status] || DEAL_STATUS.open;
                   return (
-                    <div key={deal.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer" onClick={() => navigate(`/crm/deals`)}>
+                    <div key={deal.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors cursor-pointer" onClick={() => navigate(`/crm/deals`)}>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{deal.title}</span>
                         <CrmBadge variant={ds.variant} dot>{ds.label}</CrmBadge>
@@ -266,7 +266,7 @@ export function CrmContactDetailPage() {
               onBlur={() => { if (notes !== null && notes !== (contact.notes || '')) saveNotes(notes); }}
               rows={8}
               placeholder="Escreva suas anotacoes sobre este contato..."
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none"
             />
           </div>
         )}

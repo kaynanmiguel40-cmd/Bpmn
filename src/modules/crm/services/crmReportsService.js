@@ -158,6 +158,241 @@ export async function getForecastReport() {
   }
 }
 
+// ==================== PROBABILIDADE APRENDIDA ====================
+// Usa crm_deal_stage_history para dados reais de transicao.
+// Fallback: inferencia por posicao caso nao haja historico.
+
+export async function getLearnedProbabilities(pipelineId = null) {
+  try {
+    // 1. Buscar stages
+    let stagesQuery = supabase
+      .from('crm_pipeline_stages')
+      .select('id, name, position, color, pipeline_id')
+      .order('position');
+
+    if (pipelineId) {
+      stagesQuery = stagesQuery.eq('pipeline_id', pipelineId);
+    }
+
+    const { data: stages } = await stagesQuery;
+
+    // 2. Buscar deals fechados (won + lost)
+    let closedQuery = supabase
+      .from('crm_deals')
+      .select('id, status, stage_id, probability, pipeline_id')
+      .in('status', ['won', 'lost'])
+      .is('deleted_at', null);
+
+    if (pipelineId) {
+      closedQuery = closedQuery.eq('pipeline_id', pipelineId);
+    }
+
+    const { data: closedDeals } = await closedQuery;
+
+    // 3. Buscar deals abertos (media de probabilidade dos vendedores)
+    let openQuery = supabase
+      .from('crm_deals')
+      .select('id, probability, stage_id, pipeline_id')
+      .eq('status', 'open')
+      .is('deleted_at', null);
+
+    if (pipelineId) {
+      openQuery = openQuery.eq('pipeline_id', pipelineId);
+    }
+
+    const { data: openDeals } = await openQuery;
+
+    // 4. Buscar historico de transicoes
+    let historyQuery = supabase
+      .from('crm_deal_stage_history')
+      .select('deal_id, to_stage_id, pipeline_id');
+
+    if (pipelineId) {
+      historyQuery = historyQuery.eq('pipeline_id', pipelineId);
+    }
+
+    const { data: history } = await historyQuery;
+
+    const allStages = stages || [];
+    const closed = closedDeals || [];
+    const open = openDeals || [];
+    const transitions = history || [];
+
+    if (allStages.length === 0) {
+      return { pipelineId: pipelineId || 'all', stages: [], totalWon: 0, totalLost: 0, overallConversion: 0, avgProbabilityVendor: 0 };
+    }
+
+    const hasHistory = transitions.length > 0;
+
+    // Mapas auxiliares
+    const stageInfoMap = {};
+    allStages.forEach(s => { stageInfoMap[s.id] = s; });
+
+    const closedStatusMap = {};
+    closed.forEach(d => { closedStatusMap[d.id] = d.status; });
+
+    const totalWon = closed.filter(d => d.status === 'won').length;
+    const totalLost = closed.filter(d => d.status === 'lost').length;
+
+    let learnedStages;
+
+    if (hasHistory) {
+      // ── MODO HISTORICO REAL ──
+      // Para cada stage: quais deals closed passaram por ele (tem registro no historico)?
+      // "Todas Pipelines" agrupa por NOME do estagio.
+
+      // Montar set de deal_ids que passaram por cada stage_id
+      const dealsByStageId = {};
+      transitions.forEach(t => {
+        if (!dealsByStageId[t.to_stage_id]) dealsByStageId[t.to_stage_id] = new Set();
+        dealsByStageId[t.to_stage_id].add(t.deal_id);
+      });
+
+      if (pipelineId) {
+        // Pipeline especifico: agrupar por stage_id (posicao unica)
+        const stagesOrdered = allStages
+          .filter(s => s.pipeline_id === pipelineId)
+          .sort((a, b) => a.position - b.position);
+
+        learnedStages = stagesOrdered.map(stage => {
+          const dealIds = dealsByStageId[stage.id] || new Set();
+          const closedThatPassed = [...dealIds].filter(id => closedStatusMap[id]);
+          const wonFromHere = closedThatPassed.filter(id => closedStatusMap[id] === 'won').length;
+          const totalFromHere = closedThatPassed.length;
+          const learnedProbability = totalFromHere > 0 ? Math.round((wonFromHere / totalFromHere) * 100) : 0;
+
+          const openInStage = open.filter(d => d.stage_id === stage.id);
+          const avgVendorProb = openInStage.length > 0
+            ? Math.round(openInStage.reduce((sum, d) => sum + (d.probability || 50), 0) / openInStage.length)
+            : null;
+
+          return {
+            position: stage.position,
+            name: stage.name,
+            color: stage.color || '#6366f1',
+            learnedProbability,
+            sampleSize: totalFromHere,
+            wonCount: wonFromHere,
+            totalCount: totalFromHere,
+            avgVendorProbability: avgVendorProb,
+            openDealsCount: openInStage.length,
+          };
+        });
+      } else {
+        // Todas Pipelines: agrupar por NOME do estagio
+        const stagesByName = {};
+        allStages.forEach(s => {
+          if (!stagesByName[s.name]) {
+            stagesByName[s.name] = { name: s.name, color: s.color, position: s.position, stageIds: [] };
+          }
+          stagesByName[s.name].stageIds.push(s.id);
+          // Manter a menor posicao para ordenacao
+          if (s.position < stagesByName[s.name].position) {
+            stagesByName[s.name].position = s.position;
+          }
+        });
+
+        const groupedStages = Object.values(stagesByName).sort((a, b) => a.position - b.position);
+
+        learnedStages = groupedStages.map(group => {
+          // Unir todos os deal_ids que passaram por qualquer stage_id com este nome
+          const allDealIds = new Set();
+          group.stageIds.forEach(sid => {
+            const ids = dealsByStageId[sid] || new Set();
+            ids.forEach(id => allDealIds.add(id));
+          });
+
+          const closedThatPassed = [...allDealIds].filter(id => closedStatusMap[id]);
+          const wonFromHere = closedThatPassed.filter(id => closedStatusMap[id] === 'won').length;
+          const totalFromHere = closedThatPassed.length;
+          const learnedProbability = totalFromHere > 0 ? Math.round((wonFromHere / totalFromHere) * 100) : 0;
+
+          const openInStage = open.filter(d => group.stageIds.includes(d.stage_id));
+          const avgVendorProb = openInStage.length > 0
+            ? Math.round(openInStage.reduce((sum, d) => sum + (d.probability || 50), 0) / openInStage.length)
+            : null;
+
+          return {
+            position: group.position,
+            name: group.name,
+            color: group.color || '#6366f1',
+            learnedProbability,
+            sampleSize: totalFromHere,
+            wonCount: wonFromHere,
+            totalCount: totalFromHere,
+            avgVendorProbability: avgVendorProb,
+            openDealsCount: openInStage.length,
+          };
+        });
+      }
+    } else {
+      // ── FALLBACK: INFERENCIA POR POSICAO ──
+      // Usado quando nao ha historico ainda (deals antigos sem transicoes gravadas)
+      const stagePositionMap = {};
+      allStages.forEach(s => { stagePositionMap[s.id] = s.position; });
+
+      const positions = [...new Set(allStages.map(s => s.position))].sort((a, b) => a - b);
+
+      const positionInfo = {};
+      allStages.forEach(s => {
+        if (!positionInfo[s.position]) {
+          positionInfo[s.position] = { name: s.name, color: s.color };
+        }
+      });
+
+      const closedWithPosition = closed
+        .filter(d => stagePositionMap[d.stage_id] != null)
+        .map(d => ({ ...d, stagePosition: stagePositionMap[d.stage_id] }));
+
+      learnedStages = positions.map(pos => {
+        const dealsThatPassed = closedWithPosition.filter(d => d.stagePosition >= pos);
+        const wonFromHere = dealsThatPassed.filter(d => d.status === 'won').length;
+        const totalFromHere = dealsThatPassed.length;
+        const learnedProbability = totalFromHere > 0 ? Math.round((wonFromHere / totalFromHere) * 100) : 0;
+
+        const openInStage = open.filter(d => stagePositionMap[d.stage_id] === pos);
+        const avgVendorProb = openInStage.length > 0
+          ? Math.round(openInStage.reduce((sum, d) => sum + (d.probability || 50), 0) / openInStage.length)
+          : null;
+
+        return {
+          position: pos,
+          name: positionInfo[pos]?.name || `Estagio ${pos}`,
+          color: positionInfo[pos]?.color || '#6366f1',
+          learnedProbability,
+          sampleSize: totalFromHere,
+          wonCount: wonFromHere,
+          totalCount: totalFromHere,
+          avgVendorProbability: avgVendorProb,
+          openDealsCount: openInStage.length,
+        };
+      });
+    }
+
+    // Media geral de probabilidade dos vendedores
+    const avgProbabilityVendor = open.length > 0
+      ? Math.round(open.reduce((sum, d) => sum + (d.probability || 50), 0) / open.length)
+      : 0;
+
+    const overallConversion = (totalWon + totalLost) > 0
+      ? Math.round((totalWon / (totalWon + totalLost)) * 100)
+      : 0;
+
+    return {
+      pipelineId: pipelineId || 'all',
+      stages: learnedStages,
+      totalWon,
+      totalLost,
+      overallConversion,
+      avgProbabilityVendor,
+      source: hasHistory ? 'history' : 'inference',
+    };
+  } catch (err) {
+    toast('Erro ao calcular probabilidades aprendidas', 'error');
+    return null;
+  }
+}
+
 // ==================== RELATORIO DE ATIVIDADES ====================
 
 export async function getActivitiesReport(startDate, endDate) {

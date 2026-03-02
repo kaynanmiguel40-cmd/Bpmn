@@ -101,6 +101,36 @@ export const crmProposalItemSchema = z.object({
   subtotal: z.number().min(0).default(0),
 }).passthrough();
 
+// ==================== GOAL ====================
+
+export const crmGoalSchema = z.object({
+  title: z.string().min(1, 'Titulo da meta e obrigatorio'),
+  description: z.string().optional().default(''),
+  type: z.enum(['individual', 'global']).default('individual'),
+  ownerId: z.string().nullable().optional().default(null),
+  targetValue: z.number().min(0, 'Valor alvo deve ser positivo').default(0),
+  currentValue: z.number().min(0).default(0),
+  periodStart: z.string().min(1, 'Data de inicio e obrigatoria'),
+  periodEnd: z.string().min(1, 'Data de fim e obrigatoria'),
+  status: z.enum(['active', 'completed', 'cancelled']).default('active'),
+}).passthrough();
+
+// ==================== PAID TRAFFIC ====================
+
+export const crmTrafficSchema = z.object({
+  channel: z.string().min(1, 'Canal e obrigatorio'),
+  pipelineId: z.string().nullable().optional().default(null),
+  periodStart: z.string().min(1, 'Data inicio e obrigatoria'),
+  periodEnd: z.string().min(1, 'Data fim e obrigatoria'),
+  amountSpent: z.number().min(0, 'Valor gasto deve ser positivo').default(0),
+  impressions: z.number().min(0).default(0),
+  clicks: z.number().min(0).default(0),
+  leadsGenerated: z.number().min(0).default(0),
+  conversions: z.number().min(0).default(0),
+  revenueGenerated: z.number().min(0).default(0),
+  notes: z.string().optional().default(''),
+}).passthrough();
+
 // ==================== SETTINGS ====================
 
 export const crmSettingsSchema = z.object({

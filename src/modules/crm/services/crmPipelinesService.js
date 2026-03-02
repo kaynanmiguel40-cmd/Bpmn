@@ -60,11 +60,12 @@ export async function getCrmPipelineWithDeals(pipelineId) {
     return null;
   }
 
-  // Buscar deals do pipeline com contato e empresa
+  // Buscar deals ABERTOS do pipeline com contato e empresa
   const { data: deals, error: dError } = await supabase
     .from('crm_deals')
     .select('*, crm_contacts(id, name, avatar_color, company_id), crm_companies(id, name)')
     .eq('pipeline_id', pipelineId)
+    .eq('status', 'open')
     .is('deleted_at', null)
     .order('created_at');
 

@@ -144,7 +144,14 @@ export async function getCrmDealById(id) {
 export async function createCrmDeal(data) {
   const session = await supabase.auth.getSession();
   const userId = session.data?.session?.user?.id;
-  return dealService.create(data, { created_by: userId });
+  const result = await dealService.create(data, { created_by: userId });
+
+  // Gravar entrada inicial no historico de estagios
+  if (result?.id && data.stageId && data.pipelineId) {
+    await recordStageTransition(result.id, null, data.stageId, data.pipelineId);
+  }
+
+  return result;
 }
 
 export async function updateCrmDeal(id, updates) {
@@ -164,7 +171,24 @@ export async function softDeleteCrmDeal(id) {
   return true;
 }
 
+// Helper: gravar transicao de estagio no historico
+async function recordStageTransition(dealId, fromStageId, toStageId, pipelineId) {
+  await supabase.from('crm_deal_stage_history').insert({
+    deal_id: dealId,
+    from_stage_id: fromStageId || null,
+    to_stage_id: toStageId,
+    pipeline_id: pipelineId,
+  });
+}
+
 export async function moveDealToStage(dealId, stageId) {
+  // Buscar stage atual antes de mover
+  const { data: current } = await supabase
+    .from('crm_deals')
+    .select('stage_id, pipeline_id')
+    .eq('id', dealId)
+    .single();
+
   const { data, error } = await supabase
     .from('crm_deals')
     .update({ stage_id: stageId, updated_at: new Date().toISOString() })
@@ -173,13 +197,25 @@ export async function moveDealToStage(dealId, stageId) {
     .single();
 
   if (error) {
-    toast(`Erro ao mover negocio: ${error.message}`, 'error');
-    return null;
+    throw new Error(error.message);
   }
+
+  // Gravar transicao no historico
+  if (current && current.stage_id !== stageId) {
+    await recordStageTransition(dealId, current.stage_id, stageId, current.pipeline_id);
+  }
+
   return dbToCrmDeal(data);
 }
 
 export async function markDealAsWon(dealId) {
+  // Buscar stage atual para gravar no historico
+  const { data: current } = await supabase
+    .from('crm_deals')
+    .select('stage_id, pipeline_id')
+    .eq('id', dealId)
+    .single();
+
   const { data, error } = await supabase
     .from('crm_deals')
     .update({
@@ -193,13 +229,25 @@ export async function markDealAsWon(dealId) {
     .single();
 
   if (error) {
-    toast(`Erro ao marcar como ganho: ${error.message}`, 'error');
-    return null;
+    throw new Error(error.message);
   }
+
+  // Gravar transicao final (won) no historico
+  if (current?.stage_id && current?.pipeline_id) {
+    await recordStageTransition(dealId, current.stage_id, current.stage_id, current.pipeline_id);
+  }
+
   return dbToCrmDeal(data);
 }
 
 export async function markDealAsLost(dealId, reason = '') {
+  // Buscar stage atual para gravar no historico
+  const { data: current } = await supabase
+    .from('crm_deals')
+    .select('stage_id, pipeline_id')
+    .eq('id', dealId)
+    .single();
+
   const { data, error } = await supabase
     .from('crm_deals')
     .update({
@@ -214,8 +262,13 @@ export async function markDealAsLost(dealId, reason = '') {
     .single();
 
   if (error) {
-    toast(`Erro ao marcar como perdido: ${error.message}`, 'error');
-    return null;
+    throw new Error(error.message);
   }
+
+  // Gravar transicao final (lost) no historico
+  if (current?.stage_id && current?.pipeline_id) {
+    await recordStageTransition(dealId, current.stage_id, current.stage_id, current.pipeline_id);
+  }
+
   return dbToCrmDeal(data);
 }

@@ -79,7 +79,7 @@ export default function EapGanttPage() {
         <p className="text-slate-500 dark:text-slate-400 text-sm">Projeto nao encontrado.</p>
         <button
           onClick={() => navigate('/eap')}
-          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="px-4 py-2 text-sm bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors"
         >
           Voltar para Projetos
         </button>
