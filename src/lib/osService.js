@@ -37,6 +37,8 @@ export function dbToOrder(row) {
     type: row.type || 'normal',
     parentOrderId: row.parent_order_id || null,
     emergencyNumber: row.emergency_number || null,
+    eapTaskId: row.eap_task_id || null,
+    wbsPath: row.wbs_path || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -150,6 +152,8 @@ const orderService = createCRUDService({
     parentOrderId: 'parent_order_id',
     emergencyNumber: 'emergency_number',
     supervisor: 'supervisor',
+    eapTaskId: 'eap_task_id',
+    wbsPath: 'wbs_path',
   },
 });
 

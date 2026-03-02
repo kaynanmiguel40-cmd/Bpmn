@@ -131,6 +131,8 @@ export const osOrderSchema = z.object({
   parentOrderId: nullableStr,
   sortOrder: z.number().optional().default(0),
   emergencyNumber: z.number().nullable().optional(),
+  eapTaskId: z.string().nullable().optional().default(null),
+  wbsPath: z.string().nullable().optional().default(null),
 }).passthrough();
 
 export const teamMemberSchema = z.object({
@@ -143,6 +145,7 @@ export const teamMemberSchema = z.object({
   workDays: z.array(z.number()).optional().default([1,2,3,4,5]),
   salaryMonth: z.number().min(0, 'Salario nao pode ser negativo').default(0),
   hoursMonth: z.number().min(1).default(176),
+  crmRole: z.enum(['vendedor', 'pre_vendedor', 'gestor']).nullable().optional().default(null),
 }).passthrough();
 
 export const agendaEventSchema = z.object({

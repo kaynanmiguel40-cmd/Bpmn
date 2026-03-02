@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useMemo, useRef, memo, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useOSOrders, useOSSectors, useOSProjects, useTeamMembers, useAgendaEvents, useClients, queryKeys,
@@ -20,7 +20,7 @@ import {
 import { toast } from '../../contexts/ToastContext';
 import { useProfile } from '../../hooks/useProfile';
 import { shortName } from '../../lib/teamService';
-import { namesMatch } from '../../lib/kpiUtils';
+import { namesMatch, calcWorkingHoursBetween } from '../../lib/kpiUtils';
 import { MANAGER_ROLES } from '../../lib/roleUtils';
 import { notifyOSAssigned, notifyOSCompleted, notifyOSBlocked, notifyOSUpdated, notifyOSCreated } from '../../lib/notificationTriggers';
 import { usePermissions } from '../../contexts/PermissionContext';
@@ -79,7 +79,7 @@ const EMPTY_PROJECT_FORM = {
 };
 
 import { formatDateTime as formatDate, formatDateSmart as formatDateShort, formatCurrency, formatCpf, formatSignatureDateTime } from '../../lib/formatters';
-import { WORK_START_HOUR, WORK_END_HOUR, WORK_HOURS_PER_DAY, STANDARD_MONTHLY_HOURS } from '../../constants/sla';
+import { STANDARD_MONTHLY_HOURS } from '../../constants/sla';
 import { FolderIcon, InboxIcon } from '../../components/icons/FinancialIcons';
 
 const EMPTY_SECTOR_FORM = {
@@ -88,53 +88,7 @@ const EMPTY_SECTOR_FORM = {
 };
 
 
-// Calcula horas uteis entre duas datas (seg-sex, horario comercial)
-function calcWorkingHoursBetween(startStr, endStr) {
-  const start = new Date(startStr);
-  const end = new Date(endStr);
-  if (end <= start) return 0;
-
-  // Mesmo dia
-  if (start.toDateString() === end.toDateString()) {
-    const day = start.getDay();
-    if (day === 0 || day === 6) return 0; // fim de semana
-    const s = Math.max(start.getHours() + start.getMinutes() / 60, WORK_START_HOUR);
-    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END_HOUR);
-    return Math.max(0, e - s);
-  }
-
-  // Multiplos dias
-  let totalHours = 0;
-  const current = new Date(start);
-
-  // Primeiro dia: do inicio ate fim do expediente
-  if (current.getDay() !== 0 && current.getDay() !== 6) {
-    const s = Math.max(current.getHours() + current.getMinutes() / 60, WORK_START_HOUR);
-    totalHours += Math.max(0, WORK_END_HOUR - s);
-  }
-
-  // Dias intermediarios: horas uteis por dia
-  current.setDate(current.getDate() + 1);
-  current.setHours(0, 0, 0, 0);
-  const endDay = new Date(end);
-  endDay.setHours(0, 0, 0, 0);
-
-  while (current < endDay) {
-    const day = current.getDay();
-    if (day !== 0 && day !== 6) {
-      totalHours += WORK_HOURS_PER_DAY;
-    }
-    current.setDate(current.getDate() + 1);
-  }
-
-  // Ultimo dia: do inicio do expediente ate o fim
-  if (end.getDay() !== 0 && end.getDay() !== 6) {
-    const e = Math.min(end.getHours() + end.getMinutes() / 60, WORK_END_HOUR);
-    totalHours += Math.max(0, e - WORK_START_HOUR);
-  }
-
-  return totalHours;
-}
+// calcWorkingHoursBetween importada de kpiUtils.js
 
 function calcOSHours(order) {
   // Prioridade 1: actualStart/actualEnd (horas uteis, 08-18h seg-sex)
@@ -178,6 +132,7 @@ function calcOSCost(order, membersList) {
 export default function FinancialPage() {
   const queryClient = useQueryClient();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // React Query: data fetching
   const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
@@ -301,7 +256,7 @@ export default function FinancialPage() {
     const memberName = allMembers.find(m => m.id === filterMember)?.name;
     if (!memberName) return projectOrders;
     return projectOrders.filter(o =>
-      o.assignee === memberName || o.assignedTo === memberName || o.status === 'available'
+      o.assignee === memberName || o.assignedTo === memberName
     );
   }, [projectOrders, filterMember, allMembers]);
 
@@ -326,6 +281,38 @@ export default function FinancialPage() {
     });
     return grouped;
   }, [activeOrders]);
+
+  // Agrupamento WBS para projetos vinculados a EAP
+  const isEapProject = selectedProject?.eapProjectId;
+  const ordersByWbs = useMemo(() => {
+    if (!isEapProject) return null;
+    const allProjectOrders = [...activeOrders, ...emergencyOrders];
+    const groups = {};
+    for (const o of allProjectOrders) {
+      // Extrair pacote de nivel 1 do wbsPath (ex: "1.2.3 — Produto > Marketing > Campanha" → "Produto")
+      let groupKey = 'Sem pacote';
+      let groupWbs = '';
+      if (o.wbsPath) {
+        const parts = o.wbsPath.split(' — ');
+        groupWbs = parts[0] || ''; // "1.2.3"
+        const namePath = parts[1] || '';
+        const names = namePath.split(' > ');
+        groupKey = names[0] || groupWbs || 'Sem pacote';
+        // Extrair WBS do nivel 1 (ex: "1" de "1.2.3")
+        const wbsParts = groupWbs.split('.');
+        groupWbs = wbsParts[0] || '';
+      }
+      const key = `${groupWbs}|${groupKey}`;
+      if (!groups[key]) groups[key] = { wbs: groupWbs, name: groupKey, orders: [] };
+      groups[key].orders.push(o);
+    }
+    // Ordenar grupos por WBS numerico
+    return Object.values(groups).sort((a, b) => {
+      const na = parseFloat(a.wbs) || 999;
+      const nb = parseFloat(b.wbs) || 999;
+      return na - nb;
+    });
+  }, [isEapProject, activeOrders, emergencyOrders]);
 
   // Contagem continua: urgente/alta -> media -> baixa
   const sequenceMap = useMemo(() => {
@@ -934,8 +921,82 @@ export default function FinancialPage() {
           </div>
         </div>
 
-        {/* Secao Emergencial */}
-        {emergencyOrders.length > 0 && (
+        {/* Botao "Ver na EAP" para projetos vinculados */}
+        {isEapProject && (
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              onClick={() => navigate(`/eap/${selectedProject.eapProjectId}`)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+              Ver na EAP (Gantt)
+            </button>
+          </div>
+        )}
+
+        {/* View WBS: agrupamento por pacotes da EAP */}
+        {isEapProject && ordersByWbs && ordersByWbs.length > 0 && (
+          <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+            {ordersByWbs.map((group) => (
+              <div key={`${group.wbs}|${group.name}`} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 px-4 py-2.5 flex items-center gap-2">
+                  {group.wbs && (
+                    <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded font-mono font-bold">{group.wbs}</span>
+                  )}
+                  <h3 className="text-sm font-semibold text-white">{group.name}</h3>
+                  <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">{group.orders.length}</span>
+                </div>
+                <div className="p-3 space-y-0 bg-slate-50 dark:bg-slate-800/50">
+                  {group.orders.map(order => (
+                    <OSCard
+                      key={order.id}
+                      order={order}
+                      teamMembers={allMembers}
+                      seqNumber={sequenceMap[order.id]}
+                      onClick={() => handleCardClick(order)}
+                      isDragging={false}
+                      dropPosition={null}
+                      onDragStart={noop}
+                      onDragEnd={noop}
+                      onCardDragOver={noop}
+                      allOrders={orders}
+                      wbsBadge={order.wbsPath?.split(' — ')[0]}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+            {/* OS sem WBS neste projeto EAP */}
+            {activeOrders.filter(o => !o.wbsPath).length > 0 && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="bg-gradient-to-r from-slate-400 to-slate-500 px-4 py-2.5 flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-white">Sem vinculo EAP</h3>
+                  <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">{activeOrders.filter(o => !o.wbsPath).length}</span>
+                </div>
+                <div className="p-3 space-y-0 bg-slate-50 dark:bg-slate-800/50">
+                  {activeOrders.filter(o => !o.wbsPath).map(order => (
+                    <OSCard
+                      key={order.id}
+                      order={order}
+                      teamMembers={allMembers}
+                      seqNumber={sequenceMap[order.id]}
+                      onClick={() => handleCardClick(order)}
+                      isDragging={false}
+                      dropPosition={null}
+                      onDragStart={noop}
+                      onDragEnd={noop}
+                      onCardDragOver={noop}
+                      allOrders={orders}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Secao Emergencial (apenas para projetos sem EAP ou quando nao ha agrupamento WBS) */}
+        {(!isEapProject || !ordersByWbs || ordersByWbs.length === 0) && emergencyOrders.length > 0 && (
           <div className="mb-4 rounded-xl border-2 border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-950/30 overflow-hidden animate-pulse-subtle">
             <div className="bg-gradient-to-r from-red-600 to-red-700 px-4 py-3 flex items-center gap-2">
               <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -964,8 +1025,8 @@ export default function FinancialPage() {
           </div>
         )}
 
-        {/* Kanban por Prioridade */}
-        <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
+        {/* Kanban por Prioridade (oculto quando view WBS ativo) */}
+        {(!isEapProject || !ordersByWbs || ordersByWbs.length === 0) && <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
           {PRIORITY_COLUMNS.map((column) => {
             const colOrders = ordersByColumn[column.id] || [];
             const isOver = dragOverCol === column.id && !dropTarget;
@@ -1036,7 +1097,7 @@ export default function FinancialPage() {
               </div>
             );
           })}
-        </div>
+        </div>}
 
         {/* Secao Concluidas */}
         {doneOrders.length > 0 && (
@@ -2259,7 +2320,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
 
             const handleAddGroupFile = (groupKey, file) => {
               if (!file) return;
-              if (file.size > 3 * 1024 * 1024) { alert('Arquivo muito grande! Maximo: 3MB.'); return; }
+              if (file.size > 3 * 1024 * 1024) { toast.warning('Arquivo muito grande! Maximo: 3MB.'); return; }
               const reader = new FileReader();
               reader.onload = (ev) => {
                 const current = getGroupOutput(groupKey);
@@ -3286,7 +3347,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      alert('Imagem muito grande! Maximo: 2MB.');
+      toast.warning('Imagem muito grande! Maximo: 2MB.');
       return;
     }
     const reader = new FileReader();

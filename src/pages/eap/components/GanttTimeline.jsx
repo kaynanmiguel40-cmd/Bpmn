@@ -330,6 +330,7 @@ const GanttTimeline = forwardRef(function GanttTimeline({
 
   const svgRef = useRef(null);
   const scrollContainerRef = useRef(null);
+  const headerContainerRef = useRef(null);
   const [dragState, setDragState] = useState(null);
   const [linkDrag, setLinkDrag] = useState(null); // { fromTaskId, fromX, fromY, mouseX, mouseY }
   const hasScrolled = useRef(false);
@@ -367,6 +368,12 @@ const GanttTimeline = forwardRef(function GanttTimeline({
 
   // ==================== POSICIONAMENTO ====================
 
+  // Referencia real do grid: primeira coluna (pode ser anterior a dateRange.start em zoom week
+  // porque generateColumns alinha ao domingo anterior)
+  const columnStartDate = useMemo(() => {
+    return columns.length > 0 ? columns[0].date : dateRange.start;
+  }, [columns, dateRange]);
+
   // day e week usam colunas por dia; month usa proporcional
   const dateToX = useCallback((dateStr) => {
     if (!dateStr) return 0;
@@ -376,27 +383,27 @@ const GanttTimeline = forwardRef(function GanttTimeline({
       ? dateStr.split('T')[0] + 'T00:00:00'
       : (typeof dateStr === 'string' ? dateStr + 'T00:00:00' : dateStr);
     const date = new Date(dateOnly);
-    const days = daysBetween(dateRange.start, date);
+    const days = daysBetween(columnStartDate, date);
 
     if (zoom === 'day' || zoom === 'week') {
       return days * colWidth;
     } else {
-      const totalDays = daysBetween(dateRange.start, dateRange.end);
+      const totalDays = daysBetween(columnStartDate, dateRange.end);
       return totalDays > 0 ? (days / totalDays) * totalWidth : 0;
     }
-  }, [dateRange, zoom, colWidth, totalWidth]);
+  }, [columnStartDate, dateRange, zoom, colWidth, totalWidth]);
 
   const xToDate = useCallback((x) => {
     let days;
     if (zoom === 'day' || zoom === 'week') {
       days = Math.round(x / colWidth);
     } else {
-      const totalDays = daysBetween(dateRange.start, dateRange.end);
+      const totalDays = daysBetween(columnStartDate, dateRange.end);
       days = Math.round((x / totalWidth) * totalDays);
     }
-    const date = addDays(dateRange.start, days);
+    const date = addDays(columnStartDate, days);
     return date.toISOString().split('T')[0];
-  }, [dateRange, zoom, colWidth, totalWidth]);
+  }, [columnStartDate, dateRange, zoom, colWidth, totalWidth]);
 
   // Auto-scroll para a primeira tarefa ou hoje ao montar
   useEffect(() => {
@@ -413,7 +420,12 @@ const GanttTimeline = forwardRef(function GanttTimeline({
     if (firstDate) {
       const x = dateToX(firstDate);
       // Scroll para um pouco antes da primeira tarefa (margem de 50px)
-      container.scrollLeft = Math.max(0, x - 50);
+      const scrollPos = Math.max(0, x - 50);
+      container.scrollLeft = scrollPos;
+      // Sincronizar header horizontal
+      if (headerContainerRef.current) {
+        headerContainerRef.current.scrollLeft = scrollPos;
+      }
       hasScrolled.current = true;
     }
   }, [tasks, dateToX]);
@@ -442,11 +454,11 @@ const GanttTimeline = forwardRef(function GanttTimeline({
   }, [tasks, dateToX, colWidth, rowHeight, summaryIds]);
 
   const todayX = useMemo(() => {
-    const days = daysBetween(dateRange.start, today);
+    const days = daysBetween(columnStartDate, today);
     if (zoom === 'day' || zoom === 'week') return days * colWidth;
-    const totalDays = daysBetween(dateRange.start, dateRange.end);
+    const totalDays = daysBetween(columnStartDate, dateRange.end);
     return totalDays > 0 ? (days / totalDays) * totalWidth : 0;
-  }, [dateRange, today, zoom, colWidth, totalWidth]);
+  }, [columnStartDate, dateRange, today, zoom, colWidth, totalWidth]);
 
   // ==================== DRAG HANDLER ====================
 
@@ -578,19 +590,29 @@ const GanttTimeline = forwardRef(function GanttTimeline({
           </div>
           {/* Tier 2: Letra do dia da semana (D, S, T, Q, Q, S, S) */}
           <div className="flex" style={{ height: 36 }}>
-            {columns.map((col, i) => (
-              <div
-                key={i}
-                className={`flex items-center justify-center border-r text-[10px] font-medium ${
-                  col.isWeekend
-                    ? 'bg-amber-50 dark:bg-amber-800/40 text-slate-400 dark:text-amber-200/60 border-slate-200 dark:border-slate-700'
-                    : 'text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                } ${isSameDay(col.date, today) ? 'bg-blue-100 dark:bg-blue-900/30 font-bold text-blue-600 dark:text-blue-400' : ''}`}
-                style={{ width: colWidth }}
-              >
-                {dayLetters[col.date.getDay()]}
-              </div>
-            ))}
+            {columns.map((col, i) => {
+              const dayOfWeek = col.date.getDay();
+              const isSunday = dayOfWeek === 0;
+              const isSaturday = dayOfWeek === 6;
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center justify-center border-r text-[10px] font-medium ${
+                    isSaturday
+                      ? 'bg-amber-100 dark:bg-amber-700/40 text-amber-600 dark:text-amber-300 border-slate-200 dark:border-slate-700'
+                      : isSunday
+                        ? 'bg-red-50 dark:bg-red-900/30 text-red-400 dark:text-red-300 border-slate-200 dark:border-slate-700'
+                        : 'text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                  } ${isSameDay(col.date, today) ? 'bg-blue-100 dark:bg-blue-900/30 font-bold text-blue-600 dark:text-blue-400' : ''}`}
+                  style={{
+                    width: colWidth,
+                    ...(isSunday && i > 0 ? { borderLeft: '2px solid #94a3b8' } : {}),
+                  }}
+                >
+                  {dayLetters[dayOfWeek]}
+                </div>
+              );
+            })}
           </div>
         </>
       );
@@ -614,19 +636,29 @@ const GanttTimeline = forwardRef(function GanttTimeline({
           ))}
         </div>
         <div className="flex" style={{ height: 28 }}>
-          {columns.map((col, i) => (
-            <div
-              key={i}
-              className={`flex items-center justify-center border-r border-slate-200 dark:border-slate-700 text-[10px] ${
-                col.isWeekend
-                  ? 'bg-slate-200/50 dark:bg-amber-800/40 text-slate-400 dark:text-amber-200/60'
-                  : 'text-slate-500 dark:text-slate-400'
-              } ${isSameDay(col.date, today) ? 'bg-blue-100 dark:bg-blue-900/30 font-bold text-blue-600 dark:text-blue-400' : ''}`}
-              style={{ width: colWidth }}
-            >
-              {col.label}
-            </div>
-          ))}
+          {columns.map((col, i) => {
+            const dayOfWeek = col.date.getDay();
+            const isSunday = dayOfWeek === 0;
+            const isSaturday = dayOfWeek === 6;
+            return (
+              <div
+                key={i}
+                className={`flex items-center justify-center border-r border-slate-200 dark:border-slate-700 text-[10px] ${
+                  isSaturday
+                    ? 'bg-amber-100/60 dark:bg-amber-700/40 text-amber-600 dark:text-amber-300'
+                    : isSunday
+                      ? 'bg-red-50 dark:bg-red-900/30 text-red-400 dark:text-red-300'
+                      : 'text-slate-500 dark:text-slate-400'
+                } ${isSameDay(col.date, today) ? 'bg-blue-100 dark:bg-blue-900/30 font-bold text-blue-600 dark:text-blue-400' : ''}`}
+                style={{
+                  width: colWidth,
+                  ...(isSunday && i > 0 ? { borderLeft: '2px solid #94a3b8' } : {}),
+                }}
+              >
+                {col.label}
+              </div>
+            );
+          })}
         </div>
       </>
     );
@@ -636,15 +668,15 @@ const GanttTimeline = forwardRef(function GanttTimeline({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Timeline Header */}
-      <div className="flex-shrink-0 border-b border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 overflow-hidden" style={{ height: rowHeight * 2 }}>
+      {/* Timeline Header — sincroniza scroll horizontal com o body */}
+      <div ref={headerContainerRef} className="flex-shrink-0 border-b border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 overflow-hidden" style={{ height: rowHeight * 2 }}>
         <div style={{ width: totalWidth, minWidth: '100%' }}>
           {renderHeader()}
         </div>
       </div>
 
       {/* Timeline Body */}
-      <div ref={(el) => { scrollContainerRef.current = el; if (typeof ref === 'function') ref(el); else if (ref) ref.current = el; }} className="flex-1 overflow-auto" onScroll={onScroll}>
+      <div ref={(el) => { scrollContainerRef.current = el; if (typeof ref === 'function') ref(el); else if (ref) ref.current = el; }} className="flex-1 overflow-auto" onScroll={(e) => { if (headerContainerRef.current) headerContainerRef.current.scrollLeft = e.target.scrollLeft; onScroll?.(e); }}>
         <svg ref={svgRef} width={totalWidth} height={Math.max(totalHeight, 200)} className="select-none">
           <defs>
             <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
@@ -659,18 +691,36 @@ const GanttTimeline = forwardRef(function GanttTimeline({
           </defs>
 
           {/* Grid verticais */}
-          {columns.map((col, i) => (
-            <g key={i}>
-              <line
-                x1={i * colWidth} y1={0} x2={i * colWidth} y2={totalHeight}
-                stroke={col.isWeekend ? '#e2e8f0' : '#f1f5f9'} strokeWidth={0.5}
-                className={col.isWeekend ? 'dark:stroke-slate-600' : 'dark:stroke-slate-800'}
-              />
-              {col.isWeekend && (zoom === 'day' || zoom === 'week') && (
-                <rect x={i * colWidth} y={0} width={colWidth} height={totalHeight} fill="#fef3c7" className="dark:fill-amber-900/30" opacity={0.5} />
-              )}
-            </g>
-          ))}
+          {columns.map((col, i) => {
+            const dayOfWeek = col.date.getDay();
+            const isSunday = dayOfWeek === 0;
+            const isSaturday = dayOfWeek === 6;
+            return (
+              <g key={i}>
+                <line
+                  x1={i * colWidth} y1={0} x2={i * colWidth} y2={totalHeight}
+                  stroke={col.isWeekend ? '#e2e8f0' : '#f1f5f9'} strokeWidth={0.5}
+                  className={col.isWeekend ? 'dark:stroke-slate-600' : 'dark:stroke-slate-800'}
+                />
+                {/* Sabado: fundo levemente mais escuro para diferenciar do domingo */}
+                {isSaturday && (zoom === 'day' || zoom === 'week') && (
+                  <rect x={i * colWidth} y={0} width={colWidth} height={totalHeight} fill="#fde68a" className="dark:fill-amber-800/30" opacity={0.4} />
+                )}
+                {/* Domingo: fundo amber mais claro */}
+                {isSunday && (zoom === 'day' || zoom === 'week') && (
+                  <rect x={i * colWidth} y={0} width={colWidth} height={totalHeight} fill="#fef3c7" className="dark:fill-amber-900/20" opacity={0.5} />
+                )}
+                {/* Linha grossa na borda esquerda do domingo = separador de semana */}
+                {(zoom === 'day' || zoom === 'week') && isSunday && i > 0 && (
+                  <line
+                    x1={i * colWidth} y1={0} x2={i * colWidth} y2={totalHeight}
+                    stroke="#94a3b8" strokeWidth={1.5}
+                    className="dark:stroke-slate-500"
+                  />
+                )}
+              </g>
+            );
+          })}
 
           {/* Grid horizontais */}
           {tasks.map((_, i) => (

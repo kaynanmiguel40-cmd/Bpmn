@@ -105,6 +105,26 @@ function buildChecklistFromChildren(task, allTasks) {
   return checklist;
 }
 
+// ==================== HELPERS (WBS PATH) ====================
+
+/**
+ * Monta o caminho WBS completo de uma tarefa (sobe a hierarquia).
+ * Retorna: "1.2.3 — Produto > Marketing > Campanha"
+ */
+function buildWbsPath(task, allTasks) {
+  const chain = [];
+  let current = task;
+  while (current) {
+    chain.unshift(current.name);
+    if (!current.parentId) break;
+    current = allTasks.find(t => t.id === current.parentId) || null;
+  }
+
+  const wbsNumber = task.wbsNumber || '';
+  const namePath = chain.join(' > ');
+  return wbsNumber ? `${wbsNumber} — ${namePath}` : namePath;
+}
+
 // ==================== EXPORTS ====================
 
 /**
@@ -119,6 +139,7 @@ export async function generateOSFromTask(task, projectName, allTasks = [], eapPr
   }
 
   const checklist = buildChecklistFromChildren(task, allTasks);
+  const wbsPath = allTasks.length > 0 ? buildWbsPath(task, allTasks) : (task.wbsNumber || null);
 
   const osData = {
     title: task.name,
@@ -131,6 +152,8 @@ export async function generateOSFromTask(task, projectName, allTasks = [], eapPr
     estimatedEnd: task.endDate || '',
     projectId: osProjectId,
     checklist,
+    eapTaskId: task.id,
+    wbsPath,
   };
 
   const os = await createOSOrder(osData);
