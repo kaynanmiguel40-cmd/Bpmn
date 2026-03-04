@@ -76,6 +76,7 @@ const EMPTY_PROJECT_FORM = {
   color: '#3b82f6',
   description: '',
   status: 'active',
+  projectType: 'execution',
 };
 
 import { formatDateTime as formatDate, formatDateSmart as formatDateShort, formatCurrency, formatCpf, formatSignatureDateTime } from '../../lib/formatters';
@@ -191,7 +192,6 @@ export default function FinancialPage() {
   const [projectForm, setProjectForm] = useState({ ...EMPTY_PROJECT_FORM });
   const [sectorFilter, setSectorFilter] = useState('all');
   const [projectSearch, setProjectSearch] = useState('');
-  const [showFinished, setShowFinished] = useState(false);
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(null);
   // Sector management
   const [showSectorForm, setShowSectorForm] = useState(false);
@@ -202,6 +202,7 @@ export default function FinancialPage() {
   const [pendingOrder, setPendingOrder] = useState(null);
   // Modo emergencial do formulario
   const [emergencyFormMode, setEmergencyFormMode] = useState(false);
+  // Collapse state para grupos WBS
 
   // Callbacks memoizados para OSCard (evita re-renders desnecessarios com memo)
   const handleCardClick = useCallback((order) => setViewingOrder(order), []);
@@ -272,47 +273,31 @@ export default function FinancialPage() {
     return filteredOrders.filter(o => o.status === 'done');
   }, [filteredOrders]);
 
+  const isEapProject = selectedProject?.eapProjectId;
+
   const ordersByColumn = useMemo(() => {
     const grouped = {};
     PRIORITY_COLUMNS.forEach(col => {
       grouped[col.id] = activeOrders
         .filter(o => col.priorities.includes(o.priority))
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+        .sort((a, b) => {
+          // Projeto EAP: ordenar por WBS (ordem de execucao da EAP)
+          if (isEapProject && a.wbsPath && b.wbsPath) {
+            const wbsA = a.wbsPath.split(' — ')[0] || '';
+            const wbsB = b.wbsPath.split(' — ')[0] || '';
+            const partsA = wbsA.split('.').map(Number);
+            const partsB = wbsB.split('.').map(Number);
+            for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+              const na = partsA[i] ?? 0;
+              const nb = partsB[i] ?? 0;
+              if (na !== nb) return na - nb;
+            }
+          }
+          return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+        });
     });
     return grouped;
-  }, [activeOrders]);
-
-  // Agrupamento WBS para projetos vinculados a EAP
-  const isEapProject = selectedProject?.eapProjectId;
-  const ordersByWbs = useMemo(() => {
-    if (!isEapProject) return null;
-    const allProjectOrders = [...activeOrders, ...emergencyOrders];
-    const groups = {};
-    for (const o of allProjectOrders) {
-      // Extrair pacote de nivel 1 do wbsPath (ex: "1.2.3 — Produto > Marketing > Campanha" → "Produto")
-      let groupKey = 'Sem pacote';
-      let groupWbs = '';
-      if (o.wbsPath) {
-        const parts = o.wbsPath.split(' — ');
-        groupWbs = parts[0] || ''; // "1.2.3"
-        const namePath = parts[1] || '';
-        const names = namePath.split(' > ');
-        groupKey = names[0] || groupWbs || 'Sem pacote';
-        // Extrair WBS do nivel 1 (ex: "1" de "1.2.3")
-        const wbsParts = groupWbs.split('.');
-        groupWbs = wbsParts[0] || '';
-      }
-      const key = `${groupWbs}|${groupKey}`;
-      if (!groups[key]) groups[key] = { wbs: groupWbs, name: groupKey, orders: [] };
-      groups[key].orders.push(o);
-    }
-    // Ordenar grupos por WBS numerico
-    return Object.values(groups).sort((a, b) => {
-      const na = parseFloat(a.wbs) || 999;
-      const nb = parseFloat(b.wbs) || 999;
-      return na - nb;
-    });
-  }, [isEapProject, activeOrders, emergencyOrders]);
+  }, [activeOrders, isEapProject]);
 
   // Contagem continua: urgente/alta -> media -> baixa
   const sequenceMap = useMemo(() => {
@@ -329,9 +314,6 @@ export default function FinancialPage() {
   // Projetos filtrados
   const filteredProjects = useMemo(() => {
     let list = projects;
-    if (!showFinished) {
-      list = list.filter(p => p.status !== 'finished');
-    }
     if (sectorFilter !== 'all') {
       list = list.filter(p => p.sector === sectorFilter);
     }
@@ -340,7 +322,7 @@ export default function FinancialPage() {
       list = list.filter(p => p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
     }
     return list;
-  }, [projects, sectorFilter, projectSearch, showFinished]);
+  }, [projects, sectorFilter, projectSearch]);
 
   // O.S. sem projeto
   const orphanOrders = useMemo(() => {
@@ -636,6 +618,7 @@ export default function FinancialPage() {
       color: project.color,
       description: project.description || '',
       status: project.status || 'active',
+      projectType: project.projectType || 'execution',
     });
     setShowProjectForm(true);
   };
@@ -921,6 +904,9 @@ export default function FinancialPage() {
           </div>
         </div>
 
+        {/* Area scrollavel com todo o conteudo */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+
         {/* Botao "Ver na EAP" para projetos vinculados */}
         {isEapProject && (
           <div className="mb-3 flex items-center gap-2">
@@ -934,69 +920,8 @@ export default function FinancialPage() {
           </div>
         )}
 
-        {/* View WBS: agrupamento por pacotes da EAP */}
-        {isEapProject && ordersByWbs && ordersByWbs.length > 0 && (
-          <div className="flex-1 overflow-y-auto space-y-3 mb-4">
-            {ordersByWbs.map((group) => (
-              <div key={`${group.wbs}|${group.name}`} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 px-4 py-2.5 flex items-center gap-2">
-                  {group.wbs && (
-                    <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded font-mono font-bold">{group.wbs}</span>
-                  )}
-                  <h3 className="text-sm font-semibold text-white">{group.name}</h3>
-                  <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">{group.orders.length}</span>
-                </div>
-                <div className="p-3 space-y-0 bg-slate-50 dark:bg-slate-800/50">
-                  {group.orders.map(order => (
-                    <OSCard
-                      key={order.id}
-                      order={order}
-                      teamMembers={allMembers}
-                      seqNumber={sequenceMap[order.id]}
-                      onClick={() => handleCardClick(order)}
-                      isDragging={false}
-                      dropPosition={null}
-                      onDragStart={noop}
-                      onDragEnd={noop}
-                      onCardDragOver={noop}
-                      allOrders={orders}
-                      wbsBadge={order.wbsPath?.split(' — ')[0]}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-            {/* OS sem WBS neste projeto EAP */}
-            {activeOrders.filter(o => !o.wbsPath).length > 0 && (
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <div className="bg-gradient-to-r from-slate-400 to-slate-500 px-4 py-2.5 flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-white">Sem vinculo EAP</h3>
-                  <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">{activeOrders.filter(o => !o.wbsPath).length}</span>
-                </div>
-                <div className="p-3 space-y-0 bg-slate-50 dark:bg-slate-800/50">
-                  {activeOrders.filter(o => !o.wbsPath).map(order => (
-                    <OSCard
-                      key={order.id}
-                      order={order}
-                      teamMembers={allMembers}
-                      seqNumber={sequenceMap[order.id]}
-                      onClick={() => handleCardClick(order)}
-                      isDragging={false}
-                      dropPosition={null}
-                      onDragStart={noop}
-                      onDragEnd={noop}
-                      onCardDragOver={noop}
-                      allOrders={orders}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Secao Emergencial (apenas para projetos sem EAP ou quando nao ha agrupamento WBS) */}
-        {(!isEapProject || !ordersByWbs || ordersByWbs.length === 0) && emergencyOrders.length > 0 && (
+        {/* Secao Emergencial */}
+        {emergencyOrders.length > 0 && (
           <div className="mb-4 rounded-xl border-2 border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-950/30 overflow-hidden animate-pulse-subtle">
             <div className="bg-gradient-to-r from-red-600 to-red-700 px-4 py-3 flex items-center gap-2">
               <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1025,8 +950,8 @@ export default function FinancialPage() {
           </div>
         )}
 
-        {/* Kanban por Prioridade (oculto quando view WBS ativo) */}
-        {(!isEapProject || !ordersByWbs || ordersByWbs.length === 0) && <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
+        {/* Kanban por Prioridade */}
+        <div className="grid grid-cols-3 gap-4 min-h-[400px]">
           {PRIORITY_COLUMNS.map((column) => {
             const colOrders = ordersByColumn[column.id] || [];
             const isOver = dragOverCol === column.id && !dropTarget;
@@ -1097,7 +1022,7 @@ export default function FinancialPage() {
               </div>
             );
           })}
-        </div>}
+        </div>
 
         {/* Secao Concluidas */}
         {doneOrders.length > 0 && (
@@ -1381,6 +1306,8 @@ export default function FinancialPage() {
           );
         })()}
 
+        </div>{/* Fim area scrollavel */}
+
         {/* Create/Edit Form Modal */}
         {showCreateForm && (
           <OSFormModal
@@ -1436,6 +1363,117 @@ export default function FinancialPage() {
   }
 
   // ==================== TELA 1: GRID DE PROJETOS ====================
+
+  const renderProjectCard = (project) => {
+    const projOrders = orders.filter(o => o.projectId === project.id);
+    const total = projOrders.length;
+    const inProgress = projOrders.filter(o => o.status === 'in_progress').length;
+    const done = projOrders.filter(o => o.status === 'done').length;
+    const available = projOrders.filter(o => o.status === 'available').length;
+    const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+    const sector = sectors.find(s => s.id === project.sector);
+    const isFinished = project.status === 'finished';
+
+    return (
+      <div
+        key={project.id}
+        onClick={() => setSelectedProject(project)}
+        className={`group bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 hover:-translate-y-0.5 ${isFinished ? 'opacity-60' : ''}`}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div className="relative">
+            <FolderIcon color={project.color} size={40} />
+            {isFinished && (
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-0.5">
+            {canManageProjects && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const newStatus = isFinished ? 'active' : 'finished';
+                  updateOSProject(project.id, { status: newStatus }).then(() => {
+                    queryClient.invalidateQueries({ queryKey: queryKeys.osProjects });
+                    toast(isFinished ? 'Projeto reaberto' : 'Projeto finalizado', 'success');
+                  });
+                }}
+                className={`p-1 rounded transition-colors opacity-0 group-hover:opacity-100 ${
+                  isFinished
+                    ? 'text-amber-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                    : 'text-green-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
+                }`}
+                title={isFinished ? 'Reabrir projeto' : 'Finalizar projeto'}
+              >
+                {isFinished ? (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            )}
+            {canManageProjects && (
+              <button
+                onClick={(e) => { e.stopPropagation(); openEditProject(project); }}
+                className="p-1 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors opacity-0 group-hover:opacity-100"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 group-hover:text-fyness-primary transition-colors">{project.name}</h3>
+          {isFinished && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 shrink-0">Finalizado</span>
+          )}
+        </div>
+        {sector && (
+          <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full text-white mb-2" style={{ backgroundColor: sector.color }}>
+            {sector.label}
+          </span>
+        )}
+        {project.eapProjectId && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 mb-2 ml-1">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+            EAP
+          </span>
+        )}
+
+        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mb-2">
+          <span className="font-medium">{total} O.S.</span>
+          <span className="text-slate-300 dark:text-slate-600">|</span>
+          {inProgress > 0 && <span className="text-blue-600">{inProgress} andamento</span>}
+          {inProgress > 0 && available > 0 && <span className="text-slate-300 dark:text-slate-600">|</span>}
+          {available > 0 && <span className="text-slate-500 dark:text-slate-400">{available} disponiv.</span>}
+        </div>
+
+        {total > 0 && (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-600 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${percent}%`, backgroundColor: project.color }}
+              />
+            </div>
+            <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">{percent}%</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -1449,7 +1487,7 @@ export default function FinancialPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            Novo Projeto
+            Nova Pasta de OS
           </button>
         )}
       </div>
@@ -1521,187 +1559,104 @@ export default function FinancialPage() {
           )}
         </div>
 
-        {/* Toggle finalizados */}
-        <button
-          onClick={() => setShowFinished(!showFinished)}
-          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
-            showFinished
-              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-              : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
-          }`}
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Finalizados
-        </button>
       </div>
 
-      {/* Grid de Projetos */}
+      {/* Grid de Projetos separado por tipo */}
       <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredProjects.map(project => {
-            const projOrders = orders.filter(o => o.projectId === project.id);
-            const total = projOrders.length;
-            const inProgress = projOrders.filter(o => o.status === 'in_progress').length;
-            const done = projOrders.filter(o => o.status === 'done').length;
-            const available = projOrders.filter(o => o.status === 'available').length;
-            const percent = total > 0 ? Math.round((done / total) * 100) : 0;
-            const sector = sectors.find(s => s.id === project.sector);
+        {(() => {
+          const activeProjects = filteredProjects.filter(p => p.status !== 'finished');
+          const finishedProjects = filteredProjects.filter(p => p.status === 'finished');
+          const projectFolders = activeProjects.filter(p => p.projectType === 'project' || p.eapProjectId);
+          const execFolders = activeProjects.filter(p => p.projectType !== 'project' && !p.eapProjectId);
 
-            const isFinished = project.status === 'finished';
+          return (
+            <>
+              {/* ---- PROJETOS (EAP) ---- */}
+              {projectFolders.length > 0 && (
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <svg className="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                    <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Projeto</h2>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">{projectFolders.length}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {projectFolders.map(project => renderProjectCard(project))}
+                  </div>
+                </div>
+              )}
 
-            return (
-              <div
-                key={project.id}
-                onClick={() => setSelectedProject(project)}
-                className={`group bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 hover:-translate-y-0.5 ${isFinished ? 'opacity-60' : ''}`}
-              >
-                {/* Icone + Acoes */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="relative">
-                    <FolderIcon color={project.color} size={40} />
-                    {isFinished && (
-                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
+              {/* ---- OPERACOES (sem EAP) ---- */}
+              {(execFolders.length > 0 || orphanOrders.length > 0) && (
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Operacoes</h2>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">{execFolders.length}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {execFolders.map(project => renderProjectCard(project))}
+
+                    {/* Card "Sem Projeto" */}
+                    {orphanOrders.length > 0 && sectorFilter === 'all' && !projectSearch.trim() && (
+                      <div
+                        onClick={() => setSelectedProject({ id: '__no_project__', name: 'Sem Projeto', color: '#94a3b8', sector: null })}
+                        className="group bg-white dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 p-5 cursor-pointer hover:shadow-lg hover:border-slate-400 dark:hover:border-slate-500 transition-all duration-200 hover:-translate-y-0.5"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="text-slate-400 dark:text-slate-500">
+                            <InboxIcon size={40} />
+                          </div>
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Sem Projeto</h3>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">Ordens de servico nao atribuidas a nenhum projeto</p>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                          <span className="font-medium">{orphanOrders.length} O.S.</span>
+                          <span className="text-slate-300 dark:text-slate-600">|</span>
+                          <span className="text-blue-600">{orphanOrders.filter(o => o.status === 'in_progress').length} andamento</span>
+                        </div>
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-0.5">
-                    {canManageProjects && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const newStatus = isFinished ? 'active' : 'finished';
-                          updateOSProject(project.id, { status: newStatus }).then(() => {
-                            queryClient.invalidateQueries({ queryKey: queryKeys.osProjects });
-                            toast(isFinished ? 'Projeto reaberto' : 'Projeto finalizado', 'success');
-                          });
-                        }}
-                        className={`p-1 rounded transition-colors opacity-0 group-hover:opacity-100 ${
-                          isFinished
-                            ? 'text-amber-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-                            : 'text-green-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
-                        }`}
-                        title={isFinished ? 'Reabrir projeto' : 'Finalizar projeto'}
-                      >
-                        {isFinished ? (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </button>
-                    )}
-                    {canManageProjects && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openEditProject(project); }}
-                        className="p-1 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                        </svg>
-                      </button>
-                    )}
+                </div>
+              )}
+
+              {/* ---- CONCLUIDOS ---- */}
+              {finishedProjects.length > 0 && (
+                <div className="mb-6 opacity-70">
+                  <div className="flex items-center gap-2 mb-3">
+                    <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Concluidos</h2>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">{finishedProjects.length}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {finishedProjects.map(project => renderProjectCard(project))}
                   </div>
                 </div>
+              )}
 
-                {/* Nome + Badge + Setor */}
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 group-hover:text-fyness-primary transition-colors">{project.name}</h3>
-                  {isFinished && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 shrink-0">Finalizado</span>
+              {/* Estado vazio */}
+              {activeProjects.length === 0 && finishedProjects.length === 0 && orphanOrders.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <div className="text-slate-300 dark:text-slate-600 mb-4">
+                    <FolderIcon color="#cbd5e1" size={64} />
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-300 mb-1">Nenhum projeto encontrado</h3>
+                  <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">
+                    {projectSearch.trim() || sectorFilter !== 'all'
+                      ? 'Tente ajustar os filtros de busca'
+                      : 'Crie seu primeiro projeto para organizar as O.S.'
+                    }
+                  </p>
+                  {canManageProjects && !projectSearch.trim() && sectorFilter === 'all' && (
+                    <button onClick={openCreateProject} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
+                      Criar Projeto
+                    </button>
                   )}
                 </div>
-                {sector && (
-                  <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full text-white mb-2" style={{ backgroundColor: sector.color }}>
-                    {sector.label}
-                  </span>
-                )}
-                {project.eapProjectId && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 mb-2 ml-1">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                    EAP
-                  </span>
-                )}
-
-                {/* Descricao */}
-                {project.description && (
-                  <p className="text-xs text-slate-400 dark:text-slate-400 mb-3 line-clamp-1">{project.description}</p>
-                )}
-
-                {/* Stats */}
-                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mb-2">
-                  <span className="font-medium">{total} O.S.</span>
-                  <span className="text-slate-300 dark:text-slate-600">|</span>
-                  {inProgress > 0 && <span className="text-blue-600">{inProgress} andamento</span>}
-                  {inProgress > 0 && available > 0 && <span className="text-slate-300 dark:text-slate-600">|</span>}
-                  {available > 0 && <span className="text-slate-500 dark:text-slate-400">{available} disponiv.</span>}
-                </div>
-
-                {/* Barra de progresso */}
-                {total > 0 && (
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-600 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${percent}%`, backgroundColor: project.color }}
-                      />
-                    </div>
-                    <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">{percent}%</span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {/* Card "Sem Projeto" */}
-          {orphanOrders.length > 0 && sectorFilter === 'all' && !projectSearch.trim() && (
-            <div
-              onClick={() => setSelectedProject({ id: '__no_project__', name: 'Sem Projeto', color: '#94a3b8', sector: null })}
-              className="group bg-white dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 p-5 cursor-pointer hover:shadow-lg hover:border-slate-400 dark:hover:border-slate-500 transition-all duration-200 hover:-translate-y-0.5"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="text-slate-400 dark:text-slate-500">
-                  <InboxIcon size={40} />
-                </div>
-              </div>
-              <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Sem Projeto</h3>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">Ordens de servico nao atribuidas a nenhum projeto</p>
-              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                <span className="font-medium">{orphanOrders.length} O.S.</span>
-                <span className="text-slate-300 dark:text-slate-600">|</span>
-                <span className="text-blue-600">{orphanOrders.filter(o => o.status === 'in_progress').length} andamento</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Estado vazio */}
-        {filteredProjects.length === 0 && orphanOrders.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="text-slate-300 dark:text-slate-600 mb-4">
-              <FolderIcon color="#cbd5e1" size={64} />
-            </div>
-            <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-300 mb-1">Nenhum projeto encontrado</h3>
-            <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">
-              {projectSearch.trim() || sectorFilter !== 'all'
-                ? 'Tente ajustar os filtros de busca'
-                : 'Crie seu primeiro projeto para organizar as O.S.'
-              }
-            </p>
-            {canManageProjects && !projectSearch.trim() && sectorFilter === 'all' && (
-              <button onClick={openCreateProject} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
-                Criar Projeto
-              </button>
-            )}
-          </div>
-        )}
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Project Form Modal */}
@@ -2095,6 +2050,60 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
               </div>
             </div>
           )}
+
+          {/* Origem EAP — mini Gantt de rastreabilidade */}
+          {order.wbsPath && (() => {
+            const parts = order.wbsPath.split(' — ');
+            const wbsNumber = parts[0] || '';
+            const namePath = parts[1] || parts[0] || '';
+            const pathNodes = namePath.split(' > ');
+            if (pathNodes.length === 0) return null;
+            // Projeto como raiz, depois atividades ate a tarefa
+            const nodes = projectName ? [projectName, ...pathNodes] : pathNodes;
+            const wbsParts = wbsNumber.split('.');
+            const total = nodes.length;
+            return (
+              <div className="border-b border-slate-200 dark:border-slate-700 px-6 py-4">
+                <div className="flex items-center gap-1.5 mb-3">
+                  <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Origem EAP</span>
+                </div>
+                <div className="space-y-0">
+                  {nodes.map((node, i) => {
+                    const isLast = i === total - 1;
+                    const isRoot = projectName && i === 0;
+                    const wbsIdx = projectName ? i - 1 : i;
+                    const nodeWbs = isRoot ? '' : wbsParts.slice(0, wbsIdx + 1).join('.');
+                    return (
+                      <div key={i} className="relative" style={{ paddingLeft: i * 24 }}>
+                        {/* Conector vertical + curva */}
+                        {i > 0 && (
+                          <div className="absolute" style={{ left: (i * 24) - 12, top: -2 }}>
+                            <div className="w-3 h-[18px] border-l-2 border-b-2 border-slate-300 dark:border-slate-600 rounded-bl-lg" />
+                          </div>
+                        )}
+                        {/* Barra Gantt */}
+                        <div
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium my-[2px] ${
+                            isLast
+                              ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-sm'
+                              : i === 0
+                                ? 'bg-gradient-to-r from-slate-500 to-slate-600 dark:from-slate-500 dark:to-slate-600 text-white'
+                                : 'bg-gradient-to-r from-slate-300 to-slate-400 dark:from-slate-600 dark:to-slate-700 text-white'
+                          }`}
+                        >
+                          {nodeWbs && (
+                            <span className="text-[9px] font-mono font-bold px-1 py-0.5 rounded bg-white/15">{nodeWbs}</span>
+                          )}
+                          <span>{node}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Info grid */}
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
@@ -3533,11 +3542,16 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Previsao de Inicio</label>
-              <input type="datetime-local" value={form.estimatedStart} onChange={(e) => update('estimatedStart', e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" />
+              <input type="datetime-local" value={form.estimatedStart} onChange={(e) => {
+                update('estimatedStart', e.target.value);
+                if (form.estimatedEnd && e.target.value && e.target.value > form.estimatedEnd) {
+                  update('estimatedEnd', e.target.value);
+                }
+              }} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Previsao de Entrega</label>
-              <input type="datetime-local" value={form.estimatedEnd} onChange={(e) => update('estimatedEnd', e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" />
+              <input type="datetime-local" value={form.estimatedEnd} onChange={(e) => update('estimatedEnd', e.target.value)} min={form.estimatedStart || undefined} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" />
             </div>
           </div>
 
@@ -3577,6 +3591,11 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
               // Remover tarefa
               const removeTask = (taskId) => {
                 update('checklist', cl.filter(i => i.id !== taskId));
+              };
+
+              // Alternar done de uma tarefa
+              const toggleTaskDone = (taskId) => {
+                update('checklist', cl.map(i => i.id === taskId ? { ...i, done: !i.done } : i));
               };
 
               // Editar texto de uma tarefa existente
@@ -3674,6 +3693,12 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                                 <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
                               </svg>
                               <span className="w-5 h-5 rounded-md bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary text-[10px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
+                              <input
+                                type="checkbox"
+                                checked={!!item.done}
+                                onChange={() => toggleTaskDone(item.id)}
+                                className="w-4 h-4 rounded border-green-400 dark:border-green-500 text-green-500 focus:ring-green-400 accent-green-500 shrink-0 cursor-pointer"
+                              />
                               <textarea
                                 defaultValue={item.text}
                                 onBlur={(e) => updateTaskText(item.id, e.target.value)}
@@ -3681,7 +3706,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                                 rows={1}
                                 onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                                 onFocus={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                                className="text-sm text-slate-700 dark:text-slate-200 flex-1 bg-transparent border-none outline-none focus:ring-0 p-0 hover:bg-slate-100 dark:hover:bg-slate-700/40 focus:bg-slate-100 dark:focus:bg-slate-700/40 rounded px-1 -mx-1 transition-colors resize-none overflow-hidden"
+                                className={`text-sm flex-1 bg-transparent border-none outline-none focus:ring-0 p-0 hover:bg-slate-100 dark:hover:bg-slate-700/40 focus:bg-slate-100 dark:focus:bg-slate-700/40 rounded px-1 -mx-1 transition-colors resize-none overflow-hidden ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200'}`}
                               />
                               <button type="button" onClick={() => removeTask(item.id)} className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -4017,7 +4042,7 @@ function ProjectFormModal({ form, setForm, editing, sectors, onSave, onClose, on
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
         <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            {editing ? 'Editar Projeto' : 'Novo Projeto'}
+            {editing ? 'Editar Pasta de OS' : 'Nova Pasta de OS'}
           </h3>
           <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
             <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -4027,6 +4052,37 @@ function ProjectFormModal({ form, setForm, editing, sectors, onSave, onClose, on
         </div>
 
         <div className="p-6 space-y-4">
+          {/* Tipo: Projeto ou Execucao */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">Tipo *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => update('projectType', 'project')}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                  form.projectType === 'project'
+                    ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-400'
+                    : 'border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                }`}
+              >
+                <svg className={`w-4 h-4 ${form.projectType === 'project' ? 'text-indigo-500' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                Projeto
+              </button>
+              <button
+                type="button"
+                onClick={() => update('projectType', 'execution')}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                  form.projectType === 'execution'
+                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400'
+                    : 'border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                }`}
+              >
+                <svg className={`w-4 h-4 ${form.projectType === 'execution' ? 'text-amber-500' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                Operacoes
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Nome do Projeto *</label>
             <input

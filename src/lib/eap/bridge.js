@@ -4,7 +4,7 @@
  * Extraido de eapService.js (linhas 186-351).
  */
 
-import { createOSOrder, getOSProjects, createOSProject } from '../osService';
+import { createOSOrder, getOSProjects, createOSProject, deleteOSProject, getOSOrders, deleteOSOrder } from '../osService';
 import { taskService } from './crud';
 
 // ==================== HELPERS ====================
@@ -38,6 +38,7 @@ async function getOrCreateOSProject(rootTask, eapProjectId = null) {
     name: rootTask.name,
     description: `Projeto gerado automaticamente pela EAP`,
     color: '#3b82f6',
+    projectType: 'project',
     eapProjectId: eapProjectId || null,
   });
 
@@ -54,9 +55,32 @@ export async function createLinkedOSProject(eapProject) {
     name: eapProject.name,
     description: `Projeto vinculado a EAP: ${eapProject.name}`,
     color: eapProject.color || '#3b82f6',
+    projectType: 'project',
     eapProjectId: eapProject.id,
   });
   return newProject;
+}
+
+/** Exclui todos os OS Projects e OS Orders vinculados a um projeto EAP. */
+export async function deleteLinkedOSData(eapProjectId) {
+  const osProjects = await getOSProjects();
+  const linked = osProjects.filter(p => p.eapProjectId === eapProjectId);
+  if (linked.length === 0) return;
+
+  const osOrders = await getOSOrders();
+  const linkedProjectIds = new Set(linked.map(p => p.id));
+
+  // Deletar todas as OS dentro dos projetos vinculados
+  for (const order of osOrders) {
+    if (linkedProjectIds.has(order.projectId)) {
+      await deleteOSOrder(order.id);
+    }
+  }
+
+  // Deletar os projetos OS vinculados
+  for (const project of linked) {
+    await deleteOSProject(project.id);
+  }
 }
 
 /**

@@ -25,6 +25,7 @@ const CrmLayout = lazy(() => import('./modules/crm/components/layout/CrmLayout')
 const CrmDashboardPage = lazy(() => import('./modules/crm/pages/CrmDashboardPage'))
 const CrmPipelinePage = lazy(() => import('./modules/crm/pages/CrmPipelinePage'))
 const CrmDealsPage = lazy(() => import('./modules/crm/pages/CrmDealsPage'))
+const CrmDealDetailPage = lazy(() => import('./modules/crm/pages/CrmDealDetailPage'))
 const CrmContactsPage = lazy(() => import('./modules/crm/pages/CrmContactsPage'))
 const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage'))
 const CrmActivitiesPage = lazy(() => import('./modules/crm/pages/CrmActivitiesPage'))
@@ -33,6 +34,7 @@ const CrmGoalsPage = lazy(() => import('./modules/crm/pages/CrmGoalsPage'))
 const CrmReportsPage = lazy(() => import('./modules/crm/pages/CrmReportsPage'))
 const CrmForecastPage = lazy(() => import('./modules/crm/pages/CrmForecastPage'))
 const CrmTrafficPage = lazy(() => import('./modules/crm/pages/CrmTrafficPage'))
+const CrmProspectsPage = lazy(() => import('./modules/crm/pages/CrmProspectsPage'))
 const CrmSettingsPage = lazy(() => import('./modules/crm/pages/CrmSettingsPage'))
 
 function LoadingSpinner() {
@@ -90,6 +92,7 @@ function App() {
                 <Route path="pipeline" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="pipeline/:pipelineId" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="deals" element={<ErrorBoundary><CrmDealsPage /></ErrorBoundary>} />
+                <Route path="deals/:dealId" element={<ErrorBoundary><CrmDealDetailPage /></ErrorBoundary>} />
                 <Route path="contacts" element={<ErrorBoundary><CrmContactsPage /></ErrorBoundary>} />
                 <Route path="companies" element={<ErrorBoundary><CrmCompaniesPage /></ErrorBoundary>} />
                 <Route path="activities" element={<ErrorBoundary><CrmActivitiesPage /></ErrorBoundary>} />
@@ -98,6 +101,7 @@ function App() {
                 <Route path="forecast" element={<ErrorBoundary><CrmForecastPage /></ErrorBoundary>} />
                 <Route path="goals" element={<ErrorBoundary><CrmGoalsPage /></ErrorBoundary>} />
                 <Route path="traffic" element={<ErrorBoundary><CrmTrafficPage /></ErrorBoundary>} />
+                <Route path="prospects" element={<ErrorBoundary><CrmProspectsPage /></ErrorBoundary>} />
                 <Route path="settings" element={<ErrorBoundary><CrmSettingsPage /></ErrorBoundary>} />
               </Route>
             </Route>

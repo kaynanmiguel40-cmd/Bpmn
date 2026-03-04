@@ -51,6 +51,8 @@ export const crmPipelineStageSchema = z.object({
   name: z.string().min(1, 'Nome da etapa e obrigatorio'),
   position: z.number().min(0),
   color: z.string().optional().default('#6366f1'),
+  isWinStage: z.boolean().optional().default(false),
+  triggersMeeting: z.boolean().optional().default(false),
 }).passthrough();
 
 // ==================== DEAL ====================
@@ -66,6 +68,7 @@ export const crmDealSchema = z.object({
   expectedCloseDate: z.string().nullable().optional().default(null),
   status: z.enum(['open', 'won', 'lost']).default('open'),
   lostReason: nullableStr,
+  ownerId: z.string().nullable().optional().default(null),
 }).passthrough();
 
 // ==================== ACTIVITY ====================
@@ -129,6 +132,31 @@ export const crmTrafficSchema = z.object({
   conversions: z.number().min(0).default(0),
   revenueGenerated: z.number().min(0).default(0),
   notes: z.string().optional().default(''),
+}).passthrough();
+
+// ==================== PROSPECT ====================
+
+export const crmProspectSchema = z.object({
+  companyName: z.string().min(1, 'Nome da empresa e obrigatorio'),
+  contactName: nullableStr,
+  phone: nullableStr,
+  email: z.string().email('Email invalido').optional().or(z.literal('')).default(''),
+  cnpj: nullableStr,
+  segment: nullableStr,
+  size: nullableStr,
+  city: nullableStr,
+  state: nullableStr,
+  position: nullableStr,
+  source: nullableStr,
+  website: nullableStr,
+  revenue: nullableNum,
+  employees: z.number().nullable().optional(),
+  notes: z.string().optional().default(''),
+  status: z.enum(['new', 'contacted', 'qualified', 'converted', 'discarded']).default('new'),
+  prospectType: z.enum(['lead', 'partner']).optional().default('lead'),
+  partnerCategory: z.enum(['contabilidade', 'financeira', 'advocacia', 'associacao']).nullable().optional().default(null),
+  assignedTo: z.string().nullable().optional().default(null),
+  listName: nullableStr,
 }).passthrough();
 
 // ==================== SETTINGS ====================

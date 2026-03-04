@@ -26,6 +26,10 @@ export function dbToEvent(row) {
     notes: row.notes || '',
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
     createdAt: row.created_at,
+    // Google Calendar sync fields
+    googleEventId: row.google_event_id || null,
+    googleCalendarId: row.google_calendar_id || null,
+    syncSource: row.sync_source || 'fyness',
   };
 }
 
@@ -57,6 +61,10 @@ const eventService = createCRUDService({
     attendees: 'attendees',
     notes: 'notes',
     attachments: 'attachments',
+    // Google Calendar sync fields
+    googleEventId: 'google_event_id',
+    googleCalendarId: 'google_calendar_id',
+    syncSource: 'sync_source',
   },
 });
 

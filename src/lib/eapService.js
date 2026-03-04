@@ -25,5 +25,5 @@ export {
   autoScheduleTasks, detectCircularDependency,
   formatPredecessors, parsePredecessors,
   // Bridge
-  generateOSFromTask, syncProgressFromOS, createLinkedOSProject,
+  generateOSFromTask, syncProgressFromOS, createLinkedOSProject, deleteLinkedOSData,
 } from './eap/index';

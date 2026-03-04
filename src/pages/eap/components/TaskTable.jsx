@@ -608,10 +608,11 @@ const TaskTable = forwardRef(function TaskTable({
     resizeRef.current = { colKey, startX: e.clientX, startWidth };
 
     const handleMove = (ev) => {
-      if (!resizeRef.current) return;
-      const diff = ev.clientX - resizeRef.current.startX;
-      const newWidth = Math.max(28, resizeRef.current.startWidth + diff);
-      setColumnWidths(prev => ({ ...prev, [resizeRef.current.colKey]: newWidth }));
+      const ref = resizeRef.current;
+      if (!ref) return;
+      const diff = ev.clientX - ref.startX;
+      const newWidth = Math.max(28, ref.startWidth + diff);
+      setColumnWidths(prev => ({ ...prev, [ref.colKey]: newWidth }));
     };
 
     const handleUp = () => {

@@ -53,6 +53,7 @@ export function dbToOSProject(row) {
     color: row.color || '#3b82f6',
     description: row.description || '',
     status: row.status || 'active',
+    projectType: row.project_type || 'execution',
     eapProjectId: row.eap_project_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -105,6 +106,7 @@ const projectService = createCRUDService({
     color: 'color',
     description: 'description',
     status: 'status',
+    projectType: 'project_type',
     eapProjectId: 'eap_project_id',
   },
 });

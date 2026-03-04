@@ -9,7 +9,7 @@ import {
 import { useToast } from '../../contexts/ToastContext';
 import AutoTextarea from '../../components/ui/AutoTextarea';
 import { useProfile } from '../../hooks/useProfile';
-import { createLinkedOSProject } from '../../lib/eapService';
+import { createLinkedOSProject, deleteLinkedOSData } from '../../lib/eapService';
 import { EAP_STATUS_LABELS as STATUS_LABELS, PROJECT_COLORS } from '../../constants/colors';
 
 const EMPTY_FOLDER_FORM = { name: '', description: '', color: '#3b82f6', status: 'planning' };
@@ -474,8 +474,11 @@ export default function EapPage() {
         if (activeFolder?.id === deleteTarget.id) setActiveFolder(null);
         addToast('Projeto excluido', 'success');
       } else {
+        await deleteLinkedOSData(deleteTarget.id);
         await deleteProjectMut.mutateAsync(deleteTarget.id);
-        addToast('EAP excluida', 'success');
+        queryClient.invalidateQueries({ queryKey: queryKeys.osProjects });
+        queryClient.invalidateQueries({ queryKey: queryKeys.osOrders });
+        addToast('EAP e OS vinculadas excluidas', 'success');
       }
     } catch {
       addToast('Erro ao excluir', 'error');
@@ -494,206 +497,39 @@ export default function EapPage() {
     );
   }
 
-  // ---------- INSIDE FOLDER VIEW ----------
-  if (activeFolder) {
-    return (
-      <div>
-        {/* Breadcrumb + Back */}
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => setActiveFolder(null)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-          >
-            <BackIcon />
-            Voltar
-          </button>
-          <div className="flex items-center gap-2 text-sm text-slate-400 dark:text-slate-500">
-            <span>Projetos</span>
-            <span>/</span>
-            <span className="text-slate-800 dark:text-slate-100 font-medium">{activeFolder.name}</span>
-          </div>
-        </div>
-
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: activeFolder.color + '20' }}>
-              <FolderIcon className="w-5 h-5" style={{ color: activeFolder.color }} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{activeFolder.name}</h2>
-                <button onClick={(e) => handleEditFolder(e, activeFolder)} className="p-1 rounded text-slate-400 hover:text-blue-500 transition-colors" title="Editar projeto">
-                  <EditIcon />
-                </button>
-              </div>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {folderProjects.length} {folderProjects.length === 1 ? 'EAP' : 'EAPs'}
-              </p>
-            </div>
-          </div>
-          <button onClick={() => setShowCreateEap(true)} className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
-            <PlusIcon />
-            Nova EAP
-          </button>
-        </div>
-
-        {/* EAP Grid */}
-        {folderProjects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <FolderIcon className="w-16 h-16 text-slate-300 dark:text-slate-600 mb-4" />
-            <h3 className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-1">Nenhuma EAP neste projeto</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Crie sua primeira EAP para comecar a gerenciar tarefas no Gantt.</p>
-            <button onClick={() => setShowCreateEap(true)} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
-              Criar Primeira EAP
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {folderProjects.map(project => renderEapCard(project))}
-          </div>
-        )}
-
-        {/* Modals */}
-        {renderEapModals()}
-        {renderFolderEditModal()}
-        {renderDeleteModal()}
-      </div>
-    );
-  }
-
-  // ---------- FOLDER VIEW (default) ----------
-  const hasContent = folders.length > 0 || orphanProjects.length > 0;
-
+  // ---------- PROJECT LIST (sem camada de pastas) ----------
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Projetos</h2>
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">EAP — Projetos</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {folders.length} {folders.length === 1 ? 'projeto' : 'projetos'}
-            {orphanProjects.length > 0 && ` · ${orphanProjects.length} EAP${orphanProjects.length > 1 ? 's' : ''} avulsa${orphanProjects.length > 1 ? 's' : ''}`}
+            {projects.length} {projects.length === 1 ? 'projeto' : 'projetos'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowCreateEap(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-            <PlusIcon />
-            Nova EAP Avulsa
-          </button>
-          <button onClick={() => setShowCreateFolder(true)} className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
-            <PlusIcon />
-            Novo Projeto
-          </button>
-        </div>
+        <button onClick={() => setShowCreateEap(true)} className="flex items-center gap-2 px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
+          <PlusIcon />
+          Novo Projeto
+        </button>
       </div>
 
-      {!hasContent ? (
+      {projects.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <FolderIcon className="w-16 h-16 text-slate-300 dark:text-slate-600 mb-4" />
           <h3 className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-1">Nenhum projeto ainda</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Crie seu primeiro projeto para organizar suas EAPs.</p>
-          <button onClick={() => setShowCreateFolder(true)} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Crie seu primeiro projeto para gerenciar tarefas no Gantt.</p>
+          <button onClick={() => setShowCreateEap(true)} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
             Criar Primeiro Projeto
           </button>
         </div>
       ) : (
-        <>
-          {/* Folders Grid */}
-          {folders.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
-              {folders.map(folder => {
-                const status = STATUS_LABELS[folder.status] || STATUS_LABELS.planning;
-                const eapCount = eapCountMap[folder.id] || 0;
-                const avgProgress = folderProgressMap[folder.id] || 0;
-
-                return (
-                  <div
-                    key={folder.id}
-                    onClick={() => setActiveFolder(folder)}
-                    onDragOver={(e) => handleFolderDragOver(e, folder.id)}
-                    onDragLeave={handleFolderDragLeave}
-                    onDrop={(e) => handleFolderDrop(e, folder.id)}
-                    className={`group relative bg-white dark:bg-slate-800 border-2 rounded-xl p-5 cursor-pointer hover:shadow-lg transition-all duration-200 ${
-                      dragOverFolderId === folder.id
-                        ? 'border-blue-500 dark:border-blue-400 bg-blue-50/50 dark:bg-blue-900/20 shadow-lg scale-[1.02]'
-                        : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600'
-                    }`}
-                  >
-                    {/* Barra de cor */}
-                    <div className="absolute top-0 left-4 right-4 h-1 rounded-b-full" style={{ backgroundColor: folder.color || '#3b82f6' }} />
-
-                    {/* Botoes hover */}
-                    <div className="absolute top-3 right-3 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all">
-                      <button onClick={(e) => handleEditFolder(e, folder)} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Editar projeto">
-                        <EditIcon />
-                      </button>
-                      <button onClick={(e) => handleRequestDelete(e, folder.id, folder.name, 'folder')} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Excluir projeto">
-                        <TrashIcon />
-                      </button>
-                    </div>
-
-                    {/* Icone de pasta + Nome */}
-                    <div className="flex items-center gap-2.5 mt-2 mb-2 pr-8">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: folder.color + '20' }}>
-                        <FolderIcon className="w-4.5 h-4.5" style={{ color: folder.color }} />
-                      </div>
-                      <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate">{folder.name}</h3>
-                    </div>
-
-                    {/* Badge de status */}
-                    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${status.color}`}>
-                      {status.label}
-                    </span>
-
-                    {/* Descricao */}
-                    {folder.description && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 line-clamp-2">{folder.description}</p>
-                    )}
-
-                    {/* Metadados */}
-                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                        <TaskIcon />
-                        <span>{eapCount} {eapCount === 1 ? 'EAP' : 'EAPs'}</span>
-                      </div>
-
-                      {eapCount > 0 && (
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full transition-all" style={{ width: `${avgProgress}%`, backgroundColor: folder.color || '#3b82f6' }} />
-                          </div>
-                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{avgProgress}%</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Orphan EAPs (sem pasta) */}
-          {orphanProjects.length > 0 && (
-            <>
-              {folders.length > 0 && (
-                <div className="flex items-center gap-2 mb-3 mt-2">
-                  <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
-                  <span className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">EAPs Avulsas</span>
-                  <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
-                </div>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {orphanProjects.map(project => renderEapCard(project))}
-              </div>
-            </>
-          )}
-        </>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {projects.map(project => renderEapCard(project))}
+        </div>
       )}
 
       {/* Modals */}
-      {renderFolderCreateModal()}
-      {renderFolderEditModal()}
       {renderEapModals()}
       {renderDeleteModal()}
     </div>

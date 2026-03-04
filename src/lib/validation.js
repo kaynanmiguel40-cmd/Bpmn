@@ -178,6 +178,7 @@ export const osProjectSchema = z.object({
   color: z.string().optional().default('#3b82f6'),
   description: z.string().optional().default(''),
   status: z.enum(['active', 'finished']).default('active'),
+  projectType: z.enum(['project', 'execution']).default('execution'),
   eapProjectId: z.string().nullable().optional().default(null),
 }).passthrough();
 

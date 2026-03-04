@@ -1,0 +1,479 @@
+import { createCRUDService } from '../../../lib/serviceFactory';
+import { supabase } from '../../../lib/supabase';
+import { toast } from '../../../contexts/ToastContext';
+import { crmProspectSchema } from '../schemas/crmValidation';
+import { createCrmCompany } from './crmCompaniesService';
+import { createCrmContact } from './crmContactsService';
+import { createCrmDeal } from './crmDealsService';
+import { getMockProspects, getMockAnalytics, getMockListNames } from '../data/mockProspects';
+import { getMockPartners, getMockPartnerAnalytics } from '../data/mockPartners';
+import { SEGMENT_TO_CNAE, CNAE_TO_SEGMENT, SIZE_TO_PORTE, PORTE_TO_SIZE, REVENUE_TO_CAPITAL } from '../data/cnaeMapping';
+
+// Flag para usar dados mock (trocar para false para usar API Casa dos Dados para leads)
+const USE_MOCK = false;
+
+// API Casa dos Dados — chave obtida em https://portal.casadosdados.com.br
+const CASA_DOS_DADOS_API_KEY = '3845f12c696f5a8cc50bded9fa6a5df0197604d95f74cb16915c8bdd43398ce22765050eeca421b8e8d06d232ace474ee936efb1d5cf6852b8a6283b1a7fee16';
+const CASA_DOS_DADOS_URL = 'https://api.casadosdados.com.br/v5/cnpj/pesquisa';
+
+// ==================== TRANSFORMADOR ====================
+
+export function dbToProspect(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    companyName: row.company_name,
+    contactName: row.contact_name || '',
+    phone: row.phone || '',
+    email: row.email || '',
+    cnpj: row.cnpj || '',
+    segment: row.segment || '',
+    size: row.size || '',
+    city: row.city || '',
+    state: row.state || '',
+    position: row.position || '',
+    source: row.source || '',
+    website: row.website || '',
+    revenue: row.revenue || null,
+    employees: row.employees || null,
+    notes: row.notes || '',
+    status: row.status || 'new',
+    assignedTo: row.assigned_to || null,
+    assignedMember: row.team_members ? {
+      id: row.team_members.id,
+      name: row.team_members.name,
+      color: row.team_members.color,
+    } : null,
+    prospectType: row.prospect_type || 'lead',
+    partnerCategory: row.partner_category || null,
+    listName: row.list_name || '',
+    createdBy: row.created_by || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at || null,
+  };
+}
+
+// ==================== CRUD VIA FACTORY ====================
+
+const prospectService = createCRUDService({
+  table: 'crm_prospects',
+  localKey: 'crm_prospects',
+  idPrefix: 'crm_prs',
+  transform: dbToProspect,
+  schema: crmProspectSchema,
+  fieldMap: {
+    companyName: 'company_name',
+    contactName: 'contact_name',
+    phone: 'phone',
+    email: 'email',
+    cnpj: 'cnpj',
+    segment: 'segment',
+    size: 'size',
+    city: 'city',
+    state: 'state',
+    position: 'position',
+    source: 'source',
+    website: 'website',
+    revenue: 'revenue',
+    employees: 'employees',
+    notes: 'notes',
+    status: 'status',
+    assignedTo: 'assigned_to',
+    listName: 'list_name',
+    prospectType: 'prospect_type',
+    partnerCategory: 'partner_category',
+  },
+  orderBy: 'created_at',
+  orderAsc: false,
+});
+
+// ==================== BUSCA VIA API (LEADS) ====================
+
+function buildApiBody(filters) {
+  const body = {
+    situacao_cadastral: ['ATIVA'],
+    limite: Math.min(filters.perPage || 50, 1000),
+    pagina: filters.page || 1,
+    mais_filtros: { somente_matriz: true },
+  };
+
+  // Segmento → CNAE
+  if (filters.segment && filters.segment !== 'Outro' && SEGMENT_TO_CNAE[filters.segment]) {
+    body.codigo_atividade_principal = SEGMENT_TO_CNAE[filters.segment];
+    body.incluir_atividade_secundaria = true;
+  }
+
+  // Porte
+  if (filters.size && SIZE_TO_PORTE[filters.size]) {
+    const cfg = SIZE_TO_PORTE[filters.size];
+    body.porte_empresa = { codigos: cfg.codigos };
+    if (cfg.mei) body.mei = cfg.mei;
+  }
+
+  // Estado
+  if (filters.state) body.uf = [filters.state.toLowerCase()];
+
+  // Cidade
+  if (filters.city) body.municipio = [filters.city.toUpperCase()];
+
+  // Faturamento → capital social
+  if (filters.revenueRange && REVENUE_TO_CAPITAL[filters.revenueRange]) {
+    body.capital_social = REVENUE_TO_CAPITAL[filters.revenueRange];
+  }
+
+  // Busca textual
+  if (filters.search) {
+    body.busca_textual = [{
+      texto: [filters.search],
+      tipo_busca: 'radical',
+      razao_social: true,
+      nome_fantasia: true,
+    }];
+  }
+
+  return body;
+}
+
+function guessSegmentFromCnae(cnaeCode) {
+  if (!cnaeCode) return 'Outro';
+  if (CNAE_TO_SEGMENT[cnaeCode]) return CNAE_TO_SEGMENT[cnaeCode];
+  // Tenta por divisao (2 primeiros digitos)
+  const div = cnaeCode.substring(0, 2);
+  const divMap = {
+    '01': 'Agronegocio', '02': 'Agronegocio', '03': 'Agronegocio',
+    '10': 'Alimenticio', '11': 'Alimenticio', '56': 'Alimenticio',
+    '41': 'Construcao', '42': 'Construcao', '43': 'Construcao',
+    '45': 'Varejo', '46': 'Varejo', '47': 'Varejo',
+    '49': 'Logistica', '50': 'Logistica', '51': 'Logistica', '52': 'Logistica',
+    '62': 'Tecnologia', '63': 'Tecnologia',
+    '64': 'Financeiro', '65': 'Financeiro', '66': 'Financeiro',
+    '69': 'Servicos', '70': 'Servicos', '71': 'Servicos', '73': 'Servicos', '74': 'Servicos',
+    '85': 'Educacao',
+    '86': 'Saude', '87': 'Saude',
+  };
+  return divMap[div] || 'Outro';
+}
+
+function formatCnpj(cnpj) {
+  if (!cnpj || cnpj.length !== 14) return cnpj || '';
+  return cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+}
+
+function transformApiCompany(c) {
+  const cnaeCode = c.atividade_principal?.codigo || '';
+  const isMei = c.mei?.optante === true;
+  const porteCode = c.porte_empresa?.codigo || '05';
+
+  const fantasia = c.nome_fantasia?.trim();
+  const razao = c.razao_social?.trim() || '';
+  const companyName = (fantasia && fantasia.length < razao.length && fantasia.length > 2) ? fantasia : razao;
+
+  const socio = c.quadro_societario?.[0];
+
+  return {
+    id: `api_${c.cnpj}`,
+    companyName,
+    contactName: socio?.nome || '',
+    phone: c.telefones?.[0] || '',
+    email: c.emails?.[0] || '',
+    cnpj: formatCnpj(c.cnpj),
+    segment: guessSegmentFromCnae(cnaeCode),
+    size: isMei ? 'mei' : (PORTE_TO_SIZE[porteCode] || 'media'),
+    city: c.endereco?.municipio || '',
+    state: (c.endereco?.uf || '').toUpperCase(),
+    position: socio?.qualificacao_socio || '',
+    source: 'Casa dos Dados',
+    website: '',
+    revenue: c.capital_social ?? null,
+    employees: null,
+    notes: '',
+    status: 'new',
+    assignedTo: null,
+    assignedMember: null,
+    prospectType: 'lead',
+    partnerCategory: null,
+    listName: '',
+    createdBy: null,
+    createdAt: c.data_abertura || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    deletedAt: null,
+    cnaeDescricao: c.atividade_principal?.descricao || '',
+    endereco: c.endereco ? `${c.endereco.logradouro || ''}, ${c.endereco.numero || 'S/N'} - ${c.endereco.bairro || ''}` : '',
+    cep: c.endereco?.cep || '',
+  };
+}
+
+async function searchLeadsViaAPI(filters = {}) {
+  if (!CASA_DOS_DADOS_API_KEY) {
+    console.warn('[SearchLeads] API key nao configurada');
+    return null;
+  }
+
+  try {
+    const res = await fetch(CASA_DOS_DADOS_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': CASA_DOS_DADOS_API_KEY,
+      },
+      body: JSON.stringify(buildApiBody(filters)),
+    });
+
+    if (res.status === 401) {
+      toast('API key da Casa dos Dados invalida.', 'error');
+      return null;
+    }
+    if (res.status === 403) {
+      toast('Saldo insuficiente na API Casa dos Dados.', 'error');
+      return null;
+    }
+    if (!res.ok) {
+      console.error('[SearchLeads] API error:', res.status);
+      return null;
+    }
+
+    const json = await res.json();
+    const prospects = (json.cnpjs || []).map(transformApiCompany);
+
+    return { data: prospects, count: json.total || prospects.length, source: 'api' };
+  } catch (err) {
+    console.error('[SearchLeads] Fetch error:', err);
+    return null;
+  }
+}
+
+// ==================== FUNCOES EXPORTADAS ====================
+
+export async function getCrmProspects(filters = {}) {
+  // Partners sempre usam mock (por enquanto)
+  if (filters.prospectType === 'partner') {
+    if (USE_MOCK) {
+      await new Promise(r => setTimeout(r, 300));
+      return getMockPartners(filters);
+    }
+    // TODO: Quando integrar DB de parceiros, buscar via Supabase aqui
+    await new Promise(r => setTimeout(r, 300));
+    return getMockPartners(filters);
+  }
+
+  // Leads: tentar API real primeiro, fallback para mock
+  if (!USE_MOCK) {
+    const apiResult = await searchLeadsViaAPI(filters);
+    if (apiResult) return apiResult;
+    // Fallback: se API falhou, usar mock
+    console.warn('[Prospects] API indisponivel, usando mock como fallback');
+  }
+
+  // Mock (dev ou fallback)
+  await new Promise(r => setTimeout(r, 300));
+  return getMockProspects(filters);
+}
+
+// ==================== ANALYTICS (agregacao client-side) ====================
+
+function aggregateAnalytics(rows) {
+  const total = rows.length;
+  if (total === 0) return { total: 0, withEmail: 0, withPhone: 0, withCnpj: 0, uniqueSegments: 0, bySegment: [], bySize: [], byCity: [], bySource: [] };
+
+  const withEmail = rows.filter(r => r.email && r.email.trim()).length;
+  const withPhone = rows.filter(r => r.phone && r.phone.trim()).length;
+  const withCnpj = rows.filter(r => r.cnpj && r.cnpj.trim()).length;
+
+  const groupBy = (arr, key) => {
+    const map = {};
+    arr.forEach(r => {
+      const val = r[key] || 'Nao informado';
+      map[val] = (map[val] || 0) + 1;
+    });
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  };
+
+  const bySegment = groupBy(rows, 'segment');
+  const bySize = groupBy(rows, 'size');
+  const bySource = groupBy(rows, 'source');
+
+  const cityMap = {};
+  rows.forEach(r => {
+    const c = r.city?.trim();
+    const st = r.state?.trim();
+    if (!c && !st) {
+      cityMap['Nao informado'] = (cityMap['Nao informado'] || 0) + 1;
+      return;
+    }
+    const key = [c, st].filter(Boolean).join('/');
+    cityMap[key] = (cityMap[key] || 0) + 1;
+  });
+  const byCity = Object.entries(cityMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10);
+
+  const uniqueSegments = new Set(rows.map(r => r.segment).filter(Boolean)).size;
+
+  return { total, withEmail, withPhone, withCnpj, uniqueSegments, bySegment, bySize, byCity, bySource };
+}
+
+export async function getProspectsAnalytics(filters = {}) {
+  // Partners: mock analytics
+  if (filters.prospectType === 'partner') {
+    if (USE_MOCK) {
+      await new Promise(r => setTimeout(r, 200));
+      return getMockPartnerAnalytics(filters);
+    }
+    await new Promise(r => setTimeout(r, 200));
+    return getMockPartnerAnalytics(filters);
+  }
+
+  // Leads: buscar via API com perPage alto para agregar
+  if (!USE_MOCK) {
+    const apiResult = await searchLeadsViaAPI({ ...filters, page: 1, perPage: 1000 });
+    if (apiResult && apiResult.data.length > 0) {
+      return { ...aggregateAnalytics(apiResult.data), total: apiResult.count };
+    }
+    // Fallback mock
+  }
+
+  await new Promise(r => setTimeout(r, 200));
+  return getMockAnalytics(filters);
+}
+
+export async function getProspectListNames() {
+  if (USE_MOCK) {
+    return getMockListNames();
+  }
+
+  const { data, error } = await supabase
+    .from('crm_prospects')
+    .select('list_name')
+    .is('deleted_at', null)
+    .not('list_name', 'is', null)
+    .not('list_name', 'eq', '');
+
+  if (error) return [];
+  const unique = [...new Set((data || []).map(r => r.list_name).filter(Boolean))];
+  return unique.sort();
+}
+
+export async function createCrmProspect(data) {
+  const session = await supabase.auth.getSession();
+  const userId = session.data?.session?.user?.id;
+  return prospectService.create(data, { created_by: userId });
+}
+
+export async function updateCrmProspect(id, updates) {
+  return prospectService.update(id, updates);
+}
+
+export async function softDeleteCrmProspect(id) {
+  const { error } = await supabase
+    .from('crm_prospects')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
+
+  if (error) {
+    toast(`Erro ao excluir prospect: ${error.message}`, 'error');
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Envia prospects selecionados para um pipeline do CRM.
+ * Para cada prospect: cria empresa, contato e deal.
+ */
+export async function sendToPipeline(prospectIds, pipelineId, stageId) {
+  // Buscar dados dos prospects
+  const { data: prospects, error } = await supabase
+    .from('crm_prospects')
+    .select('*')
+    .in('id', prospectIds)
+    .is('deleted_at', null);
+
+  if (error || !prospects?.length) {
+    toast('Erro ao buscar prospects para conversao', 'error');
+    return { success: 0, errors: 0 };
+  }
+
+  let success = 0;
+  let errors = 0;
+
+  for (const p of prospects) {
+    try {
+      // 1. Verificar se empresa com mesmo CNPJ ja existe
+      let companyId = null;
+      if (p.cnpj) {
+        const { data: existing } = await supabase
+          .from('crm_companies')
+          .select('id')
+          .eq('cnpj', p.cnpj)
+          .is('deleted_at', null)
+          .maybeSingle();
+        if (existing) companyId = existing.id;
+      }
+
+      // Criar empresa se nao existe
+      if (!companyId) {
+        const company = await createCrmCompany({
+          name: p.company_name,
+          cnpj: p.cnpj || '',
+          segment: p.segment || '',
+          size: p.size || '',
+          phone: p.phone || '',
+          email: p.email || '',
+          website: p.website || '',
+          city: p.city || '',
+          state: p.state || '',
+        });
+        companyId = company?.id;
+      }
+
+      // 2. Criar contato
+      let contactId = null;
+      if (p.contact_name) {
+        const contact = await createCrmContact({
+          name: p.contact_name,
+          email: p.email || '',
+          phone: p.phone || '',
+          position: p.position || '',
+          status: 'lead',
+          companyId: companyId,
+        });
+        contactId = contact?.id;
+      }
+
+      // 3. Criar deal
+      await createCrmDeal({
+        title: p.company_name,
+        value: 0,
+        pipelineId,
+        stageId,
+        contactId: contactId || null,
+        companyId: companyId || null,
+        status: 'open',
+      });
+
+      // 4. Marcar prospect como convertido
+      await supabase
+        .from('crm_prospects')
+        .update({ status: 'converted', updated_at: new Date().toISOString() })
+        .eq('id', p.id);
+
+      success++;
+    } catch (err) {
+      console.error(`[Prospects] Erro ao converter prospect ${p.id}:`, err);
+      errors++;
+    }
+  }
+
+  if (success > 0) {
+    toast(`${success} prospect${success > 1 ? 's' : ''} convertido${success > 1 ? 's' : ''} com sucesso`, 'success');
+  }
+  if (errors > 0) {
+    toast(`${errors} prospect${errors > 1 ? 's' : ''} com erro na conversao`, 'error');
+  }
+
+  return { success, errors };
+}

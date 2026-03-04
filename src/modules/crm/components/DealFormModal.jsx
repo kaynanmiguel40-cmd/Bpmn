@@ -16,6 +16,7 @@ import {
   useCreateCrmDeal,
   useUpdateCrmDeal,
 } from '../hooks/useCrmQueries';
+import { useTeamMembers } from '../../../hooks/queries';
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Aberto' },
@@ -77,6 +78,8 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   const { data: pipelines = [] } = useCrmPipelines();
+  const { data: allMembers = [] } = useTeamMembers();
+  const crmMembers = allMembers.filter(m => m.crmRole);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(crmDealSchema),
@@ -85,6 +88,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
       contactId: null, companyId: null,
       pipelineId: null, stageId: null,
       expectedCloseDate: null, status: 'open', lostReason: '',
+      ownerId: null,
     },
   });
 
@@ -105,6 +109,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         expectedCloseDate: deal.expectedCloseDate ? deal.expectedCloseDate.split('T')[0] : null,
         status: deal.status || 'open',
         lostReason: deal.lostReason || '',
+        ownerId: deal.ownerId || null,
       });
     } else if (open) {
       const pId = defaultPipelineId || pipelines?.[0]?.id || null;
@@ -114,6 +119,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         contactId: null, companyId: null,
         pipelineId: pId, stageId: sId,
         expectedCloseDate: null, status: 'open', lostReason: '',
+        ownerId: null,
       });
     }
   }, [open, deal, pipelines, defaultPipelineId, defaultStageId, reset]);
@@ -129,10 +135,11 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   }, [selectedPipelineId, pipelines, setValue, isEdit]);
 
   const onSubmit = async (data) => {
+    const payload = { ...data, ownerId: data.ownerId || null };
     if (isEdit) {
-      await updateMutation.mutateAsync({ id: deal.id, updates: data });
+      await updateMutation.mutateAsync({ id: deal.id, updates: payload });
     } else {
-      await createMutation.mutateAsync(data);
+      await createMutation.mutateAsync(payload);
     }
     onClose();
   };
@@ -197,6 +204,29 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
                   extraInfo={(item) => item.segment && <span className="text-xs text-slate-400">({item.segment})</span>} />
               )} />
           </div>
+        </div>
+
+        {/* Vendedor responsavel */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Vendedor Responsavel</label>
+          <select {...register('ownerId')} className={fieldClass('ownerId')}>
+            <option value="">Selecione...</option>
+            {crmMembers.filter(m => m.crmRole === 'gestor').length > 0 && (
+              <optgroup label="Gestores">
+                {crmMembers.filter(m => m.crmRole === 'gestor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </optgroup>
+            )}
+            {crmMembers.filter(m => m.crmRole === 'vendedor').length > 0 && (
+              <optgroup label="Vendedores">
+                {crmMembers.filter(m => m.crmRole === 'vendedor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </optgroup>
+            )}
+            {crmMembers.filter(m => m.crmRole === 'pre_vendedor').length > 0 && (
+              <optgroup label="Pre-vendedores">
+                {crmMembers.filter(m => m.crmRole === 'pre_vendedor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </optgroup>
+            )}
+          </select>
         </div>
 
         {/* Pipeline + Etapa */}

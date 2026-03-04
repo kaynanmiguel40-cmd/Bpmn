@@ -28,6 +28,8 @@ export function dbToStage(row) {
     name: row.name,
     position: row.position,
     color: row.color || '#6366f1',
+    isWinStage: row.is_win_stage || false,
+    triggersMeeting: row.triggers_meeting || false,
     createdAt: row.created_at,
   };
 }
@@ -60,12 +62,12 @@ export async function getCrmPipelineWithDeals(pipelineId) {
     return null;
   }
 
-  // Buscar deals ABERTOS do pipeline com contato e empresa
+  // Buscar deals ABERTOS e PERDIDOS do pipeline com contato e empresa
   const { data: deals, error: dError } = await supabase
     .from('crm_deals')
-    .select('*, crm_contacts(id, name, avatar_color, company_id), crm_companies(id, name)')
+    .select('*, crm_contacts(id, name, avatar_color, company_id, city), crm_companies(id, name, city), team_members(id, name, color)')
     .eq('pipeline_id', pipelineId)
-    .eq('status', 'open')
+    .in('status', ['open', 'lost', 'won'])
     .is('deleted_at', null)
     .order('created_at');
 
@@ -88,17 +90,23 @@ export async function getCrmPipelineWithDeals(pipelineId) {
       expectedCloseDate: d.expected_close_date,
       contactId: d.contact_id,
       companyId: d.company_id,
-      contact: d.crm_contacts ? { id: d.crm_contacts.id, name: d.crm_contacts.name, avatarColor: d.crm_contacts.avatar_color } : null,
-      company: d.crm_companies ? { id: d.crm_companies.id, name: d.crm_companies.name } : null,
+      contact: d.crm_contacts ? { id: d.crm_contacts.id, name: d.crm_contacts.name, avatarColor: d.crm_contacts.avatar_color, city: d.crm_contacts.city } : null,
+      company: d.crm_companies ? { id: d.crm_companies.id, name: d.crm_companies.name, city: d.crm_companies.city } : null,
+      ownerId: d.owner_id || null,
+      owner: d.team_members ? { id: d.team_members.id, name: d.team_members.name, color: d.team_members.color } : null,
       createdAt: d.created_at,
     });
   });
 
-  result.stages = result.stages.map(stage => ({
-    ...stage,
-    deals: dealsByStage[stage.id] || [],
-    totalValue: (dealsByStage[stage.id] || []).reduce((sum, d) => sum + (d.value || 0), 0),
-  }));
+  result.stages = result.stages.map(stage => {
+    const allDeals = dealsByStage[stage.id] || [];
+    const deals = allDeals.filter(d => d.status !== 'won' || stage.isWinStage);
+    return {
+      ...stage,
+      deals,
+      totalValue: deals.reduce((sum, d) => sum + (d.value || 0), 0),
+    };
+  });
 
   return result;
 }
@@ -138,6 +146,8 @@ export async function createCrmPipeline(data) {
     name: s.name,
     position: s.position,
     color: s.color || '#6366f1',
+    is_win_stage: s.isWinStage || false,
+    triggers_meeting: s.triggersMeeting || false,
   }));
 
   await supabase.from('crm_pipeline_stages').insert(stageRows);
@@ -185,12 +195,14 @@ export async function deleteCrmPipeline(id) {
 }
 
 export async function reorderCrmStages(stageUpdates) {
-  // stageUpdates = [{ id, position, name?, color? }, ...]
+  // stageUpdates = [{ id, position, name?, color?, isWinStage? }, ...]
   const results = await Promise.all(
     stageUpdates.map(s => {
       const update = { position: s.position };
       if (s.name) update.name = s.name;
       if (s.color) update.color = s.color;
+      if (s.isWinStage !== undefined) update.is_win_stage = s.isWinStage;
+      if (s.triggersMeeting !== undefined) update.triggers_meeting = s.triggersMeeting;
       return supabase.from('crm_pipeline_stages').update(update).eq('id', s.id);
     })
   );
@@ -217,6 +229,8 @@ export async function addCrmStage(pipelineId, stageData) {
       name: validation.data.name,
       position: validation.data.position,
       color: validation.data.color,
+      is_win_stage: validation.data.isWinStage || false,
+      triggers_meeting: validation.data.triggersMeeting || false,
     }])
     .select()
     .single();
@@ -226,6 +240,34 @@ export async function addCrmStage(pipelineId, stageData) {
     return null;
   }
   return dbToStage(data);
+}
+
+// ==================== PIPELINE PARCEIROS ====================
+
+export async function ensurePartnersPipeline() {
+  // Verifica se pipeline "Parceiros" ja existe
+  const { data: existing } = await supabase
+    .from('crm_pipelines')
+    .select('id')
+    .eq('name', 'Parceiros')
+    .maybeSingle();
+
+  if (existing) return { id: existing.id, created: false };
+
+  // Cria pipeline com stages especificas para parceiros
+  const pipeline = await createCrmPipeline({
+    name: 'Parceiros',
+    isDefault: false,
+    stages: [
+      { name: 'Identificado', position: 1, color: '#94a3b8' },
+      { name: 'Contato Feito', position: 2, color: '#6366f1' },
+      { name: 'Reuniao Agendada', position: 3, color: '#3b82f6', triggersMeeting: true },
+      { name: 'Em Negociacao', position: 4, color: '#f97316' },
+      { name: 'Parceria Fechada', position: 5, color: '#10b981', isWinStage: true },
+    ],
+  });
+
+  return { id: pipeline?.id, created: true };
 }
 
 export async function deleteCrmStage(stageId) {
@@ -238,5 +280,28 @@ export async function deleteCrmStage(stageId) {
     toast(`Erro ao excluir etapa: ${error.message}`, 'error');
     return false;
   }
+  return true;
+}
+
+export async function setWinStage(stageId, pipelineId) {
+  // Desmarcar todos os estagios de vitoria do pipeline
+  await supabase
+    .from('crm_pipeline_stages')
+    .update({ is_win_stage: false })
+    .eq('pipeline_id', pipelineId);
+
+  // Marcar o estagio selecionado (se houver)
+  if (stageId) {
+    const { error } = await supabase
+      .from('crm_pipeline_stages')
+      .update({ is_win_stage: true })
+      .eq('id', stageId);
+
+    if (error) {
+      toast(`Erro ao definir estagio de vitoria: ${error.message}`, 'error');
+      return false;
+    }
+  }
+
   return true;
 }

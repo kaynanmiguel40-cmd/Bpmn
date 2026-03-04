@@ -21,6 +21,7 @@ import {
   Target,
   Trophy,
   Megaphone,
+  Crosshair,
 } from 'lucide-react';
 import logoFyness from '../../../../assets/logo-fyness.png';
 
@@ -38,6 +39,7 @@ const crmNavItems = [
   { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline' },
   { to: '/crm/deals', icon: Target, label: 'Negocios' },
   { to: '/crm/proposals', icon: FileText, label: 'Propostas' },
+  { to: '/crm/prospects', icon: Crosshair, label: 'Gerador de Lista' },
   { section: 'Cadastros' },
   { to: '/crm/contacts', icon: Users, label: 'Contatos' },
   { to: '/crm/companies', icon: Building2, label: 'Empresas' },

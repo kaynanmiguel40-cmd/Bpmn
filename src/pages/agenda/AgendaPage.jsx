@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAgendaEvents, useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent, useTeamMembers, useOSOrders, useContentPosts, useCreateContentPost, useUpdateContentPost, useDeleteContentPost } from '../../hooks/queries';
+import { useAgendaEvents, useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent, useTeamMembers, useOSOrders, useContentPosts, useCreateContentPost, useUpdateContentPost, useDeleteContentPost, useGCalEvents, useCreateGCalEvent, useUpdateGCalEvent, useDeleteGCalEvent } from '../../hooks/queries';
 import { shortName } from '../../lib/teamService';
 import { useProfile } from '../../hooks/useProfile';
 import { expandRecurrences, toDateKey } from '../../lib/recurrenceUtils';
@@ -17,6 +17,8 @@ import AutoTextarea from '../../components/ui/AutoTextarea';
 import { OS_STATUS_COLORS } from '../../constants/colors';
 import { SLA_HOURS, WORK_START_HOUR, WORK_END_HOUR } from '../../constants/sla';
 import { DAYS_PT, DAYS_FULL_PT, MONTHS_PT } from '../../constants/localization';
+import { useGCalStatus } from '../../hooks/queries';
+import { connectGCal } from '../../lib/googleCalendarService';
 
 // ==================== CONSTANTES ====================
 
@@ -152,8 +154,8 @@ export default function AgendaPage() {
   const today = new Date();
   const routerNavigate = useNavigate();
 
-  // React Query hooks para dados
-  const { data: events = [], isLoading: loadingEvents } = useAgendaEvents();
+  // React Query hooks para dados locais (Supabase)
+  const { data: localEvents = [], isLoading: loadingEvents } = useAgendaEvents();
   const { data: teamMembers = [], isLoading: loadingMembers } = useTeamMembers();
   const { data: osOrders = [], isLoading: loadingOS } = useOSOrders();
   const createEventMutation = useCreateAgendaEvent();
@@ -166,7 +168,30 @@ export default function AgendaPage() {
   const updatePostMutation = useUpdateContentPost();
   const deletePostMutation = useDeleteContentPost();
 
-  const loading = loadingEvents || loadingMembers || loadingOS;
+  // Google Calendar
+  const { data: gcalStatus } = useGCalStatus();
+  const gcalConnected = !!gcalStatus?.id && !gcalStatus?.expired;
+
+  // Google Calendar direct CRUD — range amplo para cobrir navegacao
+  const gcalTimeMin = useMemo(() => {
+    const d = new Date(today);
+    d.setMonth(d.getMonth() - 3);
+    return d;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const gcalTimeMax = useMemo(() => {
+    const d = new Date(today);
+    d.setMonth(d.getMonth() + 6);
+    return d;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { data: gcalEvents = [], isLoading: loadingGCal, isError: gcalError } = useGCalEvents(gcalTimeMin, gcalTimeMax, gcalConnected);
+  const createGCalMutation = useCreateGCalEvent();
+  const updateGCalMutation = useUpdateGCalEvent();
+  const deleteGCalMutation = useDeleteGCalEvent();
+
+  // Eventos: quando conectado ao Google Calendar, usa eventos do Google; senao usa locais
+  const events = gcalConnected ? gcalEvents : localEvents;
+  const loading = (gcalConnected ? loadingGCal : loadingEvents) || loadingMembers || loadingOS;
 
   // Realtime
   useRealtimeAgendaEvents();
@@ -360,15 +385,23 @@ export default function AgendaPage() {
       attachments: form.attachments || [],
     };
 
-    if (editingEvent) {
-      // Se editando ocorrencia virtual (toda serie), usar ID do pai
-      const realId = editingEvent._parentId || editingEvent.id;
-      await updateEventMutation.mutateAsync({ id: realId, updates: eventData });
+    if (gcalConnected) {
+      // CRUD direto no Google Calendar
+      if (editingEvent) {
+        await updateGCalMutation.mutateAsync({ id: editingEvent.googleEventId || editingEvent.id, updates: eventData });
+      } else {
+        await createGCalMutation.mutateAsync(eventData);
+      }
     } else {
-      const created = await createEventMutation.mutateAsync(eventData);
-      // Notificar participantes do novo evento
-      if (eventData.attendees?.length > 0) {
-        notifyEventCreated(created || eventData, eventData.attendees, teamMembers, profile?.id);
+      // CRUD local (Supabase)
+      if (editingEvent) {
+        const realId = editingEvent._parentId || editingEvent.id;
+        await updateEventMutation.mutateAsync({ id: realId, updates: eventData });
+      } else {
+        const created = await createEventMutation.mutateAsync(eventData);
+        if (eventData.attendees?.length > 0) {
+          notifyEventCreated(created || eventData, eventData.attendees, teamMembers, profile?.id);
+        }
       }
     }
     setShowEventModal(false);
@@ -384,7 +417,12 @@ export default function AgendaPage() {
       setShowEventModal(false);
       return;
     }
-    await deleteEventMutation.mutateAsync(id);
+    if (gcalConnected) {
+      const eventToDelete = events.find(e => e.id === id);
+      await deleteGCalMutation.mutateAsync(eventToDelete?.googleEventId || id);
+    } else {
+      await deleteEventMutation.mutateAsync(id);
+    }
     setShowDeleteModal(null);
     setShowEventModal(false);
     setQuickCreate(null);
@@ -630,7 +668,7 @@ export default function AgendaPage() {
       return end >= dayStart && start < dayEnd;
     });
 
-    return [...expanded, ...osForDay].filter(e => activeFilters.includes(e.assignee));
+    return [...expanded, ...osForDay].filter(e => !e.assignee || activeFilters.includes(e.assignee));
   }, [events, osCalendarEvents, activeFilters]);
 
   // Todos os eventos do dia sem filtro de pessoa (usado pelo DayView individual)
@@ -823,6 +861,41 @@ export default function AgendaPage() {
             </button>
           )}
 
+          {/* Google Calendar */}
+          {view !== 'posts' && (
+            gcalConnected ? (
+              <div
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg"
+                title="Conectado ao Google Calendar — eventos lidos e escritos direto no Google"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="4" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
+                  <path d="M3 9h18" stroke="currentColor" strokeWidth="2" />
+                  <path d="M9 4V2M15 4V2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                Google Calendar
+              </div>
+            ) : (
+              <button
+                onClick={async () => {
+                  try {
+                    await connectGCal();
+                    toast('Google Calendar conectado!', 'success');
+                  } catch (err) {
+                    toast(err.message || 'Erro ao conectar', 'error');
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                title="Conectar Google Calendar"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Google
+              </button>
+            )
+          )}
+
           <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
             {['month', 'week', 'day', 'posts'].map(v => (
               <button
@@ -970,6 +1043,7 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
                     >
                       {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                       {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                      {event.syncSource === 'google' && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 22h-15A2.5 2.5 0 012 19.5v-15A2.5 2.5 0 014.5 2h15A2.5 2.5 0 0122 4.5v15a2.5 2.5 0 01-2.5 2.5zM6 8v2h4v8h2V10h4V8H6z" /></svg>}
                       <span className={`truncate ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>{formatTime(new Date(event.startDate))} {event.title}</span>
                       {event._isOS && event._osStatus === 'done' && <span className="ml-auto text-[8px] bg-white/30 px-1 rounded shrink-0">&#10003;</span>}
                     </div>
@@ -1096,6 +1170,7 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
                         <div className="font-semibold truncate flex items-center gap-0.5">
                           {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                           {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                          {event.syncSource === 'google' && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 22h-15A2.5 2.5 0 012 19.5v-15A2.5 2.5 0 014.5 2h15A2.5 2.5 0 0122 4.5v15a2.5 2.5 0 01-2.5 2.5zM6 8v2h4v8h2V10h4V8H6z" /></svg>}
                           <span className={`truncate ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>{event.title}</span>
                           {event._isOS && event._osStatus === 'done' && <span className="text-[8px] bg-white/30 px-1 rounded shrink-0 ml-auto">&#10003;</span>}
                         </div>
@@ -1119,10 +1194,10 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
 function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotClick, allMembers, businessHours, dayViewMember, setDayViewMember }) {
   const allDayEvents = useMemo(() => getAllEventsForDay(currentDate), [getAllEventsForDay, currentDate]);
 
-  // Filtra apenas eventos do membro selecionado
+  // Filtra apenas eventos do membro selecionado (eventos sem assignee, como do Google Calendar, sempre aparecem)
   const dayEvents = useMemo(() => {
     if (!dayViewMember) return allDayEvents;
-    return allDayEvents.filter(e => e.assignee === dayViewMember);
+    return allDayEvents.filter(e => !e.assignee || e.assignee === dayViewMember);
   }, [allDayEvents, dayViewMember]);
 
   // Layout de overlap (colunas lado a lado)
@@ -1228,6 +1303,7 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
                     <span className={`font-semibold text-sm truncate flex items-center gap-1 ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>
                       {event._isOS && <svg className="w-3 h-3 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                       {event._parentId && !event._isOS && <svg className="w-3 h-3 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                      {event.syncSource === 'google' && <svg className="w-3 h-3 shrink-0 opacity-80" viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 22h-15A2.5 2.5 0 012 19.5v-15A2.5 2.5 0 014.5 2h15A2.5 2.5 0 0122 4.5v15a2.5 2.5 0 01-2.5 2.5zM6 8v2h4v8h2V10h4V8H6z" /></svg>}
                       {event.title}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">

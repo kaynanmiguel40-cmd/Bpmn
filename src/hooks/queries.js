@@ -12,6 +12,7 @@ import { getPenalties, createPenalty, deletePenalty } from '../lib/penaltyServic
 import { getContentPosts, createContentPost, updateContentPost, deleteContentPost } from '../lib/contentService';
 import { getProcessOrdersByProject, getProcessOrderByElement, createProcessOrder, updateProcessOrder, deleteProcessOrder } from '../lib/processOrderService';
 import { supabase } from '../lib/supabase';
+import { pushEventToGCal, getGCalConnectionStatus, fetchGCalEvents, createGCalEvent, updateGCalEvent, deleteGCalEvent } from '../lib/googleCalendarService';
 
 // ==================== HOOK FACTORIES ====================
 
@@ -57,6 +58,7 @@ export const queryKeys = {
   eapTasks: ['eapTasks'],
   contentPosts: ['contentPosts'],
   processOrders: ['processOrders'],
+  googleCalendarStatus: ['googleCalendarStatus'],
 };
 
 // ==================== OS ORDERS ====================
@@ -87,12 +89,89 @@ export const useCreateTeamMember = makeMutationHook(createTeamMember, queryKeys.
 export const useUpdateTeamMember = makeUpdateHook(updateTeamMember, queryKeys.teamMembers);
 export const useDeleteTeamMember = makeMutationHook(deleteTeamMember, queryKeys.teamMembers);
 
-// ==================== AGENDA EVENTS ====================
+// ==================== AGENDA EVENTS (com Google Calendar sync) ====================
 
 export const useAgendaEvents = makeQueryHook(queryKeys.agendaEvents, getAgendaEvents, 30_000);
-export const useCreateAgendaEvent = makeMutationHook(createAgendaEvent, queryKeys.agendaEvents);
-export const useUpdateAgendaEvent = makeUpdateHook(updateAgendaEvent, queryKeys.agendaEvents);
-export const useDeleteAgendaEvent = makeMutationHook(deleteAgendaEvent, queryKeys.agendaEvents);
+
+export function useCreateAgendaEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createAgendaEvent,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.agendaEvents });
+      if (data?.id) pushEventToGCal(data.id, 'create').catch(() => {});
+    },
+  });
+}
+
+export function useUpdateAgendaEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateAgendaEvent(id, updates),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.agendaEvents });
+      if (variables?.id) pushEventToGCal(variables.id, 'update').catch(() => {});
+    },
+  });
+}
+
+export function useDeleteAgendaEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => {
+      // Guardar o ID antes de deletar para poder fazer push
+      pushEventToGCal(id, 'delete').catch(() => {});
+      return deleteAgendaEvent(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.agendaEvents });
+    },
+  });
+}
+
+// ==================== GOOGLE CALENDAR STATUS ====================
+
+export const useGCalStatus = () => useQuery({
+  queryKey: queryKeys.googleCalendarStatus,
+  queryFn: getGCalConnectionStatus,
+  staleTime: 60_000,
+});
+
+// ==================== GOOGLE CALENDAR DIRECT CRUD ====================
+
+/** Busca eventos direto do Google Calendar (sem Supabase) */
+export function useGCalEvents(timeMin, timeMax, enabled = true) {
+  return useQuery({
+    queryKey: ['gcalEvents', timeMin?.toISOString?.() || timeMin, timeMax?.toISOString?.() || timeMax],
+    queryFn: () => fetchGCalEvents(timeMin, timeMax),
+    enabled: !!enabled && !!timeMin && !!timeMax,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateGCalEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createGCalEvent,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['gcalEvents'] }),
+  });
+}
+
+export function useUpdateGCalEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateGCalEvent(id, updates),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['gcalEvents'] }),
+  });
+}
+
+export function useDeleteGCalEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => deleteGCalEvent(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['gcalEvents'] }),
+  });
+}
 
 // ==================== NOTIFICATIONS ====================
 

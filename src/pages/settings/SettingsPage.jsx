@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { getProfile, saveProfile } from '../../lib/profileService';
 import { useOSOrders, useTeamMembers, usePenalties, useCreatePenalty, useDeletePenalty, queryKeys } from '../../hooks/queries';
@@ -18,6 +19,7 @@ import { createTeamMember, updateTeamMember, deleteTeamMember, MEMBER_COLORS } f
 import { supabase, getCompanies, createCompany, updateCompany, deleteCompany, createAuthUser, updateProfileRole } from '../../lib/supabase';
 import { isManagerRole } from '../../lib/roleUtils';
 import { NotificationPreferences } from '../../components/communication/NotificationPreferences';
+import GoogleCalendarIntegration from '../../components/settings/GoogleCalendarIntegration';
 import { COMPANY_BADGE_COLORS as COMPANY_COLORS } from '../../constants/colors';
 import { formatCurrency } from '../../lib/formatters';
 import { toast } from '../../contexts/ToastContext';
@@ -53,9 +55,10 @@ const CARGO_OPTIONS = [
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [profile, setProfile] = useState({});
   const [companies, setCompanies] = useState([]);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [loadingProfileCompanies, setLoadingProfileCompanies] = useState(true);
   const avatarInputRef = useRef(null);
@@ -103,6 +106,31 @@ export function SettingsPage() {
       setLoadingProfileCompanies(false);
     })();
   }, []);
+
+  // Tratar retorno do OAuth do Google Calendar
+  useEffect(() => {
+    const gcal = searchParams.get('gcal');
+    if (gcal === 'connected') {
+      toast('Google Calendar conectado com sucesso!', 'success');
+      setActiveTab('integrations');
+      searchParams.delete('gcal');
+      searchParams.delete('tab');
+      setSearchParams(searchParams, { replace: true });
+    } else if (gcal === 'denied') {
+      toast('Acesso ao Google Calendar foi negado', 'warning');
+      setActiveTab('integrations');
+      searchParams.delete('gcal');
+      searchParams.delete('tab');
+      setSearchParams(searchParams, { replace: true });
+    } else if (gcal === 'error') {
+      toast('Erro ao conectar Google Calendar. Tente novamente.', 'error');
+      setActiveTab('integrations');
+      searchParams.delete('gcal');
+      searchParams.delete('tab');
+      searchParams.delete('msg');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Buscar avatares dos membros que tem conta (authUserId)
   useEffect(() => {
@@ -198,6 +226,7 @@ export function SettingsPage() {
     { id: 'profile', label: 'Meu Perfil', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
     { id: 'team', label: 'Equipe', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
     { id: 'notifications', label: 'Notificacoes', icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9' },
+    { id: 'integrations', label: 'Integracoes', icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' },
   ];
 
   if (loading) {
@@ -1418,6 +1447,11 @@ export function SettingsPage() {
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
           <NotificationPreferences />
         </div>
+      )}
+
+      {/* === TAB: Integracoes === */}
+      {activeTab === 'integrations' && (
+        <GoogleCalendarIntegration />
       )}
 
       {/* Save Toast */}

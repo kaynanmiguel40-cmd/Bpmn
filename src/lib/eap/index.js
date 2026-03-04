@@ -28,5 +28,5 @@ export {
 
 // Bridge EAP → OS
 export {
-  generateOSFromTask, syncProgressFromOS, createLinkedOSProject,
+  generateOSFromTask, syncProgressFromOS, createLinkedOSProject, deleteLinkedOSData,
 } from './bridge';

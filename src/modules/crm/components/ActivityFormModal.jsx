@@ -71,7 +71,7 @@ function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField 
   );
 }
 
-export function ActivityFormModal({ open, onClose, activity = null }) {
+export function ActivityFormModal({ open, onClose, activity = null, defaultDealId = null, defaultContactId = null }) {
   const isEdit = !!activity;
   const createMutation = useCreateCrmActivity();
   const updateMutation = useUpdateCrmActivity();
@@ -104,11 +104,12 @@ export function ActivityFormModal({ open, onClose, activity = null }) {
       const today = new Date().toISOString().split('T')[0];
       reset({
         title: '', description: '', type: 'call',
-        contactId: null, dealId: null,
+        contactId: defaultContactId || null,
+        dealId: defaultDealId || null,
         startDate: today, endDate: null, completed: false,
       });
     }
-  }, [open, activity, reset]);
+  }, [open, activity, reset, defaultDealId, defaultContactId]);
 
   const onSubmit = async (data) => {
     if (isEdit) {

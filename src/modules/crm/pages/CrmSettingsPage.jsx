@@ -5,11 +5,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Kanban, Tag, Columns, Users, Check, AlertTriangle, Brain, ChevronDown, ChevronRight } from 'lucide-react';
+import { Settings, Kanban, Tag, Columns, Users, Check, AlertTriangle, Brain, ChevronDown, ChevronRight, Trophy } from 'lucide-react';
 import { CrmPageHeader, CrmAvatar } from '../components/ui';
 import { useTeamMembers } from '../../../hooks/queries';
 import { updateTeamMember } from '../../../lib/teamService';
-import { useCrmPipelines, useLearnedProbabilities } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useLearnedProbabilities, useSetWinStage } from '../hooks/useCrmQueries';
 
 // ==================== CONSTANTES ====================
 
@@ -55,6 +55,9 @@ export function CrmSettingsPage() {
   const [settingsPipelineId, setSettingsPipelineId] = useState(null);
   const { data: pipelines } = useCrmPipelines();
   const { data: learned } = useLearnedProbabilities(settingsPipelineId);
+  const setWinStageMutation = useSetWinStage();
+  const selectedPipeline = pipelines?.find(p => p.id === settingsPipelineId);
+  const pipelineStages = selectedPipeline?.stages || [];
 
   useEffect(() => {
     if (pipelines?.length && !settingsPipelineId) {
@@ -200,13 +203,14 @@ export function CrmSettingsPage() {
             </div>
 
             {/* Tabela de estagios */}
-            {learned?.stages?.length > 0 ? (
+            {pipelineStages.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-200 dark:border-slate-700/50">
                       <th className="text-left py-2 font-medium">Pos.</th>
                       <th className="text-left py-2 font-medium">Estagio</th>
+                      <th className="text-center py-2 font-medium">Vitoria</th>
                       <th className="text-center py-2 font-medium">% Aprendido</th>
                       <th className="text-center py-2 font-medium">Deals Analisados</th>
                       <th className="text-center py-2 font-medium">Ganhos</th>
@@ -214,15 +218,19 @@ export function CrmSettingsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {learned.stages.map((stage) => {
-                      const lowData = stage.sampleSize < 10;
-                      const probColor = stage.learnedProbability >= 60
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : stage.learnedProbability >= 30
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-rose-600 dark:text-rose-400';
+                    {pipelineStages.map((stage) => {
+                      const learnedStage = learned?.stages?.find(s => s.position === stage.position);
+                      const lowData = learnedStage ? learnedStage.sampleSize < 10 : true;
+                      const prob = learnedStage?.learnedProbability;
+                      const probColor = prob != null
+                        ? prob >= 60
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : prob >= 30
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-rose-600 dark:text-rose-400'
+                        : 'text-slate-300 dark:text-slate-600';
                       return (
-                        <tr key={stage.position} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                        <tr key={stage.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
                           <td className="py-2.5 text-slate-400 dark:text-slate-500">{stage.position}</td>
                           <td className="py-2.5">
                             <div className="flex items-center gap-2">
@@ -231,12 +239,35 @@ export function CrmSettingsPage() {
                             </div>
                           </td>
                           <td className="py-2.5 text-center">
-                            <span className={`font-bold ${probColor}`}>{stage.learnedProbability}%</span>
+                            <button
+                              onClick={() => setWinStageMutation.mutate({
+                                stageId: stage.isWinStage ? null : stage.id,
+                                pipelineId: settingsPipelineId,
+                              })}
+                              disabled={setWinStageMutation.isPending}
+                              className={`p-1 rounded-md transition-colors ${
+                                stage.isWinStage
+                                  ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                                  : 'text-slate-300 dark:text-slate-600 hover:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                              }`}
+                              title={stage.isWinStage ? 'Remover estagio de vitoria' : 'Definir como estagio de vitoria'}
+                            >
+                              <Trophy size={16} fill={stage.isWinStage ? 'currentColor' : 'none'} />
+                            </button>
                           </td>
-                          <td className="py-2.5 text-center text-slate-600 dark:text-slate-400">{stage.sampleSize}</td>
-                          <td className="py-2.5 text-center text-slate-600 dark:text-slate-400">{stage.wonCount}</td>
                           <td className="py-2.5 text-center">
-                            {lowData ? (
+                            {prob != null ? (
+                              <span className={`font-bold ${probColor}`}>{prob}%</span>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 text-center text-slate-600 dark:text-slate-400">{learnedStage?.sampleSize ?? '—'}</td>
+                          <td className="py-2.5 text-center text-slate-600 dark:text-slate-400">{learnedStage?.wonCount ?? '—'}</td>
+                          <td className="py-2.5 text-center">
+                            {!learnedStage ? (
+                              <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
+                            ) : lowData ? (
                               <span className="inline-flex items-center gap-1 text-amber-500 text-xs">
                                 <AlertTriangle size={10} /> Insuficiente
                               </span>
@@ -252,7 +283,7 @@ export function CrmSettingsPage() {
               </div>
             ) : (
               <div className="py-6 text-center">
-                <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum deal fechado ainda. As taxas serao calculadas conforme os deals avancem.</p>
+                <p className="text-sm text-slate-400 dark:text-slate-500">Nenhuma etapa configurada neste pipeline.</p>
               </div>
             )}
 

@@ -4,12 +4,13 @@ import { toast } from '../../../contexts/ToastContext';
 // Services
 import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany, softDeleteCrmCompany } from '../services/crmCompaniesService';
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
-import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, reorderCrmStages, addCrmStage, deleteCrmStage } from '../services/crmPipelinesService';
-import { getCrmDeals, getDealsByPipeline, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost } from '../services/crmDealsService';
+import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, reorderCrmStages, addCrmStage, deleteCrmStage, setWinStage, ensurePartnersPipeline } from '../services/crmPipelinesService';
+import { getCrmDeals, getDealsByPipeline, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, getDealActivities, getDealStageHistory, getDealsWithMeetings, schedulePartnerMeeting } from '../services/crmDealsService';
 import { getCrmActivities, getActivitiesForCalendar, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity } from '../services/crmActivitiesService';
 import { getCrmProposals, getCrmProposalById, createCrmProposal, updateCrmProposal, softDeleteCrmProposal, updateCrmProposalStatus } from '../services/crmProposalsService';
 import { getCrmDashboardKPIs, getSalesRanking } from '../services/crmDashboardService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
+import { getCrmProspects, getProspectListNames, getProspectsAnalytics, createCrmProspect, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
 import { getCrmGoals, getCrmGoalById, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
 import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities } from '../services/crmReportsService';
 
@@ -43,6 +44,10 @@ export const crmQueryKeys = {
   trafficKPIs: ['crm', 'trafficKPIs'],
   trafficByChannel: ['crm', 'trafficByChannel'],
   trafficOverTime: ['crm', 'trafficOverTime'],
+  prospects: ['crm', 'prospects'],
+  prospectListNames: ['crm', 'prospectListNames'],
+  prospectsAnalytics: (filters) => ['crm', 'prospectsAnalytics', filters],
+  dealsWithMeetings: ['crm', 'dealsWithMeetings'],
 };
 
 // ==================== COMPANIES ====================
@@ -249,6 +254,17 @@ export function useDeleteCrmStage() {
   });
 }
 
+export function useSetWinStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ stageId, pipelineId }) => setWinStage(stageId, pipelineId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
+      toast('Estagio de vitoria atualizado', 'success');
+    },
+  });
+}
+
 // ==================== DEALS ====================
 
 export function useCrmDeals(filters = {}) {
@@ -322,7 +338,7 @@ export function useMoveCrmDeal() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ dealId, stageId }) => moveDealToStage(dealId, stageId),
-    onMutate: async ({ dealId, stageId }) => {
+    onMutate: async ({ dealId, stageId, targetIndex }) => {
       // Cancelar refetches em andamento para nao sobrescrever o optimistic update
       await qc.cancelQueries({ queryKey: ['crm', 'pipelineDeals'] });
 
@@ -352,9 +368,15 @@ export function useMoveCrmDeal() {
         if (movedDeal) {
           const finalStages = updatedStages.map(stage => {
             if (stage.id === stageId) {
+              const deals = [...(stage.deals || [])];
+              if (targetIndex != null && targetIndex <= deals.length) {
+                deals.splice(targetIndex, 0, movedDeal);
+              } else {
+                deals.push(movedDeal);
+              }
               return {
                 ...stage,
-                deals: [...(stage.deals || []), movedDeal],
+                deals,
                 totalValue: (stage.totalValue || 0) + (movedDeal.value || 0),
               };
             }
@@ -366,10 +388,25 @@ export function useMoveCrmDeal() {
 
       return { snapshot };
     },
-    onSuccess: () => {
-      // Sucesso: so invalida queries secundarias (nao o kanban — optimistic ja esta certo)
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
       qc.invalidateQueries({ queryKey: ['crm', 'dealsByPipeline'] });
+
+      // Auto-win: atualizar cache do kanban e invalidar dashboard
+      if (data?.status === 'won') {
+        const allQueries = qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] });
+        allQueries.forEach(([queryKey, oldData]) => {
+          if (!oldData?.stages) return;
+          const updatedStages = oldData.stages.map(stage => ({
+            ...stage,
+            deals: stage.deals?.map(d => d.id === data.id ? { ...d, status: 'won', probability: 100 } : d),
+          }));
+          qc.setQueryData(queryKey, { ...oldData, stages: updatedStages });
+        });
+        qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+        qc.invalidateQueries({ queryKey: ['crm', 'learnedProbabilities'] });
+        toast('Negocio ganho! Parabens!', 'success');
+      }
     },
     onError: (err, _vars, context) => {
       // Rollback: restaurar snapshot original
@@ -429,7 +466,16 @@ export function useMarkDealLost() {
     mutationFn: ({ dealId, reason }) => markDealAsLost(dealId, reason),
     onMutate: async ({ dealId }) => {
       await qc.cancelQueries({ queryKey: ['crm', 'pipelineDeals'] });
-      removeDealFromPipelineCache(qc, dealId);
+      // Marcar como perdido no cache (sem remover)
+      const allQueries = qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] });
+      allQueries.forEach(([queryKey, oldData]) => {
+        if (!oldData?.stages) return;
+        const updatedStages = oldData.stages.map(stage => ({
+          ...stage,
+          deals: stage.deals?.map(d => d.id === dealId ? { ...d, status: 'lost', probability: 0 } : d),
+        }));
+        qc.setQueryData(queryKey, { ...oldData, stages: updatedStages });
+      });
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
@@ -438,6 +484,26 @@ export function useMarkDealLost() {
       qc.invalidateQueries({ queryKey: ['crm', 'learnedProbabilities'] });
       toast('Negocio marcado como perdido', 'warning');
     },
+  });
+}
+
+// ==================== DEAL DETAIL ====================
+
+export function useDealActivities(dealId) {
+  return useQuery({
+    queryKey: ['crm', 'dealActivities', dealId],
+    queryFn: () => getDealActivities(dealId),
+    enabled: !!dealId,
+    staleTime: 30_000,
+  });
+}
+
+export function useDealStageHistory(dealId) {
+  return useQuery({
+    queryKey: ['crm', 'dealStageHistory', dealId],
+    queryFn: () => getDealStageHistory(dealId),
+    enabled: !!dealId,
+    staleTime: 60_000,
   });
 }
 
@@ -466,6 +532,7 @@ export function useCreateCrmActivity() {
     mutationFn: createCrmActivity,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       toast('Atividade criada com sucesso', 'success');
     },
@@ -772,6 +839,124 @@ export function useDeleteCrmTraffic() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.trafficByChannel });
       qc.invalidateQueries({ queryKey: crmQueryKeys.trafficOverTime });
       toast('Registro excluido', 'success');
+    },
+  });
+}
+
+// ==================== PROSPECTS ====================
+
+export function useCrmProspects(filters = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.prospects, filters],
+    queryFn: () => getCrmProspects(filters),
+    staleTime: 30_000,
+  });
+}
+
+export function useProspectsAnalytics(filters) {
+  return useQuery({
+    queryKey: crmQueryKeys.prospectsAnalytics(filters),
+    queryFn: () => getProspectsAnalytics(filters),
+    staleTime: 60_000,
+    enabled: !!filters,
+  });
+}
+
+export function useProspectListNames() {
+  return useQuery({
+    queryKey: crmQueryKeys.prospectListNames,
+    queryFn: getProspectListNames,
+    staleTime: 60_000,
+  });
+}
+
+export function useCreateCrmProspect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createCrmProspect,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.prospects });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.prospectListNames });
+      toast('Prospect criado com sucesso', 'success');
+    },
+  });
+}
+
+export function useUpdateCrmProspect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateCrmProspect(id, updates),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.prospects });
+      toast('Prospect atualizado', 'success');
+    },
+  });
+}
+
+export function useDeleteCrmProspect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: softDeleteCrmProspect,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.prospects });
+      toast('Prospect excluido', 'success');
+    },
+  });
+}
+
+export function useSendToPipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ prospectIds, pipelineId, stageId }) => sendToPipeline(prospectIds, pipelineId, stageId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.prospects });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.companies });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.contacts });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+    },
+  });
+}
+
+// ==================== PARTNERS PIPELINE ====================
+
+export function useEnsurePartnersPipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ensurePartnersPipeline,
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
+      if (result?.created) toast('Pipeline Parceiros criado com sucesso', 'success');
+    },
+  });
+}
+
+// ==================== MEETING SCHEDULING ====================
+
+export function useDealsWithMeetings() {
+  return useQuery({
+    queryKey: crmQueryKeys.dealsWithMeetings,
+    queryFn: getDealsWithMeetings,
+    staleTime: 60_000,
+  });
+}
+
+export function useSchedulePartnerMeeting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dealId, meetingData }) => schedulePartnerMeeting(dealId, meetingData),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['agendaEvents'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dealsWithMeetings });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      toast('Reuniao agendada com sucesso!', 'success');
+    },
+    onError: (err) => {
+      toast(`Erro ao agendar reuniao: ${err.message}`, 'error');
     },
   });
 }
