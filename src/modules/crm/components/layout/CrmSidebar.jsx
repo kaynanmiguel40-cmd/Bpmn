@@ -22,6 +22,7 @@ import {
   Trophy,
   Megaphone,
   Crosshair,
+  Zap,
 } from 'lucide-react';
 import logoFyness from '../../../../assets/logo-fyness.png';
 
@@ -50,6 +51,7 @@ const crmNavItems = [
   { to: '/crm/goals', icon: Trophy, label: 'Metas' },
   { to: '/crm/reports', icon: BarChart3, label: 'Relatorios' },
   { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },
+  { to: '/crm/automations', icon: Zap, label: 'Automacoes' },
   { divider: true },
   { to: '/crm/settings', icon: Settings, label: 'Configuracoes' },
 ];

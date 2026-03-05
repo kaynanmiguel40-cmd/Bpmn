@@ -13,6 +13,7 @@ import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverT
 import { getCrmProspects, getProspectListNames, getProspectsAnalytics, createCrmProspect, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
 import { getCrmGoals, getCrmGoalById, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
 import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities } from '../services/crmReportsService';
+import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 
 // ==================== QUERY KEYS ====================
 
@@ -48,6 +49,9 @@ export const crmQueryKeys = {
   prospectListNames: ['crm', 'prospectListNames'],
   prospectsAnalytics: (filters) => ['crm', 'prospectsAnalytics', filters],
   dealsWithMeetings: ['crm', 'dealsWithMeetings'],
+  automations: ['crm', 'automations'],
+  automationLogs: ['crm', 'automationLogs'],
+  automationLogStats: (days) => ['crm', 'automationLogStats', days],
 };
 
 // ==================== COMPANIES ====================
@@ -957,6 +961,85 @@ export function useSchedulePartnerMeeting() {
     },
     onError: (err) => {
       toast(`Erro ao agendar reuniao: ${err.message}`, 'error');
+    },
+  });
+}
+
+// ==================== AUTOMAÇÕES ====================
+
+export function useAutomations(filters = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.automations, filters],
+    queryFn: () => getAutomations(filters),
+    staleTime: 30_000,
+  });
+}
+
+export function useAutomationLogs(filters = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.automationLogs, filters],
+    queryFn: () => getAutomationLogs(filters),
+    staleTime: 15_000,
+  });
+}
+
+export function useAutomationLogStats(days = 7) {
+  return useQuery({
+    queryKey: crmQueryKeys.automationLogStats(days),
+    queryFn: () => getAutomationLogStats(days),
+    staleTime: 60_000,
+  });
+}
+
+export function useCreateAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createAutomation,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.automations });
+      toast('Automacao criada com sucesso!', 'success');
+    },
+    onError: (err) => {
+      toast(`Erro ao criar automacao: ${err.message}`, 'error');
+    },
+  });
+}
+
+export function useUpdateAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }) => updateAutomation(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.automations });
+      toast('Automacao atualizada!', 'success');
+    },
+    onError: (err) => {
+      toast(`Erro ao atualizar automacao: ${err.message}`, 'error');
+    },
+  });
+}
+
+export function useDeleteAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteAutomation,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.automations });
+      toast('Automacao removida', 'success');
+    },
+    onError: (err) => {
+      toast(`Erro ao remover automacao: ${err.message}`, 'error');
+    },
+  });
+}
+
+export function useToggleAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }) => toggleAutomation(id, active),
+    onSuccess: (_, { active }) => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.automations });
+      toast(active ? 'Automacao ativada' : 'Automacao pausada', 'success');
     },
   });
 }

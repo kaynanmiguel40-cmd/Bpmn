@@ -2,6 +2,7 @@ import { createCRUDService } from '../../../lib/serviceFactory';
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmDealSchema } from '../schemas/crmValidation';
+import { triggerAutomationsForDeal } from './crmAutomationsService';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -247,6 +248,12 @@ export async function moveDealToStage(dealId, stageId) {
   const result = dbToCrmDeal(data);
   // Metadata para UI: sinaliza se stage dispara modal de reuniao
   result._triggersMeeting = targetStage?.triggers_meeting === true;
+
+  // Disparar automações vinculadas a esta etapa (fire-and-forget)
+  if (current && current.stage_id !== stageId) {
+    triggerAutomationsForDeal(result, stageId).catch(console.warn);
+  }
+
   return result;
 }
 

@@ -36,6 +36,7 @@ const CrmForecastPage = lazy(() => import('./modules/crm/pages/CrmForecastPage')
 const CrmTrafficPage = lazy(() => import('./modules/crm/pages/CrmTrafficPage'))
 const CrmProspectsPage = lazy(() => import('./modules/crm/pages/CrmProspectsPage'))
 const CrmSettingsPage = lazy(() => import('./modules/crm/pages/CrmSettingsPage'))
+const CrmAutomationsPage = lazy(() => import('./modules/crm/pages/CrmAutomationsPage'))
 
 function LoadingSpinner() {
   return (
@@ -103,6 +104,7 @@ function App() {
                 <Route path="traffic" element={<ErrorBoundary><CrmTrafficPage /></ErrorBoundary>} />
                 <Route path="prospects" element={<ErrorBoundary><CrmProspectsPage /></ErrorBoundary>} />
                 <Route path="settings" element={<ErrorBoundary><CrmSettingsPage /></ErrorBoundary>} />
+                <Route path="automations" element={<ErrorBoundary><CrmAutomationsPage /></ErrorBoundary>} />
               </Route>
             </Route>
 

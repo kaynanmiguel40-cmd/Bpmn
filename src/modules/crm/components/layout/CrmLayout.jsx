@@ -30,6 +30,7 @@ const crmRouteTitles = {
   '/crm/traffic': 'Trafego Pago',
   '/crm/prospects': 'Gerador de Lista',
   '/crm/settings': 'Configuracoes',
+  '/crm/automations': 'Automacoes',
 };
 
 function CrmTopbar({ onToggleMobileMenu }) {
