@@ -291,69 +291,16 @@ export const BRAZIL_STATES = [
     ]},
 ];
 
-/** Mock de prospeccoes ativas por estado (dados de exemplo) */
-export const MOCK_PROSPECTIONS = {
-  SP: { status: 'closed', prospectedCities: 4, totalVisits: 12, lastActivity: '2026-02-28' },
-  RJ: { status: 'scheduled', prospectedCities: 2, totalVisits: 5, lastActivity: '2026-03-01' },
-  MG: { status: 'prospecting', prospectedCities: 3, totalVisits: 3, lastActivity: '2026-02-25' },
-  PR: { status: 'prospecting', prospectedCities: 1, totalVisits: 2, lastActivity: '2026-02-20' },
-  SC: { status: 'scheduled', prospectedCities: 1, totalVisits: 1, lastActivity: '2026-03-02' },
-  BA: { status: 'prospecting', prospectedCities: 2, totalVisits: 2, lastActivity: '2026-02-15' },
-  RS: { status: 'none', prospectedCities: 0, totalVisits: 0, lastActivity: null },
-  GO: { status: 'prospecting', prospectedCities: 1, totalVisits: 1, lastActivity: '2026-02-18' },
-  DF: { status: 'closed', prospectedCities: 1, totalVisits: 4, lastActivity: '2026-02-27' },
-  PE: { status: 'none', prospectedCities: 0, totalVisits: 0, lastActivity: null },
-  CE: { status: 'prospecting', prospectedCities: 1, totalVisits: 1, lastActivity: '2026-02-10' },
-};
-
-/** Mock de status por cidade (para estados que ja tem prospeccao) */
-export const MOCK_CITY_STATUS = {
-  SP: {
-    'Sao Paulo': { status: 'closed', responsible: 'Carlos Silva', lastActivity: '2026-02-28', notes: 'Parceria assinada com escritorio SP' },
-    'Campinas': { status: 'closed', responsible: 'Carlos Silva', lastActivity: '2026-02-20', notes: 'Parceiro ativo' },
-    'Ribeirao Preto': { status: 'scheduled', responsible: 'Carlos Silva', lastActivity: '2026-03-05', notes: 'Visita agendada para Marco' },
-    'Sorocaba': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-02-15', notes: 'Primeiro contato feito' },
-  },
-  RJ: {
-    'Rio de Janeiro': { status: 'scheduled', responsible: 'Carlos Silva', lastActivity: '2026-03-10', notes: 'Visita agendada' },
-    'Niteroi': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-03-01', notes: 'Levantamento de potenciais' },
-  },
-  MG: {
-    'Belo Horizonte': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-02-25', notes: 'Em negociacao' },
-    'Uberlandia': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-02-22', notes: 'Contato inicial' },
-    'Juiz de Fora': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-02-18', notes: 'Agendando reuniao' },
-  },
-  DF: {
-    'Brasilia': { status: 'closed', responsible: 'Carlos Silva', lastActivity: '2026-02-27', notes: 'Parceiro federal ativo' },
-  },
-  PR: {
-    'Curitiba': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-02-20', notes: 'Primeiro contato' },
-  },
-  SC: {
-    'Florianopolis': { status: 'scheduled', responsible: 'Carlos Silva', lastActivity: '2026-03-08', notes: 'Visita agendada' },
-  },
-  BA: {
-    'Salvador': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-02-15', notes: 'Mapeando mercado' },
-    'Feira de Santana': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-02-12', notes: 'Contato inicial' },
-  },
-  GO: {
-    'Goiania': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-02-18', notes: 'Levantamento' },
-  },
-  CE: {
-    'Fortaleza': { status: 'prospecting', responsible: 'Carlos Silva', lastActivity: '2026-02-10', notes: 'Primeiro contato por email' },
-  },
-};
-
 export function getStateByUf(uf) {
   return BRAZIL_STATES.find(s => s.uf === uf);
 }
 
-export function getStateProspection(uf) {
-  return MOCK_PROSPECTIONS[uf] || { status: 'none', prospectedCities: 0, totalVisits: 0, lastActivity: null };
+export function getStateProspection(_uf) {
+  return { status: 'none', prospectedCities: 0, totalVisits: 0, lastActivity: null };
 }
 
-export function getCityStatus(uf, cityName) {
-  return MOCK_CITY_STATUS[uf]?.[cityName] || null;
+export function getCityStatus(_uf, _cityName) {
+  return null;
 }
 
 export function getRegion(regionKey) {
@@ -365,20 +312,13 @@ export function getStatesbyRegion(regionKey) {
 }
 
 export function getProspectionStats() {
-  const states = BRAZIL_STATES;
-  const withProspection = states.filter(s => MOCK_PROSPECTIONS[s.uf] && MOCK_PROSPECTIONS[s.uf].status !== 'none');
-  const totalCitiesProspected = withProspection.reduce((acc, s) => acc + (MOCK_PROSPECTIONS[s.uf]?.prospectedCities || 0), 0);
-  const totalVisits = withProspection.reduce((acc, s) => acc + (MOCK_PROSPECTIONS[s.uf]?.totalVisits || 0), 0);
-  const closed = withProspection.filter(s => MOCK_PROSPECTIONS[s.uf]?.status === 'closed').length;
-  const scheduled = withProspection.filter(s => MOCK_PROSPECTIONS[s.uf]?.status === 'scheduled').length;
-
   return {
     totalStates: 27,
-    statesWithPartners: closed,
-    statesProspecting: withProspection.length,
-    citiesProspected: totalCitiesProspected,
-    totalVisits,
-    scheduledVisits: scheduled,
-    conversionRate: withProspection.length > 0 ? Math.round((closed / withProspection.length) * 100) : 0,
+    statesWithPartners: 0,
+    statesProspecting: 0,
+    citiesProspected: 0,
+    totalVisits: 0,
+    scheduledVisits: 0,
+    conversionRate: 0,
   };
 }

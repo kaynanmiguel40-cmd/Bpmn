@@ -9,14 +9,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Crosshair, Search, Pencil, Trash2, X, Send, Loader2,
   CheckSquare, Square, MinusSquare, Building2,
-  MapPin, Briefcase, Filter, DollarSign, Compass,
+  MapPin, Briefcase, Filter, DollarSign,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
   RotateCw, Phone, Mail, User, Zap, List, Globe, Handshake, Users,
 } from 'lucide-react';
-import { REVENUE_RANGES, getCitiesByState } from '../data/mockProspects';
-import { PARTNER_SEGMENT_OPTIONS, CLIENT_RANGES } from '../data/mockPartners';
+import { CITIES_BY_STATE } from '../data/brazilCities';
 import { CrmBadge, CrmConfirmDialog, CrmModal } from '../components/ui';
-import { ProspectsInsightsPanel } from '../components/ProspectsInsightsPanel';
 import ProspectingDashboard from '../components/po/ProspectingDashboard';
 import {
   useCrmProspects,
@@ -28,6 +26,30 @@ import {
 } from '../hooks/useCrmQueries';
 
 // ==================== CONSTANTES ====================
+
+const REVENUE_RANGES = [
+  { key: 'ate100k', label: 'Ate R$ 100 mil/ano', min: 0, max: 100000 },
+  { key: '100k-500k', label: 'R$ 100 mil - 500 mil/ano', min: 100000, max: 500000 },
+  { key: '500k-1m', label: 'R$ 500 mil - 1 milhao/ano', min: 500000, max: 1000000 },
+  { key: '1m-5m', label: 'R$ 1M - 5M/ano', min: 1000000, max: 5000000 },
+  { key: '5m-50m', label: 'R$ 5M - 50M/ano', min: 5000000, max: 50000000 },
+  { key: 'acima50m', label: 'Acima de R$ 50M/ano', min: 50000000, max: Infinity },
+];
+
+const CLIENT_RANGES = [
+  { key: 'ate50', label: 'Ate 50 clientes', min: 0, max: 50 },
+  { key: '50-200', label: '50 - 200 clientes', min: 50, max: 200 },
+  { key: '200-500', label: '200 - 500 clientes', min: 200, max: 500 },
+  { key: '500-1000', label: '500 - 1.000 clientes', min: 500, max: 1000 },
+  { key: '1000mais', label: '1.000+ clientes', min: 1000, max: Infinity },
+];
+
+const PARTNER_SEGMENT_OPTIONS = ['Contabilidade', 'Financeira', 'Advocacia', 'Associacao'];
+
+function getCitiesByState(uf) {
+  if (uf) return (CITIES_BY_STATE[uf] || []).slice().sort();
+  return [...new Set(Object.values(CITIES_BY_STATE).flat())].sort();
+}
 
 const SEGMENT_OPTIONS = [
   'Tecnologia', 'Educacao', 'Saude', 'Varejo', 'Industria', 'Servicos',
@@ -341,17 +363,6 @@ export function CrmProspectsPage() {
     sortOrder: sortConfig.direction,
   } : null;
 
-  const analyticsFilters = generated ? {
-    search: appliedFilters.search || undefined,
-    segment: appliedFilters.segment || undefined,
-    size: appliedFilters.size || undefined,
-    state: appliedFilters.state || undefined,
-    city: appliedFilters.city || undefined,
-    revenueRange: appliedFilters.revenueRange || undefined,
-    clientRange: appliedFilters.clientRange || undefined,
-    prospectType: isPartners ? 'partner' : undefined,
-  } : null;
-
   const { data, isLoading, isFetching } = useCrmProspects(filters || { page: 1, perPage: 1 });
   const deleteMutation = useDeleteCrmProspect();
 
@@ -505,8 +516,7 @@ export function CrmProspectsPage() {
             </select>
           </div>
 
-          {/* Porte — somente no modo Leads */}
-          {!isPartners && (
+          {/* Porte */}
           <div>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
               <Building2 size={12} />
@@ -517,7 +527,6 @@ export function CrmProspectsPage() {
               {SIZE_OPTIONS.map(s => <option key={s} value={s}>{SIZE_MAP[s]}</option>)}
             </select>
           </div>
-          )}
 
           {/* Estado (UF) */}
           <div>
@@ -548,23 +557,12 @@ export function CrmProspectsPage() {
             </select>
           </div>
 
-          {/* Faturamento (leads) ou Qtd Clientes (parceiros) */}
-          {isPartners ? (
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              <Users size={12} />
-              Qtd. de Clientes
-            </label>
-            <select value={clientRange} onChange={e => setClientRange(e.target.value)} className={selectCls}>
-              <option value="">Todas as faixas</option>
-              {CLIENT_RANGES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
-            </select>
-          </div>
-          ) : (
+          {/* Capital Social — somente leads */}
+          {!isPartners && (
           <div>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
               <DollarSign size={12} />
-              Faturamento Anual
+              Capital Social
             </label>
             <select value={revenueRange} onChange={e => setRevenueRange(e.target.value)} className={selectCls}>
               <option value="">Todas as faixas</option>
@@ -582,8 +580,8 @@ export function CrmProspectsPage() {
             onClick={handleGenerate}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all"
           >
-            {isFetching && generated ? <Loader2 size={16} className="animate-spin" /> : activeTab === 'list' ? <Crosshair size={16} /> : <Compass size={16} />}
-            {activeTab === 'list' ? 'Gerar Lista' : 'Pesquisar'}
+            {isFetching && generated ? <Loader2 size={16} className="animate-spin" /> : <Crosshair size={16} />}
+            Gerar Lista
           </button>
           {activeCount > 0 && (
             <button
@@ -614,17 +612,6 @@ export function CrmProspectsPage() {
             Gerar Lista
           </button>
           <button
-            onClick={() => { setActiveTab('opportunities'); setGenerated(false); setAppliedFilters({}); setSelectedIds(new Set()); }}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
-              activeTab === 'opportunities'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            <Compass size={16} />
-            Encontro de Oportunidades
-          </button>
-          <button
             onClick={() => { setActiveTab('po'); setGenerated(false); setAppliedFilters({}); setSelectedIds(new Set()); }}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
               activeTab === 'po'
@@ -649,12 +636,10 @@ export function CrmProspectsPage() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200">
               {!generated
-                ? (activeTab === 'list' ? 'Resultados' : 'Pesquisa de Mercado')
+                ? 'Resultados'
                 : isLoading
                   ? 'Buscando...'
-                  : activeTab === 'list'
-                    ? `${total} ${isPartners ? 'parceiro' : 'lead'}${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`
-                    : `${total} empresa${total !== 1 ? 's' : ''} analisada${total !== 1 ? 's' : ''}`
+                  : `${total} ${isPartners ? 'parceiro' : 'lead'}${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`
               }
             </h2>
             {generated && (
@@ -696,26 +681,15 @@ export function CrmProspectsPage() {
           <div className="flex-1 flex items-center justify-center p-8">
             <div className="text-center max-w-sm">
               <div className="w-20 h-20 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto mb-5">
-                {activeTab === 'list'
-                  ? <Crosshair size={40} className="text-blue-400 dark:text-blue-500" />
-                  : <Compass size={40} className="text-blue-400 dark:text-blue-500" />
-                }
+                <Crosshair size={40} className="text-blue-400 dark:text-blue-500" />
               </div>
               <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 mb-2">
-                {activeTab === 'list' ? 'Gerador de Lista' : 'Encontro de Oportunidades'}
+                Gerador de Lista
               </h3>
               <p className="text-sm text-slate-400 dark:text-slate-500 leading-relaxed">
-                {activeTab === 'list'
-                  ? <>Use os filtros ao lado para definir o perfil ideal de prospeccao. Selecione segmento, porte, regiao e clique em <strong className="text-slate-600 dark:text-slate-300">"Gerar Lista"</strong>.</>
-                  : <>Pesquise o mercado por cidade, porte e segmento. Analise a distribuicao de oportunidades e identifique nichos. Clique em <strong className="text-slate-600 dark:text-slate-300">"Pesquisar"</strong>.</>
-                }
+                Use os filtros ao lado para definir o perfil ideal de prospeccao. Selecione segmento, porte, regiao e clique em <strong className="text-slate-600 dark:text-slate-300">"Gerar Lista"</strong>.
               </p>
             </div>
-          </div>
-        ) : activeTab === 'opportunities' ? (
-          /* Encontro de Oportunidades: Dashboard analitico full */
-          <div className="flex-1 overflow-auto p-4">
-            <ProspectsInsightsPanel filters={analyticsFilters} />
           </div>
         ) : (
           /* Gerar Lista: Tabela de prospeccao */
@@ -735,7 +709,7 @@ export function CrmProspectsPage() {
                     { key: 'contactName', label: 'Contato', sortable: true },
                     { key: 'phone', label: 'Telefone' },
                     { key: 'email', label: 'Email' },
-                    ...(isPartners ? [] : [{ key: 'size', label: 'Porte' }]),
+                    { key: 'size', label: 'Porte' },
                     { key: 'city', label: 'Cidade/UF' },
                     { key: '_actions', label: '' },
                   ].map(col => (
@@ -758,14 +732,14 @@ export function CrmProspectsPage() {
                 {isLoading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: isPartners ? 8 : 9 }).map((_, ci) => (
+                      {Array.from({ length: 9 }).map((_, ci) => (
                         <td key={ci} className="px-3 py-3"><div className="h-3.5 bg-slate-100 dark:bg-slate-800 rounded w-3/4" /></td>
                       ))}
                     </tr>
                   ))
                 ) : prospects.length === 0 ? (
                   <tr>
-                    <td colSpan={isPartners ? 8 : 9} className="px-4 py-16 text-center">
+                    <td colSpan={9} className="px-4 py-16 text-center">
                       <Crosshair size={36} className="text-slate-200 dark:text-slate-700 mx-auto mb-3" />
                       <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum {isPartners ? 'parceiro' : 'lead'} encontrado</p>
                       <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Ajuste os filtros ao lado e tente novamente</p>
@@ -785,7 +759,7 @@ export function CrmProspectsPage() {
                           </button>
                         </td>
                         <td className="px-3 py-2.5">
-                          <div className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[180px]">{p.companyName}</div>
+                          <div className="font-medium text-slate-800 dark:text-slate-200" title={p.companyName}>{p.companyName}</div>
                         </td>
                         <td className="px-3 py-2.5">
                           {p.segment ? (
@@ -814,13 +788,11 @@ export function CrmProspectsPage() {
                             </a>
                           ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                         </td>
-                        {!isPartners && (
                         <td className="px-3 py-2.5">
                           {SIZE_MAP[p.size] ? (
                             <span className="text-xs text-slate-600 dark:text-slate-300">{SIZE_MAP[p.size]}</span>
                           ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                         </td>
-                        )}
                         <td className="px-3 py-2.5">
                           {(p.city || p.state) ? (
                             <span className="text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">{[p.city, p.state].filter(Boolean).join('/')}</span>
