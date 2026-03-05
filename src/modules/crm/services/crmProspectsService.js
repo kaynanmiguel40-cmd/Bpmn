@@ -5,16 +5,11 @@ import { crmProspectSchema } from '../schemas/crmValidation';
 import { createCrmCompany } from './crmCompaniesService';
 import { createCrmContact } from './crmContactsService';
 import { createCrmDeal } from './crmDealsService';
-import { getMockProspects, getMockAnalytics, getMockListNames } from '../data/mockProspects';
-import { getMockPartners, getMockPartnerAnalytics } from '../data/mockPartners';
-import { SEGMENT_TO_CNAE, CNAE_TO_SEGMENT, SIZE_TO_PORTE, PORTE_TO_SIZE, REVENUE_TO_CAPITAL } from '../data/cnaeMapping';
-
-// Flag para usar dados mock (trocar para false para usar API Casa dos Dados para leads)
-const USE_MOCK = false;
+import { SEGMENT_TO_CNAE, CNAE_TO_SEGMENT, SIZE_TO_PORTE, PORTE_TO_SIZE, REVENUE_TO_CAPITAL, PARTNER_CATEGORY_TO_CNAE, CNAE_TO_PARTNER_CATEGORY, PARTNER_CATEGORY_LABELS } from '../data/cnaeMapping';
 
 // API Casa dos Dados — chave obtida em https://portal.casadosdados.com.br
 const CASA_DOS_DADOS_API_KEY = '3845f12c696f5a8cc50bded9fa6a5df0197604d95f74cb16915c8bdd43398ce22765050eeca421b8e8d06d232ace474ee936efb1d5cf6852b8a6283b1a7fee16';
-const CASA_DOS_DADOS_URL = 'https://api.casadosdados.com.br/v5/cnpj/pesquisa';
+const CASA_DOS_DADOS_URL = 'https://api.casadosdados.com.br/v5/cnpj/pesquisa?tipo_resultado=completo';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -95,7 +90,7 @@ function buildApiBody(filters) {
     situacao_cadastral: ['ATIVA'],
     limite: Math.min(filters.perPage || 50, 1000),
     pagina: filters.page || 1,
-    mais_filtros: { somente_matriz: true },
+    mais_filtros: { somente_matriz: true, com_telefone: true, com_email: true },
   };
 
   // Segmento → CNAE
@@ -160,25 +155,55 @@ function formatCnpj(cnpj) {
   return cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 }
 
-function transformApiCompany(c) {
-  const cnaeCode = c.atividade_principal?.codigo || '';
+function extractPhone(c) {
+  // Casa dos Dados v5: contato_telefonico[].completo / ddd+numero
+  const tel = c.contato_telefonico?.[0];
+  if (tel) {
+    if (tel.completo) return tel.completo;
+    if (tel.ddd && tel.numero) return `(${tel.ddd}) ${tel.numero}`;
+  }
+  return '';
+}
+
+function extractEmail(c) {
+  // Casa dos Dados v5: contato_email[].email
+  const em = c.contato_email?.[0];
+  if (em?.email) return em.email.toLowerCase();
+  return '';
+}
+
+function transformApiCompany(c, index, { isPartner = false, partnerCategory = null } = {}) {
+  const cnaeCode = c.atividade_principal?.codigo || c.cnae_fiscal_principal?.toString() || '';
   const isMei = c.mei?.optante === true;
-  const porteCode = c.porte_empresa?.codigo || '05';
+  const porteCode = c.porte_empresa?.codigo || c.porte?.codigo || '05';
 
   const fantasia = c.nome_fantasia?.trim();
   const razao = c.razao_social?.trim() || '';
   const companyName = (fantasia && fantasia.length < razao.length && fantasia.length > 2) ? fantasia : razao;
 
-  const socio = c.quadro_societario?.[0];
+  const socio = c.quadro_societario?.[0] || c.socios?.[0];
+
+  // Para parceiros: detectar categoria pelo CNAE se nao foi informada
+  let detectedCategory = partnerCategory || CNAE_TO_PARTNER_CATEGORY[cnaeCode] || null;
+  // Se nao achou match exato, tentar por prefixo (5 digitos)
+  if (!detectedCategory && cnaeCode && isPartner) {
+    const prefix = cnaeCode.substring(0, 5);
+    for (const [cat, codes] of Object.entries(PARTNER_CATEGORY_TO_CNAE)) {
+      if (codes.some(c => c.startsWith(prefix))) { detectedCategory = cat; break; }
+    }
+    // Ultimo fallback: usar a categoria do filtro se existir
+    if (!detectedCategory) detectedCategory = partnerCategory;
+  }
+  const categoryLabel = detectedCategory ? (PARTNER_CATEGORY_LABELS[detectedCategory] || detectedCategory) : '';
 
   return {
     id: `api_${c.cnpj}`,
     companyName,
-    contactName: socio?.nome || '',
-    phone: c.telefones?.[0] || '',
-    email: c.emails?.[0] || '',
+    contactName: socio?.nome || socio?.nome_socio || '',
+    phone: extractPhone(c),
+    email: extractEmail(c),
     cnpj: formatCnpj(c.cnpj),
-    segment: guessSegmentFromCnae(cnaeCode),
+    segment: isPartner ? categoryLabel : guessSegmentFromCnae(cnaeCode),
     size: isMei ? 'mei' : (PORTE_TO_SIZE[porteCode] || 'media'),
     city: c.endereco?.municipio || '',
     state: (c.endereco?.uf || '').toUpperCase(),
@@ -191,8 +216,9 @@ function transformApiCompany(c) {
     status: 'new',
     assignedTo: null,
     assignedMember: null,
-    prospectType: 'lead',
-    partnerCategory: null,
+    prospectType: isPartner ? 'partner' : 'lead',
+    partnerCategory: detectedCategory,
+    partnerType: null,
     listName: '',
     createdBy: null,
     createdAt: c.data_abertura || new Date().toISOString(),
@@ -204,9 +230,9 @@ function transformApiCompany(c) {
   };
 }
 
-async function searchLeadsViaAPI(filters = {}) {
+async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = null } = {}) {
   if (!CASA_DOS_DADOS_API_KEY) {
-    console.warn('[SearchLeads] API key nao configurada');
+    console.warn('[Search] API key nao configurada');
     return null;
   }
 
@@ -217,7 +243,7 @@ async function searchLeadsViaAPI(filters = {}) {
         'Content-Type': 'application/json',
         'api-key': CASA_DOS_DADOS_API_KEY,
       },
-      body: JSON.stringify(buildApiBody(filters)),
+      body: JSON.stringify(body),
     });
 
     if (res.status === 401) {
@@ -229,52 +255,104 @@ async function searchLeadsViaAPI(filters = {}) {
       return null;
     }
     if (!res.ok) {
-      console.error('[SearchLeads] API error:', res.status);
+      console.error('[Search] API error:', res.status);
       return null;
     }
 
     const json = await res.json();
-    const prospects = (json.cnpjs || []).map(transformApiCompany);
+    const prospects = (json.cnpjs || []).map((c, i) =>
+      transformApiCompany(c, i, { isPartner, partnerCategory })
+    );
 
     return { data: prospects, count: json.total || prospects.length, source: 'api' };
   } catch (err) {
-    console.error('[SearchLeads] Fetch error:', err);
+    console.error('[Search] Fetch error:', err);
     return null;
   }
+}
+
+async function searchLeadsViaAPI(filters = {}) {
+  return callCasaDadosAPI(buildApiBody(filters));
+}
+
+function buildPartnerApiBody(filters) {
+  const body = {
+    situacao_cadastral: ['ATIVA'],
+    limite: Math.min(filters.perPage || 50, 1000),
+    pagina: filters.page || 1,
+    mais_filtros: { somente_matriz: true, com_telefone: true, com_email: true },
+  };
+
+  // Categoria de parceiro → CNAEs especificos (somente atividade PRINCIPAL para evitar resultados irrelevantes)
+  if (filters.segment && PARTNER_CATEGORY_TO_CNAE[filters.segment]) {
+    body.codigo_atividade_principal = PARTNER_CATEGORY_TO_CNAE[filters.segment];
+  } else {
+    // Sem categoria selecionada → combinar TODOS os CNAEs de parceiros
+    const allPartnerCnaes = Object.values(PARTNER_CATEGORY_TO_CNAE).flat();
+    body.codigo_atividade_principal = allPartnerCnaes;
+  }
+
+  // Porte
+  if (filters.size && SIZE_TO_PORTE[filters.size]) {
+    const cfg = SIZE_TO_PORTE[filters.size];
+    body.porte_empresa = { codigos: cfg.codigos };
+    if (cfg.mei) body.mei = cfg.mei;
+  }
+
+  // Estado
+  if (filters.state) body.uf = [filters.state.toLowerCase()];
+
+  // Cidade
+  if (filters.city) body.municipio = [filters.city.toUpperCase()];
+
+  // Busca textual
+  if (filters.search) {
+    body.busca_textual = [{
+      texto: [filters.search],
+      tipo_busca: 'radical',
+      razao_social: true,
+      nome_fantasia: true,
+    }];
+  }
+
+  return body;
+}
+
+async function searchPartnersViaAPI(filters = {}) {
+  // Mapear label da categoria de volta para key
+  const categoryKey = filters.segment
+    ? Object.entries(PARTNER_CATEGORY_LABELS).find(([, label]) => label === filters.segment)?.[0] || filters.segment
+    : null;
+
+  const body = buildPartnerApiBody({ ...filters, segment: categoryKey });
+  return callCasaDadosAPI(body, { isPartner: true, partnerCategory: categoryKey });
 }
 
 // ==================== FUNCOES EXPORTADAS ====================
 
 export async function getCrmProspects(filters = {}) {
-  // Partners sempre usam mock (por enquanto)
+  const empty = { data: [], count: 0, source: 'api' };
+
   if (filters.prospectType === 'partner') {
-    if (USE_MOCK) {
-      await new Promise(r => setTimeout(r, 300));
-      return getMockPartners(filters);
-    }
-    // TODO: Quando integrar DB de parceiros, buscar via Supabase aqui
-    await new Promise(r => setTimeout(r, 300));
-    return getMockPartners(filters);
+    const apiResult = await searchPartnersViaAPI(filters);
+    return apiResult || empty;
   }
 
-  // Leads: tentar API real primeiro, fallback para mock
-  if (!USE_MOCK) {
-    const apiResult = await searchLeadsViaAPI(filters);
-    if (apiResult) return apiResult;
-    // Fallback: se API falhou, usar mock
-    console.warn('[Prospects] API indisponivel, usando mock como fallback');
-  }
-
-  // Mock (dev ou fallback)
-  await new Promise(r => setTimeout(r, 300));
-  return getMockProspects(filters);
+  const apiResult = await searchLeadsViaAPI(filters);
+  return apiResult || empty;
 }
 
 // ==================== ANALYTICS (agregacao client-side) ====================
 
 function aggregateAnalytics(rows) {
   const total = rows.length;
-  if (total === 0) return { total: 0, withEmail: 0, withPhone: 0, withCnpj: 0, uniqueSegments: 0, bySegment: [], bySize: [], byCity: [], bySource: [] };
+  if (total === 0) return {
+    total: 0, withEmail: 0, withPhone: 0, withCnpj: 0,
+    uniqueSegments: 0, uniqueCities: 0,
+    bySegment: [], bySize: [], byCity: [], bySource: [],
+    topSegment: null, topCity: null, newCompanies: 0,
+    revenueBySegment: [], avgRevenue: 0, topRevenueSegment: null,
+  };
 
   const withEmail = rows.filter(r => r.email && r.email.trim()).length;
   const withPhone = rows.filter(r => r.phone && r.phone.trim()).length;
@@ -312,39 +390,70 @@ function aggregateAnalytics(rows) {
     .slice(0, 10);
 
   const uniqueSegments = new Set(rows.map(r => r.segment).filter(Boolean)).size;
+  const uniqueCities = new Set(rows.map(r => r.city).filter(Boolean)).size;
 
-  return { total, withEmail, withPhone, withCnpj, uniqueSegments, bySegment, bySize, byCity, bySource };
+  const topSegment = bySegment[0] || null;
+  const topCity = byCity[0] || null;
+
+  // Empresas novas (abertas nos ultimos 2 anos)
+  const twoYearsAgo = new Date();
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+  const newCompanies = rows.filter(r => {
+    if (!r.createdAt) return false;
+    return new Date(r.createdAt) >= twoYearsAgo;
+  }).length;
+
+  // Capital social medio por segmento
+  const segRevMap = {};
+  const segRevCount = {};
+  rows.forEach(r => {
+    const seg = r.segment || 'Nao informado';
+    const rev = r.revenue;
+    if (rev && rev > 0) {
+      segRevMap[seg] = (segRevMap[seg] || 0) + rev;
+      segRevCount[seg] = (segRevCount[seg] || 0) + 1;
+    }
+  });
+  const revenueBySegment = Object.entries(segRevMap)
+    .map(([name, total]) => ({ name, value: Math.round(total / segRevCount[name]) }))
+    .sort((a, b) => b.value - a.value);
+
+  const allRevenues = rows.filter(r => r.revenue && r.revenue > 0).map(r => r.revenue);
+  const avgRevenue = allRevenues.length > 0 ? Math.round(allRevenues.reduce((a, b) => a + b, 0) / allRevenues.length) : 0;
+  const topRevenueSegment = revenueBySegment[0] || null;
+
+  return {
+    total, withEmail, withPhone, withCnpj,
+    uniqueSegments, uniqueCities,
+    bySegment, bySize, byCity, bySource,
+    topSegment, topCity, newCompanies,
+    revenueBySegment, avgRevenue, topRevenueSegment,
+  };
 }
 
 export async function getProspectsAnalytics(filters = {}) {
-  // Partners: mock analytics
+  // Sample reduzido para economizar creditos da API
+  const ANALYTICS_SAMPLE = 50;
+  const emptyAnalytics = { total: 0, withEmail: 0, withPhone: 0, withCnpj: 0, uniqueSegments: 0, uniqueCities: 0, bySegment: [], bySize: [], byCity: [], bySource: [], topSegment: null, topCity: null, newCompanies: 0, revenueBySegment: [], avgRevenue: 0, topRevenueSegment: null, topCompanies: [] };
+
   if (filters.prospectType === 'partner') {
-    if (USE_MOCK) {
-      await new Promise(r => setTimeout(r, 200));
-      return getMockPartnerAnalytics(filters);
-    }
-    await new Promise(r => setTimeout(r, 200));
-    return getMockPartnerAnalytics(filters);
-  }
-
-  // Leads: buscar via API com perPage alto para agregar
-  if (!USE_MOCK) {
-    const apiResult = await searchLeadsViaAPI({ ...filters, page: 1, perPage: 1000 });
+    const apiResult = await searchPartnersViaAPI({ ...filters, page: 1, perPage: ANALYTICS_SAMPLE });
     if (apiResult && apiResult.data.length > 0) {
-      return { ...aggregateAnalytics(apiResult.data), total: apiResult.count };
+      const analytics = aggregateAnalytics(apiResult.data);
+      return { ...analytics, total: apiResult.count, topCompanies: apiResult.data.slice(0, 15) };
     }
-    // Fallback mock
+    return emptyAnalytics;
   }
 
-  await new Promise(r => setTimeout(r, 200));
-  return getMockAnalytics(filters);
+  const apiResult = await searchLeadsViaAPI({ ...filters, page: 1, perPage: ANALYTICS_SAMPLE });
+  if (apiResult && apiResult.data.length > 0) {
+    const analytics = aggregateAnalytics(apiResult.data);
+    return { ...analytics, total: apiResult.count, topCompanies: apiResult.data.slice(0, 15) };
+  }
+  return emptyAnalytics;
 }
 
 export async function getProspectListNames() {
-  if (USE_MOCK) {
-    return getMockListNames();
-  }
-
   const { data, error } = await supabase
     .from('crm_prospects')
     .select('list_name')
