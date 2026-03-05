@@ -14,6 +14,7 @@ import { useOSOrders, useOSProjects, useTeamMembers } from '../../hooks/queries'
 import { updateOSOrder } from '../../lib/osService';
 import { namesMatch } from '../../lib/kpiUtils';
 import { useProfile } from '../../hooks/useProfile';
+import { useAuth } from '../../contexts/AuthContext';
 import { notifyOSCompleted } from '../../lib/notificationTriggers';
 import { PRIORITIES, ROUTINE_COLUMNS as COLUMNS } from '../../constants/colors';
 import { formatDateShortMonth as formatDate, formatCurrency } from '../../lib/formatters';
@@ -27,34 +28,45 @@ export function RoutinePage() {
   const { data: teamMembers = [] } = useTeamMembers();
   const { profile, isLoading: loadingProfile } = useProfile();
 
+  const { isManager } = useAuth();
+
   // Expenses form
   const [expenseOpen, setExpenseOpen] = useState(null); // orderId com form aberto
   const [expName, setExpName] = useState('');
   const [expValue, setExpValue] = useState('');
   const [expQty, setExpQty] = useState('1');
 
+  // Seletor de membro (só disponível para managers/admins)
+  const [selectedMember, setSelectedMember] = useState('me'); // 'me' | 'all' | memberId
+
   const loading = loadingOrders || loadingProjects || loadingProfile;
 
   const userName = profile.name || '';
 
-  // Filtrar O.S. relevantes para o usuario
+  // Filtrar O.S. pelo membro selecionado
   const myOrders = useMemo(() => {
-    if (!userName) return { todo: [], doing: [], done: [] };
+    let filterName = null;
+    if (selectedMember === 'me') {
+      if (!userName) return { todo: [], doing: [], done: [] };
+      filterName = userName;
+    } else if (selectedMember !== 'all') {
+      filterName = teamMembers.find(m => m.id === selectedMember)?.name || null;
+    }
 
-    const todo = orders.filter(o =>
-      namesMatch(o.assignedTo, userName) && o.status === 'available'
-    );
+    const matchFn = (o) =>
+      filterName
+        ? (namesMatch(o.assignedTo, filterName) || namesMatch(o.assignee, filterName))
+        : true;
 
-    const doing = orders.filter(o =>
-      namesMatch(o.assignee, userName) && o.status === 'in_progress'
-    );
+    return {
+      todo:  orders.filter(o => matchFn(o) && o.status === 'available'),
+      doing: orders.filter(o => matchFn(o) && o.status === 'in_progress'),
+      done:  orders.filter(o => matchFn(o) && o.status === 'done'),
+    };
+  }, [orders, userName, selectedMember, teamMembers]);
 
-    const done = orders.filter(o =>
-      namesMatch(o.assignee, userName) && o.status === 'done'
-    );
-
-    return { todo, doing, done };
-  }, [orders, userName]);
+  // Modo somente-leitura: manager vendo outro colaborador
+  const isReadOnly = selectedMember !== 'me';
 
   // Mapa de sequencia: ordem de execucao (prioridade + sortOrder)
   const sequenceMap = useMemo(() => {
@@ -168,23 +180,53 @@ export function RoutinePage() {
 
   const totalCount = myOrders.todo.length + myOrders.doing.length + myOrders.done.length;
 
+  const viewLabel =
+    selectedMember === 'me'  ? userName :
+    selectedMember === 'all' ? 'Todos os colaboradores' :
+    (teamMembers.find(m => m.id === selectedMember)?.name || '');
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Minha Rotina</h2>
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+            {selectedMember === 'me' ? 'Minha Rotina' : 'Rotina da Equipe'}
+          </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {userName ? (
-              <>O.S. atribuidas a <strong className="text-slate-700 dark:text-slate-200">{userName}</strong> — {totalCount} no total</>
-            ) : (
+            {selectedMember === 'me' && !userName ? (
               'Configure seu nome nas Configuracoes para ver suas O.S.'
+            ) : selectedMember === 'me' ? (
+              <>{totalCount} O.S. no total</>
+            ) : (
+              <>O.S. de <strong className="text-slate-700 dark:text-slate-200">{viewLabel}</strong> — {totalCount} no total</>
             )}
           </p>
         </div>
+
+        {/* Seletor de membro (apenas managers/admins) */}
+        {isManager && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">Visualizando:</label>
+            <select
+              value={selectedMember}
+              onChange={e => setSelectedMember(e.target.value)}
+              className="text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary/30"
+            >
+              <option value="me">Minha Rotina</option>
+              <option value="all">Todos os Colaboradores</option>
+              {teamMembers
+                .filter(m => !namesMatch(m.name, userName))
+                .map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))
+              }
+            </select>
+          </div>
+        )}
       </div>
 
-      {!userName ? (
+      {!userName && selectedMember === 'me' ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -251,6 +293,13 @@ export function RoutinePage() {
                         {/* Title */}
                         <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">{order.title}</h4>
 
+                        {/* Responsavel (visivel apenas para manager vendo outra pessoa/todos) */}
+                        {isReadOnly && (order.assignee || order.assignedTo) && (
+                          <p className="text-[11px] text-purple-500 font-medium mb-0.5">
+                            {order.assignee || order.assignedTo}
+                          </p>
+                        )}
+
                         {/* Project & Client */}
                         {projectName && (
                           <p className="text-[11px] text-blue-500 font-medium mb-0.5">{projectName}</p>
@@ -291,7 +340,7 @@ export function RoutinePage() {
                                       </span>
                                       <div className="flex items-center gap-1">
                                         <span className="font-medium text-amber-700">{formatCurrency(exp.value * (exp.quantity || 1))}</span>
-                                        {column.id === 'doing' && (
+                                        {column.id === 'doing' && !isReadOnly && (
                                           <button
                                             onClick={() => handleRemoveExpense(order.id, idx)}
                                             className="opacity-0 group-hover/exp:opacity-100 text-red-400 hover:text-red-600 transition-opacity ml-0.5"
@@ -314,7 +363,7 @@ export function RoutinePage() {
 
                         {/* Actions */}
                         <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2">
-                          {column.id === 'todo' && (
+                          {!isReadOnly && column.id === 'todo' && (
                             <button
                               onClick={() => handleClaim(order.id)}
                               className="flex-1 py-1.5 bg-fyness-primary text-white text-xs rounded-lg hover:bg-fyness-secondary transition-colors font-medium"
@@ -322,7 +371,7 @@ export function RoutinePage() {
                               Pegar O.S.
                             </button>
                           )}
-                          {column.id === 'doing' && (
+                          {!isReadOnly && column.id === 'doing' && (
                             <button
                               onClick={() => handleFinish(order.id)}
                               className="flex-1 py-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 transition-colors font-medium"
@@ -330,7 +379,7 @@ export function RoutinePage() {
                               Concluir
                             </button>
                           )}
-                          {column.id === 'done' && (
+                          {!isReadOnly && column.id === 'done' && (
                             <button
                               onClick={() => handleReopen(order.id)}
                               className="flex-1 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors font-medium"
