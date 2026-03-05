@@ -849,7 +849,7 @@ export function useCrmProspects(filters = {}) {
   return useQuery({
     queryKey: [...crmQueryKeys.prospects, filters],
     queryFn: () => getCrmProspects(filters),
-    staleTime: 30_000,
+    staleTime: 2 * 60_000, // 2 min — evitar chamadas repetidas na API
   });
 }
 
@@ -857,7 +857,7 @@ export function useProspectsAnalytics(filters) {
   return useQuery({
     queryKey: crmQueryKeys.prospectsAnalytics(filters),
     queryFn: () => getProspectsAnalytics(filters),
-    staleTime: 60_000,
+    staleTime: 5 * 60_000, // 5 min — analytics muda pouco, economiza creditos
     enabled: !!filters,
   });
 }

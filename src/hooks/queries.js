@@ -12,7 +12,7 @@ import { getPenalties, createPenalty, deletePenalty } from '../lib/penaltyServic
 import { getContentPosts, createContentPost, updateContentPost, deleteContentPost } from '../lib/contentService';
 import { getProcessOrdersByProject, getProcessOrderByElement, createProcessOrder, updateProcessOrder, deleteProcessOrder } from '../lib/processOrderService';
 import { supabase } from '../lib/supabase';
-import { pushEventToGCal, getGCalConnectionStatus, fetchGCalEvents, createGCalEvent, updateGCalEvent, deleteGCalEvent } from '../lib/googleCalendarService';
+import { pushEventToGCal, getGCalConnectionStatus, fetchGCalEvents, createGCalEvent, updateGCalEvent, deleteGCalEvent, syncOSToGCal, deleteOSFromGCal } from '../lib/googleCalendarService';
 
 // ==================== HOOK FACTORIES ====================
 
@@ -64,9 +64,42 @@ export const queryKeys = {
 // ==================== OS ORDERS ====================
 
 export const useOSOrders = makeQueryHook(queryKeys.osOrders, getOSOrders, 30_000);
-export const useCreateOSOrder = makeMutationHook(createOSOrder, queryKeys.osOrders);
-export const useUpdateOSOrder = makeUpdateHook(updateOSOrder, queryKeys.osOrders);
-export const useDeleteOSOrder = makeMutationHook(deleteOSOrder, queryKeys.osOrders);
+
+export function useCreateOSOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createOSOrder,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.osOrders });
+      if (data) syncOSToGCal(data).catch(() => {});
+    },
+  });
+}
+
+export function useUpdateOSOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateOSOrder(id, updates),
+    onSuccess: async (_, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.osOrders });
+      // Buscar O.S. atualizada para sincronizar com Google Calendar
+      const orders = qc.getQueryData(queryKeys.osOrders);
+      const os = orders?.find(o => o.id === variables.id);
+      if (os) syncOSToGCal({ ...os, ...variables.updates }).catch(() => {});
+    },
+  });
+}
+
+export function useDeleteOSOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => {
+      deleteOSFromGCal(id).catch(() => {});
+      return deleteOSOrder(id);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osOrders }),
+  });
+}
 
 // ==================== OS SECTORS ====================
 

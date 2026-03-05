@@ -10,11 +10,10 @@ import {
 } from 'recharts';
 import {
   Building2, DollarSign, MapPin, TrendingUp, Layers, Sparkles,
-  ExternalLink, Globe,
+  ExternalLink, Globe, Mail, Phone,
 } from 'lucide-react';
 import { CrmKpiCard } from './ui';
 import { useProspectsAnalytics } from '../hooks/useCrmQueries';
-import { MOCK_PROSPECTS } from '../data/mockProspects';
 
 // ==================== CORES ====================
 
@@ -42,8 +41,7 @@ const SIZE_LABELS = {
   'Nao informado': 'N/I',
 };
 
-// Segmentos considerados "semelhantes" (SaaS de Financas)
-const SIMILAR_SEGMENTS = ['Financeiro', 'Tecnologia'];
+// (removed SIMILAR_SEGMENTS — agora usa dados reais da API)
 
 // ==================== TOOLTIP CUSTOMIZADO ====================
 
@@ -127,6 +125,9 @@ function formatRevenueTick(val) {
 export function ProspectsInsightsPanel({ filters }) {
   const { data: analytics, isLoading } = useProspectsAnalytics(filters);
 
+  // Top empresas vem direto do analytics (mesmo request, sem chamada extra)
+  const topCompanies = analytics?.topCompanies || [];
+
   // Preparar dados dos graficos
   const sizeData = useMemo(() => {
     if (!analytics?.bySize) return [];
@@ -156,18 +157,7 @@ export function ProspectsInsightsPanel({ filters }) {
     return analytics.revenueBySegment;
   }, [analytics?.revenueBySegment]);
 
-  // Empresas semelhantes locais (mesmo segmento SaaS/Financeiro, mesma regiao)
-  const similarCompanies = useMemo(() => {
-    if (!filters) return [];
-    return MOCK_PROSPECTS
-      .filter(p => {
-        if (!SIMILAR_SEGMENTS.includes(p.segment)) return false;
-        if (filters.state && p.state !== filters.state) return false;
-        if (filters.city && p.city !== filters.city) return false;
-        return true;
-      })
-      .slice(0, 15);
-  }, [filters]);
+  // (Empresas reais vindas da query topCompanies acima)
 
   // Ticket medio contextual: se filtrou segmento, mostra daquele; senao, do maior segmento por faturamento
   const ticketInfo = useMemo(() => {
@@ -199,9 +189,9 @@ export function ProspectsInsightsPanel({ filters }) {
           loading={isLoading}
         />
         <CrmKpiCard
-          title="Ticket Medio"
+          title="Capital Social Medio"
           value={isLoading ? '—' : ticketInfo.value ? formatCurrency(ticketInfo.value) : 'R$ 0'}
-          subtitle={!isLoading && ticketInfo.segment ? `media ${ticketInfo.segment}` : 'faturamento medio'}
+          subtitle={!isLoading && ticketInfo.segment ? `media ${ticketInfo.segment}` : 'media geral'}
           icon={DollarSign}
           color="emerald"
           loading={isLoading}
@@ -317,11 +307,11 @@ export function ProspectsInsightsPanel({ filters }) {
             </ResponsiveContainer>
           </div>
 
-          {/* Grafico 4: Faturamento Medio por Segmento (BarChart horizontal) */}
+          {/* Grafico 4: Capital Social Medio por Segmento (BarChart horizontal) */}
           {revenueSegmentData.length > 0 && (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-xl p-4">
               <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
-                Faturamento Medio por Segmento
+                Capital Social Medio por Segmento
               </h4>
               <ResponsiveContainer width="100%" height={Math.max(revenueSegmentData.length * 32, 100)}>
                 <BarChart data={revenueSegmentData} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
@@ -340,24 +330,24 @@ export function ProspectsInsightsPanel({ filters }) {
             </div>
           )}
 
-          {/* Empresas Semelhantes Locais — linha inteira */}
+          {/* Top Empresas Encontradas — linha inteira */}
           <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-xl p-4">
             <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
               <div className="flex items-center gap-1.5">
                 <Globe size={12} />
-                Empresas Semelhantes Locais
+                Top Empresas Encontradas
               </div>
             </h4>
-            {similarCompanies.length === 0 ? (
+            {topCompanies.length === 0 ? (
               <div className="flex items-center justify-center h-28 text-sm text-slate-400 dark:text-slate-500">
-                Nenhuma empresa semelhante nesta regiao
+                Nenhuma empresa encontrada com esses filtros
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 max-h-[300px] overflow-y-auto">
-                {similarCompanies.map(c => (
+                {topCompanies.map(c => (
                   <a
                     key={c.id}
-                    href={c.website ? `https://${c.website}` : `https://www.google.com/search?q=${encodeURIComponent(c.companyName + ' ' + (c.city || '') + ' ' + (c.state || ''))}`}
+                    href={`https://www.google.com/search?q=${encodeURIComponent(c.companyName + ' ' + (c.city || '') + ' ' + (c.state || ''))}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
@@ -369,7 +359,11 @@ export function ProspectsInsightsPanel({ filters }) {
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[11px] text-slate-400">{[c.city, c.state].filter(Boolean).join('/')}</span>
-                        {c.website && <span className="text-[11px] text-slate-300 dark:text-slate-600">{c.website}</span>}
+                        {c.phone && (
+                          <span className="flex items-center gap-0.5 text-[11px] text-slate-400">
+                            <Phone size={9} /> {c.phone}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <ExternalLink size={13} className="text-slate-300 dark:text-slate-600 group-hover:text-blue-500 shrink-0 transition-colors" />

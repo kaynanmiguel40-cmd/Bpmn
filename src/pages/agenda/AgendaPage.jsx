@@ -3,7 +3,7 @@
  * Acompanhamento da rotina da equipe, O.S., eventos
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAgendaEvents, useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent, useTeamMembers, useOSOrders, useContentPosts, useCreateContentPost, useUpdateContentPost, useDeleteContentPost, useGCalEvents, useCreateGCalEvent, useUpdateGCalEvent, useDeleteGCalEvent } from '../../hooks/queries';
 import { shortName } from '../../lib/teamService';
@@ -189,9 +189,24 @@ export default function AgendaPage() {
   const updateGCalMutation = useUpdateGCalEvent();
   const deleteGCalMutation = useDeleteGCalEvent();
 
-  // Eventos: quando conectado ao Google Calendar, usa eventos do Google; senao usa locais
-  const events = gcalConnected ? gcalEvents : localEvents;
-  const loading = (gcalConnected ? loadingGCal : loadingEvents) || loadingMembers || loadingOS;
+  // Eventos: Supabase e a fonte de verdade (sincronizado com GCal quando conectado)
+  // Mescla eventos locais com dados extras do GCal (meetLink, etc.)
+  const events = useMemo(() => {
+    if (!gcalConnected) return localEvents;
+    // Enriquecer eventos do Supabase com meetLink do GCal
+    const gcalMap = {};
+    gcalEvents.forEach(ge => { if (ge.googleEventId) gcalMap[ge.googleEventId] = ge; });
+    const enriched = localEvents.map(le => {
+      const gMatch = le.googleEventId ? gcalMap[le.googleEventId] : null;
+      if (gMatch) return { ...le, meetLink: gMatch.meetLink || le.meetLink };
+      return le;
+    });
+    // Adicionar eventos que existem no GCal mas ainda nao foram sincronizados ao Supabase
+    const localGIds = new Set(localEvents.map(e => e.googleEventId).filter(Boolean));
+    const gcalOnly = gcalEvents.filter(ge => ge.googleEventId && !localGIds.has(ge.googleEventId));
+    return [...enriched, ...gcalOnly];
+  }, [localEvents, gcalEvents, gcalConnected]);
+  const loading = loadingEvents || loadingMembers || loadingOS;
 
   // Realtime
   useRealtimeAgendaEvents();
@@ -202,13 +217,13 @@ export default function AgendaPage() {
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
-  const [quickCreate, setQuickCreate] = useState(null); // { date, startTime, endTime }
   const [recurrenceAction, setRecurrenceAction] = useState(null); // { event, action: 'edit'|'delete' }
   const { profile } = useProfile();
   const [activeFilters, setActiveFilters] = useState([]); // inicializa vazio, preenche ao carregar
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [dayViewMember, setDayViewMember] = useState(null);
-  const [viewingEvent, setViewingEvent] = useState(null); // modal de detalhes do evento
+  const [viewingEvent, setViewingEvent] = useState(null); // popover de detalhes do evento
+  const [popoverPos, setPopoverPos] = useState({ x: 400, y: 200 }); // posicao do popover
 
   // Lista completa: membros cadastrados + perfil logado
   const allMembers = useMemo(() => {
@@ -248,9 +263,10 @@ export default function AgendaPage() {
     startTime: '09:00',
     endDate: toLocalDateString(today),
     endTime: '10:00',
-    assignee: '1',
+    assignee: '',
     attendees: [],
     type: 'task',
+    meetingMode: 'online',
     attended: false,
     wasLate: false,
     lateMinutes: 0,
@@ -291,9 +307,10 @@ export default function AgendaPage() {
       startTime,
       endDate: dateStr,
       endTime,
-      assignee: allMembers[0]?.id || '1',
+      assignee: myMemberId || allMembers[0]?.id || '',
       attendees: [],
       type: 'task',
+      meetingMode: 'online',
       attended: false,
       wasLate: false,
       recurrenceType: null,
@@ -303,26 +320,31 @@ export default function AgendaPage() {
       notes: '',
       attachments: [],
     });
-    setQuickCreate({ date: dateStr, startTime, endTime });
-  };
-
-  const openFullModal = () => {
-    setQuickCreate(null);
     setShowEventModal(true);
   };
 
-  const openEditModal = (event) => {
-    // O.S. e eventos normais: abre modal de detalhes
-    if (event._isOS) {
-      setViewingEvent(event);
-      return;
-    }
-    // Se e ocorrencia virtual de evento recorrente, perguntar o que fazer
+  const openEditModal = (event, clickEvent) => {
+    // Mostrar popover estilo Google Calendar para todos os eventos
+    const pos = clickEvent ? { x: clickEvent.clientX, y: clickEvent.clientY } : { x: 400, y: 200 };
+    setPopoverPos(pos);
+    setViewingEvent(event);
+  };
+
+  // Chamado pelo botao Editar do popover
+  const handlePopoverEdit = (event) => {
+    setViewingEvent(null);
+    if (event._isOS) return; // O.S. nao edita aqui
     if (event._parentId) {
       setRecurrenceAction({ event, action: 'edit' });
       return;
     }
     doOpenEditModal(event);
+  };
+
+  // Chamado pelo botao Excluir do popover
+  const handlePopoverDelete = (eventId) => {
+    setViewingEvent(null);
+    setShowDeleteModal(eventId);
   };
 
   const doOpenEditModal = (event) => {
@@ -339,6 +361,7 @@ export default function AgendaPage() {
       assignee: event.assignee || '1',
       attendees: event.attendees || [],
       type: event.type || 'task',
+      meetingMode: event.meetingMode || (event.meetLink ? 'online' : 'online'),
       attended: event.attended || false,
       wasLate: event.wasLate || false,
       lateMinutes: event.lateMinutes || 0,
@@ -373,6 +396,7 @@ export default function AgendaPage() {
       assignee: form.assignee,
       attendees: form.attendees || [],
       type: form.type,
+      meetingMode: form.type === 'meeting' ? (form.meetingMode || 'online') : null,
       color: eventType.color,
       attended: form.attended,
       wasLate: form.wasLate,
@@ -385,27 +409,28 @@ export default function AgendaPage() {
       attachments: form.attachments || [],
     };
 
-    if (gcalConnected) {
-      // CRUD direto no Google Calendar
-      if (editingEvent) {
+    if (editingEvent) {
+      // UPDATE
+      const realId = editingEvent._parentId || editingEvent.id;
+      if (gcalConnected) {
         await updateGCalMutation.mutateAsync({ id: editingEvent.googleEventId || editingEvent.id, updates: eventData });
-      } else {
-        await createGCalMutation.mutateAsync(eventData);
       }
+      await updateEventMutation.mutateAsync({ id: realId, updates: eventData });
     } else {
-      // CRUD local (Supabase)
-      if (editingEvent) {
-        const realId = editingEvent._parentId || editingEvent.id;
-        await updateEventMutation.mutateAsync({ id: realId, updates: eventData });
-      } else {
-        const created = await createEventMutation.mutateAsync(eventData);
-        if (eventData.attendees?.length > 0) {
-          notifyEventCreated(created || eventData, eventData.attendees, teamMembers, profile?.id);
-        }
+      // CREATE
+      let created;
+      if (gcalConnected) {
+        const gcalResult = await createGCalMutation.mutateAsync(eventData);
+        eventData.googleEventId = gcalResult.googleEventId || gcalResult.id;
+        if (gcalResult.meetLink) eventData.meetLink = gcalResult.meetLink;
+      }
+      created = await createEventMutation.mutateAsync(eventData);
+      if (eventData.attendees?.length > 0) {
+        notifyEventCreated(created || eventData, eventData.attendees, teamMembers, profile?.id);
       }
     }
     setShowEventModal(false);
-    setQuickCreate(null);
+
     setRecurrenceAction(null);
   };
 
@@ -417,15 +442,14 @@ export default function AgendaPage() {
       setShowEventModal(false);
       return;
     }
-    if (gcalConnected) {
-      const eventToDelete = events.find(e => e.id === id);
-      await deleteGCalMutation.mutateAsync(eventToDelete?.googleEventId || id);
-    } else {
-      await deleteEventMutation.mutateAsync(id);
+    const eventToDelete = events.find(e => e.id === id);
+    if (gcalConnected && (eventToDelete?.googleEventId || eventToDelete?.id)) {
+      try { await deleteGCalMutation.mutateAsync(eventToDelete.googleEventId || eventToDelete.id); } catch (e) { /* GCal pode ja estar deletado */ }
     }
+    try { await deleteEventMutation.mutateAsync(id); } catch (e) { /* Supabase pode ja estar deletado */ }
     setShowDeleteModal(null);
     setShowEventModal(false);
-    setQuickCreate(null);
+
   };
 
   // Handlers para acoes em eventos recorrentes
@@ -508,7 +532,7 @@ export default function AgendaPage() {
 
     setRecurrenceAction(null);
     setShowEventModal(false);
-    setQuickCreate(null);
+
   };
 
   // Salvar excecao "este evento" quando usuario confirma no modal
@@ -916,25 +940,13 @@ export default function AgendaPage() {
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         {view === 'month' && <MonthView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onDayClick={(d) => { setCurrentDate(d); setView('day'); }} onEventClick={openEditModal} allMembers={allMembers} />}
         {view === 'week' && <WeekView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} />}
-        {view === 'day' && <DayView currentDate={currentDate} today={today} getAllEventsForDay={getAllEventsForDay} onEventClick={openEditModal} onSlotClick={() => openCreateModal(currentDate)} allMembers={allMembers} businessHours={businessHours} dayViewMember={dayViewMember} setDayViewMember={setDayViewMember} />}
+        {view === 'day' && <DayView currentDate={currentDate} today={today} getAllEventsForDay={getAllEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} dayViewMember={dayViewMember} setDayViewMember={setDayViewMember} />}
         {view === 'posts' && <PostingsView contentPosts={contentPosts} createPost={createPostMutation} updatePost={updatePostMutation} deletePost={deletePostMutation} allMembers={allMembers} />}
       </div>
 
-      {/* Quick Create Popover (estilo Google Calendar) */}
-      {quickCreate && (
-        <QuickCreatePopover
-          form={form}
-          setForm={setForm}
-          onSave={handleSave}
-          onClose={() => setQuickCreate(null)}
-          onMoreOptions={openFullModal}
-          allMembers={allMembers}
-        />
-      )}
-
-      {/* Event Modal (edicao / mais opcoes) */}
+      {/* Modal Unificado de Evento (criacao + edicao) */}
       {showEventModal && (
-        <EventModal
+        <UnifiedEventModal
           form={form}
           setForm={setForm}
           editing={!!editingEvent}
@@ -970,12 +982,15 @@ export default function AgendaPage() {
         </div>
       )}
 
-      {/* Modal de Detalhes do Evento */}
+      {/* Popover de Detalhes (estilo Google Calendar) */}
       {viewingEvent && (
-        <EventDetailModal
+        <EventPopover
           event={viewingEvent}
           allMembers={allMembers}
+          clickPosition={popoverPos}
           onClose={() => setViewingEvent(null)}
+          onEdit={handlePopoverEdit}
+          onDelete={handlePopoverDelete}
           onNavigateOS={viewingEvent._isOS ? () => { setViewingEvent(null); routerNavigate('/financial'); } : null}
         />
       )}
@@ -1036,7 +1051,7 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
                   return (
                     <div
                       key={event.id}
-                      onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                      onClick={(e) => { e.stopPropagation(); onEventClick(event, e); }}
                       className={`text-[10px] px-1.5 py-0.5 rounded truncate text-white font-medium cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5 ${event._isOS ? 'ring-1 ring-white/30' : ''}`}
                       style={{ backgroundColor: bgColor }}
                       title={`${event.title} - ${member?.name || ''}`}
@@ -1044,6 +1059,7 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
                       {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                       {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
                       {event.syncSource === 'google' && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 22h-15A2.5 2.5 0 012 19.5v-15A2.5 2.5 0 014.5 2h15A2.5 2.5 0 0122 4.5v15a2.5 2.5 0 01-2.5 2.5zM6 8v2h4v8h2V10h4V8H6z" /></svg>}
+                      {event.meetLink && <svg onClick={(ev) => { ev.stopPropagation(); window.open(event.meetLink, '_blank'); }} className="w-3.5 h-3.5 shrink-0 text-white hover:text-green-200 cursor-pointer drop-shadow-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="Google Meet"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                       <span className={`truncate ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>{formatTime(new Date(event.startDate))} {event.title}</span>
                       {event._isOS && event._osStatus === 'done' && <span className="ml-auto text-[8px] bg-white/30 px-1 rounded shrink-0">&#10003;</span>}
                     </div>
@@ -1156,7 +1172,7 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
                     return (
                       <div
                         key={event.id}
-                        onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                        onClick={(e) => { e.stopPropagation(); onEventClick(event, e); }}
                         className={`absolute rounded px-1 py-0.5 text-white text-[10px] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm pointer-events-auto ${event._isOS ? 'ring-1 ring-white/30' : ''}`}
                         style={{
                           backgroundColor: bgColor,
@@ -1171,6 +1187,7 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
                           {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                           {event._parentId && !event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
                           {event.syncSource === 'google' && <svg className="w-2.5 h-2.5 shrink-0 opacity-80" viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 22h-15A2.5 2.5 0 012 19.5v-15A2.5 2.5 0 014.5 2h15A2.5 2.5 0 0122 4.5v15a2.5 2.5 0 01-2.5 2.5zM6 8v2h4v8h2V10h4V8H6z" /></svg>}
+                          {event.meetLink && <svg onClick={(ev) => { ev.stopPropagation(); window.open(event.meetLink, '_blank'); }} className="w-3.5 h-3.5 shrink-0 text-white hover:text-green-200 cursor-pointer drop-shadow-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="Google Meet"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                           <span className={`truncate ${event._isOS && event._osStatus === 'done' ? 'line-through opacity-70' : ''}`}>{event.title}</span>
                           {event._isOS && event._osStatus === 'done' && <span className="text-[8px] bg-white/30 px-1 rounded shrink-0 ml-auto">&#10003;</span>}
                         </div>
@@ -1246,6 +1263,37 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
         </div>
       </div>
 
+      {/* Resumo de reunioes do dia */}
+      {(() => {
+        const meetings = dayEvents.filter(e => e.type === 'meeting' || e.meetLink);
+        if (meetings.length === 0) return null;
+        const totalMin = meetings.reduce((acc, e) => {
+          const s = new Date(e.startDate);
+          const en = new Date(e.endDate);
+          return acc + Math.max(0, Math.round((en - s) / 60000));
+        }, 0);
+        const attended = meetings.filter(e => e.attended).length;
+        const past = meetings.filter(e => new Date(e.endDate) < new Date()).length;
+        const h = Math.floor(totalMin / 60);
+        const m = totalMin % 60;
+        return (
+          <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center gap-4 bg-blue-50/50 dark:bg-blue-900/10">
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <span className="text-xs font-medium text-blue-700 dark:text-blue-300">{meetings.length} reunia{meetings.length !== 1 ? 'os' : 'o'}</span>
+            </div>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{h > 0 ? `${h}h${m > 0 ? `${m}min` : ''}` : `${m}min`} total</span>
+            {past > 0 && (
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Presenca: <span className={attended === past ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}>{attended}/{past}</span>
+              </span>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Timeline */}
       <div className="flex-1 overflow-y-auto">
         <div className="grid grid-cols-[60px_1fr] relative">
@@ -1258,7 +1306,11 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
                   <span className={`text-xs font-medium ${isOffHours ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400 dark:text-slate-500'}`}>{String(hour).padStart(2, '0')}:00</span>
                 </div>
                 <div
-                  onClick={onSlotClick}
+                  onClick={() => {
+                    const d = new Date(currentDate);
+                    d.setHours(hour, 0, 0, 0);
+                    onSlotClick(d);
+                  }}
                   className={`h-16 border-b border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-colors ${isOffHours ? 'bg-slate-100/60 dark:bg-slate-700/50' : ''}`}
                 />
               </div>
@@ -1289,7 +1341,7 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
               return (
                 <div
                   key={event.id}
-                  onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                  onClick={(e) => { e.stopPropagation(); onEventClick(event, e); }}
                   className={`absolute rounded-lg px-3 py-1.5 text-white overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm pointer-events-auto ${event._isOS ? 'ring-2 ring-orange-300' : ''}`}
                   style={{
                     backgroundColor: event.color || '#3b82f6',
@@ -1304,6 +1356,7 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
                       {event._isOS && <svg className="w-3 h-3 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
                       {event._parentId && !event._isOS && <svg className="w-3 h-3 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
                       {event.syncSource === 'google' && <svg className="w-3 h-3 shrink-0 opacity-80" viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 22h-15A2.5 2.5 0 012 19.5v-15A2.5 2.5 0 014.5 2h15A2.5 2.5 0 0122 4.5v15a2.5 2.5 0 01-2.5 2.5zM6 8v2h4v8h2V10h4V8H6z" /></svg>}
+                      {event.meetLink && <svg onClick={(ev) => { ev.stopPropagation(); window.open(event.meetLink, '_blank'); }} className="w-4 h-4 shrink-0 text-white hover:text-green-200 cursor-pointer drop-shadow-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="Google Meet"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                       {event.title}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
@@ -1344,115 +1397,203 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
 
 // ==================== MODAL DETALHES DO EVENTO ====================
 
-function EventDetailModal({ event, allMembers, onClose, onNavigateOS }) {
+function EventPopover({ event, allMembers, onClose, onEdit, onDelete, onNavigateOS, clickPosition }) {
   const start = new Date(event.startDate);
   const end = new Date(event.endDate);
   const member = allMembers.find(m => m.id === event.assignee);
   const eventType = EVENT_TYPES.find(t => t.id === event.type);
+  const popoverRef = useRef(null);
 
   const STATUS_LABELS = { available: 'A fazer', in_progress: 'Em andamento', done: 'Concluida', blocked: 'Bloqueada' };
   const PRIORITY_LABELS = { urgent: 'Urgente', high: 'Alta', medium: 'Media', low: 'Baixa' };
 
+  // Posicionar popover perto do clique, mas sem sair da tela
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  useEffect(() => {
+    const el = popoverRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    let top = clickPosition?.y || 200;
+    let left = clickPosition?.x || 400;
+    // Ajustar se sair da tela
+    if (top + rect.height > window.innerHeight - 20) top = window.innerHeight - rect.height - 20;
+    if (left + rect.width > window.innerWidth - 20) left = window.innerWidth - rect.width - 20;
+    if (top < 20) top = 20;
+    if (left < 20) left = 20;
+    setPos({ top, left });
+  }, [clickPosition]);
+
+  const durationMin = Math.round((end - start) / 60000);
+  const hours = Math.floor(durationMin / 60);
+  const mins = durationMin % 60;
+  const durationStr = hours > 0 ? `${hours}h${mins > 0 ? mins + 'min' : ''}` : `${mins}min`;
+
   return (
     <>
-      {/* Backdrop transparente pra fechar ao clicar fora */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
 
-      {/* Painel lateral direito */}
-      <div className="fixed top-0 right-0 h-full w-[340px] max-w-[85vw] bg-white dark:bg-slate-800 shadow-2xl z-50 flex flex-col animate-slide-in-right border-l border-slate-200 dark:border-slate-700">
-        {/* Barra colorida no topo */}
-        <div className="h-1.5 shrink-0" style={{ backgroundColor: member?.color || event.color || '#3b82f6' }} />
+      <div
+        ref={popoverRef}
+        className="fixed z-50 w-[360px] max-w-[90vw] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+        style={{ top: `${pos.top}px`, left: `${pos.left}px` }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Barra colorida */}
+        <div className="h-2 rounded-t-xl" style={{ backgroundColor: member?.color || event.color || '#3b82f6' }} />
 
-        {/* Header */}
-        <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+        {/* Header com titulo e acoes */}
+        <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             {event._isOS && (
-              <svg className="w-5 h-5 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             )}
-            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 leading-snug">{event.title}</h2>
+            <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: member?.color || event.color || '#3b82f6' }} />
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{event.title}</h3>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors shrink-0">
-            <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            {!event._isOS && onEdit && (
+              <button onClick={() => { onClose(); onEdit(event); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="Editar">
+                <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+              </button>
+            )}
+            {!event._isOS && onDelete && (
+              <button onClick={() => { onClose(); onDelete(event.id); }} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Excluir">
+                <svg className="w-4 h-4 text-slate-400 hover:text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              </button>
+            )}
+            <button onClick={onClose} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
         </div>
 
-        {/* Conteudo scrollavel */}
-        <div className="flex-1 overflow-y-auto px-5 pb-4">
-          <div className="space-y-3 text-sm">
-            {/* Data e hora */}
-            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
+        {/* Conteudo */}
+        <div className="px-4 pb-3 space-y-2.5 max-h-[50vh] overflow-y-auto">
+          {/* Data e hora */}
+          <div className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+            <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span>
+              {start.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {' · '}
+              {formatTime(start)} - {formatTime(end)}
+              <span className="text-slate-400 ml-1">({durationStr})</span>
+            </span>
+          </div>
+
+          {/* Responsavel */}
+          {member && (
+            <div className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+              <div className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-white text-[8px] font-bold" style={{ backgroundColor: member.color || '#3b82f6' }}>
+                {member.name?.charAt(0)?.toUpperCase()}
+              </div>
+              <span>{member.name}</span>
+            </div>
+          )}
+
+          {/* Tipo + badge */}
+          {eventType && (
+            <div className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-300">
               <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
               </svg>
-              <span>
-                {start.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
-                {' — '}
-                {formatTime(start)} ate {formatTime(end)}
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold text-white" style={{ backgroundColor: eventType.color }}>
+                {eventType.label}
+              </span>
+              {event.meetingMode === 'presencial' && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">Presencial</span>
+              )}
+              {event.type === 'meeting' && event.meetingMode !== 'presencial' && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">Online</span>
+              )}
+            </div>
+          )}
+
+          {/* Google Meet link - destaque grande */}
+          {event.meetLink && (
+            <a
+              href={event.meetLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors group"
+            >
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shrink-0 group-hover:bg-blue-600 transition-colors">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">Entrar no Google Meet</p>
+                <p className="text-[10px] text-blue-500 dark:text-blue-400 truncate max-w-[220px]">{event.meetLink}</p>
+              </div>
+            </a>
+          )}
+
+          {/* Status e Prioridade (OS) */}
+          {event._isOS && (
+            <div className="flex items-center gap-2.5 text-xs">
+              <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="flex items-center gap-1.5">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold text-white" style={{ backgroundColor: event.color }}>
+                  {STATUS_LABELS[event._osStatus] || event._osStatus}
+                </span>
+                {event._osPriority && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                    {PRIORITY_LABELS[event._osPriority] || event._osPriority}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Presenca (reunioes passadas) */}
+          {(event.type === 'meeting' || event.meetLink) && end < new Date() && (
+            <div className="flex items-center gap-2.5 text-xs">
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className={`font-medium ${event.attended ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                {event.attended ? 'Participou' : 'Nao participou'}
+                {event.wasLate && ` (${event.lateMinutes || 0}min atrasado)`}
               </span>
             </div>
+          )}
 
-            {/* Responsavel */}
-            {member && (
-              <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
-                <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: member.color || '#3b82f6' }} />
-                <span>{member.name}</span>
-              </div>
-            )}
+          {/* Descricao */}
+          {event.description && (
+            <div className="pt-2 mt-1 border-t border-slate-100 dark:border-slate-700">
+              <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed line-clamp-6">{event.description}</p>
+            </div>
+          )}
 
-            {/* Tipo */}
-            {eventType && (
-              <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
-                <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                </svg>
-                <span>{eventType.label}</span>
-              </div>
-            )}
-
-            {/* Status e Prioridade (OS) */}
-            {event._isOS && (
-              <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
-                <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium text-white" style={{ backgroundColor: event.color }}>
-                    {STATUS_LABELS[event._osStatus] || event._osStatus}
-                  </span>
-                  {event._osPriority && (
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                      {PRIORITY_LABELS[event._osPriority] || event._osPriority}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Descricao */}
-            {event.description && (
-              <div className="pt-3 mt-1 border-t border-slate-100 dark:border-slate-700">
-                <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{event.description}</p>
-              </div>
-            )}
-          </div>
+          {/* Notas */}
+          {event.notes && (
+            <div className="flex items-start gap-2.5 text-xs text-slate-500 dark:text-slate-400">
+              <svg className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p className="whitespace-pre-wrap line-clamp-4">{event.notes}</p>
+            </div>
+          )}
         </div>
 
-        {/* Footer */}
+        {/* Footer - botao Ver O.S. */}
         {onNavigateOS && (
-          <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700 shrink-0">
+          <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-700">
             <button
               onClick={onNavigateOS}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors font-medium"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors font-medium"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
-              Ver O.S.
+              Ver O.S. completa
             </button>
           </div>
         )}
@@ -1461,23 +1602,35 @@ function EventDetailModal({ event, allMembers, onClose, onNavigateOS }) {
   );
 }
 
-// ==================== QUICK CREATE (estilo Google Calendar) ====================
+// ==================== MODAL UNIFICADO (criacao + edicao) ====================
 
-function QuickCreatePopover({ form, setForm, onSave, onClose, onMoreOptions, allMembers }) {
+function UnifiedEventModal({ form, setForm, editing, onSave, onClose, onDelete, allMembers }) {
   const updateField = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
   const selectedType = EVENT_TYPES.find(t => t.id === form.type) || EVENT_TYPES[0];
+  const hasDetailData = !!(form.description || form.recurrenceType || form.notes || form.attachments?.length);
+  const [showDetails, setShowDetails] = useState(editing || hasDetailData);
+  const isPastEvent = new Date(`${form.endDate}T${form.endTime}:00`) < new Date();
+  const isMeeting = form.type === 'meeting';
+
+  // Dados contextuais para recorrencia
+  const d = form.startDate ? new Date(form.startDate + 'T00:00:00') : new Date();
+  const dayOfWeek = d.getDay();
+  const dayOfMonth = d.getDate();
+  const dayName = DAYS_FULL_PT[dayOfWeek];
 
   return (
-    <div className="fixed inset-0 z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+        className="w-[460px] max-w-[92vw] max-h-[90vh] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Barra colorida no topo */}
+        {/* Barra colorida do tipo */}
         <div className="h-2 rounded-t-2xl" style={{ backgroundColor: selectedType.color }} />
 
-        <div className="p-5 space-y-4">
-          {/* Titulo - input sem borda, estilo Google */}
+        {/* Conteudo scrollavel */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+          {/* Titulo */}
           <input
             type="text"
             value={form.title}
@@ -1494,7 +1647,7 @@ function QuickCreatePopover({ form, setForm, onSave, onClose, onMoreOptions, all
           {/* Data e Hora */}
           <div className="flex items-center gap-2 text-sm">
             <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <input
               type="date"
@@ -1517,645 +1670,208 @@ function QuickCreatePopover({ form, setForm, onSave, onClose, onMoreOptions, all
             />
           </div>
 
-          {/* Recorrencia - contextual como Google Calendar */}
-          {(() => {
-            const d = form.startDate ? new Date(form.startDate + 'T00:00:00') : new Date();
-            const dayOfWeek = d.getDay();
-            const dayOfMonth = d.getDate();
-            const dayName = DAYS_FULL_PT[dayOfWeek];
-
-            return (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <select
-                    value={form.recurrenceType || ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === 'custom') {
-                        // Abrir modal completo para personalizado
-                        updateField('recurrenceType', 'weekly');
-                        updateField('recurrenceConfig', { interval: 1, daysOfWeek: [dayOfWeek] });
-                        onMoreOptions();
-                        return;
-                      }
-                      updateField('recurrenceType', val || null);
-                      if (val === 'weekly') {
-                        updateField('recurrenceConfig', { interval: 1, daysOfWeek: [dayOfWeek] });
-                      } else if (val === 'monthly') {
-                        updateField('recurrenceConfig', { interval: 1, dayOfMonth });
-                      } else {
-                        updateField('recurrenceConfig', { interval: 1 });
-                      }
-                    }}
-                    className="flex-1 px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
-                  >
-                    <option value="">Nao repete</option>
-                    <option value="daily">Diariamente</option>
-                    <option value="weekly">Semanalmente na {dayName}</option>
-                    <option value="monthly">Mensalmente no dia {dayOfMonth}</option>
-                    <option value="yearly">Anualmente</option>
-                    <option value="custom">Personalizado...</option>
-                  </select>
-                </div>
-
-                {/* Seletor de dias da semana (se semanal) */}
-                {form.recurrenceType === 'weekly' && (
-                  <div className="flex items-center gap-1 pl-7">
-                    {DAYS_PT.map((day, i) => {
-                      const selected = (form.recurrenceConfig?.daysOfWeek || []).includes(i);
-                      return (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => {
-                            const days = form.recurrenceConfig?.daysOfWeek || [];
-                            const next = selected ? days.filter(d => d !== i) : [...days, i];
-                            if (next.length === 0) return; // precisa pelo menos 1 dia
-                            updateField('recurrenceConfig', { ...form.recurrenceConfig, daysOfWeek: next.sort() });
-                          }}
-                          className={`w-8 h-8 rounded-full text-[10px] font-bold transition-all ${
-                            selected ? 'bg-fyness-primary text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Tipo - pills coloridos */}
+          {/* Tipo - pills */}
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
             </svg>
             <div className="flex gap-1.5">
               {EVENT_TYPES.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => updateField('type', t.id)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                    form.type === t.id
-                      ? 'text-white shadow-sm'
-                      : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
-                  }`}
+                <button key={t.id} type="button" onClick={() => updateField('type', t.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${form.type === t.id ? 'text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
                   style={form.type === t.id ? { backgroundColor: t.color } : {}}
-                >
-                  {t.label}
-                </button>
+                >{t.label}</button>
               ))}
             </div>
           </div>
 
-          {/* Responsavel */}
+          {/* Responsavel (tarefa/pessoal) ou Participantes (reuniao) */}
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={form.type === 'meeting' ? 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' : 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'} />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isMeeting ? 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' : 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'} />
             </svg>
-            <div className="flex gap-1.5 flex-wrap">
-              {form.type === 'meeting' ? (
-                // Multi-select para reunioes
-                allMembers.map(m => {
-                  const isSelected = (form.attendees || []).includes(m.id);
+            <span className="text-xs text-slate-500 dark:text-slate-400 min-w-[85px]">{isMeeting ? 'Participantes' : 'Responsável'}</span>
+            {isMeeting ? (
+              <div className="flex gap-1.5 flex-wrap">
+                {allMembers.map(m => {
+                  const sel = (form.attendees || []).includes(m.id);
                   return (
-                    <button
-                      key={m.id}
-                      onClick={() => {
-                        const current = form.attendees || [];
-                        const next = isSelected ? current.filter(id => id !== m.id) : [...current, m.id];
-                        updateField('attendees', next);
-                        if (next.length > 0 && !next.includes(form.assignee)) updateField('assignee', next[0]);
-                      }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
-                        isSelected
-                          ? 'text-white shadow-sm'
-                          : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
-                      }`}
-                      style={isSelected ? { backgroundColor: m.color } : {}}
+                    <button key={m.id} type="button" onClick={() => { const cur = form.attendees || []; const next = sel ? cur.filter(id => id !== m.id) : [...cur, m.id]; updateField('attendees', next); if (next.length > 0 && !next.includes(form.assignee)) updateField('assignee', next[0]); }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${sel ? 'text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+                      style={sel ? { backgroundColor: m.color } : {}}
                     >
-                      {isSelected && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                      {sel && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                       {shortName(m.name)}
                     </button>
                   );
-                })
-              ) : (
-                // Single select para outros tipos
-                allMembers.map(m => (
-                  <button
-                    key={m.id}
-                    onClick={() => updateField('assignee', m.id)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
-                      form.assignee === m.id
-                        ? 'text-white shadow-sm'
-                        : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
-                    }`}
-                    style={form.assignee === m.id ? { backgroundColor: m.color } : {}}
-                  >
-                    {shortName(m.name)}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-          {form.type === 'meeting' && (form.attendees || []).length > 0 && (
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 ml-7">{(form.attendees || []).length} participante{(form.attendees || []).length > 1 ? 's' : ''}</p>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-5 py-3 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between border-t border-slate-100 dark:border-slate-700">
-          <button
-            onClick={onMoreOptions}
-            className="text-sm text-fyness-primary hover:text-fyness-secondary font-medium transition-colors"
-          >
-            Mais opcoes
-          </button>
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors font-medium"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={onSave}
-              disabled={!form.title.trim()}
-              className="px-5 py-2 bg-fyness-primary text-white text-sm rounded-lg hover:bg-fyness-secondary transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Salvar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ==================== MODAL COMPLETO (edicao / mais opcoes) ====================
-
-function EventModal({ form, setForm, editing, onSave, onClose, onDelete, allMembers }) {
-  const updateField = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
-  const isPastEvent = new Date(`${form.endDate}T${form.endTime}:00`) < new Date();
-  const isMeeting = form.type === 'meeting';
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            {editing ? 'Editar Evento' : 'Novo Evento'}
-          </h3>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-            <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Form */}
-        <div className="p-6 space-y-4 overflow-y-auto">
-          {/* Titulo */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Titulo</label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => updateField('title', e.target.value)}
-              className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-              placeholder="Ex: Reuniao de equipe"
-              autoFocus
-              onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onClose(); }}
-            />
-          </div>
-
-          {/* Data e Hora - Inicio */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Data Inicio</label>
-              <input
-                type="date"
-                value={form.startDate}
-                onChange={(e) => updateField('startDate', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Hora Inicio</label>
-              <input
-                type="time"
-                value={form.startTime}
-                onChange={(e) => updateField('startTime', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Data e Hora - Fim */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Data Fim</label>
-              <input
-                type="date"
-                value={form.endDate}
-                onChange={(e) => updateField('endDate', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Hora Fim</label>
-              <input
-                type="time"
-                value={form.endTime}
-                onChange={(e) => updateField('endTime', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Responsavel/Participantes e Tipo */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
-                {form.type === 'meeting' ? 'Participantes' : 'Responsavel'}
-              </label>
-              {form.type === 'meeting' ? (
-                <div className="flex gap-1.5 flex-wrap p-2 border border-slate-300 dark:border-slate-600 rounded-lg min-h-[42px] dark:bg-slate-800">
-                  {allMembers.map(m => {
-                    const isSelected = (form.attendees || []).includes(m.id);
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          const current = form.attendees || [];
-                          const next = isSelected ? current.filter(id => id !== m.id) : [...current, m.id];
-                          updateField('attendees', next);
-                          if (next.length > 0 && !next.includes(form.assignee)) updateField('assignee', next[0]);
-                        }}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all ${
-                          isSelected ? 'text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
-                        }`}
-                        style={isSelected ? { backgroundColor: m.color } : {}}
-                      >
-                        {isSelected && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-                        {shortName(m.name)}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <select
-                  value={form.assignee}
-                  onChange={(e) => updateField('assignee', e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-                >
-                  {allMembers.map(m => (
-                    <option key={m.id} value={m.id}>{shortName(m.name)}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Tipo</label>
+                })}
+              </div>
+            ) : (
               <select
-                value={form.type}
-                onChange={(e) => updateField('type', e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+                value={form.assignee}
+                onChange={(e) => updateField('assignee', e.target.value)}
+                className="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
               >
-                {EVENT_TYPES.map(t => (
-                  <option key={t.id} value={t.id}>{t.label}</option>
+                <option value="">Responsável</option>
+                {allMembers.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
-            </div>
-          </div>
-
-          {/* Recorrencia */}
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Recorrencia</span>
-            </div>
-
-            {(() => {
-              const d = form.startDate ? new Date(form.startDate + 'T00:00:00') : new Date();
-              const dayOfWeek = d.getDay();
-              const dayOfMonth = d.getDate();
-              const dayName = DAYS_FULL_PT[dayOfWeek];
-
-              return (
-                <>
-                  <select
-                    value={form.recurrenceType || ''}
-                    onChange={(e) => {
-                      const val = e.target.value || null;
-                      updateField('recurrenceType', val);
-                      if (!val) {
-                        updateField('recurrenceConfig', { interval: 1 });
-                        updateField('recurrenceEndType', 'never');
-                        updateField('recurrenceEndValue', '');
-                      } else if (val === 'weekly' || val === 'custom') {
-                        updateField('recurrenceType', 'weekly');
-                        updateField('recurrenceConfig', { ...form.recurrenceConfig, interval: form.recurrenceConfig?.interval || 1, daysOfWeek: form.recurrenceConfig?.daysOfWeek?.length ? form.recurrenceConfig.daysOfWeek : [dayOfWeek] });
-                      } else if (val === 'monthly') {
-                        updateField('recurrenceConfig', { interval: 1, dayOfMonth });
-                      } else {
-                        updateField('recurrenceConfig', { interval: form.recurrenceConfig?.interval || 1 });
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
-                  >
-                    <option value="">Nao repete</option>
-                    <option value="daily">Diariamente</option>
-                    <option value="weekly">Semanalmente na {dayName}</option>
-                    <option value="monthly">Mensalmente no dia {dayOfMonth}</option>
-                    <option value="yearly">Anualmente</option>
-                  </select>
-
-                  {/* Intervalo */}
-                  {form.recurrenceType && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-600 dark:text-slate-300">A cada</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="99"
-                        value={form.recurrenceConfig?.interval || 1}
-                        onChange={(e) => updateField('recurrenceConfig', { ...form.recurrenceConfig, interval: parseInt(e.target.value) || 1 })}
-                        className="w-16 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm text-center dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
-                      />
-                      <span className="text-xs text-slate-600 dark:text-slate-300">
-                        {form.recurrenceType === 'daily' && 'dia(s)'}
-                        {form.recurrenceType === 'weekly' && 'semana(s)'}
-                        {form.recurrenceType === 'monthly' && 'mes(es)'}
-                        {form.recurrenceType === 'yearly' && 'ano(s)'}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Dias da semana (para semanal) */}
-                  {form.recurrenceType === 'weekly' && (
-                    <div className="space-y-1.5">
-                      <span className="text-xs text-slate-600 dark:text-slate-300">Repetir nos dias:</span>
-                      <div className="flex gap-1">
-                        {DAYS_PT.map((day, i) => {
-                          const selected = (form.recurrenceConfig?.daysOfWeek || []).includes(i);
-                          return (
-                            <button
-                              key={i}
-                              type="button"
-                              onClick={() => {
-                                const days = form.recurrenceConfig?.daysOfWeek || [];
-                                const next = selected ? days.filter(dd => dd !== i) : [...days, i];
-                                if (next.length === 0) return;
-                                updateField('recurrenceConfig', { ...form.recurrenceConfig, daysOfWeek: next.sort() });
-                              }}
-                              className={`w-9 h-9 rounded-full text-xs font-medium transition-all ${
-                                selected ? 'bg-fyness-primary text-white shadow-sm' : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                              }`}
-                            >
-                              {day}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Info mensal */}
-                  {form.recurrenceType === 'monthly' && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Repete todo dia <strong>{dayOfMonth}</strong> de cada mes</p>
-                  )}
-                </>
-              );
-            })()}
-
-            {/* Termino da recorrencia */}
-            {form.recurrenceType && (
-              <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Termina</span>
-                <div className="space-y-1.5">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="recEnd" checked={form.recurrenceEndType === 'never'} onChange={() => { updateField('recurrenceEndType', 'never'); updateField('recurrenceEndValue', ''); }} className="w-3.5 h-3.5 text-fyness-primary" />
-                    <span className="text-sm text-slate-700 dark:text-slate-200">Nunca</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="recEnd" checked={form.recurrenceEndType === 'after'} onChange={() => updateField('recurrenceEndType', 'after')} className="w-3.5 h-3.5 text-fyness-primary" />
-                    <span className="text-sm text-slate-700 dark:text-slate-200">Apos</span>
-                    {form.recurrenceEndType === 'after' && (
-                      <>
-                        <input
-                          type="number"
-                          min="1"
-                          max="999"
-                          value={form.recurrenceEndValue || ''}
-                          onChange={(e) => updateField('recurrenceEndValue', e.target.value)}
-                          className="w-16 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm text-center dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
-                          placeholder="10"
-                        />
-                        <span className="text-sm text-slate-500 dark:text-slate-400">ocorrencia(s)</span>
-                      </>
-                    )}
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="recEnd" checked={form.recurrenceEndType === 'on_date'} onChange={() => updateField('recurrenceEndType', 'on_date')} className="w-3.5 h-3.5 text-fyness-primary" />
-                    <span className="text-sm text-slate-700 dark:text-slate-200">Na data</span>
-                    {form.recurrenceEndType === 'on_date' && (
-                      <input
-                        type="date"
-                        value={form.recurrenceEndValue || ''}
-                        onChange={(e) => updateField('recurrenceEndValue', e.target.value)}
-                        className="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
-                      />
-                    )}
-                  </label>
-                </div>
-              </div>
             )}
           </div>
+          {isMeeting && (form.attendees || []).length > 0 && (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 ml-7">{(form.attendees || []).length} participante{(form.attendees || []).length > 1 ? 's' : ''}</p>
+          )}
 
-          {/* Presenca (apenas reunioes passadas) */}
-          {isMeeting && isPastEvent && (
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2">
-              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Registro de Presenca</p>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.attended}
-                  onChange={(e) => {
-                    updateField('attended', e.target.checked);
-                    if (!e.target.checked) updateField('wasLate', false);
-                  }}
-                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm text-slate-700 dark:text-slate-200">Participou da reuniao</span>
-              </label>
-              {form.attended && (
-                <label className="flex items-center gap-2 cursor-pointer ml-6">
-                  <input
-                    type="checkbox"
-                    checked={form.wasLate}
-                    onChange={(e) => {
-                      updateField('wasLate', e.target.checked);
-                      if (!e.target.checked) updateField('lateMinutes', 0);
-                    }}
-                    className="w-4 h-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400"
-                  />
-                  <span className="text-sm text-slate-700 dark:text-slate-200">Chegou atrasado</span>
-                </label>
-              )}
-              {form.attended && form.wasLate && (
-                <div className="ml-6 flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max="480"
-                    value={form.lateMinutes || ''}
-                    onChange={(e) => updateField('lateMinutes', e.target.value)}
-                    placeholder="0"
-                    className="w-20 px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
-                  />
-                  <span className="text-sm text-slate-500 dark:text-slate-400">minutos de atraso</span>
+          {/* ===== TOGGLE MAIS DETALHES ===== */}
+          <button type="button" onClick={() => setShowDetails(!showDetails)}
+            className="w-full flex items-center gap-2 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors border-t border-slate-100 dark:border-slate-700"
+          >
+            <svg className={`w-4 h-4 transition-transform ${showDetails ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            {showDetails ? 'Menos detalhes' : 'Mais detalhes'}
+          </button>
+
+          {/* ===== SECAO EXPANDIDA ===== */}
+          {showDetails && (
+            <div className="space-y-4">
+              {/* Descricao */}
+              <AutoTextarea
+                value={form.description}
+                onChange={(e) => updateField('description', e.target.value)}
+                minRows={2}
+                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm dark:placeholder-slate-500"
+                placeholder="Descricao do evento..."
+              />
+
+              {/* Modo da reuniao: Online / Presencial */}
+              {isMeeting && (
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <div className="flex gap-1.5">
+                    <button type="button" onClick={() => updateField('meetingMode', 'online')}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1 ${form.meetingMode === 'online' ? 'bg-blue-500 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      Online (Meet)
+                    </button>
+                    <button type="button" onClick={() => updateField('meetingMode', 'presencial')}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1 ${form.meetingMode === 'presencial' ? 'bg-orange-500 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      Presencial
+                    </button>
+                  </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Descricao */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Descricao</label>
-            <AutoTextarea
-              value={form.description}
-              onChange={(e) => updateField('description', e.target.value)}
-              minRows={3}
-              className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm dark:placeholder-slate-500"
-              placeholder="Detalhes do evento..."
-            />
-          </div>
-
-          {/* Anotacoes / Ata (reunioes) */}
-          {isMeeting && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
-                <span className="flex items-center gap-1.5">
-                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              {/* Recorrencia */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Anotacoes / Ata da Reuniao
-                </span>
-              </label>
-              <AutoTextarea
-                value={form.notes}
-                onChange={(e) => updateField('notes', e.target.value)}
-                minRows={5}
-                className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm dark:placeholder-slate-500"
-                placeholder="Pauta, decisoes, pendencias..."
-              />
-            </div>
-          )}
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Recorrencia</span>
+                </div>
+                <select value={form.recurrenceType || ''} onChange={(e) => {
+                  const val = e.target.value || null;
+                  updateField('recurrenceType', val);
+                  if (!val) { updateField('recurrenceConfig', { interval: 1 }); updateField('recurrenceEndType', 'never'); updateField('recurrenceEndValue', ''); }
+                  else if (val === 'weekly') { updateField('recurrenceConfig', { ...form.recurrenceConfig, interval: form.recurrenceConfig?.interval || 1, daysOfWeek: form.recurrenceConfig?.daysOfWeek?.length ? form.recurrenceConfig.daysOfWeek : [dayOfWeek] }); }
+                  else if (val === 'monthly') { updateField('recurrenceConfig', { interval: 1, dayOfMonth }); }
+                  else { updateField('recurrenceConfig', { interval: form.recurrenceConfig?.interval || 1 }); }
+                }} className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent">
+                  <option value="">Nao repete</option>
+                  <option value="daily">Diariamente</option>
+                  <option value="weekly">Semanalmente na {dayName}</option>
+                  <option value="monthly">Mensalmente no dia {dayOfMonth}</option>
+                  <option value="yearly">Anualmente</option>
+                </select>
+                {form.recurrenceType && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-600 dark:text-slate-300">A cada</span>
+                    <input type="number" min="1" max="99" value={form.recurrenceConfig?.interval || 1} onChange={(e) => updateField('recurrenceConfig', { ...form.recurrenceConfig, interval: parseInt(e.target.value) || 1 })} className="w-16 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm text-center dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary" />
+                    <span className="text-xs text-slate-600 dark:text-slate-300">
+                      {form.recurrenceType === 'daily' && 'dia(s)'}{form.recurrenceType === 'weekly' && 'semana(s)'}{form.recurrenceType === 'monthly' && 'mes(es)'}{form.recurrenceType === 'yearly' && 'ano(s)'}
+                    </span>
+                  </div>
+                )}
+                {form.recurrenceType === 'weekly' && (
+                  <div className="flex gap-1">
+                    {DAYS_PT.map((day, i) => {
+                      const sel = (form.recurrenceConfig?.daysOfWeek || []).includes(i);
+                      return (<button key={i} type="button" onClick={() => { const days = form.recurrenceConfig?.daysOfWeek || []; const next = sel ? days.filter(dd => dd !== i) : [...days, i]; if (next.length === 0) return; updateField('recurrenceConfig', { ...form.recurrenceConfig, daysOfWeek: next.sort() }); }}
+                        className={`w-8 h-8 rounded-full text-[10px] font-bold transition-all ${sel ? 'bg-fyness-primary text-white shadow-sm' : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                      >{day}</button>);
+                    })}
+                  </div>
+                )}
+                {form.recurrenceType && (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Termina</span>
+                    <label className="flex items-center gap-2 cursor-pointer"><input type="radio" name="recEnd" checked={form.recurrenceEndType === 'never'} onChange={() => { updateField('recurrenceEndType', 'never'); updateField('recurrenceEndValue', ''); }} className="w-3.5 h-3.5 text-fyness-primary" /><span className="text-sm text-slate-700 dark:text-slate-200">Nunca</span></label>
+                    <label className="flex items-center gap-2 cursor-pointer"><input type="radio" name="recEnd" checked={form.recurrenceEndType === 'after'} onChange={() => updateField('recurrenceEndType', 'after')} className="w-3.5 h-3.5 text-fyness-primary" /><span className="text-sm text-slate-700 dark:text-slate-200">Apos</span>
+                      {form.recurrenceEndType === 'after' && <><input type="number" min="1" max="999" value={form.recurrenceEndValue || ''} onChange={(e) => updateField('recurrenceEndValue', e.target.value)} className="w-16 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm text-center dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary" placeholder="10" /><span className="text-sm text-slate-500 dark:text-slate-400">ocorrencia(s)</span></>}
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer"><input type="radio" name="recEnd" checked={form.recurrenceEndType === 'on_date'} onChange={() => updateField('recurrenceEndType', 'on_date')} className="w-3.5 h-3.5 text-fyness-primary" /><span className="text-sm text-slate-700 dark:text-slate-200">Na data</span>
+                      {form.recurrenceEndType === 'on_date' && <input type="date" value={form.recurrenceEndValue || ''} onChange={(e) => updateField('recurrenceEndValue', e.target.value)} className="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary" />}
+                    </label>
+                  </div>
+                )}
+              </div>
 
-          {/* Anexos (reunioes) */}
-          {isMeeting && (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
-                <span className="flex items-center gap-1.5">
-                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                  Anexos
-                </span>
-              </label>
+              {/* Notas/Ata (reunioes) */}
+              {isMeeting && (
+                <AutoTextarea value={form.notes} onChange={(e) => updateField('notes', e.target.value)} minRows={3}
+                  className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm dark:placeholder-slate-500"
+                  placeholder="Pauta, decisoes, pendencias..."
+                />
+              )}
 
-              {/* Lista de anexos existentes */}
-              {(form.attachments || []).length > 0 && (
-                <div className="space-y-1.5">
-                  {form.attachments.map((att, idx) => (
+              {/* Anexos (reunioes) */}
+              {isMeeting && (
+                <div className="space-y-2">
+                  {(form.attachments || []).map((att, idx) => (
                     <div key={att.id || idx} className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-                      {att.type === 'image' ? (
-                        <img src={att.data} alt={att.label} className="w-8 h-8 rounded object-cover shrink-0" />
-                      ) : (
-                        <div className="w-8 h-8 bg-blue-50 dark:bg-blue-900/20 rounded flex items-center justify-center shrink-0">
-                          <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                      )}
+                      {att.type === 'image' ? <img src={att.data} alt={att.label} className="w-8 h-8 rounded object-cover shrink-0" /> : <div className="w-8 h-8 bg-blue-50 dark:bg-blue-900/20 rounded flex items-center justify-center shrink-0"><svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></div>}
                       <span className="text-xs text-slate-600 dark:text-slate-300 truncate flex-1">{att.label || 'Arquivo'}</span>
-                      <button
-                        type="button"
-                        onClick={() => updateField('attachments', form.attachments.filter((_, i) => i !== idx))}
-                        className="p-1 text-slate-400 hover:text-red-500 transition-colors"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                      <button type="button" onClick={() => updateField('attachments', form.attachments.filter((_, i) => i !== idx))} className="p-1 text-slate-400 hover:text-red-500 transition-colors"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                     </div>
                   ))}
+                  <label className="flex items-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors">
+                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Adicionar arquivo (max 3MB)</span>
+                    <input type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; if (file.size > 3 * 1024 * 1024) { toast.warning('Arquivo muito grande! Maximo: 3MB.'); return; } const reader = new FileReader(); reader.onload = (ev) => { const isImage = file.type.startsWith('image/'); const newAtt = { id: Date.now(), type: isImage ? 'image' : 'document', data: ev.target.result, label: file.name, mimeType: file.type }; updateField('attachments', [...(form.attachments || []), newAtt]); }; reader.readAsDataURL(file); e.target.value = ''; }} />
+                  </label>
                 </div>
               )}
 
-              {/* Botao de upload */}
-              <label className="flex items-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors">
-                <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span className="text-sm text-slate-500 dark:text-slate-400">Adicionar arquivo (max 3MB)</span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    if (file.size > 3 * 1024 * 1024) { toast.warning('Arquivo muito grande! Maximo: 3MB.'); return; }
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                      const isImage = file.type.startsWith('image/');
-                      const newAtt = { id: Date.now(), type: isImage ? 'image' : 'document', data: ev.target.result, label: file.name, mimeType: file.type };
-                      updateField('attachments', [...(form.attachments || []), newAtt]);
-                    };
-                    reader.readAsDataURL(file);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-              <p className="text-xs text-slate-400 dark:text-slate-500">Atas, documentos, imagens, PDFs</p>
+              {/* Presenca (reunioes passadas) */}
+              {isMeeting && isPastEvent && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2">
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Registro de Presenca</p>
+                  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.attended} onChange={(e) => { updateField('attended', e.target.checked); if (!e.target.checked) updateField('wasLate', false); }} className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" /><span className="text-sm text-slate-700 dark:text-slate-200">Participou da reuniao</span></label>
+                  {form.attended && <label className="flex items-center gap-2 cursor-pointer ml-6"><input type="checkbox" checked={form.wasLate} onChange={(e) => { updateField('wasLate', e.target.checked); if (!e.target.checked) updateField('lateMinutes', 0); }} className="w-4 h-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400" /><span className="text-sm text-slate-700 dark:text-slate-200">Chegou atrasado</span></label>}
+                  {form.attended && form.wasLate && <div className="ml-6 flex items-center gap-2"><input type="number" min="1" max="480" value={form.lateMinutes || ''} onChange={(e) => updateField('lateMinutes', e.target.value)} placeholder="0" className="w-20 px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent" /><span className="text-sm text-slate-500 dark:text-slate-400">minutos de atraso</span></div>}
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+        <div className="px-5 py-3 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 shrink-0">
           <div>
             {editing && (
-              <button
-                onClick={onDelete}
-                className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-sm font-medium"
-              >
-                Excluir
-              </button>
+              <button type="button" onClick={onDelete} className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-sm font-medium">Excluir</button>
             )}
           </div>
-          <div className="flex gap-3">
-            <button onClick={onClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm">
-              Cancelar
-            </button>
-            <button
-              onClick={onSave}
-              disabled={!form.title.trim()}
-              className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {editing ? 'Salvar' : 'Criar Evento'}
-            </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors font-medium">Cancelar</button>
+            <button type="button" onClick={onSave} disabled={!form.title.trim()} className="px-5 py-2 bg-fyness-primary text-white text-sm rounded-lg hover:bg-fyness-secondary transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">{editing ? 'Salvar' : 'Criar'}</button>
           </div>
         </div>
       </div>

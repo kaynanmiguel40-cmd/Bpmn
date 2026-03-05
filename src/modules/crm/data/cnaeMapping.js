@@ -210,3 +210,99 @@ export const PORTE_TO_SIZE = {
   '03': 'epp',      // Empresa de Pequeno Porte → EPP
   '05': 'media',    // Demais → Media/Grande (sem distincao na RF)
 };
+
+// ==================== PARCEIROS — CATEGORIAS E CNAEs ====================
+
+/**
+ * Categorias de parceiros mapeadas para CNAEs.
+ * Usadas na busca via API Casa dos Dados para encontrar parceiros potenciais.
+ */
+export const PARTNER_CATEGORY_TO_CNAE = {
+  contabilidades: [
+    '6920601', // Atividades de contabilidade
+    '6920602', // Atividades de consultoria e auditoria contabil e tributaria
+  ],
+  consultorias: [
+    '7020400', // Atividades de consultoria em gestao empresarial
+    '7490104', // Atividades de intermediacao e agenciamento de servicos e negocios em geral
+  ],
+  plataformas_digitais: [
+    '6201501', // Desenvolvimento de programas de computador sob encomenda
+    '6202300', // Desenvolvimento e licenciamento de programas customizaveis
+    '6203100', // Desenvolvimento e licenciamento de programas nao-customizaveis
+    '6311900', // Tratamento de dados, provedores de hospedagem
+    '6319400', // Portais, provedores de conteudo e outros servicos de internet
+  ],
+  fintechs: [
+    '6499999', // Outras atividades de servicos financeiros
+    '6619302', // Correspondentes de instituicoes financeiras
+    '6613400', // Administracao de cartoes de credito
+    '6619399', // Outros servicos auxiliares aos servicos financeiros
+  ],
+  associacoes: [
+    '9411100', // Atividades de organizacoes associativas patronais e empresariais
+    '9412099', // Outras atividades associativas profissionais
+  ],
+  conselhos_classe: [
+    '9412001', // Atividades de fiscalizacao profissional
+    '9430800', // Atividades de associacoes de defesa de direitos sociais
+  ],
+  cooperativas_credito: [
+    '6424701', // Bancos cooperativos
+    '6424702', // Cooperativas centrais de credito
+    '6424703', // Cooperativas de credito mutuo
+    '6424704', // Cooperativas de credito rural
+  ],
+  coworkings: [
+    '8211300', // Servicos combinados de escritorio e apoio administrativo
+    '6810202', // Aluguel de imoveis proprios — inclui coworkings
+    '8219901', // Fotocopia, preparacao de documentos e servicos de apoio administrativo
+  ],
+  franqueadoras: [
+    '7740300', // Gestao de ativos intangiveis nao-financeiros (franquias)
+  ],
+  infoprodutores: [
+    '8599604', // Treinamento em desenvolvimento profissional e gerencial
+    '8599699', // Outras atividades de ensino nao especificadas anteriormente
+    '8550302', // Atividades de apoio a educacao (exceto caixas escolares)
+  ],
+  distribuidores: [
+    '4639701', // Comercio atacadista de produtos alimenticios em geral
+    '4691500', // Comercio atacadista de mercadorias em geral
+    '4637107', // Comercio atacadista de chocolates, confeitos, balas, bombons e semelhantes
+    '4649408', // Comercio atacadista de produtos de higiene, limpeza e conservacao domiciliar
+  ],
+  sindicatos: [
+    '9420100', // Atividades de organizacoes sindicais
+  ],
+};
+
+// Labels legíveis para as categorias de parceiros
+export const PARTNER_CATEGORY_LABELS = {
+  contabilidades: 'Contabilidades',
+  consultorias: 'Consultorias de Gestao',
+  plataformas_digitais: 'Plataformas Digitais / Apps',
+  fintechs: 'Fintechs / Maquininhas',
+  associacoes: 'Associacoes Comerciais',
+  conselhos_classe: 'Conselhos e Entidades de Classe',
+  cooperativas_credito: 'Cooperativas de Credito',
+  coworkings: 'Coworkings',
+  franqueadoras: 'Franqueadoras',
+  infoprodutores: 'Infoprodutores / Educacao Empresarial',
+  distribuidores: 'Distribuidores / Atacadistas',
+  sindicatos: 'Sindicatos Patronais',
+};
+
+// Reverse: CNAE → categoria de parceiro
+export const CNAE_TO_PARTNER_CATEGORY = {};
+for (const [cat, codes] of Object.entries(PARTNER_CATEGORY_TO_CNAE)) {
+  for (const code of codes) {
+    CNAE_TO_PARTNER_CATEGORY[code] = cat;
+  }
+}
+
+// Tipos de parceria
+export const PARTNER_TYPE_OPTIONS = [
+  { key: 'individual', label: 'Individual' },
+  { key: 'institucional', label: 'Institucional' },
+];

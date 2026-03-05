@@ -16,8 +16,8 @@ function toSnakeCase(obj, fieldMap) {
   return result;
 }
 
-function generateLocalId(prefix) {
-  return `${prefix}_${Date.now()}`;
+function generateLocalId(_prefix) {
+  return crypto.randomUUID();
 }
 
 // ==================== SYNC ONLINE/OFFLINE ====================

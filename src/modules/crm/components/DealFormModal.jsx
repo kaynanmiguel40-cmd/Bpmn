@@ -24,6 +24,12 @@ const STATUS_OPTIONS = [
   { value: 'lost', label: 'Perdido' },
 ];
 
+const SEGMENT_OPTIONS = [
+  'Agro', 'Alimenticio', 'Automotivo', 'Comercio', 'Construcao Civil',
+  'Educacao', 'Energia', 'Financeiro', 'Industria', 'Logistica',
+  'Saude', 'Servicos', 'Tecnologia', 'Varejo', 'Outros',
+];
+
 function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField = 'name', extraInfo }) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
@@ -71,6 +77,80 @@ function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField 
   );
 }
 
+// Combobox hibrido: digita livremente (freeText) OU seleciona contato existente (contactId)
+function ContactField({ freeValue, onFreeChange, linkedId, onLinkChange }) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const { data } = useCrmContacts({ search, perPage: 8 });
+  const items = data?.data || [];
+
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const linked = items.find(c => c.id === linkedId);
+
+  function handleInput(e) {
+    const val = e.target.value;
+    onFreeChange(val);
+    setSearch(val);
+    onLinkChange(null); // limpa vinculo se usuario digita manualmente
+    setOpen(true);
+  }
+
+  function handleSelect(item) {
+    onFreeChange(item.name);
+    onLinkChange(item.id);
+    setSearch('');
+    setOpen(false);
+  }
+
+  function handleClear() {
+    onFreeChange('');
+    onLinkChange(null);
+    setSearch('');
+  }
+
+  const displayValue = linked ? linked.name : freeValue;
+
+  return (
+    <div className="relative" ref={ref}>
+      <input
+        type="text"
+        value={displayValue || ''}
+        onChange={handleInput}
+        onFocus={() => { setSearch(freeValue || ''); setOpen(true); }}
+        placeholder="Nome do contato (ou busque um existente)"
+        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+      />
+      {(freeValue || linkedId) && (
+        <button type="button" onClick={handleClear}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+          <X size={14} />
+        </button>
+      )}
+      {linkedId && (
+        <span className="absolute right-7 top-1/2 -translate-y-1/2 text-xs text-fyness-primary font-medium">vinculado</span>
+      )}
+      {open && items.length > 0 && (
+        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+          {items.map(item => (
+            <button key={item.id} type="button"
+              onClick={() => handleSelect(item)}
+              className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
+              <span className="font-medium text-slate-800 dark:text-slate-200">{item.name}</span>
+              {item.email && <span className="text-xs text-slate-400">({item.email})</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = null, defaultStageId = null }) {
   const isEdit = !!deal;
   const createMutation = useCreateCrmDeal();
@@ -84,9 +164,9 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(crmDealSchema),
     defaultValues: {
-      title: '', value: 0, probability: 50,
-      contactId: null, companyId: null,
-      pipelineId: null, stageId: null,
+      title: '', value: 0, probability: 50, segment: '',
+      contactName: '', contactPhone: '', contactEmail: '', contactId: null,
+      companyId: null, pipelineId: null, stageId: null,
       expectedCloseDate: null, status: 'open', lostReason: '',
       ownerId: null,
     },
@@ -102,6 +182,10 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         title: deal.title || '',
         value: deal.value || 0,
         probability: deal.probability ?? 50,
+        segment: deal.segment || '',
+        contactName: deal.contactName || deal.contact?.name || '',
+        contactPhone: deal.contactPhone || deal.contact?.phone || '',
+        contactEmail: deal.contactEmail || deal.contact?.email || '',
         contactId: deal.contactId || null,
         companyId: deal.companyId || null,
         pipelineId: deal.pipelineId || pipelines?.[0]?.id || null,
@@ -115,9 +199,9 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
       const pId = defaultPipelineId || pipelines?.[0]?.id || null;
       const sId = defaultStageId || pipelines?.find(p => p.id === pId)?.stages?.[0]?.id || null;
       reset({
-        title: '', value: 0, probability: 50,
-        contactId: null, companyId: null,
-        pipelineId: pId, stageId: sId,
+        title: '', value: 0, probability: 50, segment: '',
+        contactName: '', contactPhone: '', contactEmail: '', contactId: null,
+        companyId: null, pipelineId: pId, stageId: sId,
         expectedCloseDate: null, status: 'open', lostReason: '',
         ownerId: null,
       });
@@ -184,26 +268,54 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
           </div>
         </div>
 
-        {/* Contato + Empresa */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Segmento */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Segmento</label>
+          <select {...register('segment')} className={fieldClass('segment')}>
+            <option value="">Selecione o segmento...</option>
+            {SEGMENT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        {/* Contato */}
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-3">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Contato</p>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Contato</label>
-            <Controller name="contactId" control={control}
-              render={({ field }) => (
-                <EntityCombobox value={field.value} onChange={field.onChange}
-                  placeholder="Buscar contato..." useQueryHook={useCrmContacts}
-                  extraInfo={(item) => item.email && <span className="text-xs text-slate-400">({item.email})</span>} />
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nome</label>
+            <Controller name="contactName" control={control}
+              render={({ field: freeField }) => (
+                <Controller name="contactId" control={control}
+                  render={({ field: idField }) => (
+                    <ContactField
+                      freeValue={freeField.value}
+                      onFreeChange={freeField.onChange}
+                      linkedId={idField.value}
+                      onLinkChange={idField.onChange}
+                    />
+                  )} />
               )} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Empresa</label>
-            <Controller name="companyId" control={control}
-              render={({ field }) => (
-                <EntityCombobox value={field.value} onChange={field.onChange}
-                  placeholder="Buscar empresa..." useQueryHook={useCrmCompanies}
-                  extraInfo={(item) => item.segment && <span className="text-xs text-slate-400">({item.segment})</span>} />
-              )} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Telefone</label>
+              <input {...register('contactPhone')} placeholder="(11) 99999-9999" className={fieldClass('contactPhone')} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
+              <input type="email" {...register('contactEmail')} placeholder="contato@empresa.com" className={fieldClass('contactEmail')} />
+            </div>
           </div>
+        </div>
+
+        {/* Empresa */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Empresa</label>
+          <Controller name="companyId" control={control}
+            render={({ field }) => (
+              <EntityCombobox value={field.value} onChange={field.onChange}
+                placeholder="Buscar empresa..." useQueryHook={useCrmCompanies}
+                extraInfo={(item) => item.segment && <span className="text-xs text-slate-400">({item.segment})</span>} />
+            )} />
         </div>
 
         {/* Vendedor responsavel */}
