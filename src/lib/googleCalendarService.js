@@ -765,6 +765,12 @@ export async function fetchGCalEvents(timeMin, timeMax) {
       // Campos extras do Google
       location: gcalEvent.location || '',
       htmlLink: gcalEvent.htmlLink || '',
+      meetLink: (() => {
+        const link = gcalEvent.hangoutLink || gcalEvent.conferenceData?.entryPoints?.find(e => e.entryPointType === 'video')?.uri || null;
+        // So aceitar links do Google Meet (ignorar tasks.google.com etc)
+        if (link && link.includes('meet.google.com')) return link;
+        return null;
+      })(),
       organizer: gcalEvent.organizer?.email || '',
       isAllDay: !!gcalEvent.start?.date && !gcalEvent.start?.dateTime,
     }));
@@ -792,7 +798,24 @@ export async function createGCalEvent(eventData) {
 
   if (eventData.location) gcalEvent.location = eventData.location;
 
-  const res = await gcalFetch(`${GCAL_API}/calendars/primary/events`, {
+  // Google Meet automatico apenas para reunioes ONLINE (nao presenciais)
+  const isMeeting = eventData.type === 'meeting';
+  const isOnlineMeeting = isMeeting && eventData.meetingMode !== 'presencial';
+  if (isOnlineMeeting) {
+    gcalEvent.conferenceData = {
+      createRequest: {
+        requestId: `meet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+      },
+    };
+  }
+
+  // conferenceDataVersion=1 necessario para criar Meet
+  const url = isOnlineMeeting
+    ? `${GCAL_API}/calendars/primary/events?conferenceDataVersion=1`
+    : `${GCAL_API}/calendars/primary/events`;
+
+  const res = await gcalFetch(url, {
     method: 'POST',
     body: JSON.stringify(gcalEvent),
   });
@@ -809,6 +832,7 @@ export async function createGCalEvent(eventData) {
     startDate: created.start?.dateTime || created.start?.date,
     endDate: created.end?.dateTime || created.end?.date,
     googleEventId: created.id,
+    meetLink: created.hangoutLink || created.conferenceData?.entryPoints?.find(e => e.entryPointType === 'video')?.uri || null,
   };
 }
 
@@ -873,6 +897,138 @@ export async function isGCalReady() {
   return !!token;
 }
 
+// ==================== O.S. -> GOOGLE CALENDAR ====================
+
+const OS_STATUS_LABELS = {
+  pending: 'Pendente', in_progress: 'Em Andamento', done: 'Concluida',
+  blocked: 'Bloqueada', review: 'Em Revisao',
+};
+const OS_PRIORITY_LABELS = {
+  critical: 'Critica', high: 'Alta', medium: 'Media', low: 'Baixa',
+};
+
+/**
+ * Sincroniza uma O.S. com o Google Calendar.
+ * Cria ou atualiza o evento correspondente.
+ */
+export async function syncOSToGCal(os) {
+  const token = await getAccessToken();
+  if (!token) return null;
+
+  const osNum = os.type === 'emergency' ? `EMG-${os.emergencyNumber}` : `#${os.number}`;
+
+  // Montar descricao completa
+  const descParts = [];
+  if (os.client) descParts.push(`Cliente: ${os.client}`);
+  if (os.description) descParts.push(`Descricao: ${os.description}`);
+  if (os.priority) descParts.push(`Prioridade: ${OS_PRIORITY_LABELS[os.priority] || os.priority}`);
+  if (os.status) descParts.push(`Status: ${OS_STATUS_LABELS[os.status] || os.status}`);
+  if (os.assignee || os.assignedTo) descParts.push(`Responsavel: ${os.assignee || os.assignedTo}`);
+  if (os.location) descParts.push(`Local: ${os.location}`);
+  if (os.notes) descParts.push(`\nNotas:\n${os.notes}`);
+
+  // Calcular datas
+  let startDate, endDate;
+  if (os.estimatedStart) {
+    startDate = os.estimatedStart;
+    endDate = os.estimatedEnd || new Date(new Date(os.estimatedStart).getTime() + 3600000).toISOString();
+  } else if (os.actualStart) {
+    startDate = os.actualStart;
+    endDate = os.actualEnd || new Date(new Date(os.actualStart).getTime() + 3600000).toISOString();
+  } else if (os.slaDeadline) {
+    endDate = os.slaDeadline;
+    startDate = new Date(new Date(os.slaDeadline).getTime() - 3600000).toISOString();
+  } else {
+    // Sem datas — nao sincronizar
+    return null;
+  }
+
+  const gcalEvent = {
+    summary: `O.S. ${osNum} - ${os.title}`,
+    description: descParts.join('\n'),
+    start: { dateTime: startDate, timeZone: 'America/Sao_Paulo' },
+    end: { dateTime: endDate, timeZone: 'America/Sao_Paulo' },
+    colorId: os.status === 'done' ? '10' : os.type === 'emergency' ? '11' : '6', // verde/vermelho/laranja
+  };
+
+  try {
+    // Checar se ja tem google_event_id na O.S. (via sync_log ou campo)
+    const { data: logEntry } = await supabase
+      .from('google_sync_log')
+      .select('google_event_id')
+      .eq('fyness_event_id', os.id)
+      .eq('direction', 'push')
+      .not('google_event_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (logEntry?.google_event_id) {
+      // Update evento existente
+      const res = await gcalFetch(`${GCAL_API}/calendars/primary/events/${logEntry.google_event_id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(gcalEvent),
+      });
+      if (res.ok) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) await logSync(user.id, 'push', 'update', os.id, logEntry.google_event_id);
+        return { success: true, action: 'updated' };
+      }
+      // Se 404, evento foi deletado no Google — recriar
+      if (res.status !== 404) return null;
+    }
+
+    // Criar novo evento
+    const res = await gcalFetch(`${GCAL_API}/calendars/primary/events`, {
+      method: 'POST',
+      body: JSON.stringify(gcalEvent),
+    });
+
+    if (res.ok) {
+      const created = await res.json();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await logSync(user.id, 'push', 'create', os.id, created.id);
+      return { success: true, action: 'created', googleEventId: created.id };
+    }
+  } catch (err) {
+    console.warn('[GCal] Erro ao sincronizar O.S.:', err.message);
+  }
+
+  return null;
+}
+
+/**
+ * Remove evento de O.S. do Google Calendar.
+ */
+export async function deleteOSFromGCal(osId) {
+  const token = await getAccessToken();
+  if (!token) return null;
+
+  try {
+    const { data: logEntry } = await supabase
+      .from('google_sync_log')
+      .select('google_event_id')
+      .eq('fyness_event_id', osId)
+      .eq('direction', 'push')
+      .not('google_event_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (logEntry?.google_event_id) {
+      await gcalFetch(`${GCAL_API}/calendars/primary/events/${logEntry.google_event_id}`, {
+        method: 'DELETE',
+      });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await logSync(user.id, 'push', 'delete', osId, logEntry.google_event_id);
+    }
+  } catch (err) {
+    console.warn('[GCal] Erro ao deletar O.S. do GCal:', err.message);
+  }
+
+  return null;
+}
+
 /** Busca os ultimos registros de sync */
 export async function getGCalSyncLog(limit = 10) {
   const { data, error } = await supabase
@@ -884,3 +1040,11 @@ export async function getGCalSyncLog(limit = 10) {
   if (error) return [];
   return data || [];
 }
+
+// Exports internos para testes unitarios
+export const __test__ = {
+  fynessToGoogle,
+  googleToFyness,
+  buildRRule,
+  parseRRule,
+};
