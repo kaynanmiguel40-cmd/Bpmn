@@ -18,6 +18,22 @@ import {
 } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
 
+// Mascara telefone: (11) 99999-9999 ou (11) 9999-9999
+function formatPhoneDisplay(val) {
+  const d = (val || '').replace(/\D/g, '').slice(0, 11);
+  if (!d) return '';
+  if (d.length <= 2) return `(${d}`;
+  if (d.length <= 6) return `(${d.slice(0,2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+}
+
+// Formata numero como moeda brasileira para exibicao no input
+function formatCurrencyInput(num) {
+  if (!num && num !== 0) return '';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
+}
+
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Aberto' },
   { value: 'won', label: 'Ganho' },
@@ -257,9 +273,23 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         {/* Valor + Probabilidade */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Valor (R$)</label>
-            <input type="number" min="0" step="0.01" {...register('value', { valueAsNumber: true })}
-              placeholder="0.00" className={fieldClass('value')} />
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Valor</label>
+            <Controller name="value" control={control}
+              render={({ field }) => (
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatCurrencyInput(field.value)}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d,]/g, '');
+                    const digits = raw.replace(',', '.');
+                    const num = parseFloat(digits);
+                    field.onChange(isNaN(num) ? 0 : num);
+                  }}
+                  placeholder="R$ 0,00"
+                  className={fieldClass('value')}
+                />
+              )} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Probabilidade (%)</label>
@@ -298,7 +328,18 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Telefone</label>
-              <input {...register('contactPhone')} placeholder="(11) 99999-9999" className={fieldClass('contactPhone')} />
+              <Controller name="contactPhone" control={control}
+                render={({ field }) => (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formatPhoneDisplay(field.value)}
+                    onChange={(e) => field.onChange(formatPhoneDisplay(e.target.value))}
+                    placeholder="(11) 99999-9999"
+                    maxLength={16}
+                    className={fieldClass('contactPhone')}
+                  />
+                )} />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
