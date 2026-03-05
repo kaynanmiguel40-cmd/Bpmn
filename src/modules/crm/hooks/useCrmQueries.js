@@ -200,6 +200,7 @@ export function useCreateCrmPipeline() {
     mutationFn: createCrmPipeline,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       toast('Pipeline criado com sucesso', 'success');
     },
   });
@@ -221,6 +222,7 @@ export function useDeleteCrmPipeline() {
     mutationFn: deleteCrmPipeline,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       toast('Pipeline excluido', 'success');
     },
   });

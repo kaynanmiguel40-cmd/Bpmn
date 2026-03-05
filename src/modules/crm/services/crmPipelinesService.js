@@ -55,12 +55,13 @@ export async function getCrmPipelineWithDeals(pipelineId) {
     .from('crm_pipelines')
     .select('*, crm_pipeline_stages(*)')
     .eq('id', pipelineId)
-    .single();
+    .maybeSingle();
 
   if (pError) {
     toast(`Erro ao buscar pipeline: ${pError.message}`, 'error');
     return null;
   }
+  if (!pipeline) return null;
 
   // Buscar deals ABERTOS e PERDIDOS do pipeline com contato e empresa
   const { data: deals, error: dError } = await supabase
@@ -100,7 +101,7 @@ export async function getCrmPipelineWithDeals(pipelineId) {
 
   result.stages = result.stages.map(stage => {
     const allDeals = dealsByStage[stage.id] || [];
-    const deals = allDeals.filter(d => d.status !== 'won' || stage.isWinStage);
+    const deals = allDeals;
     return {
       ...stage,
       deals,
@@ -147,12 +148,22 @@ export async function createCrmPipeline(data) {
     position: s.position,
     color: s.color || '#6366f1',
     is_win_stage: s.isWinStage || false,
-    triggers_meeting: s.triggersMeeting || false,
   }));
 
-  await supabase.from('crm_pipeline_stages').insert(stageRows);
+  const { error: stagesError } = await supabase.from('crm_pipeline_stages').insert(stageRows);
+  if (stagesError) {
+    console.error('Erro ao criar stages:', stagesError, stageRows);
+    toast(`Pipeline criada, mas erro ao criar etapas: ${stagesError.message}`, 'error');
+  }
 
-  return dbToPipeline(pipeline);
+  // Re-buscar pipeline com stages para retornar completo
+  const { data: fullPipeline } = await supabase
+    .from('crm_pipelines')
+    .select('*, crm_pipeline_stages(*)')
+    .eq('id', pipeline.id)
+    .maybeSingle();
+
+  return dbToPipeline(fullPipeline || pipeline);
 }
 
 export async function updateCrmPipeline(id, updates) {

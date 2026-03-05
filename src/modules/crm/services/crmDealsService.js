@@ -213,20 +213,25 @@ export async function moveDealToStage(dealId, stageId) {
     .eq('id', dealId)
     .single();
 
-  // Checar se stage destino e estagio de vitoria ou trigger de reuniao
+  // Checar se stage destino e estagio de vitoria
   const { data: targetStage } = await supabase
     .from('crm_pipeline_stages')
-    .select('is_win_stage, triggers_meeting, name')
+    .select('is_win_stage, name')
     .eq('id', stageId)
     .single();
 
-  const shouldAutoWin = targetStage?.is_win_stage === true && current?.status === 'open';
+  const isWinStage = targetStage?.is_win_stage === true;
+  const shouldAutoWin = isWinStage && current?.status === 'open';
+  const shouldReopen = !isWinStage && (current?.status === 'won' || current?.status === 'lost');
 
   const updatePayload = { stage_id: stageId, updated_at: new Date().toISOString() };
   if (shouldAutoWin) {
     updatePayload.status = 'won';
     updatePayload.probability = 100;
     updatePayload.closed_at = new Date().toISOString();
+  } else if (shouldReopen) {
+    updatePayload.status = 'open';
+    updatePayload.closed_at = null;
   }
 
   const { data, error } = await supabase
@@ -247,7 +252,7 @@ export async function moveDealToStage(dealId, stageId) {
 
   const result = dbToCrmDeal(data);
   // Metadata para UI: sinaliza se stage dispara modal de reuniao
-  result._triggersMeeting = targetStage?.triggers_meeting === true;
+  result._triggersMeeting = false;
 
   // Disparar automações vinculadas a esta etapa (fire-and-forget)
   if (current && current.stage_id !== stageId) {

@@ -5,9 +5,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User } from 'lucide-react';
-import { CrmPageHeader, CrmEmptyState } from '../components/ui';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities } from '../hooks/useCrmQueries';
+import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2 } from 'lucide-react';
+import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog } from '../components/ui';
+import { CrmModal } from '../components/ui/CrmModal';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
 import { supabase } from '../../../lib/supabase';
 import { DealFormModal } from '../components/DealFormModal';
@@ -252,6 +253,182 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
   );
 }
 
+// ==================== MODAL CRIAR PIPELINE ====================
+
+const DEFAULT_STAGES = [
+  { name: 'Prospecção',  color: '#94a3b8', isWinStage: false },
+  { name: 'Qualificação',color: '#6366f1', isWinStage: false },
+  { name: 'Proposta',    color: '#f59e0b', isWinStage: false },
+  { name: 'Negociação',  color: '#f97316', isWinStage: false },
+  { name: 'Fechamento',  color: '#10b981', isWinStage: true  },
+];
+
+function CreatePipelineModal({ open, onClose, onCreated }) {
+  const [name, setName]     = useState('');
+  const [stages, setStages] = useState(() => DEFAULT_STAGES.map(s => ({ ...s })));
+  const createMutation = useCreateCrmPipeline();
+
+  // Reset ao abrir
+  useEffect(() => {
+    if (open) {
+      setName('');
+      setStages(DEFAULT_STAGES.map(s => ({ ...s })));
+    }
+  }, [open]);
+
+  const addStage = () =>
+    setStages(s => [...s, { name: '', color: '#6366f1', isWinStage: false }]);
+
+  const removeStage = (i) =>
+    setStages(s => s.filter((_, idx) => idx !== i));
+
+  const updateStage = (i, field, value) =>
+    setStages(s => s.map((st, idx) => idx === i ? { ...st, [field]: value } : st));
+
+  // Apenas uma etapa pode ser "ganho"
+  const setWin = (i) =>
+    setStages(s => s.map((st, idx) => ({ ...st, isWinStage: idx === i })));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim() || stages.length === 0) return;
+    const pipeline = await createMutation.mutateAsync({
+      name: name.trim(),
+      stages: stages.map((s, i) => ({
+        name:       s.name.trim() || `Etapa ${i + 1}`,
+        color:      s.color,
+        position:   i + 1,
+        isWinStage: s.isWinStage,
+      })),
+    });
+    onClose();
+    if (pipeline?.id) onCreated(pipeline.id);
+  };
+
+  const inputCls = 'px-2.5 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40';
+
+  return (
+    <CrmModal
+      open={open}
+      onClose={onClose}
+      title="Nova Pipeline"
+      size="md"
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            form="create-pipeline-form"
+            disabled={!name.trim() || stages.length === 0 || createMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+          >
+            <Plus size={14} />
+            {createMutation.isPending ? 'Criando...' : 'Criar Pipeline'}
+          </button>
+        </>
+      }
+    >
+      <form id="create-pipeline-form" onSubmit={handleSubmit} className="space-y-5">
+
+        {/* Nome */}
+        <div>
+          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Nome da pipeline *</label>
+          <input
+            autoFocus
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Ex.: Vendas, Parceiros, Renovações..."
+            className={`w-full ${inputCls}`}
+            required
+          />
+        </div>
+
+        {/* Etapas */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+              Etapas do Kanban
+            </label>
+            <span className="text-[11px] text-slate-400">
+              <Trophy size={10} className="inline mr-1 text-amber-500" />
+              = etapa de ganho
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {stages.map((stage, i) => (
+              <div key={i} className="flex items-center gap-2">
+                {/* Handle / ordem visual */}
+                <GripVertical size={14} className="text-slate-300 dark:text-slate-600 shrink-0" />
+
+                {/* Cor */}
+                <div className="relative shrink-0">
+                  <div
+                    className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-700 shadow cursor-pointer"
+                    style={{ backgroundColor: stage.color }}
+                  />
+                  <input
+                    type="color"
+                    value={stage.color}
+                    onChange={e => updateStage(i, 'color', e.target.value)}
+                    className="absolute inset-0 opacity-0 w-6 h-6 cursor-pointer"
+                    title="Escolher cor"
+                  />
+                </div>
+
+                {/* Nome */}
+                <input
+                  type="text"
+                  value={stage.name}
+                  onChange={e => updateStage(i, 'name', e.target.value)}
+                  placeholder={`Etapa ${i + 1}`}
+                  className={`flex-1 ${inputCls}`}
+                />
+
+                {/* Marcar como ganho */}
+                <button
+                  type="button"
+                  onClick={() => setWin(i)}
+                  title="Marcar como etapa de ganho"
+                  className={`shrink-0 p-1.5 rounded-lg transition-colors ${
+                    stage.isWinStage
+                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-500'
+                      : 'text-slate-300 dark:text-slate-600 hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10'
+                  }`}
+                >
+                  <Trophy size={14} />
+                </button>
+
+                {/* Remover */}
+                <button
+                  type="button"
+                  onClick={() => removeStage(i)}
+                  disabled={stages.length <= 1}
+                  className="shrink-0 p-1.5 rounded-lg text-slate-300 dark:text-slate-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors disabled:opacity-30"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={addStage}
+            className="mt-3 flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+          >
+            <Plus size={12} /> Adicionar etapa
+          </button>
+        </div>
+
+      </form>
+    </CrmModal>
+  );
+}
+
 // ==================== PAGINA ====================
 
 export function CrmPipelinePage() {
@@ -263,6 +440,7 @@ export function CrmPipelinePage() {
   const { data: learned } = useLearnedProbabilities(activePipelineId);
   const moveMutation = useMoveCrmDeal();
   const lostMutation = useMarkDealLost();
+  const deletePipelineMutation = useDeleteCrmPipeline();
   const { data: allMembers = [] } = useTeamMembers();
   const crmMembers = allMembers.filter(m => m.crmRole);
 
@@ -281,6 +459,8 @@ export function CrmPipelinePage() {
   const [formOpen, setFormOpen] = useState(false);
   const [defaultStageId, setDefaultStageId] = useState(null);
   const [dragOverStageId, setDragOverStageId] = useState(null);
+  const [createPipelineOpen, setCreatePipelineOpen] = useState(false);
+  const [deletePipelineConfirm, setDeletePipelineConfirm] = useState(false);
   const [lostModalDealId, setLostModalDealId] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [meetingModalData, setMeetingModalData] = useState(null); // { dealId, dealTitle, dealCity }
@@ -416,15 +596,34 @@ export function CrmPipelinePage() {
               </button>
             )}
 
-            {/* Seletor de Pipeline */}
+            {/* Seletor de Pipeline (com opção de criar nova) */}
+            <select
+              value={activePipelineId || ''}
+              onChange={(e) => {
+                if (e.target.value === '__new__') {
+                  setCreatePipelineOpen(true);
+                  // Reset select back to current pipeline
+                  requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
+                } else {
+                  setSelectedPipelineId(e.target.value || null);
+                }
+              }}
+              className="text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+            >
+              {(pipelines || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option disabled>──────────</option>
+              <option value="__new__">+ Nova Pipeline</option>
+            </select>
+
+            {/* Excluir pipeline selecionada */}
             {pipelines && pipelines.length > 1 && (
-              <select
-                value={activePipelineId || ''}
-                onChange={(e) => setSelectedPipelineId(e.target.value || null)}
-                className="text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+              <button
+                onClick={() => setDeletePipelineConfirm(true)}
+                title="Excluir pipeline"
+                className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
               >
-                {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+                <Trash2 size={15} />
+              </button>
             )}
 
             <button
@@ -448,6 +647,7 @@ export function CrmPipelinePage() {
           icon={Kanban}
           title="Nenhum pipeline criado"
           description="Crie seu primeiro pipeline para comecar a gerenciar negocios no Kanban."
+          action={{ label: 'Criar Pipeline', onClick: () => setCreatePipelineOpen(true) }}
         />
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-180px)]">
@@ -498,6 +698,30 @@ export function CrmPipelinePage() {
       />
 
       <ConfettiCelebration show={showConfetti} onDone={() => setShowConfetti(false)} />
+
+      <CreatePipelineModal
+        open={createPipelineOpen}
+        onClose={() => setCreatePipelineOpen(false)}
+        onCreated={(id) => setSelectedPipelineId(id)}
+      />
+
+      <CrmConfirmDialog
+        open={deletePipelineConfirm}
+        onCancel={() => setDeletePipelineConfirm(false)}
+        onConfirm={() => {
+          deletePipelineMutation.mutate(activePipelineId, {
+            onSuccess: () => {
+              setDeletePipelineConfirm(false);
+              setSelectedPipelineId(null);
+            },
+          });
+        }}
+        title="Excluir Pipeline"
+        message={`Tem certeza que deseja excluir a pipeline "${pipelineData?.name || ''}"? Todos os negócios e etapas serão removidos permanentemente.`}
+        confirmLabel="Excluir"
+        variant="danger"
+        loading={deletePipelineMutation.isPending}
+      />
     </div>
   );
 }

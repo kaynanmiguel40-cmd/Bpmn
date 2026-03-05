@@ -3,7 +3,7 @@
  * Aba Automações do CRM — 3 seções: Regras | Monitor | Logs
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import {
   Zap, Plus, Pencil, Trash2, Power, PowerOff,
   Mail, MessageSquare, Smartphone,
@@ -14,7 +14,6 @@ import {
   Filter,
 } from 'lucide-react';
 import { CrmPageHeader } from '../components/ui/CrmPageHeader';
-import { CrmBadge } from '../components/ui/CrmBadge';
 import { CrmConfirmDialog } from '../components/ui/CrmConfirmDialog';
 import { AutomationFormModal } from '../components/AutomationFormModal';
 import {
@@ -459,9 +458,8 @@ function LogsTab() {
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-700/50">
                 {logs.map(log => (
-                  <>
+                  <Fragment key={log.id}>
                     <tr
-                      key={log.id}
                       className="hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer"
                       onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
                     >
@@ -503,7 +501,7 @@ function LogsTab() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
