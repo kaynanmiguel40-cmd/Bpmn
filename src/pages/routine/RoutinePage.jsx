@@ -7,7 +7,7 @@
  * - Concluido: finalizei
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOSOrders, useOSProjects, useTeamMembers } from '../../hooks/queries';
@@ -18,7 +18,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { notifyOSCompleted } from '../../lib/notificationTriggers';
 import { PRIORITIES, ROUTINE_COLUMNS as COLUMNS } from '../../constants/colors';
 import { formatDateShortMonth as formatDate, formatCurrency } from '../../lib/formatters';
-import { sortByPriorityAndOrder } from '../../lib/orderSorting';
 
 export function RoutinePage() {
   const navigate = useNavigate();
@@ -38,6 +37,11 @@ export function RoutinePage() {
 
   // Seletor de membro (só disponível para managers/admins)
   const [selectedMember, setSelectedMember] = useState('me'); // 'me' | 'all' | memberId
+
+  // Drag-and-drop state
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null); // { cardId, position: 'before'|'after' }
 
   const loading = loadingOrders || loadingProjects || loadingProfile;
 
@@ -68,9 +72,10 @@ export function RoutinePage() {
   // Modo somente-leitura: manager vendo outro colaborador
   const isReadOnly = selectedMember !== 'me';
 
-  // Mapa de sequencia: ordem de execucao (prioridade + sortOrder)
+  // Mapa de sequencia: ordem manual (sortOrder)
   const sequenceMap = useMemo(() => {
-    const active = [...myOrders.todo, ...myOrders.doing].sort(sortByPriorityAndOrder);
+    const sortBySortOrder = (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    const active = [...myOrders.todo, ...myOrders.doing].sort(sortBySortOrder);
     const map = {};
     active.forEach((o, i) => { map[o.id] = i + 1; });
     return map;
@@ -164,6 +169,74 @@ export function RoutinePage() {
     return projects.find(p => p.id === projectId)?.name || null;
   };
 
+  // ---- Drag-and-drop handlers ----
+  const handleDragStart = useCallback((id) => setDraggingId(id), []);
+  const handleDragEnd = useCallback(() => {
+    setDraggingId(null);
+    setDragOverCol(null);
+    setDropTarget(null);
+  }, []);
+  const handleCardDragOver = useCallback((cardId, position) => {
+    setDropTarget({ cardId, position });
+  }, []);
+
+  const handleDrop = async (draggedId, columnId, targetCardId, position) => {
+    const draggedOrder = orders.find(o => o.id === draggedId);
+    if (!draggedOrder) return;
+
+    // Determinar status alvo da coluna
+    const statusMap = { todo: 'available', doing: 'in_progress', done: 'done' };
+    const newStatus = statusMap[columnId];
+
+    // Pegar cards da coluna destino (sem o card arrastado)
+    const colCards = columnData[columnId].filter(o => o.id !== draggedId);
+
+    // Determinar posicao de insercao
+    let insertIndex = colCards.length;
+    if (targetCardId) {
+      const targetIdx = colCards.findIndex(o => o.id === targetCardId);
+      if (targetIdx !== -1) {
+        insertIndex = position === 'before' ? targetIdx : targetIdx + 1;
+      }
+    }
+
+    // Inserir na posicao
+    colCards.splice(insertIndex, 0, draggedOrder);
+
+    // Calcular novos sortOrders
+    const newSortMap = {};
+    colCards.forEach((o, i) => { newSortMap[o.id] = i; });
+
+    // Atualizar UI otimisticamente
+    const updatedOrders = orders.map(o => {
+      if (o.id === draggedId) {
+        return { ...o, status: newStatus, sortOrder: newSortMap[o.id] ?? o.sortOrder };
+      }
+      if (newSortMap[o.id] !== undefined) {
+        return { ...o, sortOrder: newSortMap[o.id] };
+      }
+      return o;
+    });
+    queryClient.setQueryData(['osOrders'], updatedOrders);
+
+    // Persistir no banco - apenas cards que mudaram
+    const batchUpdates = [];
+    const statusChanged = draggedOrder.status !== newStatus;
+    batchUpdates.push({
+      id: draggedId,
+      ...(statusChanged ? { status: newStatus } : {}),
+      sortOrder: newSortMap[draggedId] ?? draggedOrder.sortOrder,
+    });
+    for (const [id, sortOrder] of Object.entries(newSortMap)) {
+      if (id === draggedId) continue;
+      const original = orders.find(o => o.id === id);
+      if (original && (original.sortOrder ?? 0) !== sortOrder) {
+        batchUpdates.push({ id, sortOrder });
+      }
+    }
+    await Promise.all(batchUpdates.map(u => updateOSOrder(u.id, u)));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -173,8 +246,8 @@ export function RoutinePage() {
   }
 
   const columnData = {
-    todo: [...myOrders.todo].sort(sortByPriorityAndOrder),
-    doing: [...myOrders.doing].sort(sortByPriorityAndOrder),
+    todo: [...myOrders.todo].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    doing: [...myOrders.doing].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     done: myOrders.done,
   };
 
@@ -249,10 +322,37 @@ export function RoutinePage() {
         <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
           {COLUMNS.map((column) => {
             const items = columnData[column.id];
+            const isColOver = dragOverCol === column.id && !dropTarget;
+            const canDrag = true;
             return (
-              <div key={column.id} className="flex flex-col min-h-0">
+              <div
+                key={column.id}
+                className={`flex flex-col min-h-0 rounded-xl overflow-hidden border-2 transition-all duration-200 ${
+                  isColOver
+                    ? 'border-fyness-primary bg-fyness-primary/5 shadow-lg'
+                    : 'border-transparent'
+                }`}
+                onDragOver={(e) => { e.preventDefault(); setDragOverCol(column.id); }}
+                onDragEnter={(e) => { e.preventDefault(); setDragOverCol(column.id); }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget)) {
+                    setDragOverCol(null);
+                    setDropTarget(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedId = e.dataTransfer.getData('text/plain');
+                  if (draggedId) {
+                    handleDrop(draggedId, column.id, dropTarget?.cardId, dropTarget?.position);
+                  }
+                  setDragOverCol(null);
+                  setDropTarget(null);
+                  setDraggingId(null);
+                }}
+              >
                 {/* Column Header */}
-                <div className={`bg-gradient-to-r ${column.color} rounded-t-xl px-4 py-2.5 flex items-center justify-between`}>
+                <div className={`bg-gradient-to-r ${column.color} px-4 py-2.5 flex items-center justify-between`}>
                   <h3 className="text-sm font-bold text-white">{column.title}</h3>
                   <span className="bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded-full">
                     {items.length}
@@ -260,22 +360,46 @@ export function RoutinePage() {
                 </div>
 
                 {/* Cards */}
-                <div className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-b-xl p-3 space-y-2.5 overflow-y-auto border border-t-0 border-slate-200 dark:border-slate-700">
+                <div className={`flex-1 bg-slate-50 dark:bg-slate-900 p-3 space-y-0 overflow-y-auto border border-t-0 border-slate-200 dark:border-slate-700 min-h-[100px] ${isColOver ? 'bg-fyness-primary/5' : ''}`}>
                   {items.length === 0 && (
-                    <div className="flex items-center justify-center h-32 text-slate-400 dark:text-slate-500 text-sm italic">
-                      {column.emptyText}
+                    <div className={`flex items-center justify-center h-32 text-sm ${isColOver ? 'text-fyness-primary font-medium' : 'text-slate-400 dark:text-slate-500 italic'}`}>
+                      {isColOver ? 'Soltar aqui' : column.emptyText}
                     </div>
                   )}
 
-                  {items.map(order => {
+                  {items.map((order, idx) => {
                     const priority = PRIORITIES[order.priority] || PRIORITIES.medium;
                     const projectName = getProjectName(order.projectId);
+                    const isDragging = draggingId === order.id;
+                    const cardDropPos = dropTarget?.cardId === order.id ? dropTarget.position : null;
 
                     return (
-                      <div
-                        key={order.id}
-                        className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 hover:shadow-md hover:border-fyness-primary/30 transition-all group"
-                      >
+                      <div key={order.id} className="py-1">
+                        {cardDropPos === 'before' && (
+                          <div className="h-1 bg-fyness-primary rounded-full mx-1 mb-1 animate-pulse" />
+                        )}
+                        <div
+                          draggable={canDrag}
+                          onDragStart={canDrag ? (e) => {
+                            e.dataTransfer.setData('text/plain', order.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                            handleDragStart(order.id);
+                          } : undefined}
+                          onDragEnd={canDrag ? handleDragEnd : undefined}
+                          onDragOver={canDrag ? (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const y = e.clientY - rect.top;
+                            const position = y < rect.height / 2 ? 'before' : 'after';
+                            handleCardDragOver(order.id, position);
+                          } : undefined}
+                          className={`bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 transition-all group ${
+                            canDrag ? 'cursor-grab active:cursor-grabbing' : ''
+                          } ${
+                            isDragging ? 'opacity-40 scale-95 shadow-none' : 'hover:shadow-md hover:border-fyness-primary/30'
+                          }`}
+                        >
                         {/* Top row */}
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center gap-1.5">
@@ -365,6 +489,7 @@ export function RoutinePage() {
                         <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2">
                           {!isReadOnly && column.id === 'todo' && (
                             <button
+                              onMouseDown={(e) => e.stopPropagation()}
                               onClick={() => handleClaim(order.id)}
                               className="flex-1 py-1.5 bg-fyness-primary text-white text-xs rounded-lg hover:bg-fyness-secondary transition-colors font-medium"
                             >
@@ -373,6 +498,7 @@ export function RoutinePage() {
                           )}
                           {!isReadOnly && column.id === 'doing' && (
                             <button
+                              onMouseDown={(e) => e.stopPropagation()}
                               onClick={() => handleFinish(order.id)}
                               className="flex-1 py-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 transition-colors font-medium"
                             >
@@ -381,6 +507,7 @@ export function RoutinePage() {
                           )}
                           {!isReadOnly && column.id === 'done' && (
                             <button
+                              onMouseDown={(e) => e.stopPropagation()}
                               onClick={() => handleReopen(order.id)}
                               className="flex-1 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors font-medium"
                             >
@@ -388,6 +515,7 @@ export function RoutinePage() {
                             </button>
                           )}
                           <button
+                            onMouseDown={(e) => e.stopPropagation()}
                             onClick={() => navigate('/financial', { state: { openOsId: order.id } })}
                             className="px-2 py-1.5 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 text-xs rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                             title="Abrir O.S."
@@ -397,6 +525,10 @@ export function RoutinePage() {
                             </svg>
                           </button>
                         </div>
+                        </div>
+                        {cardDropPos === 'after' && (
+                          <div className="h-1 bg-fyness-primary rounded-full mx-1 mt-1 animate-pulse" />
+                        )}
                       </div>
                     );
                   })}
