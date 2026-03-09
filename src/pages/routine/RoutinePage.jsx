@@ -18,6 +18,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { notifyOSCompleted } from '../../lib/notificationTriggers';
 import { PRIORITIES, ROUTINE_COLUMNS as COLUMNS } from '../../constants/colors';
 import { formatDateShortMonth as formatDate, formatCurrency } from '../../lib/formatters';
+import { sortByDeadline, sortByActualEnd } from '../../lib/orderSorting';
 
 export function RoutinePage() {
   const navigate = useNavigate();
@@ -42,6 +43,9 @@ export function RoutinePage() {
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { cardId, position: 'before'|'after' }
+
+  // Semanas colapsadas no Concluido (Set de weekKeys colapsados)
+  const [collapsedWeeks, setCollapsedWeeks] = useState(new Set());
 
   const loading = loadingOrders || loadingProjects || loadingProfile;
 
@@ -72,10 +76,9 @@ export function RoutinePage() {
   // Modo somente-leitura: manager vendo outro colaborador
   const isReadOnly = selectedMember !== 'me';
 
-  // Mapa de sequencia: ordem manual (sortOrder)
+  // Mapa de sequencia: ordenado por data de conclusao prevista
   const sequenceMap = useMemo(() => {
-    const sortBySortOrder = (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-    const active = [...myOrders.todo, ...myOrders.doing].sort(sortBySortOrder);
+    const active = [...myOrders.todo, ...myOrders.doing].sort(sortByDeadline);
     const map = {};
     active.forEach((o, i) => { map[o.id] = i + 1; });
     return map;
@@ -169,6 +172,73 @@ export function RoutinePage() {
     return projects.find(p => p.id === projectId)?.name || null;
   };
 
+  // ---- Agrupar Concluidos por semana (Sab-Sex) ----
+  const groupByWeek = useCallback((doneItems) => {
+    // Achar o sabado mais recente (inicio da semana atual)
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0=dom, 6=sab
+    const daysSinceSat = dayOfWeek >= 6 ? dayOfWeek - 6 : dayOfWeek + 1;
+    const currentWeekStart = new Date(today);
+    currentWeekStart.setHours(0, 0, 0, 0);
+    currentWeekStart.setDate(today.getDate() - daysSinceSat);
+
+    const groups = new Map(); // weekKey -> { label, start, end, items }
+
+    for (const item of doneItems) {
+      const endDate = item.actualEnd ? new Date(item.actualEnd) : null;
+      if (!endDate || isNaN(endDate.getTime())) {
+        // Sem data -> joga na semana atual
+        const key = 'current';
+        if (!groups.has(key)) {
+          groups.set(key, { key, label: 'Esta Semana', items: [], isCurrent: true, sortTs: Infinity });
+        }
+        groups.get(key).items.push(item);
+        continue;
+      }
+
+      // Calcular qual sabado inicia a semana deste item
+      const d = new Date(endDate);
+      d.setHours(0, 0, 0, 0);
+      const dDay = d.getDay();
+      const dSinceSat = dDay >= 6 ? dDay - 6 : dDay + 1;
+      const weekStart = new Date(d);
+      weekStart.setDate(d.getDate() - dSinceSat);
+
+      const isCurrent = weekStart.getTime() === currentWeekStart.getTime();
+      const key = isCurrent ? 'current' : weekStart.toISOString().slice(0, 10);
+
+      if (!groups.has(key)) {
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        const fmt = (dt) => `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`;
+        const label = isCurrent ? 'Esta Semana' : `${fmt(weekStart)} – ${fmt(weekEnd)}`;
+        groups.set(key, { key, label, items: [], isCurrent, sortTs: weekStart.getTime() });
+      }
+      groups.get(key).items.push(item);
+    }
+
+    // Ordenar items dentro de cada semana por actualEnd (mais recente primeiro)
+    for (const group of groups.values()) {
+      group.items.sort(sortByActualEnd);
+    }
+
+    // Ordenar: semana atual primeiro, depois mais recentes
+    return [...groups.values()].sort((a, b) => {
+      if (a.isCurrent) return -1;
+      if (b.isCurrent) return 1;
+      return b.sortTs - a.sortTs;
+    });
+  }, []);
+
+  const toggleWeek = useCallback((weekKey) => {
+    setCollapsedWeeks(prev => {
+      const next = new Set(prev);
+      if (next.has(weekKey)) next.delete(weekKey);
+      else next.add(weekKey);
+      return next;
+    });
+  }, []);
+
   // ---- Drag-and-drop handlers ----
   const handleDragStart = useCallback((id) => setDraggingId(id), []);
   const handleDragEnd = useCallback(() => {
@@ -237,6 +307,8 @@ export function RoutinePage() {
     await Promise.all(batchUpdates.map(u => updateOSOrder(u.id, u)));
   };
 
+  const doneWeeks = useMemo(() => groupByWeek(myOrders.done), [myOrders.done, groupByWeek]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -246,9 +318,9 @@ export function RoutinePage() {
   }
 
   const columnData = {
-    todo: [...myOrders.todo].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
-    doing: [...myOrders.doing].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
-    done: myOrders.done,
+    todo: [...myOrders.todo].sort(sortByDeadline),
+    doing: [...myOrders.doing].sort(sortByDeadline),
+    done: [...myOrders.done].sort(sortByActualEnd),
   };
 
   const totalCount = myOrders.todo.length + myOrders.doing.length + myOrders.done.length;
@@ -367,7 +439,146 @@ export function RoutinePage() {
                     </div>
                   )}
 
-                  {items.map((order, idx) => {
+                  {/* Agrupamento semanal para coluna Concluido */}
+                  {column.id === 'done' && items.length > 0 && doneWeeks.map((week) => {
+                    const isCollapsed = !week.isCurrent && collapsedWeeks.has(week.key);
+                    // Semanas passadas iniciam colapsadas por padrao (lazy: se nunca clicou, colapsar)
+                    const effectiveCollapsed = !week.isCurrent && !collapsedWeeks.has(`_opened_${week.key}`) ? true : isCollapsed;
+                    return (
+                      <div key={week.key} className="mb-2">
+                        <button
+                          onClick={() => {
+                            if (!week.isCurrent) {
+                              // Toggle: se estava "nunca aberto", marca como aberto
+                              setCollapsedWeeks(prev => {
+                                const next = new Set(prev);
+                                const openedKey = `_opened_${week.key}`;
+                                if (!prev.has(openedKey)) {
+                                  // Primeiro clique: abrir
+                                  next.add(openedKey);
+                                  next.delete(week.key);
+                                } else if (prev.has(week.key)) {
+                                  next.delete(week.key);
+                                } else {
+                                  next.add(week.key);
+                                }
+                                return next;
+                              });
+                            }
+                          }}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                            week.isCurrent
+                              ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 cursor-default'
+                              : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer'
+                          }`}
+                        >
+                          {!week.isCurrent && (
+                            <svg className={`w-3 h-3 transition-transform ${effectiveCollapsed ? '' : 'rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          )}
+                          <span>{week.label}</span>
+                          <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                            week.isCurrent
+                              ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                          }`}>{week.items.length}</span>
+                        </button>
+                        {!effectiveCollapsed && week.items.map((order) => {
+                          const priority = PRIORITIES[order.priority] || PRIORITIES.medium;
+                          const projectName = getProjectName(order.projectId);
+                          const isDragging = draggingId === order.id;
+                          const cardDropPos = dropTarget?.cardId === order.id ? dropTarget.position : null;
+                          return (
+                            <div key={order.id} className="py-1">
+                              {cardDropPos === 'before' && (
+                                <div className="h-1 bg-fyness-primary rounded-full mx-1 mb-1 animate-pulse" />
+                              )}
+                              <div
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData('text/plain', order.id);
+                                  e.dataTransfer.effectAllowed = 'move';
+                                  handleDragStart(order.id);
+                                }}
+                                onDragEnd={handleDragEnd}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const y = e.clientY - rect.top;
+                                  const position = y < rect.height / 2 ? 'before' : 'after';
+                                  handleCardDragOver(order.id, position);
+                                }}
+                                onClick={() => {
+                                  if (!draggingId) navigate('/financial', { state: { openOsId: order.id } });
+                                }}
+                                className={`bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 transition-all group cursor-pointer ${
+                                  isDragging ? 'opacity-40 scale-95 shadow-none' : 'hover:shadow-md hover:border-fyness-primary/30'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500">O.S. #{order.number}</span>
+                                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${priority.color}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
+                                    {priority.label}
+                                  </span>
+                                </div>
+                                <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">{order.title}</h4>
+                                {isReadOnly && (order.assignee || order.assignedTo) && (
+                                  <p className="text-[11px] text-purple-500 font-medium mb-0.5">{order.assignee || order.assignedTo}</p>
+                                )}
+                                {projectName && <p className="text-[11px] text-blue-500 font-medium mb-0.5">{projectName}</p>}
+                                {order.client && <p className="text-[11px] text-slate-400 dark:text-slate-500">{order.client}</p>}
+                                <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400 dark:text-slate-500">
+                                  {order.estimatedStart && <span>Prev: {formatDate(order.estimatedStart)}</span>}
+                                  {order.actualStart && <span className="text-green-500">Inicio: {formatDate(order.actualStart)}</span>}
+                                  {order.actualEnd && <span className="text-emerald-600">Fim: {formatDate(order.actualEnd)}</span>}
+                                </div>
+                                {order.expenses && order.expenses.length > 0 && (
+                                  <div className="mt-2">
+                                    <div className="mb-1.5">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Gastos</span>
+                                        <span className="text-[10px] font-bold text-amber-600">{formatCurrency(calcExpensesTotal(order.expenses))}</span>
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        {order.expenses.map((exp, idx) => (
+                                          <div key={idx} className="flex items-center justify-between text-[10px] bg-amber-50 dark:bg-amber-900/20 rounded px-1.5 py-0.5">
+                                            <span className="text-slate-600 dark:text-slate-300 truncate mr-1">
+                                              {exp.quantity > 1 && <span className="font-medium text-slate-500 dark:text-slate-400">{exp.quantity}x </span>}
+                                              {exp.name}
+                                            </span>
+                                            <span className="font-medium text-amber-700">{formatCurrency(exp.value * (exp.quantity || 1))}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2">
+                                  {!isReadOnly && (
+                                    <button
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onClick={() => handleReopen(order.id)}
+                                      className="flex-1 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors font-medium"
+                                    >
+                                      Reabrir
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              {cardDropPos === 'after' && (
+                                <div className="h-1 bg-fyness-primary rounded-full mx-1 mt-1 animate-pulse" />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+
+                  {column.id !== 'done' && items.map((order, idx) => {
                     const priority = PRIORITIES[order.priority] || PRIORITIES.medium;
                     const projectName = getProjectName(order.projectId);
                     const isDragging = draggingId === order.id;
@@ -394,9 +605,10 @@ export function RoutinePage() {
                             const position = y < rect.height / 2 ? 'before' : 'after';
                             handleCardDragOver(order.id, position);
                           } : undefined}
-                          className={`bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 transition-all group ${
-                            canDrag ? 'cursor-grab active:cursor-grabbing' : ''
-                          } ${
+                          onClick={() => {
+                            if (!draggingId) navigate('/financial', { state: { openOsId: order.id } });
+                          }}
+                          className={`bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 transition-all group cursor-pointer ${
                             isDragging ? 'opacity-40 scale-95 shadow-none' : 'hover:shadow-md hover:border-fyness-primary/30'
                           }`}
                         >
@@ -445,8 +657,8 @@ export function RoutinePage() {
                           )}
                         </div>
 
-                        {/* Expenses Section (doing + done) */}
-                        {(column.id === 'doing' || column.id === 'done') && (
+                        {/* Expenses Section (doing only — done has its own render) */}
+                        {column.id === 'doing' && (
                           <div className="mt-2">
                             {/* Existing expenses */}
                             {order.expenses && order.expenses.length > 0 && (
@@ -505,25 +717,6 @@ export function RoutinePage() {
                               Concluir
                             </button>
                           )}
-                          {!isReadOnly && column.id === 'done' && (
-                            <button
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={() => handleReopen(order.id)}
-                              className="flex-1 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors font-medium"
-                            >
-                              Reabrir
-                            </button>
-                          )}
-                          <button
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={() => navigate('/financial', { state: { openOsId: order.id } })}
-                            className="px-2 py-1.5 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 text-xs rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                            title="Abrir O.S."
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                          </button>
                         </div>
                         </div>
                         {cardDropPos === 'after' && (
