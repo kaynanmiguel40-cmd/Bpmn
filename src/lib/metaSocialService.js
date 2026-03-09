@@ -16,9 +16,10 @@ const GRAPH_API = 'https://graph.facebook.com/v21.0';
 const INSTAGRAM_API = 'https://graph.instagram.com/v21.0';
 
 // Permissoes necessarias para publicacao
+// IMPORTANTE: Adicionar produto Instagram no Meta Developer Console
+// e configurar o Caso de Uso "Gerenciamento de conteudo"
 const PERMISSIONS = [
-  'instagram_basic',
-  'instagram_content_publish',
+  'public_profile',
   'pages_show_list',
   'pages_read_engagement',
   'pages_manage_posts',
@@ -197,25 +198,33 @@ export function connectMeta() {
 /** Troca authorization code por access token */
 async function exchangeCodeForToken(code) {
   const redirectUri = `${window.location.origin}/auth/meta/callback`;
+  const appId = META_APP_ID;
+  const appSecret = import.meta.env.VITE_META_APP_SECRET || '';
 
-  // Chamar Edge Function para trocar code (precisa do app secret)
-  const { data, error } = await supabase.functions.invoke('meta-oauth-exchange', {
-    body: { code, redirect_uri: redirectUri },
-  });
+  // Trocar code por access token diretamente
+  const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?` +
+    `client_id=${appId}` +
+    `&client_secret=${appSecret}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&code=${code}`;
 
-  if (error) throw new Error(error.message || 'Erro ao trocar code por token');
-  if (!data?.access_token) throw new Error('Token nao recebido');
+  const res = await fetch(tokenUrl);
+  const data = await res.json();
+
+  if (data.error) {
+    throw new Error(data.error.message || 'Erro ao trocar code por token');
+  }
 
   // Obter long-lived token
   const longLivedToken = await getLongLivedToken(data.access_token);
 
   // Buscar informacoes da conta
-  const accountInfo = await fetchAccountInfo(longLivedToken);
+  const accountInfo = await fetchAccountInfo({ access_token: longLivedToken.access_token });
 
   // Salvar tudo
   const tokens = await saveTokens({
     access_token: longLivedToken.access_token,
-    expires_at: new Date(Date.now() + longLivedToken.expires_in * 1000).toISOString(),
+    expires_at: new Date(Date.now() + (longLivedToken.expires_in || 5184000) * 1000).toISOString(),
     ...accountInfo,
   });
 
@@ -224,12 +233,26 @@ async function exchangeCodeForToken(code) {
 
 /** Converte token de curta duracao para longa duracao (60 dias) */
 async function getLongLivedToken(shortToken) {
-  const { data, error } = await supabase.functions.invoke('meta-long-lived-token', {
-    body: { access_token: shortToken },
-  });
+  const appId = META_APP_ID;
+  const appSecret = import.meta.env.VITE_META_APP_SECRET || '';
 
-  if (error) throw new Error('Erro ao obter token de longa duracao');
-  return data;
+  const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?` +
+    `grant_type=fb_exchange_token` +
+    `&client_id=${appId}` +
+    `&client_secret=${appSecret}` +
+    `&fb_exchange_token=${shortToken}`;
+
+  const res = await fetch(tokenUrl);
+  const data = await res.json();
+
+  if (data.error) {
+    throw new Error(data.error.message || 'Erro ao obter token de longa duracao');
+  }
+
+  return {
+    access_token: data.access_token,
+    expires_in: data.expires_in || 5184000,
+  };
 }
 
 /** Busca informacoes das contas conectadas */
