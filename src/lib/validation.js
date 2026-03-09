@@ -1,0 +1,348 @@
+import { z } from 'zod';
+import DOMPurify from 'dompurify';
+
+// ==================== SANITIZACAO ====================
+
+// DOMPurify 3.x precisa de window - inicializar corretamente
+let purify;
+try {
+  purify = typeof window !== 'undefined' && window.document
+    ? DOMPurify
+    : (DOMPurify.sanitize ? DOMPurify : null);
+} catch {
+  purify = null;
+}
+
+/**
+ * Sanitiza texto para prevenir XSS.
+ */
+export function sanitize(text) {
+  if (typeof text !== 'string') return text;
+  if (purify && typeof purify.sanitize === 'function') {
+    return purify.sanitize(text, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+  }
+  // Fallback: remover script/style com conteudo, depois demais tags
+  return text
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]*>/g, '');
+}
+
+// ==================== SANITIZACAO RICH TEXT ====================
+
+const RICH_TEXT_TAGS = [
+  'p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre',
+  'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'hr',
+  'span', 'div', 'label', 'input',
+];
+const RICH_TEXT_ATTRS = [
+  'class', 'data-type', 'data-checked', 'type', 'checked',
+];
+
+/** Sanitiza HTML permitindo tags seguras de formatacao (para TipTap). */
+export function sanitizeRichText(text) {
+  if (typeof text !== 'string') return text;
+  if (purify && typeof purify.sanitize === 'function') {
+    return purify.sanitize(text, {
+      ALLOWED_TAGS: RICH_TEXT_TAGS,
+      ALLOWED_ATTR: RICH_TEXT_ATTRS,
+    });
+  }
+  return text
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '');
+}
+
+/**
+ * Sanitiza todos os campos string de um objeto.
+ * richFields: Set de nomes de campos que permitem HTML (TipTap).
+ */
+function sanitizeObject(obj, richFields = null) {
+  if (!obj || typeof obj !== 'object') return obj;
+
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string') {
+      result[key] = (richFields && richFields.has(key)) ? sanitizeRichText(value) : sanitize(value);
+    } else if (Array.isArray(value)) {
+      result[key] = value.map(item =>
+        typeof item === 'string' ? sanitize(item) :
+        typeof item === 'object' && item !== null ? sanitizeObject(item) : item
+      );
+    } else if (typeof value === 'object' && value !== null) {
+      result[key] = sanitizeObject(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+// ==================== SCHEMAS ====================
+
+const priorityEnum = z.enum(['low', 'medium', 'high', 'urgent']).default('medium');
+const osStatusEnum = z.enum(['available', 'in_progress', 'done', 'blocked']).default('available');
+const osTypeEnum = z.enum(['normal', 'emergency']).default('normal');
+const osCategoryEnum = z.enum(['bug', 'feature', 'support', 'compliance', 'campaign', 'internal']).default('internal');
+const blockReasonEnum = z.enum(['material', 'approval', 'resource', 'dependency', 'other']).nullable().optional();
+
+const expenseItem = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  name: z.string().default(''),
+  quantity: z.number().min(0).default(1),
+  unitPrice: z.number().min(0).default(0),
+  unit_price: z.number().min(0).optional(),
+}).passthrough();
+
+const checklistItem = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  text: z.string().default(''),
+  done: z.boolean().default(false),
+}).passthrough();
+
+// Helper: string que aceita null (para campos que vem como null do form/DB)
+const nullableStr = z.string().nullable().optional().default('');
+
+export const osOrderSchema = z.object({
+  title: z.string().min(1, 'Titulo e obrigatorio'),
+  description: z.string().optional().default(''),
+  priority: priorityEnum,
+  status: osStatusEnum,
+  type: osTypeEnum,
+  category: osCategoryEnum,
+  blockReason: blockReasonEnum,
+  client: nullableStr,
+  clientId: nullableStr,
+  location: nullableStr,
+  notes: z.string().optional().default(''),
+  assignee: nullableStr,
+  assignedTo: nullableStr,
+  supervisor: nullableStr,
+  estimatedStart: nullableStr,
+  estimatedEnd: nullableStr,
+  actualStart: nullableStr,
+  actualEnd: nullableStr,
+  slaDeadline: nullableStr,
+  leadTimeHours: z.number().nullable().optional(),
+  expenses: z.array(expenseItem).default([]),
+  checklist: z.array(checklistItem).default([]),
+  attachments: z.array(z.any()).default([]),
+  projectId: nullableStr,
+  parentOrderId: nullableStr,
+  sortOrder: z.number().optional().default(0),
+  emergencyNumber: z.number().nullable().optional(),
+  eapTaskId: z.string().nullable().optional().default(null),
+  wbsPath: z.string().nullable().optional().default(null),
+}).passthrough();
+
+export const teamMemberSchema = z.object({
+  name: z.string().min(1, 'Nome e obrigatorio'),
+  role: z.string().optional().default(''),
+  color: z.string().optional().default('#3b82f6'),
+  email: z.string().email('Email invalido').optional().or(z.literal('')).default(''),
+  workStart: z.string().optional().default('08:00'),
+  workEnd: z.string().optional().default('18:00'),
+  workDays: z.array(z.number()).optional().default([1,2,3,4,5]),
+  salaryMonth: z.number().min(0, 'Salario nao pode ser negativo').default(0),
+  hoursMonth: z.number().min(1).default(176),
+  crmRole: z.enum(['vendedor', 'pre_vendedor', 'gestor']).nullable().optional().default(null),
+}).passthrough();
+
+export const agendaEventSchema = z.object({
+  title: z.string().min(1, 'Titulo e obrigatorio'),
+  description: z.string().optional().default(''),
+  startDate: z.string().min(1, 'Data de inicio e obrigatoria'),
+  endDate: z.string().optional().default(''),
+  assignee: z.string().optional().default(''),
+  type: z.enum(['meeting', 'task', 'reminder', 'deadline', 'other']).default('task'),
+  color: z.string().optional().default('#3b82f6'),
+  attendees: z.array(z.any()).default([]),
+  notes: z.string().optional().default(''),
+  attachments: z.array(z.any()).default([]),
+}).passthrough();
+
+export const commentSchema = z.object({
+  content: z.string().min(1, 'Comentario nao pode estar vazio'),
+  orderId: z.string().min(1),
+  userName: z.string().optional().default('Anonimo'),
+}).passthrough();
+
+export const sectorSchema = z.object({
+  label: z.string().min(1, 'Nome do setor e obrigatorio'),
+  color: z.string().optional().default('#3b82f6'),
+}).passthrough();
+
+export const osProjectSchema = z.object({
+  name: z.string().min(1, 'Nome do projeto e obrigatorio'),
+  sectorId: z.string().optional().default(''),
+  color: z.string().optional().default('#3b82f6'),
+  description: z.string().optional().default(''),
+  status: z.enum(['active', 'finished']).default('active'),
+  projectType: z.enum(['project', 'execution']).default('execution'),
+  eapProjectId: z.string().nullable().optional().default(null),
+}).passthrough();
+
+export const clientSchema = z.object({
+  name: z.string().min(1, 'Nome do cliente e obrigatorio'),
+  email: z.string().email('Email invalido').optional().or(z.literal('')).default(''),
+  phone: z.string().optional().default(''),
+  company: z.string().optional().default(''),
+  notes: z.string().optional().default(''),
+}).passthrough();
+
+// ==================== EAP / GANTT ====================
+
+export const eapFolderSchema = z.object({
+  name: z.string().min(1, 'Nome do projeto e obrigatorio'),
+  description: z.string().optional().default(''),
+  color: z.string().optional().default('#3b82f6'),
+  status: z.enum(['planning', 'active', 'completed', 'on_hold']).default('planning'),
+  createdBy: z.string().optional().default(''),
+}).passthrough();
+
+export const eapProjectSchema = z.object({
+  name: z.string().min(1, 'Nome do projeto e obrigatorio'),
+  description: z.string().optional().default(''),
+  startDate: z.string().nullable().optional().default(null),
+  endDate: z.string().nullable().optional().default(null),
+  status: z.enum(['planning', 'active', 'completed', 'on_hold']).default('planning'),
+  color: z.string().optional().default('#3b82f6'),
+  createdBy: z.string().optional().default(''),
+  folderId: z.string().nullable().optional().default(null),
+}).passthrough();
+
+export const eapTaskSchema = z.object({
+  name: z.string().min(1, 'Nome da tarefa e obrigatorio'),
+  projectId: z.string().min(1, 'Projeto e obrigatorio'),
+  wbsNumber: z.string().optional().default(''),
+  parentId: z.string().nullable().optional().default(null),
+  sortOrder: z.number().optional().default(0),
+  level: z.number().optional().default(0),
+  isMilestone: z.boolean().optional().default(false),
+  startDate: z.string().nullable().optional().default(null),
+  endDate: z.string().nullable().optional().default(null),
+  durationDays: z.number().min(0).optional().default(1),
+  estimatedHours: z.number().nullable().optional().default(null),
+  progress: z.number().min(0).max(100).optional().default(0),
+  assignedTo: z.string().optional().default(''),
+  supervisor: z.string().optional().default(''),
+  predecessors: z.array(z.object({
+    taskId: z.string(),
+    type: z.enum(['FS', 'SS', 'FF', 'SF']).default('FS'),
+    lag: z.number().default(0),
+  })).optional().default([]),
+  notes: z.string().optional().default(''),
+  attachments: z.array(z.any()).optional().default([]),
+  color: z.string().optional().default(''),
+  osOrderId: z.string().nullable().optional().default(null),
+}).passthrough();
+
+export const contentPostSchema = z.object({
+  title: z.string().min(1, 'Titulo e obrigatorio'),
+  description: z.string().optional().default(''),
+  scheduledDate: z.string().min(1, 'Data e obrigatoria'),
+  scheduledTime: z.string().optional().default('12:00'),
+  platform: z.enum(['instagram', 'facebook', 'tiktok', 'youtube']).default('instagram'),
+  status: z.enum(['scheduled', 'published', 'missed']).default('scheduled'),
+  assignee: z.string().optional().default(''),
+  mediaType: z.enum(['image', 'video', 'carousel', 'story', 'reel']).nullable().optional().default(null),
+  recurrenceGroupId: z.string().nullable().optional().default(null),
+}).passthrough();
+
+// ==================== PROCESS ORDERS (Ordem de Processo) ====================
+
+const processOrderStepItem = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  order: z.number().min(0).default(0),
+  text: z.string().default(''),
+  details: z.string().optional().default(''),
+  required: z.boolean().default(true),
+}).passthrough();
+
+const processOrderRiskItem = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  description: z.string().default(''),
+  mitigation: z.string().optional().default(''),
+  severity: z.enum(['low', 'medium', 'high']).default('medium'),
+}).passthrough();
+
+const processOrderImprovementItem = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  date: z.string().optional().default(''),
+  description: z.string().default(''),
+  result: z.string().optional().default(''),
+  author: z.string().optional().default(''),
+}).passthrough();
+
+export const processOrderSchema = z.object({
+  projectId: z.string().min(1, 'Projeto e obrigatorio'),
+  elementId: z.string().min(1, 'Elemento BPMN e obrigatorio'),
+  elementType: z.string().optional().default(''),
+  title: z.string().min(1, 'Titulo e obrigatorio'),
+  description: z.string().optional().default(''),
+  objective: z.string().optional().default(''),
+  steps: z.array(processOrderStepItem).default([]),
+  inputs: z.string().optional().default(''),
+  outputs: z.string().optional().default(''),
+  toolsResources: z.string().optional().default(''),
+  responsible: z.string().optional().default(''),
+  participants: z.string().optional().default(''),
+  acceptanceCriteria: z.string().optional().default(''),
+  risks: z.array(processOrderRiskItem).default([]),
+  improvements: z.array(processOrderImprovementItem).default([]),
+  lessonsLearned: z.string().optional().default(''),
+  status: z.enum(['draft', 'active', 'review', 'archived']).default('draft'),
+  version: z.number().optional().default(1),
+  notes: z.string().optional().default(''),
+}).passthrough();
+
+// ==================== VALIDACAO + SANITIZACAO ====================
+
+/**
+ * Valida dados contra um schema Zod e sanitiza strings.
+ * Retorna { success, data, error }.
+ */
+export function validateAndSanitize(schema, data, options = {}) {
+  try {
+    const richFields = options.richFields ? new Set(options.richFields) : null;
+    const sanitized = sanitizeObject(data, richFields);
+    // Validar contra schema
+    const parsed = schema.parse(sanitized);
+    return { success: true, data: parsed, error: null };
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const messages = (err.issues || err.errors || []).map(e => e.message).join(', ');
+      return { success: false, data: null, error: messages };
+    }
+    return { success: false, data: null, error: err.message };
+  }
+}
+
+/**
+ * Valida parcialmente (para updates que nao tem todos os campos).
+ * So retorna os campos que estavam no input original — evita que
+ * .default() do Zod injete valores e sobrescreva dados existentes.
+ */
+export function validatePartial(schema, data, options = {}) {
+  try {
+    const richFields = options.richFields ? new Set(options.richFields) : null;
+    const sanitized = sanitizeObject(data, richFields);
+    const inputKeys = new Set(Object.keys(sanitized));
+    const partialSchema = schema.partial();
+    const parsed = partialSchema.parse(sanitized);
+    // Filtrar: so manter campos que estavam no input original
+    const filtered = {};
+    for (const key of Object.keys(parsed)) {
+      if (inputKeys.has(key)) {
+        filtered[key] = parsed[key];
+      }
+    }
+    return { success: true, data: filtered, error: null };
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const messages = (err.issues || err.errors || []).map(e => e.message).join(', ');
+      return { success: false, data: null, error: messages };
+    }
+    return { success: false, data: null, error: err.message };
+  }
+}

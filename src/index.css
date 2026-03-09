@@ -1,0 +1,1077 @@
+/* Import BPMN-JS styles - must be first */
+@import 'bpmn-js/dist/assets/diagram-js.css';
+@import 'bpmn-js/dist/assets/bpmn-js.css';
+@import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Milton One - Fonte para assinaturas */
+@font-face {
+  font-family: 'Milton One';
+  src: url('./assets/fonts/Milton_One.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Milton One';
+  src: url('./assets/fonts/Milton_One_Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Global Styles */
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #f8fafc;
+}
+
+/* Dark mode body */
+.dark body,
+html.dark body {
+  background-color: #020617;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* ============================================
+   BPMN COLORFUL THEME - Fyness
+   ============================================ */
+
+/* Canvas Background */
+.bjs-container {
+  height: 100%;
+  width: 100%;
+  background: #ffffff !important;
+}
+
+/* Grid Pattern - Miro Style (Dotted) */
+.bjs-container.grid-enabled {
+  background-color: #f8fafc !important;
+  background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px) !important;
+  background-size: 20px 20px !important;
+}
+
+.bjs-powered-by {
+  display: none !important;
+}
+
+/* ========== TASKS - Colorful ========== */
+
+/* Generic Task - Blue */
+.djs-shape[data-element-id*="Task"] .djs-visual > rect,
+.bpmn-icon-task {
+  fill: #dbeafe !important;
+  stroke: #3b82f6 !important;
+  stroke-width: 2px !important;
+}
+
+/* User Task - Purple */
+.djs-shape[data-element-id*="Demo"] .djs-visual > rect,
+.djs-shape[data-element-id*="Downsell"] .djs-visual > rect {
+  fill: #ede9fe !important;
+  stroke: #2563eb !important;
+  stroke-width: 2px !important;
+}
+
+/* Service Task - Green */
+.djs-shape[data-element-id*="Split"] .djs-visual > rect,
+.djs-shape[data-element-id*="Antecipacao"] .djs-visual > rect,
+.djs-shape[data-element-id*="Processamento"] .djs-visual > rect {
+  fill: #dcfce7 !important;
+  stroke: #22c55e !important;
+  stroke-width: 2px !important;
+}
+
+/* Vitrine Task - Cyan */
+.djs-shape[data-element-id*="Vitrine"] .djs-visual > rect {
+  fill: #cffafe !important;
+  stroke: #06b6d4 !important;
+  stroke-width: 2px !important;
+}
+
+/* Retaguarda Task - Orange */
+.djs-shape[data-element-id*="Retaguarda"] .djs-visual > rect {
+  fill: #ffedd5 !important;
+  stroke: #f97316 !important;
+  stroke-width: 2px !important;
+}
+
+/* Onboarding Task - Teal */
+.djs-shape[data-element-id*="Onboarding"] .djs-visual > rect {
+  fill: #ccfbf1 !important;
+  stroke: #14b8a6 !important;
+  stroke-width: 2px !important;
+}
+
+/* Recebimento Task - Indigo */
+.djs-shape[data-element-id*="Recebimento"] .djs-visual > rect {
+  fill: #e0e7ff !important;
+  stroke: #3b82f6 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== EVENTS ========== */
+
+/* Start Events - Green */
+.djs-shape[data-element-id*="Start"] .djs-visual > circle {
+  fill: #dcfce7 !important;
+  stroke: #22c55e !important;
+  stroke-width: 3px !important;
+}
+
+/* Timer Events - Amber */
+.djs-shape[data-element-id*="Timer"] .djs-visual > circle {
+  fill: #fef3c7 !important;
+  stroke: #f59e0b !important;
+  stroke-width: 2px !important;
+}
+
+/* End Events - Red/Pink */
+.djs-shape[data-element-id*="End"] .djs-visual > circle {
+  fill: #fecaca !important;
+  stroke: #ef4444 !important;
+  stroke-width: 3px !important;
+}
+
+/* End Event Nurture - Gray */
+.djs-shape[data-element-id*="Nurture"] .djs-visual > circle {
+  fill: #f1f5f9 !important;
+  stroke: #64748b !important;
+  stroke-width: 3px !important;
+}
+
+/* End Event Cliente Ativo - Emerald */
+.djs-shape[data-element-id*="ClienteAtivo"] .djs-visual > circle {
+  fill: #d1fae5 !important;
+  stroke: #10b981 !important;
+  stroke-width: 4px !important;
+}
+
+/* ========== GATEWAYS ========== */
+
+/* Exclusive Gateway - Amber/Yellow */
+.djs-shape[data-element-id*="Gateway"] .djs-visual > polygon {
+  fill: #fef3c7 !important;
+  stroke: #f59e0b !important;
+  stroke-width: 2px !important;
+}
+
+/* Gateway Pagamento - Special Orange */
+.djs-shape[data-element-id*="Pagamento"] .djs-visual > polygon {
+  fill: #ffedd5 !important;
+  stroke: #ea580c !important;
+  stroke-width: 3px !important;
+}
+
+/* Gateway Qualificacao - Purple */
+.djs-shape[data-element-id*="Qualificacao"] .djs-visual > polygon {
+  fill: #ede9fe !important;
+  stroke: #7c3aed !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== POOLS & LANES ========== */
+
+/* Pool Header */
+.djs-shape[data-element-id*="Pool"] .djs-visual > rect:first-child {
+  fill: #1e293b !important;
+  stroke: #1e293b !important;
+}
+
+/* Lane - Marketing */
+.djs-shape[data-element-id*="Marketing"] .djs-visual > rect {
+  fill: #fef3c7 !important;
+  stroke: #f59e0b !important;
+  stroke-width: 1px !important;
+}
+
+/* Lane - Vendas */
+.djs-shape[data-element-id*="Vendas"] .djs-visual > rect {
+  fill: #ede9fe !important;
+  stroke: #2563eb !important;
+  stroke-width: 1px !important;
+}
+
+/* Lane - Sistema */
+.djs-shape[data-element-id*="Sistema"] .djs-visual > rect {
+  fill: #dbeafe !important;
+  stroke: #3b82f6 !important;
+  stroke-width: 1px !important;
+}
+
+/* Lane - Financeiro */
+.djs-shape[data-element-id*="Financeiro"] .djs-visual > rect {
+  fill: #dcfce7 !important;
+  stroke: #22c55e !important;
+  stroke-width: 1px !important;
+}
+
+/* Lane - Parceiro */
+.djs-shape[data-element-id*="Parceiro"]:not([data-element-id*="Start"]) .djs-visual > rect {
+  fill: #e0e7ff !important;
+  stroke: #3b82f6 !important;
+  stroke-width: 1px !important;
+}
+
+/* ========== SEQUENCE FLOWS ========== */
+
+/* Default Flow */
+.djs-connection .djs-visual > path {
+  stroke: #475569 !important;
+  stroke-width: 2px !important;
+}
+
+/* Success Flow */
+.djs-connection[data-element-id*="Flow_12"] .djs-visual > path {
+  stroke: #22c55e !important;
+  stroke-width: 2.5px !important;
+}
+
+/* Error/Retry Flows */
+.djs-connection[data-element-id*="Flow_13"] .djs-visual > path,
+.djs-connection[data-element-id*="Flow_14"] .djs-visual > path {
+  stroke: #f97316 !important;
+  stroke-width: 2px !important;
+}
+
+/* Ceticismo Flow */
+.djs-connection[data-element-id*="Flow_16"] .djs-visual > path,
+.djs-connection[data-element-id*="Flow_15"] .djs-visual > path {
+  stroke: #a855f7 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== LABELS ========== */
+
+.djs-label {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 500 !important;
+  fill: #1e293b !important;
+}
+
+/* ========== SELECTION & HOVER ========== */
+
+.djs-shape.selected .djs-outline,
+.djs-connection.selected .djs-outline {
+  stroke: #3b82f6 !important;
+  stroke-width: 3px !important;
+}
+
+.djs-shape:hover .djs-visual > rect,
+.djs-shape:hover .djs-visual > circle,
+.djs-shape:hover .djs-visual > polygon {
+  filter: brightness(0.95);
+}
+
+/* ========== PALETTE ========== */
+
+.djs-palette {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px -2px rgb(0 0 0 / 0.1), 0 2px 8px -2px rgb(0 0 0 / 0.06) !important;
+  top: 20px !important;
+  left: 20px !important;
+  width: auto !important;
+  max-height: calc(100vh - 120px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+}
+
+.djs-palette .djs-palette-toggle {
+  display: none !important;
+}
+
+.djs-palette.two-column {
+  width: auto !important;
+}
+
+.djs-palette .group {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 6px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+.djs-palette .group:last-child {
+  border-bottom: none !important;
+}
+
+.djs-palette-entries {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  padding: 4px !important;
+  width: 52px !important;
+}
+
+.djs-palette .entry {
+  width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 8px !important;
+  margin: 2px 0 !important;
+  transition: all 0.15s ease !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+}
+
+.djs-palette .entry:hover {
+  background: #f1f5f9 !important;
+  transform: scale(1.05) !important;
+}
+
+.djs-palette .entry.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+}
+
+.djs-palette .entry.active img,
+.djs-palette .entry.active svg {
+  filter: brightness(0) invert(1) !important;
+}
+
+.djs-palette .separator {
+  margin: 6px 8px !important;
+  width: calc(100% - 16px) !important;
+  height: 1px !important;
+  background: #e2e8f0 !important;
+  border: none !important;
+  flex-shrink: 0 !important;
+}
+
+/* Palette icons */
+.djs-palette .entry img,
+.djs-palette .entry svg {
+  width: 20px !important;
+  height: 20px !important;
+  opacity: 0.7 !important;
+  transition: opacity 0.15s ease !important;
+}
+
+.djs-palette .entry:hover img,
+.djs-palette .entry:hover svg {
+  opacity: 1 !important;
+}
+
+/* Palette scrollbar */
+.djs-palette::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+.djs-palette::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.djs-palette::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+  border-radius: 2px !important;
+}
+
+.djs-palette::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
+}
+
+/* ========== CONTEXT PAD ========== */
+
+.djs-context-pad {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px -2px rgb(0 0 0 / 0.15), 0 2px 8px -2px rgb(0 0 0 / 0.1) !important;
+  padding: 6px !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.djs-context-pad .entry {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 2px !important;
+  transition: all 0.15s ease !important;
+}
+
+.djs-context-pad .entry:hover {
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) !important;
+  transform: scale(1.1) !important;
+}
+
+.djs-context-pad .entry img,
+.djs-context-pad .entry svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Tooltips são gerados via JavaScript no BpmnEditor */
+
+/* ========== POPUP MENU ========== */
+
+.djs-popup {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 40px -10px rgb(0 0 0 / 0.2) !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ========== IMAGE ELEMENTS ========== */
+
+/* Esconder visual padrão de Tasks que são imagens */
+.djs-shape[data-image-element="true"] .djs-visual > rect {
+  fill: transparent !important;
+  stroke: transparent !important;
+}
+
+/* Esconder ícone e texto da Task para imagens */
+.djs-shape[data-image-element="true"] .djs-visual > path,
+.djs-shape[data-image-element="true"] .djs-visual > text,
+.djs-shape[data-image-element="true"] .djs-visual text,
+.djs-shape[data-image-element="true"] text {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Esconder label externa de elementos de imagem */
+.djs-label[data-element-id*="Activity"],
+.djs-direct-editing-content {
+  /* Só esconder se for label de imagem - controlado por JS */
+}
+
+/* Forçar esconder qualquer texto dentro de shapes de imagem */
+[data-image-element="true"] tspan,
+[data-image-element="true"] .djs-label {
+  display: none !important;
+}
+
+/* Esconder texto durante arraste/drag de imagens */
+.djs-drag-group [data-image-element="true"] text,
+.djs-drag-group [data-image-element="true"] tspan,
+.djs-dragging [data-image-element="true"] text,
+.djs-dragging [data-image-element="true"] tspan {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Esconder label em elementos sendo arrastados que são imagens */
+.djs-element.djs-dragging text,
+.djs-frame text {
+  /* Esconder apenas para imagens via JS */
+}
+
+/* Seleção do elemento imagem - borda verde */
+.djs-shape[data-image-element="true"].selected .djs-outline {
+  stroke: #22c55e !important;
+  stroke-width: 3px !important;
+}
+
+/* Hover na imagem */
+.djs-shape[data-image-element="true"]:hover .djs-outline {
+  stroke: #86efac !important;
+  stroke-width: 2px !important;
+}
+
+/* Resize handles para elementos de imagem */
+.djs-shape[data-image-element="true"] .djs-resizer {
+  background: #22c55e !important;
+  border-radius: 50% !important;
+  width: 14px !important;
+  height: 14px !important;
+  border: 2px solid white !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+  cursor: nwse-resize !important;
+  z-index: 9999 !important;
+}
+
+/* Garantir que resizers fiquem visíveis acima de tudo */
+.djs-resizer {
+  z-index: 9999 !important;
+  pointer-events: all !important;
+}
+
+.djs-shape.selected .djs-resizer {
+  display: block !important;
+  visibility: visible !important;
+}
+
+/* Overlay de imagem */
+.bpmn-image-overlay {
+  background: white;
+  transition: box-shadow 0.2s ease;
+  pointer-events: none !important;
+}
+
+/* Garantir que overlays de imagem não bloqueiam interação com o elemento */
+.djs-overlay-container .bpmn-image-overlay,
+.djs-overlay-container .bpmn-image-overlay * {
+  pointer-events: none !important;
+}
+
+/* Container do overlay de imagem - permitir cliques passarem */
+.djs-overlays .djs-overlay:has(.bpmn-image-overlay) {
+  pointer-events: none !important;
+}
+
+/* Forçar elemento de imagem a receber eventos */
+.djs-shape[data-image-element="true"] {
+  pointer-events: all !important;
+  cursor: move !important;
+}
+
+.djs-shape[data-image-element="true"] .djs-visual {
+  pointer-events: all !important;
+}
+
+.djs-shape[data-image-element="true"] .djs-hit {
+  pointer-events: all !important;
+  fill: transparent !important;
+  stroke: none !important;
+}
+
+/* ========== ÍCONE DE ROBÔ PARA TAREFAS AUTOMATIZADAS ========== */
+
+/* Marcar ServiceTask como automatizado - controlado por JS via data-attribute */
+.djs-shape[data-robot-task="true"] .djs-visual > path:first-of-type {
+  /* Esconder o ícone de engrenagem padrão */
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Container do ícone de robô */
+.robot-icon-overlay {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Estilo para tarefas automatizadas (ServiceTask com robô) */
+.djs-shape[data-robot-task="true"] {
+  /* Borda especial para destacar automação */
+}
+
+.djs-shape[data-robot-task="true"] .djs-visual > rect {
+  stroke: #475569 !important;
+  stroke-width: 2px !important;
+}
+
+/* Hover em tarefas automatizadas */
+.djs-shape[data-robot-task="true"]:hover .djs-visual > rect {
+  stroke: #334155 !important;
+  stroke-width: 2.5px !important;
+}
+
+/* Seleção de tarefas automatizadas */
+.djs-shape[data-robot-task="true"].selected .djs-outline {
+  stroke: #475569 !important;
+  stroke-width: 3px !important;
+}
+
+/* ========== PRINT STYLES ========== */
+@media print {
+  html, body, #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Quebra de pagina adequada */
+  .print\\:break-inside-avoid {
+    break-inside: avoid !important;
+  }
+}
+
+/* Animation for toast */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* ========== ÍCONE DE ROBÔ NO MENU "CHANGE ELEMENT" ========== */
+
+/* Estilo para a opção customizada de Tarefa Automatizada no menu */
+.djs-popup .entry[data-action="replace-with-robot-task"],
+.djs-popup-body .entry[data-action="replace-with-robot-task"] {
+  display: flex;
+  align-items: center;
+}
+
+/* ========== OCULTAR BADGE/ÍCONE DA SUPABASE ========== */
+/* Classe específica para elementos marcados como supabase */
+.hide-supabase-badge,
+div:has(a[href*="supabase"]),
+a[href*="supabase"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ========== LINK EVENTS - DESTAQUE ========== */
+.link-highlight .djs-visual > circle,
+.link-highlight .djs-visual > rect {
+  stroke: #ff6b6b !important;
+  stroke-width: 4px !important;
+  animation: link-pulse 1.5s infinite;
+}
+
+@keyframes link-pulse {
+  0%, 100% {
+    stroke-opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(255, 107, 107, 0.8));
+  }
+  50% {
+    stroke-opacity: 0.6;
+    filter: drop-shadow(0 0 16px rgba(255, 107, 107, 1));
+  }
+}
+
+/* Estilo para Link Throw (saída) */
+.bpmn-link-throw .djs-visual > circle {
+  fill: #4dabf7 !important;
+  stroke: #1971c2 !important;
+  stroke-width: 2px !important;
+}
+
+/* Estilo para Link Catch (entrada) */
+.bpmn-link-catch .djs-visual > circle {
+  fill: #51cf66 !important;
+  stroke: #2f9e44 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== CORES DAS RAIAS BPMN ========== */
+/* Lane Outbound - Vermelho */
+[data-element-id="Lane_Outbound"] .djs-visual > rect {
+  fill: #ffe0e0 !important;
+  
+  stroke: #ff6b6b !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Alunos/Educação - Verde */
+[data-element-id="Lane_Alunos"] .djs-visual > rect {
+  fill: #e0ffe0 !important;
+  
+  stroke: #51cf66 !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Google - Azul */
+[data-element-id="Lane_Google"] .djs-visual > rect {
+  fill: #e0f0ff !important;
+  
+  stroke: #4dabf7 !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Meta - Roxo */
+[data-element-id="Lane_Meta"] .djs-visual > rect {
+  fill: #f0e0ff !important;
+  
+  stroke: #9775fa !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Núcleo - Cinza */
+[data-element-id="Lane_Nucleo"] .djs-visual > rect {
+  fill: #f0f0f0 !important;
+  
+  stroke: #868e96 !important;
+  stroke-width: 2px !important;
+}
+
+/* Alternativa: pegar lanes por classe djs-shape + data-element-id */
+.djs-shape[data-element-id="Lane_Outbound"] > .djs-visual > rect {
+  fill: #ffe0e0 !important;
+  stroke: #ff6b6b !important;
+}
+
+.djs-shape[data-element-id="Lane_Alunos"] > .djs-visual > rect {
+  fill: #e0ffe0 !important;
+  stroke: #51cf66 !important;
+}
+
+.djs-shape[data-element-id="Lane_Google"] > .djs-visual > rect {
+  fill: #e0f0ff !important;
+  stroke: #4dabf7 !important;
+}
+
+.djs-shape[data-element-id="Lane_Meta"] > .djs-visual > rect {
+  fill: #f0e0ff !important;
+  stroke: #9775fa !important;
+}
+
+.djs-shape[data-element-id="Lane_Nucleo"] > .djs-visual > rect {
+  fill: #f0f0f0 !important;
+  stroke: #868e96 !important;
+}
+
+/* Terceira alternativa: pegar diretamente por SVG g element */
+g[data-element-id="Lane_Outbound"] rect {
+  fill: #ffe0e0 !important;
+  
+  stroke: #ff6b6b !important;
+  stroke-width: 2px !important;
+}
+
+g[data-element-id="Lane_Alunos"] rect {
+  fill: #e0ffe0 !important;
+  
+  stroke: #51cf66 !important;
+  stroke-width: 2px !important;
+}
+
+g[data-element-id="Lane_Google"] rect {
+  fill: #e0f0ff !important;
+  
+  stroke: #4dabf7 !important;
+  stroke-width: 2px !important;
+}
+
+g[data-element-id="Lane_Meta"] rect {
+  fill: #f0e0ff !important;
+  
+  stroke: #9775fa !important;
+  stroke-width: 2px !important;
+}
+
+g[data-element-id="Lane_Nucleo"] rect {
+  fill: #f0f0f0 !important;
+
+  stroke: #868e96 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== LANES V9 - TEMPLATE COMPLETO ENXUTO ========== */
+/* Lane Educação - Verde (6 Meses Grátis) */
+[data-element-id="Lane_Educacao"] .djs-visual > rect,
+.djs-shape[data-element-id="Lane_Educacao"] > .djs-visual > rect,
+g[data-element-id="Lane_Educacao"] rect {
+  fill: #e0ffe0 !important;
+  stroke: #51cf66 !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Indicação - Vermelho (Parceiro Ativo/Passivo) */
+[data-element-id="Lane_Indicacao"] .djs-visual > rect,
+.djs-shape[data-element-id="Lane_Indicacao"] > .djs-visual > rect,
+g[data-element-id="Lane_Indicacao"] rect {
+  fill: #ffe0e0 !important;
+  stroke: #ff6b6b !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Conteúdo - Roxo (Instagram SaaS + Perfis) */
+[data-element-id="Lane_Conteudo"] .djs-visual > rect,
+.djs-shape[data-element-id="Lane_Conteudo"] > .djs-visual > rect,
+g[data-element-id="Lane_Conteudo"] rect {
+  fill: #f0e0ff !important;
+  stroke: #9775fa !important;
+  stroke-width: 2px !important;
+}
+
+/* Lane Prospecção - Vermelho escuro (Redes Sociais) */
+[data-element-id="Lane_Prospeccao"] .djs-visual > rect,
+.djs-shape[data-element-id="Lane_Prospeccao"] > .djs-visual > rect,
+g[data-element-id="Lane_Prospeccao"] rect {
+  fill: #ffe0e0 !important;
+  stroke: #fa5252 !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== LABELS DAS LANES - GARANTIR VISIBILIDADE ========== */
+/* Garantir que os labels das lanes fiquem visíveis por cima das cores */
+[data-element-id^="Lane_"] .djs-label tspan {
+  fill: #1e293b !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  text-shadow: 0 0 3px white, 0 0 3px white, 0 0 3px white !important;
+}
+
+[data-element-id^="Lane_"] text {
+  fill: #1e293b !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+}
+
+/* Alternativa: usar outline no texto */
+g[data-element-id^="Lane_"] text {
+  fill: #0f172a !important;
+  stroke: white !important;
+  stroke-width: 0.5px !important;
+  paint-order: stroke fill !important;
+  font-weight: 700 !important;
+}
+
+/* ========== FORÇAR LABELS POR CIMA (Z-INDEX) ========== */
+/* Labels das lanes devem ficar acima de tudo */
+.djs-label[data-element-id^="Lane_"] {
+  position: relative !important;
+  z-index: 9999 !important;
+}
+
+/* Forçar elementos text dentro de lanes a ficarem visíveis */
+g[data-element-id^="Lane_"] > g.djs-label {
+  position: relative !important;
+  z-index: 9999 !important;
+  pointer-events: auto !important;
+}
+
+/* Usar transform para trazer labels para frente no SVG */
+g[data-element-id^="Lane_"] text,
+g[data-element-id^="Lane_"] tspan {
+  transform: translateZ(1000px) !important;
+  -webkit-transform: translateZ(1000px) !important;
+}
+
+/* ==================== Ocultar badge do Supabase ==================== */
+[data-supabase-badge],
+a[href*="supabase.com"],
+div:has(> a[href*="supabase"]) {
+  display: none !important;
+}
+
+/* ==================== Toast animation ==================== */
+@keyframes slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* ==================== Chat slide-in-right ==================== */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+/* ==================== Emergency pulse ==================== */
+@keyframes pulse-subtle {
+  0%, 100% { border-color: rgb(239 68 68); }
+  50% { border-color: rgb(239 68 68 / 0.4); }
+}
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* ==================== TipTap Notion Editor ==================== */
+.notion-editor-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1e293b;
+}
+.dark .notion-editor-content {
+  color: #e2e8f0;
+}
+
+.notion-editor-content p {
+  margin: 0.25em 0;
+}
+
+.notion-editor-content h1 {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin: 0.5em 0 0.25em;
+  line-height: 1.3;
+}
+.notion-editor-content h2 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+  line-height: 1.3;
+}
+.notion-editor-content h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+  line-height: 1.3;
+}
+
+.notion-editor-content ul,
+.notion-editor-content ol {
+  padding-left: 1.5em;
+  margin: 0.25em 0;
+}
+.notion-editor-content li {
+  margin: 0.1em 0;
+}
+.notion-editor-content li p {
+  margin: 0;
+}
+
+/* Task list (checkboxes estilo Notion) */
+.notion-editor-content ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.notion-editor-content ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.notion-editor-content ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 0.2em;
+}
+.notion-editor-content ul[data-type="taskList"] li > label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+  border-radius: 3px;
+}
+.notion-editor-content ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+.notion-editor-content ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* Blockquote */
+.notion-editor-content blockquote {
+  border-left: 3px solid #3b82f6;
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: #64748b;
+  font-style: italic;
+}
+.dark .notion-editor-content blockquote {
+  color: #94a3b8;
+}
+
+/* Code inline */
+.notion-editor-content code {
+  background: #f1f5f9;
+  color: #e11d48;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.dark .notion-editor-content code {
+  background: #334155;
+  color: #fb7185;
+}
+
+/* Code block */
+.notion-editor-content pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 0.75em 1em;
+  border-radius: 8px;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+.notion-editor-content pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* Horizontal rule */
+.notion-editor-content hr {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 1em 0;
+}
+.dark .notion-editor-content hr {
+  border-top-color: #475569;
+}
+
+/* Placeholder */
+.notion-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94a3b8;
+  pointer-events: none;
+  height: 0;
+}
+.dark .notion-editor-content p.is-editor-empty:first-child::before {
+  color: #64748b;
+}
+
+/* Strong / em / underline / strike */
+.notion-editor-content strong { font-weight: 700; }
+.notion-editor-content em { font-style: italic; }
+.notion-editor-content u { text-decoration: underline; }
+.notion-editor-content s { text-decoration: line-through; opacity: 0.7; }
