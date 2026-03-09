@@ -14,9 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { GlobalSearch } from '../search/GlobalSearch';
-import FloatingChatButton from '../chat/FloatingChatButton';
 import { useDeadlineChecker } from '../../hooks/useDeadlineChecker';
-import { useRealtimeChatSound } from '../../hooks/useRealtimeSubscription';
 
 // Mapa de titulos por rota
 const routeTitles = {
@@ -237,8 +235,6 @@ export function MainLayout() {
 
   // Verificacao periodica de prazos e atrasos
   useDeadlineChecker();
-  // Som de "pop" quando chega mensagem de chat de outro usuario
-  useRealtimeChatSound();
 
   return (
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 print:block print:bg-white">
@@ -262,9 +258,6 @@ export function MainLayout() {
 
       {/* Global Search (Cmd+K) */}
       <GlobalSearch />
-
-      {/* Floating Chat */}
-      <FloatingChatButton />
     </div>
   );
 }

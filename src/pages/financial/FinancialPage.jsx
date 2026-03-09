@@ -26,7 +26,7 @@ import { notifyOSAssigned, notifyOSCompleted, notifyOSBlocked, notifyOSUpdated, 
 import { usePermissions } from '../../contexts/PermissionContext';
 import logoFyness from '../../assets/logo-fyness.png';
 import { useRealtimeOSOrders, useRealtimeTeamMembers } from '../../hooks/useRealtimeSubscription';
-import ChatHistoryDocument from '../../components/chat/ChatHistoryDocument';
+import OSChatPanel from '../../components/chat/OSChatPanel';
 import AutoTextarea from '../../components/ui/AutoTextarea';
 import NotionEditor from '../../components/ui/NotionEditor';
 import { sanitizeRichText } from '../../lib/validation';
@@ -35,6 +35,7 @@ import {
   PRIORITY_COLUMNS, CATEGORIES, BLOCK_REASONS,
   SECTOR_COLORS, PROJECT_COLORS,
 } from '../../constants/colors';
+import { sortByDeadline } from '../../lib/orderSorting';
 
 /** Renderiza conteudo rich text (HTML do TipTap) ou texto puro (backward compatible). */
 function RichTextDisplay({ content, className = '' }) {
@@ -293,7 +294,8 @@ export default function FinancialPage() {
               if (na !== nb) return na - nb;
             }
           }
-          return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+          // Ordenar por data de conclusao prevista (estimatedEnd)
+          return sortByDeadline(a, b);
         });
     });
     return grouped;
@@ -1927,7 +1929,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
   const parentOrder = isEmergency && order.parentOrderId ? allOrders.find(o => o.id === order.parentOrderId) : null;
   const childEmergencies = allOrders.filter(o => o.type === 'emergency' && o.parentOrderId === order.id);
 
-  const [showChatHistory, setShowChatHistory] = useState(false);
+  const [showComments, setShowComments] = useState(false);
 
   const handlePrint = () => {
     window.print();
@@ -1965,11 +1967,11 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           {onEdit && (
             <button onClick={onEdit} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">Editar</button>
           )}
-          <button onClick={() => setShowChatHistory(true)} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors flex items-center gap-1.5">
+          <button onClick={() => setShowComments(prev => !prev)} className={`px-3 py-1.5 border text-sm rounded-lg transition-colors flex items-center gap-1.5 ${showComments ? 'border-fyness-primary bg-fyness-primary/10 text-fyness-primary' : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
             </svg>
-            Conversas
+            Comentar
           </button>
           <button onClick={handlePrint} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors flex items-center gap-1.5">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2857,9 +2859,20 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
         </div>
       </div>
 
-      {/* Chat History Document (fullscreen overlay) */}
-      {showChatHistory && (
-        <ChatHistoryDocument order={order} onClose={() => setShowChatHistory(false)} />
+      {/* Painel de Comentarios inline */}
+      {showComments && (
+        <div className="max-w-3xl mx-auto mt-4 print:hidden">
+          <OSChatPanel
+            orderId={order.id}
+            orderAssignee={order.assignee}
+            orderNumber={order.number}
+            userName={profileName}
+            userId={profileId}
+            userColor={member?.color}
+            teamMembers={teamMembers}
+            readOnly={order.status === 'done'}
+          />
+        </div>
       )}
     </div>
   );
