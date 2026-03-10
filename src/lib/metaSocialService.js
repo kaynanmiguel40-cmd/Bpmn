@@ -203,20 +203,29 @@ async function exchangeCodeForToken(code) {
     throw new Error(fnData?.error || fnError?.message || 'Erro ao trocar code por token');
   }
 
-  // Token de curta duração retornado
-  const shortLivedToken = fnData.access_token;
+  // Token retornado
+  const accessToken = fnData.access_token;
   const userId = fnData.user_id;
 
-  // Obter long-lived token (60 dias) via Edge Function
-  const longLivedToken = await getLongLivedToken(shortLivedToken);
+  // Tentar obter long-lived token, se falhar usar o short-lived
+  let finalToken = accessToken;
+  let expiresIn = 3600; // 1 hora (short-lived default)
+
+  try {
+    const longLivedToken = await getLongLivedToken(accessToken);
+    finalToken = longLivedToken.access_token;
+    expiresIn = longLivedToken.expires_in || 5184000;
+  } catch (err) {
+    console.warn('Nao foi possivel obter long-lived token, usando short-lived:', err.message);
+  }
 
   // Buscar informacoes do usuario
-  const userInfo = await fetchUserInfo(longLivedToken.access_token);
+  const userInfo = await fetchUserInfo(finalToken);
 
   // Salvar tudo
   const tokens = await saveTokens({
-    access_token: longLivedToken.access_token,
-    expires_at: new Date(Date.now() + (longLivedToken.expires_in || 5184000) * 1000).toISOString(),
+    access_token: finalToken,
+    expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
     instagram_account_id: userId.toString(),
     instagram_username: userInfo.username,
   });
