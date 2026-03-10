@@ -12,7 +12,7 @@
 import { supabase } from './supabaseClient';
 
 const META_APP_ID = import.meta.env.VITE_META_APP_ID || '';
-const META_APP_SECRET = import.meta.env.VITE_META_APP_SECRET || '';
+// META_APP_SECRET agora fica apenas nas Edge Functions (mais seguro)
 const GRAPH_API = 'https://graph.instagram.com';
 
 // Permissoes para Instagram Login API
@@ -190,33 +190,24 @@ export function connectMeta() {
   });
 }
 
-/** Troca authorization code por access token (Instagram API) */
+/** Troca authorization code por access token (via Edge Function) */
 async function exchangeCodeForToken(code) {
   const redirectUri = `${window.location.origin}/auth/meta/callback`;
 
-  // Instagram token exchange endpoint (POST com form data)
-  const formData = new FormData();
-  formData.append('client_id', META_APP_ID);
-  formData.append('client_secret', META_APP_SECRET);
-  formData.append('grant_type', 'authorization_code');
-  formData.append('redirect_uri', redirectUri);
-  formData.append('code', code);
-
-  const res = await fetch('https://api.instagram.com/oauth/access_token', {
-    method: 'POST',
-    body: formData,
+  // Chamar Edge Function para trocar code (evita CORS)
+  const { data: fnData, error: fnError } = await supabase.functions.invoke('meta-oauth-exchange', {
+    body: { code, redirect_uri: redirectUri },
   });
-  const data = await res.json();
 
-  if (data.error_type || data.error_message) {
-    throw new Error(data.error_message || 'Erro ao trocar code por token');
+  if (fnError || fnData?.error) {
+    throw new Error(fnData?.error || fnError?.message || 'Erro ao trocar code por token');
   }
 
   // Token de curta duração retornado
-  const shortLivedToken = data.access_token;
-  const userId = data.user_id;
+  const shortLivedToken = fnData.access_token;
+  const userId = fnData.user_id;
 
-  // Obter long-lived token (60 dias)
+  // Obter long-lived token (60 dias) via Edge Function
   const longLivedToken = await getLongLivedToken(shortLivedToken);
 
   // Buscar informacoes do usuario
@@ -233,23 +224,19 @@ async function exchangeCodeForToken(code) {
   return tokens;
 }
 
-/** Converte token de curta duracao para longa duracao (60 dias) */
+/** Converte token de curta duracao para longa duracao (60 dias) via Edge Function */
 async function getLongLivedToken(shortToken) {
-  const url = `${GRAPH_API}/access_token?` +
-    `grant_type=ig_exchange_token` +
-    `&client_secret=${META_APP_SECRET}` +
-    `&access_token=${shortToken}`;
+  const { data: fnData, error: fnError } = await supabase.functions.invoke('meta-long-lived-token', {
+    body: { access_token: shortToken },
+  });
 
-  const res = await fetch(url);
-  const data = await res.json();
-
-  if (data.error) {
-    throw new Error(data.error.message || 'Erro ao obter token de longa duracao');
+  if (fnError || fnData?.error) {
+    throw new Error(fnData?.error || fnError?.message || 'Erro ao obter token de longa duracao');
   }
 
   return {
-    access_token: data.access_token,
-    expires_in: data.expires_in || 5184000,
+    access_token: fnData.access_token,
+    expires_in: fnData.expires_in || 5184000,
   };
 }
 

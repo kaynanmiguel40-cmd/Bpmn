@@ -2,17 +2,16 @@
  * Supabase Edge Function: meta-long-lived-token
  *
  * Converte short-lived token (1h) para long-lived token (60 dias).
+ * Usa Instagram Graph API endpoint.
  *
- * Env vars necessarias:
- * - META_APP_ID
- * - META_APP_SECRET
+ * Env vars necessarias (configurar no Supabase Dashboard):
+ * - META_APP_SECRET (Instagram App Secret)
  *
  * Deploy: supabase functions deploy meta-long-lived-token
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-const META_APP_ID = Deno.env.get('META_APP_ID')
 const META_APP_SECRET = Deno.env.get('META_APP_SECRET')
 
 const corsHeaders = {
@@ -36,19 +35,19 @@ serve(async (req) => {
       )
     }
 
-    if (!META_APP_ID || !META_APP_SECRET) {
+    if (!META_APP_SECRET) {
       return new Response(
-        JSON.stringify({ error: 'META_APP_ID or META_APP_SECRET not configured' }),
+        JSON.stringify({ error: 'META_APP_SECRET not configured in Supabase' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Converter para long-lived token
-    const tokenUrl = new URL('https://graph.facebook.com/v21.0/oauth/access_token')
-    tokenUrl.searchParams.set('grant_type', 'fb_exchange_token')
-    tokenUrl.searchParams.set('client_id', META_APP_ID)
+    // Instagram Graph API - converter para long-lived token
+    // Docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/
+    const tokenUrl = new URL('https://graph.instagram.com/access_token')
+    tokenUrl.searchParams.set('grant_type', 'ig_exchange_token')
     tokenUrl.searchParams.set('client_secret', META_APP_SECRET)
-    tokenUrl.searchParams.set('fb_exchange_token', access_token)
+    tokenUrl.searchParams.set('access_token', access_token)
 
     const res = await fetch(tokenUrl.toString())
     const data = await res.json()

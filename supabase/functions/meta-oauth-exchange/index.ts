@@ -1,12 +1,12 @@
 /**
  * Supabase Edge Function: meta-oauth-exchange
  *
- * Troca authorization code por access token (Meta OAuth).
+ * Troca authorization code por access token (Instagram Login API).
  * O App Secret nao pode ficar no client, entao usamos Edge Function.
  *
- * Env vars necessarias:
- * - META_APP_ID
- * - META_APP_SECRET
+ * Env vars necessarias (configurar no Supabase Dashboard):
+ * - META_APP_ID (Instagram App ID)
+ * - META_APP_SECRET (Instagram App Secret)
  *
  * Deploy: supabase functions deploy meta-oauth-exchange
  */
@@ -39,24 +39,32 @@ serve(async (req) => {
 
     if (!META_APP_ID || !META_APP_SECRET) {
       return new Response(
-        JSON.stringify({ error: 'META_APP_ID or META_APP_SECRET not configured' }),
+        JSON.stringify({ error: 'META_APP_ID or META_APP_SECRET not configured in Supabase' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Trocar code por access token
-    const tokenUrl = new URL('https://graph.facebook.com/v21.0/oauth/access_token')
-    tokenUrl.searchParams.set('client_id', META_APP_ID)
-    tokenUrl.searchParams.set('client_secret', META_APP_SECRET)
-    tokenUrl.searchParams.set('redirect_uri', redirect_uri)
-    tokenUrl.searchParams.set('code', code)
+    // Instagram Login API - trocar code por access token
+    // Docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/
+    const formData = new URLSearchParams()
+    formData.append('client_id', META_APP_ID)
+    formData.append('client_secret', META_APP_SECRET)
+    formData.append('grant_type', 'authorization_code')
+    formData.append('redirect_uri', redirect_uri)
+    formData.append('code', code)
 
-    const res = await fetch(tokenUrl.toString())
+    const res = await fetch('https://api.instagram.com/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    })
     const data = await res.json()
 
-    if (data.error) {
+    if (data.error_type || data.error_message) {
       return new Response(
-        JSON.stringify({ error: data.error.message || data.error }),
+        JSON.stringify({ error: data.error_message || data.error_type || 'Token exchange failed' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -64,8 +72,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         access_token: data.access_token,
-        token_type: data.token_type || 'Bearer',
-        expires_in: data.expires_in,
+        user_id: data.user_id,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
