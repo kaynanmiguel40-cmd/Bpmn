@@ -252,7 +252,7 @@ async function getLongLivedToken(shortToken) {
 /** Busca informacoes do usuario Instagram */
 async function fetchUserInfo(accessToken) {
   const res = await fetch(
-    `${GRAPH_API}/me?fields=user_id,username,account_type,media_count&access_token=${accessToken}`
+    `${GRAPH_API}/me?fields=id,username,account_type,media_count&access_token=${accessToken}`
   );
   const data = await res.json();
 
@@ -261,7 +261,7 @@ async function fetchUserInfo(accessToken) {
   }
 
   return {
-    user_id: data.user_id,
+    user_id: data.id,
     username: data.username,
     account_type: data.account_type,
     media_count: data.media_count,
