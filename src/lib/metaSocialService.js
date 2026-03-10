@@ -1,29 +1,25 @@
 /**
- * Meta Social Service - Instagram + Facebook Integration
+ * Meta Social Service - Instagram Content Publishing
  *
- * Usa Facebook Login para OAuth e Meta Graph API para publicacao.
- * Suporta: Feed posts, Reels, Stories (Instagram) e Videos (Facebook Page)
+ * Usa Instagram Login API (não Facebook Login) para autenticação direta.
+ * Suporta: Feed posts, Reels, Stories para contas Business/Creator
  *
  * Documentacao:
+ * - https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/
  * - https://developers.facebook.com/docs/instagram-platform/content-publishing/
- * - https://developers.facebook.com/docs/video-api/guides/publishing
  */
 
 import { supabase } from './supabaseClient';
 
 const META_APP_ID = import.meta.env.VITE_META_APP_ID || '';
-const GRAPH_API = 'https://graph.facebook.com/v21.0';
-const INSTAGRAM_API = 'https://graph.instagram.com/v21.0';
+const META_APP_SECRET = import.meta.env.VITE_META_APP_SECRET || '';
+const GRAPH_API = 'https://graph.instagram.com';
 
-// Permissoes necessarias para publicacao
-// IMPORTANTE: Adicionar produto Instagram no Meta Developer Console
-// e configurar o Caso de Uso "Gerenciamento de conteudo"
+// Permissoes para Instagram Login API
+// Docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/
 const PERMISSIONS = [
-  'public_profile',
-  'pages_show_list',
-  'pages_read_engagement',
-  'pages_manage_posts',
-  'business_management',
+  'instagram_business_basic',
+  'instagram_business_content_publish',
 ].join(',');
 
 // ==================== TOKEN MANAGEMENT ====================
@@ -54,10 +50,10 @@ async function saveTokens(tokenData) {
     user_id: user.id,
     access_token: tokenData.access_token,
     token_type: tokenData.token_type || 'Bearer',
-    expires_at: tokenData.expires_at || new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(), // 60 dias
-    facebook_user_id: tokenData.facebook_user_id || null,
-    facebook_page_id: tokenData.facebook_page_id || null,
-    facebook_page_token: tokenData.facebook_page_token || null,
+    expires_at: tokenData.expires_at || new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+    facebook_user_id: null,
+    facebook_page_id: null,
+    facebook_page_token: null,
     instagram_account_id: tokenData.instagram_account_id || null,
     instagram_username: tokenData.instagram_username || null,
     updated_at: new Date().toISOString(),
@@ -112,15 +108,14 @@ export async function getMetaStatus() {
     expired,
     instagram_username: saved.instagram_username,
     instagram_account_id: saved.instagram_account_id,
-    facebook_page_id: saved.facebook_page_id,
     expires_at: saved.expires_at,
     updated_at: saved.updated_at,
   };
 }
 
-// ==================== OAUTH FLOW ====================
+// ==================== OAUTH FLOW (Instagram Login) ====================
 
-/** Gera URL de autorizacao Facebook */
+/** Gera URL de autorizacao Instagram */
 export function getAuthUrl() {
   const redirectUri = `${window.location.origin}/auth/meta/callback`;
   const state = crypto.randomUUID();
@@ -128,7 +123,8 @@ export function getAuthUrl() {
   // Salvar state para validacao
   sessionStorage.setItem('meta_oauth_state', state);
 
-  return `https://www.facebook.com/v21.0/dialog/oauth?` +
+  // Instagram OAuth URL (não Facebook!)
+  return `https://www.instagram.com/oauth/authorize?` +
     `client_id=${META_APP_ID}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&scope=${encodeURIComponent(PERMISSIONS)}` +
@@ -152,7 +148,7 @@ export function connectMeta() {
     const authUrl = getAuthUrl();
     const popup = window.open(
       authUrl,
-      'meta_oauth',
+      'instagram_oauth',
       `width=${width},height=${height},left=${left},top=${top}`
     );
 
@@ -171,7 +167,6 @@ export function connectMeta() {
 
       if (event.data.type === 'meta_oauth_success') {
         try {
-          // Trocar code por access token
           const tokens = await exchangeCodeForToken(event.data.code);
           resolve(tokens);
         } catch (err) {
@@ -195,37 +190,44 @@ export function connectMeta() {
   });
 }
 
-/** Troca authorization code por access token */
+/** Troca authorization code por access token (Instagram API) */
 async function exchangeCodeForToken(code) {
   const redirectUri = `${window.location.origin}/auth/meta/callback`;
-  const appId = META_APP_ID;
-  const appSecret = import.meta.env.VITE_META_APP_SECRET || '';
 
-  // Trocar code por access token diretamente
-  const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?` +
-    `client_id=${appId}` +
-    `&client_secret=${appSecret}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&code=${code}`;
+  // Instagram token exchange endpoint (POST com form data)
+  const formData = new FormData();
+  formData.append('client_id', META_APP_ID);
+  formData.append('client_secret', META_APP_SECRET);
+  formData.append('grant_type', 'authorization_code');
+  formData.append('redirect_uri', redirectUri);
+  formData.append('code', code);
 
-  const res = await fetch(tokenUrl);
+  const res = await fetch('https://api.instagram.com/oauth/access_token', {
+    method: 'POST',
+    body: formData,
+  });
   const data = await res.json();
 
-  if (data.error) {
-    throw new Error(data.error.message || 'Erro ao trocar code por token');
+  if (data.error_type || data.error_message) {
+    throw new Error(data.error_message || 'Erro ao trocar code por token');
   }
 
-  // Obter long-lived token
-  const longLivedToken = await getLongLivedToken(data.access_token);
+  // Token de curta duração retornado
+  const shortLivedToken = data.access_token;
+  const userId = data.user_id;
 
-  // Buscar informacoes da conta
-  const accountInfo = await fetchAccountInfo({ access_token: longLivedToken.access_token });
+  // Obter long-lived token (60 dias)
+  const longLivedToken = await getLongLivedToken(shortLivedToken);
+
+  // Buscar informacoes do usuario
+  const userInfo = await fetchUserInfo(longLivedToken.access_token);
 
   // Salvar tudo
   const tokens = await saveTokens({
     access_token: longLivedToken.access_token,
     expires_at: new Date(Date.now() + (longLivedToken.expires_in || 5184000) * 1000).toISOString(),
-    ...accountInfo,
+    instagram_account_id: userId.toString(),
+    instagram_username: userInfo.username,
   });
 
   return tokens;
@@ -233,16 +235,12 @@ async function exchangeCodeForToken(code) {
 
 /** Converte token de curta duracao para longa duracao (60 dias) */
 async function getLongLivedToken(shortToken) {
-  const appId = META_APP_ID;
-  const appSecret = import.meta.env.VITE_META_APP_SECRET || '';
+  const url = `${GRAPH_API}/access_token?` +
+    `grant_type=ig_exchange_token` +
+    `&client_secret=${META_APP_SECRET}` +
+    `&access_token=${shortToken}`;
 
-  const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?` +
-    `grant_type=fb_exchange_token` +
-    `&client_id=${appId}` +
-    `&client_secret=${appSecret}` +
-    `&fb_exchange_token=${shortToken}`;
-
-  const res = await fetch(tokenUrl);
+  const res = await fetch(url);
   const data = await res.json();
 
   if (data.error) {
@@ -255,36 +253,51 @@ async function getLongLivedToken(shortToken) {
   };
 }
 
-/** Busca informacoes das contas conectadas */
-async function fetchAccountInfo(token) {
-  // Buscar paginas do Facebook
-  const pagesRes = await fetch(
-    `${GRAPH_API}/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${token.access_token}`
+/** Busca informacoes do usuario Instagram */
+async function fetchUserInfo(accessToken) {
+  const res = await fetch(
+    `${GRAPH_API}/me?fields=user_id,username,account_type,media_count&access_token=${accessToken}`
   );
-  const pagesData = await pagesRes.json();
+  const data = await res.json();
 
-  if (pagesData.error) throw new Error(pagesData.error.message);
-
-  // Pegar primeira pagina com Instagram vinculado
-  const pageWithIG = pagesData.data?.find(p => p.instagram_business_account);
-
-  if (!pageWithIG) {
-    throw new Error('Nenhuma pagina do Facebook com conta Instagram Business encontrada');
+  if (data.error) {
+    throw new Error(data.error.message || 'Erro ao buscar informacoes do usuario');
   }
 
-  // Buscar detalhes da conta Instagram
-  const igRes = await fetch(
-    `${GRAPH_API}/${pageWithIG.instagram_business_account.id}?fields=id,username,name&access_token=${token.access_token}`
-  );
-  const igData = await igRes.json();
-
   return {
-    facebook_user_id: null, // sera preenchido se necessario
-    facebook_page_id: pageWithIG.id,
-    facebook_page_token: pageWithIG.access_token,
-    instagram_account_id: pageWithIG.instagram_business_account.id,
-    instagram_username: igData.username || igData.name,
+    user_id: data.user_id,
+    username: data.username,
+    account_type: data.account_type,
+    media_count: data.media_count,
   };
+}
+
+/** Refresh token antes de expirar */
+export async function refreshToken() {
+  const saved = await getSavedTokens();
+  if (!saved?.access_token) {
+    throw new Error('Nenhum token salvo para renovar');
+  }
+
+  const url = `${GRAPH_API}/refresh_access_token?` +
+    `grant_type=ig_refresh_token` +
+    `&access_token=${saved.access_token}`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+
+  if (data.error) {
+    throw new Error(data.error.message || 'Erro ao renovar token');
+  }
+
+  // Atualizar token salvo
+  await saveTokens({
+    ...saved,
+    access_token: data.access_token,
+    expires_at: new Date(Date.now() + (data.expires_in || 5184000) * 1000).toISOString(),
+  });
+
+  return data;
 }
 
 /** Desconecta a conta */
@@ -317,7 +330,7 @@ export async function publishToInstagram({ videoUrl, caption, mediaType = 'REELS
     throw new Error('Conta Instagram nao conectada');
   }
 
-  const accessToken = tokens.facebook_page_token || tokens.access_token;
+  const accessToken = tokens.access_token;
   const igUserId = tokens.instagram_account_id;
 
   // 1. Criar container de midia
@@ -336,7 +349,7 @@ export async function publishToInstagram({ videoUrl, caption, mediaType = 'REELS
     containerParams.append('share_to_feed', shareToFeed.toString());
   }
 
-  const containerRes = await fetch(`${GRAPH_API}/${igUserId}/media`, {
+  const containerRes = await fetch(`${GRAPH_API}/v21.0/${igUserId}/media`, {
     method: 'POST',
     body: containerParams,
   });
@@ -352,7 +365,7 @@ export async function publishToInstagram({ videoUrl, caption, mediaType = 'REELS
   await waitForMediaReady(containerId, accessToken);
 
   // 3. Publicar
-  const publishRes = await fetch(`${GRAPH_API}/${igUserId}/media_publish`, {
+  const publishRes = await fetch(`${GRAPH_API}/v21.0/${igUserId}/media_publish`, {
     method: 'POST',
     body: new URLSearchParams({
       creation_id: containerId,
@@ -378,11 +391,64 @@ export async function publishToInstagram({ videoUrl, caption, mediaType = 'REELS
   };
 }
 
+/**
+ * Publica imagem no Instagram
+ */
+export async function publishImageToInstagram({ imageUrl, caption }) {
+  const tokens = await getSavedTokens();
+  if (!tokens?.instagram_account_id) {
+    throw new Error('Conta Instagram nao conectada');
+  }
+
+  const accessToken = tokens.access_token;
+  const igUserId = tokens.instagram_account_id;
+
+  // 1. Criar container
+  const containerRes = await fetch(`${GRAPH_API}/v21.0/${igUserId}/media`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      image_url: imageUrl,
+      caption: caption || '',
+      access_token: accessToken,
+    }),
+  });
+  const containerData = await containerRes.json();
+
+  if (containerData.error) {
+    throw new Error(containerData.error.message || 'Erro ao criar container');
+  }
+
+  // 2. Publicar
+  const publishRes = await fetch(`${GRAPH_API}/v21.0/${igUserId}/media_publish`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      creation_id: containerData.id,
+      access_token: accessToken,
+    }),
+  });
+  const publishData = await publishRes.json();
+
+  if (publishData.error) {
+    throw new Error(publishData.error.message || 'Erro ao publicar');
+  }
+
+  await logPublishResult({
+    platform: 'instagram',
+    media_id: publishData.id,
+    status: 'success',
+  });
+
+  return {
+    id: publishData.id,
+    platform: 'instagram',
+  };
+}
+
 /** Aguarda video ficar pronto para publicar */
 async function waitForMediaReady(containerId, accessToken, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i++) {
     const res = await fetch(
-      `${GRAPH_API}/${containerId}?fields=status_code,status&access_token=${accessToken}`
+      `${GRAPH_API}/v21.0/${containerId}?fields=status_code,status&access_token=${accessToken}`
     );
     const data = await res.json();
 
@@ -401,88 +467,14 @@ async function waitForMediaReady(containerId, accessToken, maxAttempts = 30) {
   throw new Error('Timeout aguardando processamento do video');
 }
 
-// ==================== FACEBOOK PUBLISHING ====================
+// ==================== FACEBOOK PUBLISHING (desabilitado por enquanto) ====================
 
 /**
  * Publica video na pagina do Facebook
- * @param {Object} options
- * @param {string} options.videoUrl - URL publica do video
- * @param {string} options.title - Titulo do video
- * @param {string} options.description - Descricao do video
+ * NOTA: Requer Facebook Login separado, não funciona com Instagram Login
  */
-export async function publishToFacebook({ videoUrl, title, description }) {
-  const tokens = await getSavedTokens();
-  if (!tokens?.facebook_page_id) {
-    throw new Error('Pagina do Facebook nao conectada');
-  }
-
-  const accessToken = tokens.facebook_page_token;
-  const pageId = tokens.facebook_page_id;
-
-  // Publicar video diretamente (para videos pequenos)
-  // Para videos grandes, usar upload resumivel
-  const params = new URLSearchParams({
-    file_url: videoUrl,
-    title: title || '',
-    description: description || '',
-    access_token: accessToken,
-  });
-
-  const res = await fetch(`${GRAPH_API}/${pageId}/videos`, {
-    method: 'POST',
-    body: params,
-  });
-  const data = await res.json();
-
-  if (data.error) {
-    throw new Error(data.error.message || 'Erro ao publicar no Facebook');
-  }
-
-  await logPublishResult({
-    platform: 'facebook',
-    media_id: data.id,
-    status: 'success',
-  });
-
-  return {
-    id: data.id,
-    platform: 'facebook',
-  };
-}
-
-// ==================== MULTI-PLATFORM PUBLISH ====================
-
-/**
- * Publica em multiplas plataformas simultaneamente
- * @param {Object} options
- * @param {string[]} options.platforms - ['instagram', 'facebook']
- * @param {string} options.videoUrl - URL do video
- * @param {string} options.caption - Legenda/descricao
- * @param {string} options.title - Titulo (Facebook)
- * @param {string} options.mediaType - Tipo de midia para Instagram
- */
-export async function publishToMultiplePlatforms({ platforms, videoUrl, caption, title, mediaType = 'REELS' }) {
-  const results = [];
-  const errors = [];
-
-  for (const platform of platforms) {
-    try {
-      let result;
-      if (platform === 'instagram') {
-        result = await publishToInstagram({ videoUrl, caption, mediaType });
-      } else if (platform === 'facebook') {
-        result = await publishToFacebook({ videoUrl, title: title || caption, description: caption });
-      }
-
-      if (result) {
-        results.push(result);
-      }
-    } catch (err) {
-      errors.push({ platform, error: err.message });
-    }
-  }
-
-  return { results, errors };
+export async function publishToFacebook() {
+  throw new Error('Publicacao no Facebook requer configuracao adicional. Use apenas Instagram por enquanto.');
 }
 
 // ==================== RATE LIMITS ====================
@@ -492,10 +484,10 @@ export async function checkPublishingLimit() {
   const tokens = await getSavedTokens();
   if (!tokens?.instagram_account_id) return null;
 
-  const accessToken = tokens.facebook_page_token || tokens.access_token;
+  const accessToken = tokens.access_token;
 
   const res = await fetch(
-    `${GRAPH_API}/${tokens.instagram_account_id}/content_publishing_limit?fields=config,quota_usage&access_token=${accessToken}`
+    `${GRAPH_API}/v21.0/${tokens.instagram_account_id}/content_publishing_limit?fields=config,quota_usage&access_token=${accessToken}`
   );
   const data = await res.json();
 

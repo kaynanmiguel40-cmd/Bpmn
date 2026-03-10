@@ -1,6 +1,6 @@
 import { createCRUDService } from './serviceFactory';
 import { contentPostSchema } from './validation';
-import { publishToInstagram, publishToFacebook, getMetaStatus } from './metaSocialService';
+import { publishToInstagram, publishImageToInstagram, publishToFacebook, getMetaStatus } from './metaSocialService';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -76,16 +76,30 @@ export async function publishPost(post) {
 
   try {
     if (platform === 'instagram') {
-      // Determinar tipo de midia para Instagram
-      const mediaType = post.mediaType === 'reel' ? 'REELS' :
-                       post.mediaType === 'story' ? 'STORIES' : 'VIDEO';
+      const caption = `${post.title}\n\n${post.description || ''}`.trim();
 
-      result = await publishToInstagram({
-        videoUrl: post.mediaUrl,
-        caption: `${post.title}\n\n${post.description || ''}`.trim(),
-        mediaType,
-        coverUrl: post.thumbnailUrl,
-      });
+      // Verificar se e imagem ou video
+      const isImage = post.mediaType === 'image' ||
+                     /\.(jpg|jpeg|png|gif|webp)$/i.test(post.mediaUrl);
+
+      if (isImage) {
+        // Publicar imagem
+        result = await publishImageToInstagram({
+          imageUrl: post.mediaUrl,
+          caption,
+        });
+      } else {
+        // Publicar video/reel
+        const mediaType = post.mediaType === 'reel' ? 'REELS' :
+                         post.mediaType === 'story' ? 'STORIES' : 'REELS';
+
+        result = await publishToInstagram({
+          videoUrl: post.mediaUrl,
+          caption,
+          mediaType,
+          coverUrl: post.thumbnailUrl,
+        });
+      }
     } else if (platform === 'facebook') {
       result = await publishToFacebook({
         videoUrl: post.mediaUrl,
