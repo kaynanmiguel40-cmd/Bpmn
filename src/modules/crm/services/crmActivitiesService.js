@@ -124,10 +124,59 @@ export async function getActivitiesForCalendar(startDate, endDate) {
   return (data || []).map(dbToCrmActivity);
 }
 
+// Mapeamento tipo atividade CRM → tipo evento agenda
+const ACTIVITY_TO_AGENDA_TYPE = {
+  call: 'task',
+  email: 'task',
+  meeting: 'meeting',
+  visit: 'meeting',
+  task: 'task',
+  lunch: 'meeting',
+  follow_up: 'reminder',
+};
+
+const ACTIVITY_TO_AGENDA_COLOR = {
+  call: '#f59e0b',
+  email: '#6366f1',
+  meeting: '#3b82f6',
+  visit: '#22c55e',
+  task: '#64748b',
+  lunch: '#f97316',
+  follow_up: '#8b5cf6',
+};
+
 export async function createCrmActivity(data) {
   const session = await supabase.auth.getSession();
   const userId = session.data?.session?.user?.id;
-  return activityService.create(data, { created_by: userId });
+  const activity = await activityService.create(data, { created_by: userId });
+
+  // Criar evento na agenda (sincroniza automaticamente com Google Calendar)
+  if (activity?.id && data.startDate) {
+    try {
+      const { createAgendaEvent } = await import('../../../lib/agendaService');
+      const { pushEventToGCal } = await import('../../../lib/googleCalendarService');
+
+      const endDate = data.endDate || new Date(new Date(data.startDate).getTime() + 60 * 60 * 1000).toISOString();
+
+      const agendaEvent = await createAgendaEvent({
+        title: data.title,
+        description: data.description || '',
+        startDate: data.startDate,
+        endDate,
+        type: ACTIVITY_TO_AGENDA_TYPE[data.type] || 'task',
+        color: ACTIVITY_TO_AGENDA_COLOR[data.type] || '#3b82f6',
+      });
+
+      // Push para Google Calendar
+      if (agendaEvent?.id) {
+        pushEventToGCal(agendaEvent.id, 'create').catch(() => {});
+      }
+    } catch {
+      // Nao bloqueia a criacao da atividade se falhar a criacao do evento
+    }
+  }
+
+  return activity;
 }
 
 export async function updateCrmActivity(id, updates) {

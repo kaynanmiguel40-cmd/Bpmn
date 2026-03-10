@@ -236,14 +236,14 @@ function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange
           value={`${kpi.completionRate}%`}
           subtitle={`${kpi.doneMonth} de ${kpi.doneMonth + kpi.inProgress} no mes`}
           icon={CheckCircleIcon}
-          color="green"
+          color={parseInt(kpi.completionRate) >= 80 ? 'green' : parseInt(kpi.completionRate) >= 50 ? 'amber' : 'red'}
         />
         <KPICard
           title="Entrega no Prazo"
           value={`${kpi.onTimeRate}%`}
           subtitle={kpi.avgDelay > 0 ? `Atraso medio: ${kpi.avgDelay} dias` : 'Sem atrasos'}
           icon={TargetIcon}
-          color={parseInt(kpi.onTimeRate) >= 80 ? 'green' : 'orange'}
+          color={parseInt(kpi.onTimeRate) >= 80 ? 'green' : parseInt(kpi.onTimeRate) >= 50 ? 'amber' : 'red'}
         />
         <KPICard
           title="Produtividade"
@@ -255,10 +255,10 @@ function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange
         />
         <KPICard
           title="Reunioes"
-          value={`${kpi.meetingAttendance}% presenca`}
-          subtitle={`${kpi.meetingPunctuality}% no horario · ${kpi.attendedMeetings} de ${kpi.pastMeetings}`}
+          value={kpi.pastMeetings === 0 ? 'Nenhum dado' : `${kpi.meetingAttendance}% presenca`}
+          subtitle={kpi.pastMeetings === 0 ? 'Nenhuma reuniao no periodo' : `${kpi.meetingPunctuality}% no horario · ${kpi.attendedMeetings} de ${kpi.pastMeetings}`}
           icon={MeetingIcon}
-          color={parseInt(kpi.meetingAttendance) >= 80 ? 'green' : parseInt(kpi.meetingAttendance) >= 60 ? 'amber' : 'red'}
+          color={kpi.pastMeetings === 0 ? 'blue' : parseInt(kpi.meetingAttendance) >= 80 ? 'green' : parseInt(kpi.meetingAttendance) >= 60 ? 'amber' : 'red'}
         />
         <KPICard
           title="Atrasos"
@@ -660,14 +660,14 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
           value={`${kpi.completionRate}%`}
           subtitle={`${kpi.doneMonth} no mes`}
           icon={CheckCircleIcon}
-          color="green"
+          color={parseInt(kpi.completionRate) >= 80 ? 'green' : parseInt(kpi.completionRate) >= 50 ? 'amber' : 'red'}
         />
         <KPICard
           title="Entrega no Prazo"
           value={`${kpi.onTimeRate}%`}
           subtitle={kpi.avgDelay > 0 ? `Atraso medio: ${kpi.avgDelay}d` : 'Sem atrasos'}
           icon={TargetIcon}
-          color={parseInt(kpi.onTimeRate) >= 80 ? 'green' : 'red'}
+          color={parseInt(kpi.onTimeRate) >= 80 ? 'green' : parseInt(kpi.onTimeRate) >= 50 ? 'amber' : 'red'}
         />
         <KPICard
           title="Produtividade"
@@ -686,10 +686,10 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
         />
         <KPICard
           title="Reunioes"
-          value={`${kpi.meetingAttendance}% presenca`}
-          subtitle={`${kpi.meetingPunctuality}% no horario · ${kpi.attendedMeetings} de ${kpi.pastMeetings}`}
+          value={kpi.pastMeetings === 0 ? 'Nenhum dado' : `${kpi.meetingAttendance}% presenca`}
+          subtitle={kpi.pastMeetings === 0 ? 'Nenhuma reuniao no periodo' : `${kpi.meetingPunctuality}% no horario · ${kpi.attendedMeetings} de ${kpi.pastMeetings}`}
           icon={MeetingIcon}
-          color={parseInt(kpi.meetingAttendance) >= 80 ? 'green' : parseInt(kpi.meetingAttendance) >= 60 ? 'amber' : 'red'}
+          color={kpi.pastMeetings === 0 ? 'blue' : parseInt(kpi.meetingAttendance) >= 80 ? 'green' : parseInt(kpi.meetingAttendance) >= 60 ? 'amber' : 'red'}
         />
         <KPICard
           title="Atrasos"

@@ -28,7 +28,9 @@ const CrmPipelinePage = lazy(() => import('./modules/crm/pages/CrmPipelinePage')
 const CrmDealsPage = lazy(() => import('./modules/crm/pages/CrmDealsPage'))
 const CrmDealDetailPage = lazy(() => import('./modules/crm/pages/CrmDealDetailPage'))
 const CrmContactsPage = lazy(() => import('./modules/crm/pages/CrmContactsPage'))
+const CrmContactDetailPage = lazy(() => import('./modules/crm/pages/CrmContactDetailPage'))
 const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage'))
+const CrmCompanyDetailPage = lazy(() => import('./modules/crm/pages/CrmCompanyDetailPage'))
 const CrmActivitiesPage = lazy(() => import('./modules/crm/pages/CrmActivitiesPage'))
 const CrmProposalsPage = lazy(() => import('./modules/crm/pages/CrmProposalsPage'))
 const CrmGoalsPage = lazy(() => import('./modules/crm/pages/CrmGoalsPage'))
@@ -97,7 +99,9 @@ function App() {
                 <Route path="deals" element={<ErrorBoundary><CrmDealsPage /></ErrorBoundary>} />
                 <Route path="deals/:dealId" element={<ErrorBoundary><CrmDealDetailPage /></ErrorBoundary>} />
                 <Route path="contacts" element={<ErrorBoundary><CrmContactsPage /></ErrorBoundary>} />
+                <Route path="contacts/:id" element={<ErrorBoundary><CrmContactDetailPage /></ErrorBoundary>} />
                 <Route path="companies" element={<ErrorBoundary><CrmCompaniesPage /></ErrorBoundary>} />
+                <Route path="companies/:id" element={<ErrorBoundary><CrmCompanyDetailPage /></ErrorBoundary>} />
                 <Route path="activities" element={<ErrorBoundary><CrmActivitiesPage /></ErrorBoundary>} />
                 <Route path="proposals" element={<ErrorBoundary><CrmProposalsPage /></ErrorBoundary>} />
                 <Route path="reports" element={<ErrorBoundary><CrmReportsPage /></ErrorBoundary>} />

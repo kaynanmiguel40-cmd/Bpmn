@@ -4,7 +4,7 @@ import { toast } from '../../../contexts/ToastContext';
 // Services
 import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany, softDeleteCrmCompany } from '../services/crmCompaniesService';
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
-import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, reorderCrmStages, addCrmStage, deleteCrmStage, setWinStage, ensurePartnersPipeline } from '../services/crmPipelinesService';
+import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, reorderCrmStages, addCrmStage, deleteCrmStage, setWinStage, ensurePartnersPipeline, seedCommercialPipelines } from '../services/crmPipelinesService';
 import { getCrmDeals, getDealsByPipeline, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, getDealActivities, getDealStageHistory, getDealsWithMeetings, schedulePartnerMeeting } from '../services/crmDealsService';
 import { getCrmActivities, getActivitiesForCalendar, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity } from '../services/crmActivitiesService';
 import { getCrmProposals, getCrmProposalById, createCrmProposal, updateCrmProposal, softDeleteCrmProposal, updateCrmProposalStatus } from '../services/crmProposalsService';
@@ -12,7 +12,7 @@ import { getCrmDashboardKPIs, getSalesRanking } from '../services/crmDashboardSe
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, getProspectListNames, getProspectsAnalytics, createCrmProspect, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
 import { getCrmGoals, getCrmGoalById, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
-import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities } from '../services/crmReportsService';
+import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities, getSellersReport } from '../services/crmReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 
 // ==================== QUERY KEYS ====================
@@ -41,6 +41,7 @@ export const crmQueryKeys = {
   forecastReport: ['crm', 'forecastReport'],
   learnedProbabilities: (pipelineId) => ['crm', 'learnedProbabilities', pipelineId || 'all'],
   activitiesReport: (start, end) => ['crm', 'activitiesReport', start, end],
+  sellersReport: (start, end) => ['crm', 'sellersReport', start, end],
   traffic: ['crm', 'traffic'],
   trafficKPIs: ['crm', 'trafficKPIs'],
   trafficByChannel: ['crm', 'trafficByChannel'],
@@ -202,6 +203,17 @@ export function useCreateCrmPipeline() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       toast('Pipeline criado com sucesso', 'success');
+    },
+  });
+}
+
+export function useSeedCommercialPipelines() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: seedCommercialPipelines,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
     },
   });
 }
@@ -398,17 +410,18 @@ export function useMoveCrmDeal() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
       qc.invalidateQueries({ queryKey: ['crm', 'dealsByPipeline'] });
 
-      // Auto-win: atualizar cache do kanban e invalidar dashboard
+      // Atualizar status do deal no cache do kanban
+      const allQueries = qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] });
+      allQueries.forEach(([queryKey, oldData]) => {
+        if (!oldData?.stages) return;
+        const updatedStages = oldData.stages.map(stage => ({
+          ...stage,
+          deals: stage.deals?.map(d => d.id === data.id ? { ...d, status: data.status, probability: data.probability } : d),
+        }));
+        qc.setQueryData(queryKey, { ...oldData, stages: updatedStages });
+      });
+
       if (data?.status === 'won') {
-        const allQueries = qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] });
-        allQueries.forEach(([queryKey, oldData]) => {
-          if (!oldData?.stages) return;
-          const updatedStages = oldData.stages.map(stage => ({
-            ...stage,
-            deals: stage.deals?.map(d => d.id === data.id ? { ...d, status: 'won', probability: 100 } : d),
-          }));
-          qc.setQueryData(queryKey, { ...oldData, stages: updatedStages });
-        });
         qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
         qc.invalidateQueries({ queryKey: ['crm', 'learnedProbabilities'] });
         toast('Negocio ganho! Parabens!', 'success');
@@ -540,6 +553,7 @@ export function useCreateCrmActivity() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      qc.invalidateQueries({ queryKey: ['agendaEvents'] });
       toast('Atividade criada com sucesso', 'success');
     },
   });
@@ -768,6 +782,15 @@ export function useActivitiesReport(startDate, endDate) {
   return useQuery({
     queryKey: crmQueryKeys.activitiesReport(startDate, endDate),
     queryFn: () => getActivitiesReport(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+    staleTime: 120_000,
+  });
+}
+
+export function useSellersReport(startDate, endDate) {
+  return useQuery({
+    queryKey: crmQueryKeys.sellersReport(startDate, endDate),
+    queryFn: () => getSellersReport(startDate, endDate),
     enabled: !!startDate && !!endDate,
     staleTime: 120_000,
   });

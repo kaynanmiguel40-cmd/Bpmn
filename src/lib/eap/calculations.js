@@ -367,11 +367,11 @@ export function calcDuration(startDate, endDate) {
 }
 
 /**
- * Calcula horas uteis entre dois datetimes (seg-sex, 08:00-18:00).
+ * Calcula horas uteis entre dois datetimes (seg-sex, 09:00-18:00).
  */
 export function calcWorkHours(startStr, endStr) {
   if (!startStr || !endStr) return 0;
-  const WORK_START = 8;
+  const WORK_START = 9;
   const WORK_END = 18;
   const start = toDate(startStr);
   const end = toDate(endStr);

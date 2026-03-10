@@ -7,22 +7,36 @@ export async function getSalesReport(startDate, endDate) {
   try {
     const [wonRes, lostRes, openRes] = await Promise.all([
       supabase.from('crm_deals').select('*').eq('status', 'won').gte('closed_at', startDate).lte('closed_at', endDate).is('deleted_at', null),
-      supabase.from('crm_deals').select('*').eq('status', 'lost').gte('closed_at', startDate).lte('closed_at', endDate).is('deleted_at', null),
+      supabase.from('crm_deals').select('*, lost_reason').eq('status', 'lost').gte('closed_at', startDate).lte('closed_at', endDate).is('deleted_at', null),
       supabase.from('crm_deals').select('*').eq('status', 'open').is('deleted_at', null),
     ]);
 
     const won = wonRes.data || [];
     const lost = lostRes.data || [];
 
-    const totalWonValue = won.reduce((sum, d) => sum + (d.value || 0), 0);
+    // Filtrar deals com valor > 0 para calculos monetarios (exclui dados de teste como deals R$0)
+    const wonWithValue = won.filter(d => d.value > 0);
+    const totalWonValue = wonWithValue.reduce((sum, d) => sum + d.value, 0);
     const totalLostValue = lost.reduce((sum, d) => sum + (d.value || 0), 0);
-    const avgDealValue = won.length > 0 ? totalWonValue / won.length : 0;
+    const avgDealValue = wonWithValue.length > 0 ? totalWonValue / wonWithValue.length : 0;
 
-    // Tempo medio de fechamento (dias)
+    // Motivos de perda agrupados
+    const lostByReason = {};
+    lost.forEach(d => {
+      const reason = d.lost_reason?.trim() || 'Sem motivo';
+      if (!lostByReason[reason]) lostByReason[reason] = { count: 0, totalValue: 0 };
+      lostByReason[reason].count++;
+      lostByReason[reason].totalValue += d.value || 0;
+    });
+    const lostReasons = Object.entries(lostByReason)
+      .map(([reason, data]) => ({ reason, ...data }))
+      .sort((a, b) => b.count - a.count);
+
+    // Tempo medio de fechamento (dias) — ignorar valores negativos (dados inconsistentes)
     const closeTimes = won
       .filter(d => d.created_at && d.closed_at)
-      .map(d => (new Date(d.closed_at) - new Date(d.created_at)) / (1000 * 60 * 60 * 24));
-    const avgCloseTime = closeTimes.length > 0 ? Math.round(closeTimes.reduce((a, b) => a + b, 0) / closeTimes.length) : 0;
+      .map(d => Math.max(0, (new Date(d.closed_at) - new Date(d.created_at)) / (1000 * 60 * 60 * 24)));
+    const avgCloseTime = closeTimes.length > 0 ? Math.max(0, Math.round(closeTimes.reduce((a, b) => a + b, 0) / closeTimes.length)) : 0;
 
     return {
       period: { startDate, endDate },
@@ -35,6 +49,7 @@ export async function getSalesReport(startDate, endDate) {
         ? Math.round((won.length / (won.length + lost.length)) * 100)
         : 0,
       wonDeals: won.map(d => ({ id: d.id, title: d.title, value: d.value, closedAt: d.closed_at })),
+      lostReasons,
     };
   } catch (err) {
     toast('Erro ao gerar relatorio de vendas', 'error');
@@ -80,12 +95,12 @@ export async function getFunnelReport(pipelineId) {
     const funnelStages = (stages || []).map(s => stageMap[s.id]);
     const totalDeals = funnelStages.reduce((sum, s) => sum + s.count, 0);
 
-    // Taxa de conversao entre etapas
+    // Taxa de conversao entre etapas (capped at 100%)
     const conversionRates = funnelStages.map((stage, idx) => ({
       from: idx > 0 ? funnelStages[idx - 1].name : 'Entrada',
       to: stage.name,
       rate: idx > 0 && funnelStages[idx - 1].count > 0
-        ? Math.round((stage.count / funnelStages[idx - 1].count) * 100)
+        ? Math.min(100, Math.round((stage.count / funnelStages[idx - 1].count) * 100))
         : 100,
     }));
 
@@ -397,15 +412,20 @@ export async function getLearnedProbabilities(pipelineId = null) {
 
 export async function getActivitiesReport(startDate, endDate) {
   try {
-    const { data } = await supabase
-      .from('crm_activities')
-      .select('id, title, type, completed, start_date, completed_at, created_by')
-      .gte('start_date', startDate)
-      .lte('start_date', endDate)
-      .is('deleted_at', null)
-      .order('start_date');
+    const [{ data }, { data: members }] = await Promise.all([
+      supabase
+        .from('crm_activities')
+        .select('id, title, type, completed, start_date, completed_at, created_by')
+        .gte('start_date', startDate)
+        .lte('start_date', endDate)
+        .is('deleted_at', null)
+        .order('start_date'),
+      supabase.from('team_members').select('name, color, auth_user_id'),
+    ]);
 
     const activities = data || [];
+    const memberMap = {};
+    (members || []).forEach(m => { if (m.auth_user_id) memberMap[m.auth_user_id] = { name: m.name, color: m.color }; });
     const total = activities.length;
     const completed = activities.filter(a => a.completed).length;
     const pending = total - completed;
@@ -425,6 +445,30 @@ export async function getActivitiesReport(startDate, endDate) {
       byDayOfWeek[day]++;
     });
 
+    // Por vendedor (created_by)
+    const byOwnerMap = {};
+    activities.forEach(a => {
+      const uid = a.created_by || '_unknown';
+      if (!byOwnerMap[uid]) byOwnerMap[uid] = { total: 0, completed: 0, pending: 0, byType: {} };
+      byOwnerMap[uid].total++;
+      if (a.completed) byOwnerMap[uid].completed++;
+      else byOwnerMap[uid].pending++;
+      if (!byOwnerMap[uid].byType[a.type]) byOwnerMap[uid].byType[a.type] = 0;
+      byOwnerMap[uid].byType[a.type]++;
+    });
+
+    // Converter para array com nomes resolvidos
+    const byOwner = Object.entries(byOwnerMap)
+      .filter(([uid]) => uid !== '_unknown')
+      .map(([uid, stats]) => ({
+        uid,
+        name: memberMap[uid]?.name || 'Desconhecido',
+        color: memberMap[uid]?.color || '#94a3b8',
+        ...stats,
+        completionRate: stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+
     return {
       period: { startDate, endDate },
       total,
@@ -433,9 +477,79 @@ export async function getActivitiesReport(startDate, endDate) {
       completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
       byType,
       byDayOfWeek,
+      byOwner,
     };
   } catch (err) {
     toast('Erro ao gerar relatorio de atividades', 'error');
+    return null;
+  }
+}
+
+// ==================== RELATORIO DE VENDEDORES ====================
+
+export async function getSellersReport(startDate, endDate) {
+  try {
+    const [dealsRes, membersRes] = await Promise.all([
+      supabase.from('crm_deals')
+        .select('id, title, value, status, created_by, closed_at, created_at')
+        .in('status', ['won', 'lost', 'open'])
+        .is('deleted_at', null),
+      supabase.from('team_members')
+        .select('name, color, auth_user_id'),
+    ]);
+
+    const deals = dealsRes.data || [];
+    const members = membersRes.data || [];
+
+    const memberMap = {};
+    for (const m of members) {
+      if (m.auth_user_id) memberMap[m.auth_user_id] = { name: m.name, color: m.color };
+    }
+
+    // Filtrar por periodo para deals fechados
+    const periodDeals = deals.filter(d => {
+      if (d.status === 'open') return true; // abertos sempre contam
+      if (!d.closed_at) return false;
+      return d.closed_at >= startDate && d.closed_at <= endDate;
+    });
+
+    // Agrupar por vendedor
+    const grouped = {};
+    periodDeals.forEach(d => {
+      const uid = d.created_by;
+      if (!uid) return;
+      if (!grouped[uid]) grouped[uid] = { open: 0, won: 0, lost: 0, totalWonValue: 0, totalLostValue: 0, deals: [] };
+      grouped[uid].deals.push(d);
+      if (d.status === 'open') grouped[uid].open++;
+      else if (d.status === 'won') {
+        grouped[uid].won++;
+        if (d.value > 0) grouped[uid].totalWonValue += d.value;
+      } else if (d.status === 'lost') {
+        grouped[uid].lost++;
+        grouped[uid].totalLostValue += d.value || 0;
+      }
+    });
+
+    const sellers = Object.entries(grouped).map(([uid, stats]) => {
+      const member = memberMap[uid];
+      const closed = stats.won + stats.lost;
+      return {
+        uid,
+        name: member?.name || 'Desconhecido',
+        color: member?.color || '#94a3b8',
+        open: stats.open,
+        won: stats.won,
+        lost: stats.lost,
+        totalWonValue: stats.totalWonValue,
+        totalLostValue: stats.totalLostValue,
+        avgTicket: stats.totalWonValue > 0 ? Math.round(stats.totalWonValue / stats.deals.filter(d => d.status === 'won' && d.value > 0).length) : 0,
+        conversionRate: closed > 0 ? Math.round((stats.won / closed) * 100) : 0,
+      };
+    }).sort((a, b) => b.totalWonValue - a.totalWonValue);
+
+    return { period: { startDate, endDate }, sellers };
+  } catch (err) {
+    toast('Erro ao gerar relatorio de vendedores', 'error');
     return null;
   }
 }

@@ -37,7 +37,7 @@ export function isLastMonth(dateStr) {
 
 // ─── Helpers de Horas Uteis ──────────────────────────────────────
 
-/** Calcula horas uteis entre duas datas (seg-sex, 08h-18h) */
+/** Calcula horas uteis entre duas datas (seg-sex, 09h-18h) */
 export function calcWorkingHoursBetween(startStr, endStr) {
   const start = new Date(startStr);
   const end = new Date(endStr);
@@ -87,23 +87,46 @@ export function calcWorkingHoursBetween(startStr, endStr) {
 
 // ─── Helpers de O.S. ─────────────────────────────────────────────
 
-/** Horas realizadas: usa actualStart->actualEnd (horas uteis seg-sex 08-18h), checklist como fallback */
+/** Calcula minutos trabalhados de um item do checklist (com suporte a pause/resume) */
+export function calcChecklistItemMinutes(item) {
+  const base = item.accumulatedMin || 0;
+  // Concluido: usar accumulatedMin ou fallback para horas uteis (dados antigos)
+  if (item.done) {
+    if (base > 0) return base;
+    if (item.startedAt && item.completedAt) {
+      return Math.round(calcWorkingHoursBetween(item.startedAt, item.completedAt) * 60);
+    }
+    return 0;
+  }
+  // Pausado: accumulatedMin ja esta atualizado
+  if (item.pausedAt) return base;
+  // Rodando agora: somar segmento ao vivo
+  if (item.startedAt) {
+    const liveHours = calcWorkingHoursBetween(item.startedAt, new Date().toISOString());
+    return base + Math.round(liveHours * 60);
+  }
+  return base;
+}
+
+/** Horas realizadas: usa actualStart->actualEnd (horas uteis seg-sex 09-18h), checklist como fallback */
 export function calcOSHours(order) {
-  // Prioridade 1: actualStart/actualEnd (horas uteis, 08-18h seg-sex)
+  // Prioridade 1: actualStart/actualEnd (horas uteis, 09-18h seg-sex)
   if (order.actualStart && order.actualEnd) {
     const hours = calcWorkingHoursBetween(order.actualStart, order.actualEnd);
     if (hours > 0) return hours;
   }
-  // Prioridade 2: soma real do checklist usando timestamps (startedAt/completedAt)
+  // Prioridade 2: soma real do checklist (accumulatedMin com fallback para horas uteis)
   const cl = order.checklist || [];
-  let totalMin = 0;
+  let totalHours = 0;
   for (const item of cl) {
-    if (item.startedAt && item.completedAt) {
-      const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
-      if (diff > 0) totalMin += diff;
+    if (item.accumulatedMin > 0) {
+      totalHours += item.accumulatedMin / 60;
+    } else if (item.startedAt && item.completedAt) {
+      const h = calcWorkingHoursBetween(item.startedAt, item.completedAt);
+      if (h > 0) totalHours += h;
     }
   }
-  if (totalMin > 0) return totalMin / 60;
+  if (totalHours > 0) return totalHours;
   // Prioridade 3: soma de durationMin estimado
   const estimatedMin = cl.reduce((sum, i) => sum + (i.durationMin || 0), 0);
   if (estimatedMin > 0) return estimatedMin / 60;

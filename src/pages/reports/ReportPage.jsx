@@ -175,16 +175,16 @@ export default function ReportPage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-            <KPICard label="Taxa Conclusao" value={`${preview.kpis.completionRate}%`} />
-            <KPICard label="No Prazo" value={`${preview.kpis.onTimeRate}%`} color="text-emerald-600" />
-            <KPICard label="Produtividade" value={`${preview.kpis.productivityMonth}%`} color="text-blue-600" />
-            <KPICard label="Retrabalho" value={`${preview.kpis.reworkRate}%`} color="text-amber-600" />
+            <KPICard label="Taxa Conclusao" value={`${preview.kpis.completionRate}%`} color={parseInt(preview.kpis.completionRate) >= 80 ? 'text-emerald-600' : parseInt(preview.kpis.completionRate) >= 50 ? 'text-amber-600' : 'text-red-600'} />
+            <KPICard label="No Prazo" value={`${preview.kpis.onTimeRate}%`} color={parseInt(preview.kpis.onTimeRate) >= 80 ? 'text-emerald-600' : parseInt(preview.kpis.onTimeRate) >= 50 ? 'text-amber-600' : 'text-red-600'} />
+            <KPICard label="Produtividade" value={`${preview.kpis.productivityMonth}%`} color={parseInt(preview.kpis.productivityMonth) >= 90 ? 'text-emerald-600' : parseInt(preview.kpis.productivityMonth) >= 60 ? 'text-blue-600' : 'text-amber-600'} />
+            <KPICard label="Retrabalho" value={`${preview.kpis.reworkRate}%`} color={parseInt(preview.kpis.reworkRate) <= 15 ? 'text-emerald-600' : parseInt(preview.kpis.reworkRate) <= 30 ? 'text-amber-600' : 'text-red-600'} highlight={parseInt(preview.kpis.reworkRate) > 30} />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
             <KPICard label="T. Medio Entrega" value={`${preview.kpis.avgDelivery}d`} />
-            <KPICard label="Presenca Reunioes" value={`${preview.kpis.meetingAttendance}%`} />
-            <KPICard label="Pontualidade" value={`${preview.kpis.meetingPunctuality}%`} />
+            <KPICard label="Presenca Reunioes" value={`${preview.kpis.meetingAttendance}%`} color={parseInt(preview.kpis.meetingAttendance) >= 80 ? 'text-emerald-600' : parseInt(preview.kpis.meetingAttendance) >= 60 ? 'text-amber-600' : 'text-red-600'} />
+            <KPICard label="Pontualidade" value={`${preview.kpis.meetingPunctuality}%`} color={parseInt(preview.kpis.meetingPunctuality) >= 80 ? 'text-emerald-600' : parseInt(preview.kpis.meetingPunctuality) >= 60 ? 'text-amber-600' : 'text-red-600'} />
             <KPICard label="Custo Total" value={formatCurrency(preview.totalCost)} color="text-red-600" />
           </div>
         </div>
@@ -267,9 +267,9 @@ export default function ReportPage() {
   );
 }
 
-function KPICard({ label, value, color = 'text-slate-800 dark:text-slate-100' }) {
+function KPICard({ label, value, color = 'text-slate-800 dark:text-slate-100', highlight }) {
   return (
-    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-100 dark:border-slate-700">
+    <div className={`bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border ${highlight ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20' : 'border-slate-100 dark:border-slate-700'}`}>
       <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{label}</p>
       <p className={`text-xl font-bold mt-1 ${color}`}>{value}</p>
     </div>

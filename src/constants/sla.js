@@ -29,9 +29,9 @@ export const DAYS_PER_WEEK = 7;
 
 // ─── Horario Comercial ──────────────────────────────────────────
 
-export const WORK_START_HOUR = 8;
+export const WORK_START_HOUR = 9;
 export const WORK_END_HOUR = 18;
-export const WORK_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR; // 10h uteis
+export const WORK_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR; // 9h uteis
 
 // ─── Metas Mensais ──────────────────────────────────────────────
 

@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2 } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useSeedCommercialPipelines } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
 import { supabase } from '../../../lib/supabase';
 import { DealFormModal } from '../components/DealFormModal';
@@ -80,6 +80,14 @@ function DealCard({ deal, onDragStart, onMarkLost }) {
           {deal.company && (
             <span className="text-xs text-slate-400 dark:text-slate-500 truncate">{deal.company.name}</span>
           )}
+        </div>
+      )}
+
+      {deal.segment && (
+        <div className="mb-1">
+          <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
+            {deal.segment}
+          </span>
         </div>
       )}
 
@@ -429,6 +437,68 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
   );
 }
 
+// ==================== SOM DE CELEBRACAO ====================
+
+function playWinSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + i * 0.12);
+      osc.stop(ctx.currentTime + i * 0.12 + 0.4);
+    });
+  } catch (_) { /* silencioso se audio nao disponivel */ }
+}
+
+// ==================== EMPTY STATE COM SEED ====================
+
+function SeedOrCreateEmpty({ onCreateManual }) {
+  const seedMutation = useSeedCommercialPipelines();
+
+  return (
+    <div className="flex flex-col items-center justify-center py-20 gap-6">
+      <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+        <Kanban size={28} className="text-slate-400" />
+      </div>
+      <div className="text-center">
+        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-1">Nenhum pipeline criado</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md">
+          Crie pipelines para gerenciar seus negocios no Kanban.
+        </p>
+      </div>
+      <div className="flex flex-col sm:flex-row items-center gap-3">
+        <button
+          onClick={() => seedMutation.mutate()}
+          disabled={seedMutation.isPending}
+          className="px-5 py-2.5 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+        >
+          <Kanban size={16} />
+          {seedMutation.isPending ? 'Criando...' : 'Criar Pipelines Comerciais (BPMN)'}
+        </button>
+        <span className="text-xs text-slate-400">ou</span>
+        <button
+          onClick={onCreateManual}
+          className="px-5 py-2.5 text-sm font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
+        >
+          <Plus size={16} />
+          Criar Pipeline Manual
+        </button>
+      </div>
+      <p className="text-[11px] text-slate-400 dark:text-slate-500 max-w-lg text-center">
+        Cria 6 pipelines do BPMN V9 — um por canal: <strong>Educacao</strong>, <strong>Indicacao</strong>, <strong>Conteudo</strong>, <strong>Prospeccao Ativa</strong>, <strong>Google Ads</strong> e <strong>Meta Ads</strong>. Etapas mapeadas da cadencia D0→D14 de cada processo.
+      </p>
+    </div>
+  );
+}
+
 // ==================== PAGINA ====================
 
 export function CrmPipelinePage() {
@@ -506,6 +576,7 @@ export function CrmPipelinePage() {
         onSuccess: (data) => {
           if (data?.status === 'won') {
             setShowConfetti(true);
+            playWinSound();
           }
           // Se a stage alvo tem triggers_meeting, abrir modal de agendamento
           if (data?._triggersMeeting && deal) {
@@ -643,11 +714,8 @@ export function CrmPipelinePage() {
           ))}
         </div>
       ) : !pipelines || pipelines.length === 0 ? (
-        <CrmEmptyState
-          icon={Kanban}
-          title="Nenhum pipeline criado"
-          description="Crie seu primeiro pipeline para comecar a gerenciar negocios no Kanban."
-          action={{ label: 'Criar Pipeline', onClick: () => setCreatePipelineOpen(true) }}
+        <SeedOrCreateEmpty
+          onCreateManual={() => setCreatePipelineOpen(true)}
         />
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-180px)]">

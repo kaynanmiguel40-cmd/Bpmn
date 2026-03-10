@@ -214,20 +214,26 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Responsavel *</label>
             <select value={form.ownerId} onChange={(e) => setField('ownerId', e.target.value)} className={fieldClass('ownerId')}>
               <option value="">Selecione...</option>
-              {crmMembers.filter(m => m.crmRole === 'gestor').length > 0 && (
-                <optgroup label="Gestores">
-                  {crmMembers.filter(m => m.crmRole === 'gestor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </optgroup>
-              )}
-              {crmMembers.filter(m => m.crmRole === 'vendedor').length > 0 && (
-                <optgroup label="Vendedores">
-                  {crmMembers.filter(m => m.crmRole === 'vendedor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </optgroup>
-              )}
-              {crmMembers.filter(m => m.crmRole === 'pre_vendedor').length > 0 && (
-                <optgroup label="Pre-vendedores">
-                  {crmMembers.filter(m => m.crmRole === 'pre_vendedor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </optgroup>
+              {crmMembers.length > 0 ? (
+                <>
+                  {crmMembers.filter(m => m.crmRole === 'gestor').length > 0 && (
+                    <optgroup label="Gestores">
+                      {crmMembers.filter(m => m.crmRole === 'gestor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </optgroup>
+                  )}
+                  {crmMembers.filter(m => m.crmRole === 'vendedor').length > 0 && (
+                    <optgroup label="Vendedores">
+                      {crmMembers.filter(m => m.crmRole === 'vendedor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </optgroup>
+                  )}
+                  {crmMembers.filter(m => m.crmRole === 'pre_vendedor').length > 0 && (
+                    <optgroup label="Pre-vendedores">
+                      {crmMembers.filter(m => m.crmRole === 'pre_vendedor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </optgroup>
+                  )}
+                </>
+              ) : (
+                allMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
               )}
             </select>
             {errors.ownerId && <p className="text-xs text-rose-500 mt-0.5">{errors.ownerId}</p>}

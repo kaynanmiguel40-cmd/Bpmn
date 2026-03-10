@@ -15,6 +15,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { GlobalSearch } from '../search/GlobalSearch';
 import { useDeadlineChecker } from '../../hooks/useDeadlineChecker';
+import { searchAll } from '../../lib/searchService';
 
 // Mapa de titulos por rota
 const routeTitles = {
@@ -49,39 +50,7 @@ const MoonIcon = () => (
   </svg>
 );
 
-function searchLocalStorage(query) {
-  if (!query || query.length < 2) return [];
-  const q = query.toLowerCase();
-  const results = [];
-
-  try {
-    const orders = JSON.parse(localStorage.getItem('os_orders') || '[]');
-    orders.forEach(o => {
-      if (
-        (o.title && o.title.toLowerCase().includes(q)) ||
-        (o.client && o.client.toLowerCase().includes(q)) ||
-        (o.description && o.description.toLowerCase().includes(q)) ||
-        (o.number && String(o.number).includes(q))
-      ) {
-        results.push({ type: 'os', label: `O.S. #${o.number} - ${o.title}`, sub: o.client || 'Sem cliente', route: '/financial', id: o.id });
-      }
-    });
-  } catch {}
-
-  try {
-    const events = JSON.parse(localStorage.getItem('agenda_events') || '[]');
-    events.forEach(e => {
-      if (
-        (e.title && e.title.toLowerCase().includes(q)) ||
-        (e.description && e.description.toLowerCase().includes(q))
-      ) {
-        results.push({ type: 'event', label: e.title, sub: e.description || '', route: '/agenda', id: e.id });
-      }
-    });
-  } catch {}
-
-  return results.slice(0, 8);
-}
+// Header search now uses the centralized searchAll from searchService (Supabase)
 
 function Header({ onMenuToggle }) {
   const location = useLocation();
@@ -92,10 +61,11 @@ function Header({ onMenuToggle }) {
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef(null);
 
-  const handleSearch = useCallback((value) => {
+  const handleSearch = useCallback(async (value) => {
     setSearchQuery(value);
     if (value.length >= 2) {
-      setSearchResults(searchLocalStorage(value));
+      const data = await searchAll(value);
+      setSearchResults(data);
       setShowResults(true);
     } else {
       setSearchResults([]);

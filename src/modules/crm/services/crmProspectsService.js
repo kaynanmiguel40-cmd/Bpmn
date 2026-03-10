@@ -328,6 +328,127 @@ async function searchPartnersViaAPI(filters = {}) {
   return callCasaDadosAPI(body, { isPartner: true, partnerCategory: categoryKey });
 }
 
+// ==================== FALLBACK: BUSCA NO CRM LOCAL ====================
+
+async function searchLocalCrmData(filters = {}) {
+  try {
+    // Buscar contacts com companies associadas
+    let contactsQuery = supabase
+      .from('crm_contacts')
+      .select('id, name, email, phone, position, status, company_id, created_at, crm_companies(id, name, cnpj, segment, size, city, state, phone, email, website)')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    // Filtros
+    if (filters.state) {
+      contactsQuery = contactsQuery.eq('crm_companies.state', filters.state);
+    }
+    if (filters.search) {
+      contactsQuery = contactsQuery.or(`name.ilike.%${filters.search}%,email.ilike.%${filters.search}%,crm_companies.name.ilike.%${filters.search}%`);
+    }
+
+    const { data: contacts, error: contactsErr } = await contactsQuery.limit(filters.perPage || 50);
+
+    // Buscar companies sem contato associado
+    let companiesQuery = supabase
+      .from('crm_companies')
+      .select('id, name, cnpj, segment, size, city, state, phone, email, website, created_at')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (filters.segment) companiesQuery = companiesQuery.eq('segment', filters.segment);
+    if (filters.size) companiesQuery = companiesQuery.eq('size', filters.size);
+    if (filters.state) companiesQuery = companiesQuery.eq('state', filters.state);
+    if (filters.search) {
+      companiesQuery = companiesQuery.or(`name.ilike.%${filters.search}%,cnpj.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
+    }
+
+    const { data: companies, error: companiesErr } = await companiesQuery.limit(filters.perPage || 50);
+
+    if (contactsErr && companiesErr) return null;
+
+    const prospects = [];
+    const seenCompanyIds = new Set();
+
+    // Contacts com company
+    (contacts || []).forEach(c => {
+      const co = c.crm_companies;
+      // Aplicar filtros de segment/size client-side (join nao filtra no Supabase select)
+      if (filters.segment && co?.segment !== filters.segment) return;
+      if (filters.size && co?.size !== filters.size) return;
+
+      if (co?.id) seenCompanyIds.add(co.id);
+      prospects.push({
+        id: `crm_c_${c.id}`,
+        companyName: co?.name || '',
+        contactName: c.name || '',
+        phone: c.phone || co?.phone || '',
+        email: c.email || co?.email || '',
+        cnpj: co?.cnpj || '',
+        segment: co?.segment || '',
+        size: co?.size || '',
+        city: co?.city || '',
+        state: co?.state || '',
+        position: c.position || '',
+        source: 'CRM',
+        website: co?.website || '',
+        revenue: null,
+        employees: null,
+        notes: '',
+        status: 'new',
+        assignedTo: null,
+        assignedMember: null,
+        prospectType: 'lead',
+        partnerCategory: null,
+        listName: '',
+        createdBy: null,
+        createdAt: c.created_at,
+        updatedAt: c.created_at,
+        deletedAt: null,
+      });
+    });
+
+    // Companies sem contato ja mapeado
+    (companies || []).forEach(co => {
+      if (seenCompanyIds.has(co.id)) return;
+      prospects.push({
+        id: `crm_co_${co.id}`,
+        companyName: co.name || '',
+        contactName: '',
+        phone: co.phone || '',
+        email: co.email || '',
+        cnpj: co.cnpj || '',
+        segment: co.segment || '',
+        size: co.size || '',
+        city: co.city || '',
+        state: co.state || '',
+        position: '',
+        source: 'CRM',
+        website: co.website || '',
+        revenue: null,
+        employees: null,
+        notes: '',
+        status: 'new',
+        assignedTo: null,
+        assignedMember: null,
+        prospectType: 'lead',
+        partnerCategory: null,
+        listName: '',
+        createdBy: null,
+        createdAt: co.created_at,
+        updatedAt: co.created_at,
+        deletedAt: null,
+      });
+    });
+
+    if (prospects.length === 0) return null;
+    return { data: prospects, count: prospects.length, source: 'crm' };
+  } catch (err) {
+    console.error('[Prospects] Fallback CRM error:', err);
+    return null;
+  }
+}
+
 // ==================== FUNCOES EXPORTADAS ====================
 
 export async function getCrmProspects(filters = {}) {
@@ -335,11 +456,17 @@ export async function getCrmProspects(filters = {}) {
 
   if (filters.prospectType === 'partner') {
     const apiResult = await searchPartnersViaAPI(filters);
-    return apiResult || empty;
+    if (apiResult && apiResult.data.length > 0) return apiResult;
+    // Fallback: buscar no CRM local
+    const localResult = await searchLocalCrmData(filters);
+    return localResult || empty;
   }
 
   const apiResult = await searchLeadsViaAPI(filters);
-  return apiResult || empty;
+  if (apiResult && apiResult.data.length > 0) return apiResult;
+  // Fallback: buscar no CRM local
+  const localResult = await searchLocalCrmData(filters);
+  return localResult || empty;
 }
 
 // ==================== ANALYTICS (agregacao client-side) ====================
@@ -436,21 +563,25 @@ export async function getProspectsAnalytics(filters = {}) {
   const ANALYTICS_SAMPLE = 50;
   const emptyAnalytics = { total: 0, withEmail: 0, withPhone: 0, withCnpj: 0, uniqueSegments: 0, uniqueCities: 0, bySegment: [], bySize: [], byCity: [], bySource: [], topSegment: null, topCity: null, newCompanies: 0, revenueBySegment: [], avgRevenue: 0, topRevenueSegment: null, topCompanies: [] };
 
+  const buildResult = (result) => {
+    if (!result || result.data.length === 0) return null;
+    const analytics = aggregateAnalytics(result.data);
+    return { ...analytics, total: result.count, topCompanies: result.data.slice(0, 15) };
+  };
+
   if (filters.prospectType === 'partner') {
     const apiResult = await searchPartnersViaAPI({ ...filters, page: 1, perPage: ANALYTICS_SAMPLE });
-    if (apiResult && apiResult.data.length > 0) {
-      const analytics = aggregateAnalytics(apiResult.data);
-      return { ...analytics, total: apiResult.count, topCompanies: apiResult.data.slice(0, 15) };
-    }
-    return emptyAnalytics;
+    const built = buildResult(apiResult);
+    if (built) return built;
+    const localResult = await searchLocalCrmData({ ...filters, perPage: ANALYTICS_SAMPLE });
+    return buildResult(localResult) || emptyAnalytics;
   }
 
   const apiResult = await searchLeadsViaAPI({ ...filters, page: 1, perPage: ANALYTICS_SAMPLE });
-  if (apiResult && apiResult.data.length > 0) {
-    const analytics = aggregateAnalytics(apiResult.data);
-    return { ...analytics, total: apiResult.count, topCompanies: apiResult.data.slice(0, 15) };
-  }
-  return emptyAnalytics;
+  const built = buildResult(apiResult);
+  if (built) return built;
+  const localResult = await searchLocalCrmData({ ...filters, perPage: ANALYTICS_SAMPLE });
+  return buildResult(localResult) || emptyAnalytics;
 }
 
 export async function getProspectListNames() {

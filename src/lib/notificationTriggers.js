@@ -114,10 +114,8 @@ export async function notifyOSBlocked(order, reason, teamMembers, triggeredByUse
  * Campos monitorados: title, description, priority, estimatedEnd, checklist, status.
  */
 export async function notifyOSUpdated(order, changes, teamMembers, triggeredByUserId) {
-  if (!order?.assignee || !teamMembers?.length) return;
-
-  const assigneeMember = findMemberByName(order.assignee, teamMembers);
-  if (!assigneeMember?.authUserId || assigneeMember.authUserId === triggeredByUserId) return;
+  if (!teamMembers?.length) return;
+  if (!order?.assignee && !order?.assignedTo) return;
 
   // Campos que valem notificacao
   const TRACKED = ['title', 'description', 'priority', 'estimatedEnd', 'checklist', 'status', 'category', 'location'];
@@ -136,16 +134,27 @@ export async function notifyOSUpdated(order, changes, teamMembers, triggeredByUs
   };
   const summary = changedKeys.map(k => LABELS[k] || k).join(', ');
 
-  try {
-    await notify({
-      userId: assigneeMember.authUserId,
-      type: 'os_updated',
-      title: `O.S. #${order.number || ''} atualizada`,
-      message: `Alterado: ${summary}`,
-      entityType: 'os_order',
-      entityId: order.id,
-    });
-  } catch { /* silenciar */ }
+  // Notificar tanto o executor (assignee) quanto o planejado (assignedTo)
+  const notifiedIds = new Set();
+
+  for (const name of [order.assignee, order.assignedTo]) {
+    if (!name) continue;
+    const member = findMemberByName(name, teamMembers);
+    if (!member?.authUserId || member.authUserId === triggeredByUserId) continue;
+    if (notifiedIds.has(member.authUserId)) continue;
+    notifiedIds.add(member.authUserId);
+
+    try {
+      await notify({
+        userId: member.authUserId,
+        type: 'os_updated',
+        title: `O.S. #${order.number || ''} atualizada`,
+        message: `Alterado: ${summary}`,
+        entityType: 'os_order',
+        entityId: order.id,
+      });
+    } catch { /* silenciar */ }
+  }
 }
 
 // ==================== 5. OS CRIADA ====================
@@ -179,24 +188,32 @@ export async function notifyOSCreated(order, teamMembers, triggeredByUserId) {
 /**
  * Notifica o assignee da OS quando alguem comenta (se nao foi @mencionado).
  */
-export async function notifyCommentToAssignee({ orderId, orderNumber, orderTitle, orderAssignee, authorUserId, authorName, teamMembers, mentionedAuthIds }) {
-  if (!orderAssignee || !teamMembers?.length) return;
+export async function notifyCommentToAssignee({ orderId, orderNumber, orderTitle, orderAssignee, orderAssignedTo, authorUserId, authorName, teamMembers, mentionedAuthIds }) {
+  if (!teamMembers?.length) return;
+  if (!orderAssignee && !orderAssignedTo) return;
 
-  const assigneeMember = findMemberByName(orderAssignee, teamMembers);
-  if (!assigneeMember?.authUserId) return;
-  if (assigneeMember.authUserId === authorUserId) return;
-  if (mentionedAuthIds?.includes(assigneeMember.authUserId)) return;
+  const notifiedIds = new Set();
 
-  try {
-    await notify({
-      userId: assigneeMember.authUserId,
-      type: 'comment_added',
-      title: `Novo comentario na OS #${orderNumber || ''}`,
-      message: `${shortName(authorName)}: ${orderTitle || ''}`,
-      entityType: 'os_order',
-      entityId: orderId,
-    });
-  } catch { /* silenciar */ }
+  for (const name of [orderAssignee, orderAssignedTo]) {
+    if (!name) continue;
+    const member = findMemberByName(name, teamMembers);
+    if (!member?.authUserId) continue;
+    if (member.authUserId === authorUserId) continue;
+    if (mentionedAuthIds?.includes(member.authUserId)) continue;
+    if (notifiedIds.has(member.authUserId)) continue;
+    notifiedIds.add(member.authUserId);
+
+    try {
+      await notify({
+        userId: member.authUserId,
+        type: 'comment_added',
+        title: `Novo comentario na OS #${orderNumber || ''}`,
+        message: `${shortName(authorName)}: ${orderTitle || ''}`,
+        entityType: 'os_order',
+        entityId: orderId,
+      });
+    } catch { /* silenciar */ }
+  }
 }
 
 // ==================== 7. EVENTO CRIADO ====================

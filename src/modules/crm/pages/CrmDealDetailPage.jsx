@@ -196,6 +196,17 @@ export function CrmDealDetailPage() {
             </div>
           </div>
 
+          {/* Segmento */}
+          {deal.segment && (
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Building2 size={14} className="text-slate-400" />
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider">Segmento</span>
+              </div>
+              <CrmBadge variant="violet">{deal.segment}</CrmBadge>
+            </div>
+          )}
+
           {/* Previsao */}
           {deal.expectedCloseDate && (
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">

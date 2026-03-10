@@ -20,7 +20,7 @@ import {
 import { toast } from '../../contexts/ToastContext';
 import { useProfile } from '../../hooks/useProfile';
 import { shortName } from '../../lib/teamService';
-import { namesMatch, calcWorkingHoursBetween } from '../../lib/kpiUtils';
+import { namesMatch, calcWorkingHoursBetween, calcChecklistItemMinutes } from '../../lib/kpiUtils';
 import { MANAGER_ROLES } from '../../lib/roleUtils';
 import { notifyOSAssigned, notifyOSCompleted, notifyOSBlocked, notifyOSUpdated, notifyOSCreated } from '../../lib/notificationTriggers';
 import { usePermissions } from '../../contexts/PermissionContext';
@@ -81,7 +81,7 @@ const EMPTY_PROJECT_FORM = {
 };
 
 import { formatDateTime as formatDate, formatDateSmart as formatDateShort, formatCurrency, formatCpf, formatSignatureDateTime } from '../../lib/formatters';
-import { STANDARD_MONTHLY_HOURS } from '../../constants/sla';
+import { STANDARD_MONTHLY_HOURS, WORK_END_HOUR, WORK_START_HOUR } from '../../constants/sla';
 import { FolderIcon, InboxIcon } from '../../components/icons/FinancialIcons';
 
 const EMPTY_SECTOR_FORM = {
@@ -93,21 +93,23 @@ const EMPTY_SECTOR_FORM = {
 // calcWorkingHoursBetween importada de kpiUtils.js
 
 function calcOSHours(order) {
-  // Prioridade 1: actualStart/actualEnd (horas uteis, 08-18h seg-sex)
+  // Prioridade 1: actualStart/actualEnd (horas uteis, 09-18h seg-sex)
   if (order.actualStart && order.actualEnd) {
     const hours = calcWorkingHoursBetween(order.actualStart, order.actualEnd);
     if (hours > 0) return hours;
   }
-  // Prioridade 2: soma real do checklist usando timestamps (startedAt/completedAt)
+  // Prioridade 2: soma real do checklist (accumulatedMin com fallback para horas uteis)
   const cl = order.checklist || [];
-  let totalMin = 0;
+  let totalHours = 0;
   for (const item of cl) {
-    if (item.startedAt && item.completedAt) {
-      const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
-      if (diff > 0) totalMin += diff;
+    if (item.accumulatedMin > 0) {
+      totalHours += item.accumulatedMin / 60;
+    } else if (item.startedAt && item.completedAt) {
+      const h = calcWorkingHoursBetween(item.startedAt, item.completedAt);
+      if (h > 0) totalHours += h;
     }
   }
-  if (totalMin > 0) return totalMin / 60;
+  if (totalHours > 0) return totalHours;
   return 0;
 }
 
@@ -478,7 +480,7 @@ export default function FinancialPage() {
       if (firstUndone >= 0) {
         checklistUpdate = {
           checklist: order.checklist.map((i, idx) =>
-            idx === firstUndone ? { ...i, startedAt: now } : i
+            idx === firstUndone ? { ...i, startedAt: now, pausedAt: null, accumulatedMin: i.accumulatedMin || 0 } : i
           ),
         };
       }
@@ -518,7 +520,7 @@ export default function FinancialPage() {
         const firstUndone = order.checklist.findIndex(i => !i.done);
         if (firstUndone >= 0) {
           updates.checklist = order.checklist.map((i, idx) =>
-            idx === firstUndone ? { ...i, startedAt: now } : i
+            idx === firstUndone ? { ...i, startedAt: now, pausedAt: null, accumulatedMin: i.accumulatedMin || 0 } : i
           );
         }
       }
@@ -1770,10 +1772,18 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
               {isEmergency ? `EMG-${String(order.emergencyNumber || 0).padStart(3, '0')}` : `O.S. #${order.number}`}
             </span>
           </div>
-          <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${statusStyle}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${statusDot}`} />
-            {STATUS_LABELS[order.status]}
-          </span>
+          <div className="flex items-center gap-1">
+            {order.pausedAt && order.status === 'in_progress' && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+                Pausado
+              </span>
+            )}
+            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${statusStyle}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${statusDot}`} />
+              {STATUS_LABELS[order.status]}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 mb-1">
           {isEmergency && (
@@ -1878,6 +1888,37 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
   const checklistRef = useRef(order.checklist || []);
   checklistRef.current = order.checklist || [];
 
+  // Limpeza unica: remover pausedAt de itens do checklist (agora o pause e na O.S.)
+  useEffect(() => {
+    if (!onUpdateOrder) return;
+    const latestCl = checklistRef.current;
+    let needsFix = false;
+    const cleaned = latestCl.map(i => {
+      if (i.pausedAt) { needsFix = true; return { ...i, pausedAt: null }; }
+      return i;
+    });
+    if (needsFix) onUpdateOrder(order.id, { checklist: cleaned });
+  }, [order.id]);
+
+  // Auto-pause: pausa a O.S. inteira apos o fim do expediente (18h)
+  useEffect(() => {
+    const autoPause = () => {
+      const now = new Date();
+      const day = now.getDay();
+      const hour = now.getHours();
+      const isAfterHours = hour >= WORK_END_HOUR || day === 0 || day === 6;
+      if (!isAfterHours || !onUpdateOrder) return;
+      // Se a O.S. esta em andamento e nao esta pausada, pausar
+      if (order.status !== 'in_progress' || order.pausedAt) return;
+      const pauseTime = new Date(now);
+      pauseTime.setHours(WORK_END_HOUR, 0, 0, 0);
+      onUpdateOrder(order.id, { pausedAt: pauseTime.toISOString() });
+    };
+    autoPause();
+    const interval = setInterval(autoPause, 60_000);
+    return () => clearInterval(interval);
+  }, [order.id, order.status, order.pausedAt, onUpdateOrder]);
+
   // Estado de colapso dos blocos de tarefas
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
   const toggleGroupCollapse = (key) => setCollapsedGroups(prev => {
@@ -1915,7 +1956,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
       id: Date.now() + Math.random(),
       text: taskName.trim(),
       group: groupName.trim(),
-      done: false, startedAt: null, completedAt: null, durationMin: null,
+      done: false, startedAt: null, completedAt: null, durationMin: null, pausedAt: null, accumulatedMin: 0,
     };
     onUpdateOrder(order.id, { checklist: [...latestCl, newItem] });
   };
@@ -1954,6 +1995,17 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           )}
           {order.status === 'in_progress' && (
             <>
+              {order.pausedAt ? (
+                <button onClick={() => onUpdateOrder && onUpdateOrder(order.id, { pausedAt: null })} className="px-3 py-1.5 bg-emerald-500 text-white text-sm rounded-lg hover:bg-emerald-600 transition-colors font-medium flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                  Retomar
+                </button>
+              ) : (
+                <button onClick={() => onUpdateOrder && onUpdateOrder(order.id, { pausedAt: new Date().toISOString() })} className="px-3 py-1.5 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 transition-colors font-medium flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+                  Pausar
+                </button>
+              )}
               <button onClick={onMoveForward} className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition-colors font-medium">Concluir</button>
               {isOwner && (
                 <button onClick={onRelease} className="px-3 py-1.5 border border-orange-300 dark:border-orange-600/50 text-orange-600 dark:text-orange-400 text-sm rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors">Devolver</button>
@@ -2251,13 +2303,9 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           {(order.checklist || []).length > 0 && (() => {
             const cl = order.checklist || [];
             const doneCount = cl.filter(i => i.done).length;
-            // Calcular duracao real a partir dos timestamps
+            // Calcular duracao real em HORAS UTEIS (seg-sex, 9h-18h)
             const realDuration = (item) => {
-              if (item.startedAt && item.completedAt) {
-                const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
-                if (diff > 0) return Math.round(diff);
-              }
-              return 0;
+              return calcChecklistItemMinutes(item);
             };
             const totalTime = cl.reduce((sum, i) => sum + realDuration(i), 0);
             const fmtTime = (min) => {
@@ -2355,30 +2403,33 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
               if (arrIdx === -1) return;
               let updated;
               if (!item.done) {
-                // Marcar como feito: calcular duracao desde o startedAt da tarefa
-                const startRef = item.startedAt || now;
-                const diffMs = new Date(now) - new Date(startRef);
-                const durationMin = Math.max(0, Math.round(diffMs / 60000));
+                // Marcar como feito: finalizar accumulatedMin
+                let finalAccMin = item.accumulatedMin || 0;
+                if (item.startedAt && !item.pausedAt) {
+                  finalAccMin += calcWorkingHoursBetween(item.startedAt, now) * 60;
+                }
+                finalAccMin = Math.max(0, Math.round(finalAccMin));
                 updated = latestCl.map((i, idx) => {
-                  if (i.id === item.id) return { ...i, done: true, startedAt: startRef, completedAt: now, durationMin };
+                  if (i.id === item.id) return { ...i, done: true, startedAt: item.startedAt || now, completedAt: now, durationMin: finalAccMin, accumulatedMin: finalAccMin, pausedAt: null };
                   return i;
                 });
-                // Iniciar cronometro da proxima tarefa pendente (para medir tempo individual)
+                // Iniciar cronometro da proxima tarefa pendente
                 const nextUndone = updated.findIndex((i, idx) => idx > arrIdx && !i.done);
-                if (nextUndone >= 0 && !updated[nextUndone].startedAt) {
+                if (nextUndone >= 0 && !updated[nextUndone].startedAt && !updated[nextUndone].pausedAt) {
                   updated = updated.map((i, idx) =>
-                    idx === nextUndone ? { ...i, startedAt: now } : i
+                    idx === nextUndone ? { ...i, startedAt: now, pausedAt: null, accumulatedMin: i.accumulatedMin || 0 } : i
                   );
                 }
               } else {
-                // Desmarcar: limpar duracao e startedAt da proxima (que foi auto-setado)
+                // Desmarcar: limpar tudo
                 updated = latestCl.map(i => {
-                  if (i.id === item.id) return { ...i, done: false, completedAt: null, durationMin: null };
+                  if (i.id === item.id) return { ...i, done: false, completedAt: null, durationMin: null, accumulatedMin: 0, pausedAt: null, startedAt: null };
                   return i;
                 });
               }
               onUpdateOrder(order.id, { checklist: updated });
             };
+
 
             // Agrupar tarefas
             const groupOrder = [];
@@ -3055,11 +3106,7 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
             const cl = order.checklist || [];
             const doneCount = cl.filter(i => i.done).length;
             const realDuration = (item) => {
-              if (item.startedAt && item.completedAt) {
-                const diff = (new Date(item.completedAt) - new Date(item.startedAt)) / 60000;
-                if (diff > 0) return Math.round(diff);
-              }
-              return 0;
+              return calcChecklistItemMinutes(item);
             };
             const totalTime = cl.reduce((sum, i) => sum + realDuration(i), 0);
             const fmtTime = (min) => {
@@ -3332,7 +3379,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
       } else {
         const t = line.replace(/^[-*]\s*/, '');
         if (t) {
-          items.push({ id: Date.now() + i, text: t, group: currentGroup || null, done: false, startedAt: null, completedAt: null, durationMin: null });
+          items.push({ id: Date.now() + i, text: t, group: currentGroup || null, done: false, startedAt: null, completedAt: null, durationMin: null, pausedAt: null, accumulatedMin: 0 });
         }
       }
     });
@@ -3596,7 +3643,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                   id: Date.now() + Math.random(),
                   text: taskText.trim(),
                   group: groupName === '__sem_grupo__' ? null : groupName,
-                  done: false, startedAt: null, completedAt: null, durationMin: null,
+                  done: false, startedAt: null, completedAt: null, durationMin: null, pausedAt: null, accumulatedMin: 0,
                 };
                 update('checklist', [...cl, newItem]);
               };

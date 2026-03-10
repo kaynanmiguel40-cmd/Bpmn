@@ -15,6 +15,14 @@ export function dbToCrmProposal(row) {
       title: row.crm_deals.title,
       value: row.crm_deals.value,
       contactId: row.crm_deals.contact_id,
+      contact: row.crm_deals.crm_contacts ? {
+        id: row.crm_deals.crm_contacts.id,
+        name: row.crm_deals.crm_contacts.name,
+      } : null,
+      company: row.crm_deals.crm_companies ? {
+        id: row.crm_deals.crm_companies.id,
+        name: row.crm_deals.crm_companies.name,
+      } : null,
     } : null,
     proposalNumber: row.proposal_number,
     status: row.status || 'draft',
@@ -49,11 +57,11 @@ export function dbToCrmProposalItem(row) {
 // ==================== FUNCOES EXPORTADAS ====================
 
 export async function getCrmProposals(filters = {}) {
-  const { dealId, status, page, perPage = 25 } = filters;
+  const { dealId, status, search, page, perPage = 25 } = filters;
 
   let query = supabase
     .from('crm_proposals')
-    .select('*, crm_deals(id, title, value, contact_id), crm_proposal_items(*)', { count: 'exact' })
+    .select('*, crm_deals(id, title, value, contact_id, crm_contacts(id, name), crm_companies(id, name)), crm_proposal_items(*)', { count: 'exact' })
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -62,6 +70,9 @@ export async function getCrmProposals(filters = {}) {
   }
   if (status) {
     query = query.eq('status', status);
+  }
+  if (search) {
+    query = query.or(`proposal_number.ilike.%${search}%,crm_deals.title.ilike.%${search}%`);
   }
 
   if (page && perPage) {

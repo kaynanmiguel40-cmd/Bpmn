@@ -518,7 +518,15 @@ export function RoutinePage() {
                                 }`}
                               >
                                 <div className="flex items-center justify-between mb-1.5">
-                                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500">O.S. #{order.number}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-slate-400 dark:text-slate-500">O.S. #{order.number}</span>
+                                    {order.pausedAt && order.status === 'in_progress' && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+                                        Pausado
+                                      </span>
+                                    )}
+                                  </div>
                                   <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${priority.color}`}>
                                     <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
                                     {priority.label}
@@ -619,6 +627,12 @@ export function RoutinePage() {
                               <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-fyness-primary text-white text-[10px] font-bold shrink-0">{sequenceMap[order.id]}</span>
                             )}
                             <span className="text-xs font-bold text-slate-400 dark:text-slate-500">O.S. #{order.number}</span>
+                            {order.pausedAt && order.status === 'in_progress' && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+                                Pausado
+                              </span>
+                            )}
                           </div>
                           <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${priority.color}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />

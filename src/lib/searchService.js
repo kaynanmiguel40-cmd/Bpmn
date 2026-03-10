@@ -1,7 +1,7 @@
 /**
  * searchService - Busca global categorizada
  *
- * Busca em O.S., eventos, projetos e membros usando localStorage e Supabase.
+ * Busca em O.S., eventos, projetos e membros via Supabase.
  */
 
 import { supabase } from './supabase';
@@ -12,88 +12,89 @@ export async function searchAll(query) {
   const q = query.toLowerCase();
   const results = [];
 
-  // ==================== BUSCA LOCAL ====================
+  // ==================== BUSCA VIA SUPABASE ====================
 
   // O.S.
   try {
-    const orders = JSON.parse(localStorage.getItem('os_orders') || '[]');
-    orders.forEach(o => {
-      if (
-        (o.title && o.title.toLowerCase().includes(q)) ||
-        (o.client && o.client.toLowerCase().includes(q)) ||
-        (o.description && o.description.toLowerCase().includes(q)) ||
-        (o.number && String(o.number).includes(q))
-      ) {
-        results.push({
-          type: 'os',
-          id: o.id,
-          label: `O.S. #${o.number} - ${o.title}`,
-          sub: o.client || o.description || '',
-          route: '/financial',
-          icon: 'OS',
-          color: 'bg-fyness-primary',
-        });
-      }
+    const { data: orders } = await supabase
+      .from('os_orders')
+      .select('id, number, title, client, description')
+      .or(`title.ilike.%${q}%,client.ilike.%${q}%,description.ilike.%${q}%,number.ilike.%${q}%`)
+      .limit(10);
+
+    (orders || []).forEach(o => {
+      results.push({
+        type: 'os',
+        id: o.id,
+        label: `O.S. #${o.number} - ${o.title}`,
+        sub: o.client || o.description || '',
+        route: '/financial',
+        icon: 'OS',
+        color: 'bg-fyness-primary',
+      });
     });
   } catch {}
 
   // Eventos
   try {
-    const events = JSON.parse(localStorage.getItem('agenda_events') || '[]');
-    events.forEach(e => {
-      if (
-        (e.title && e.title.toLowerCase().includes(q)) ||
-        (e.description && e.description.toLowerCase().includes(q))
-      ) {
-        results.push({
-          type: 'event',
-          id: e.id,
-          label: e.title,
-          sub: e.description || '',
-          route: '/agenda',
-          icon: 'AG',
-          color: 'bg-amber-500',
-        });
-      }
+    const { data: events } = await supabase
+      .from('agenda_events')
+      .select('id, title, description')
+      .or(`title.ilike.%${q}%,description.ilike.%${q}%`)
+      .limit(10);
+
+    (events || []).forEach(e => {
+      results.push({
+        type: 'event',
+        id: e.id,
+        label: e.title,
+        sub: e.description || '',
+        route: '/agenda',
+        icon: 'AG',
+        color: 'bg-amber-500',
+      });
     });
   } catch {}
 
   // Projetos
   try {
-    const projects = JSON.parse(localStorage.getItem('os_projects') || '[]');
-    projects.forEach(p => {
-      if (p.name && p.name.toLowerCase().includes(q)) {
-        results.push({
-          type: 'project',
-          id: p.id,
-          label: p.name,
-          sub: p.description || 'Projeto',
-          route: '/financial',
-          icon: 'PJ',
-          color: 'bg-blue-500',
-        });
-      }
+    const { data: projects } = await supabase
+      .from('os_projects')
+      .select('id, name, description')
+      .ilike('name', `%${q}%`)
+      .limit(10);
+
+    (projects || []).forEach(p => {
+      results.push({
+        type: 'project',
+        id: p.id,
+        label: p.name,
+        sub: p.description || 'Projeto',
+        route: '/financial',
+        icon: 'PJ',
+        color: 'bg-blue-500',
+      });
     });
   } catch {}
 
   // Membros
   try {
-    const members = JSON.parse(localStorage.getItem('team_members') || '[]');
-    members.forEach(m => {
-      if (
-        (m.name && m.name.toLowerCase().includes(q)) ||
-        (m.role && m.role.toLowerCase().includes(q))
-      ) {
-        results.push({
-          type: 'member',
-          id: m.id,
-          label: m.name,
-          sub: m.role || 'Membro',
-          route: '/settings',
-          icon: m.name ? m.name[0].toUpperCase() : 'M',
-          color: 'bg-purple-500',
-        });
-      }
+    const { data: members } = await supabase
+      .from('team_members')
+      .select('id, name, role')
+      .or(`name.ilike.%${q}%,role.ilike.%${q}%`)
+      .limit(10);
+
+    (members || []).forEach(m => {
+      results.push({
+        type: 'member',
+        id: m.id,
+        label: m.name,
+        sub: m.role || 'Membro',
+        route: '/settings',
+        icon: m.name ? m.name[0].toUpperCase() : 'M',
+        color: 'bg-purple-500',
+      });
     });
   } catch {}
 

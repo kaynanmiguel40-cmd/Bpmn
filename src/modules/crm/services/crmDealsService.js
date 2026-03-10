@@ -27,6 +27,7 @@ export function dbToCrmDeal(row) {
     company: row.crm_companies ? {
       id: row.crm_companies.id,
       name: row.crm_companies.name,
+      segment: row.crm_companies.segment || null,
     } : null,
     pipelineId: row.pipeline_id || null,
     stageId: row.stage_id || null,
@@ -97,7 +98,7 @@ export async function getCrmDeals(filters = {}) {
 
   let query = supabase
     .from('crm_deals')
-    .select('*, crm_contacts(id, name, avatar_color), crm_companies(id, name), crm_pipeline_stages(id, name, color), team_members(id, name, color)', { count: 'exact' })
+    .select('*, crm_contacts(id, name, avatar_color), crm_companies(id, name, segment), crm_pipeline_stages(id, name, color), team_members(id, name, color)', { count: 'exact' })
     .is('deleted_at', null);
 
   if (search) {
@@ -140,7 +141,7 @@ export async function getCrmDeals(filters = {}) {
 export async function getDealsByPipeline(pipelineId) {
   const { data, error } = await supabase
     .from('crm_deals')
-    .select('*, crm_contacts(id, name, avatar_color), crm_companies(id, name), team_members(id, name, color)')
+    .select('*, crm_contacts(id, name, avatar_color), crm_companies(id, name, segment), team_members(id, name, color)')
     .eq('pipeline_id', pipelineId)
     .eq('status', 'open')
     .is('deleted_at', null)

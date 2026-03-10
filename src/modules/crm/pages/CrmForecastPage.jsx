@@ -520,9 +520,10 @@ export function CrmForecastPage() {
                     outerRadius={110}
                     paddingAngle={2}
                     strokeWidth={0}
+                    isAnimationActive={false}
                   >
                     {donutData.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
+                      <Cell key={`cell-${i}`} fill={entry.fill} />
                     ))}
                   </Pie>
                   <Tooltip content={<StageDonutTooltip />} />
