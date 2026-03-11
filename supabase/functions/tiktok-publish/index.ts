@@ -169,11 +169,14 @@ serve(async (req) => {
         throw new Error('Vídeo muito pequeno. Certifique-se de enviar um arquivo de vídeo válido.')
       }
 
-      // 2. Definir chunk size (TikTok recomenda 5-10MB por chunk, máximo 64MB)
-      const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
-      const totalChunkCount = Math.ceil(videoSize / CHUNK_SIZE)
+      // 2. Definir chunk size
+      // TikTok requer: mínimo 5MB, máximo 64MB por chunk
+      // Se o vídeo for menor que 10MB, usar o tamanho do vídeo como chunk único
+      const MAX_CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
+      const chunkSize = videoSize < MAX_CHUNK_SIZE ? videoSize : MAX_CHUNK_SIZE
+      const totalChunkCount = Math.ceil(videoSize / chunkSize)
 
-      console.log('[TikTok Publish] Chunks:', totalChunkCount, 'de', CHUNK_SIZE, 'bytes cada')
+      console.log('[TikTok Publish] Chunks:', totalChunkCount, 'chunk_size:', chunkSize, 'bytes, video_size:', videoSize, 'bytes')
 
       // 3. Inicializar publicação com FILE_UPLOAD
       const initResponse = await fetch(
@@ -195,7 +198,7 @@ serve(async (req) => {
             source_info: {
               source: 'FILE_UPLOAD',
               video_size: videoSize,
-              chunk_size: CHUNK_SIZE,
+              chunk_size: chunkSize,
               total_chunk_count: totalChunkCount,
             },
           }),
@@ -222,8 +225,8 @@ serve(async (req) => {
 
       // 4. Fazer upload em chunks
       for (let chunkIndex = 0; chunkIndex < totalChunkCount; chunkIndex++) {
-        const start = chunkIndex * CHUNK_SIZE
-        const end = Math.min(start + CHUNK_SIZE, videoSize)
+        const start = chunkIndex * chunkSize
+        const end = Math.min(start + chunkSize, videoSize)
         const chunk = videoBytes.slice(start, end)
 
         console.log(`[TikTok Publish] Enviando chunk ${chunkIndex + 1}/${totalChunkCount} (bytes ${start}-${end - 1})`)
