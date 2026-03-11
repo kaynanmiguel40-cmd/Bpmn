@@ -14,6 +14,10 @@ import {
   publishToTikTok,
   getTikTokStatus,
 } from './tiktokService';
+import {
+  publishToYouTube,
+  getYouTubeStatus,
+} from './youtubeService';
 import { supabase } from './supabaseClient';
 
 // ==================== TRANSFORMADOR ====================
@@ -185,6 +189,22 @@ export async function publishPost(post) {
         title,
         privacyLevel: 'private', // SELF_ONLY - funciona em sandbox mode
       });
+    } else if (platform === 'youtube') {
+      // YouTube Shorts só aceita vídeo vertical < 60s
+      const isVideo = post.mediaType === 'video' || post.mediaType === 'reel' ||
+                     /\.(mp4|mov|avi|webm)$/i.test(post.mediaUrl);
+
+      if (!isVideo) {
+        throw new Error('YouTube Shorts só aceita vídeos. Imagens e carrosséis não são suportados.');
+      }
+
+      result = await publishToYouTube({
+        videoUrl: post.mediaUrl,
+        title: post.title,
+        description: post.description || '',
+        isShort: true, // Adiciona #Shorts automaticamente
+        privacyStatus: 'public', // public, unlisted, private
+      });
     } else {
       throw new Error(`Plataforma ${platform} não suportada.`);
     }
@@ -220,6 +240,10 @@ export async function canPublish(platform = 'instagram') {
     const status = await getTikTokStatus();
     return status?.connected || false;
   }
+  if (platform === 'youtube') {
+    const status = await getYouTubeStatus();
+    return status?.connected || false;
+  }
   const status = await getMetaStatus();
   return status?.connected || false;
 }
@@ -228,15 +252,17 @@ export async function canPublish(platform = 'instagram') {
  * Verifica status de todas as plataformas
  */
 export async function getAllPlatformStatus() {
-  const [instagram, facebook, tiktok] = await Promise.all([
+  const [instagram, facebook, tiktok, youtube] = await Promise.all([
     getMetaStatus(),
     getFacebookStatus(),
     getTikTokStatus(),
+    getYouTubeStatus(),
   ]);
 
   return {
     instagram,
     facebook,
     tiktok,
+    youtube,
   };
 }
