@@ -183,7 +183,7 @@ export async function publishPost(post) {
       result = await publishToTikTok({
         videoUrl: post.mediaUrl,
         title,
-        privacyLevel: 'PUBLIC',
+        privacyLevel: 'private', // SELF_ONLY - funciona em sandbox mode
       });
     } else {
       throw new Error(`Plataforma ${platform} não suportada.`);

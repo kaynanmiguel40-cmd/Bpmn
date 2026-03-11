@@ -148,7 +148,9 @@ serve(async (req) => {
         'self_only': 'SELF_ONLY',
       }
 
-      const tiktokPrivacy = privacyMap[privacyLevel.toLowerCase()] || 'PUBLIC_TO_EVERYONE'
+      // Em sandbox mode, usar SELF_ONLY (privado) pois PUBLIC pode ser rejeitado
+      // Em produção, pode usar PUBLIC_TO_EVERYONE
+      const tiktokPrivacy = privacyMap[privacyLevel.toLowerCase()] || 'SELF_ONLY'
 
       // 1. Baixar o vídeo da URL (Supabase Storage ou qualquer URL pública)
       console.log('[TikTok Publish] Baixando vídeo de:', videoUrl)
