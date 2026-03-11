@@ -9,7 +9,7 @@ import MainLayout from './components/layout/MainLayout'
 
 // Pages com lazy loading (code splitting)
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'))
-const MetaCallbackPage = lazy(() => import('./pages/auth/MetaCallbackPage'))
+const TikTokCallbackPage = lazy(() => import('./pages/auth/TikTokCallbackPage'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Editor = lazy(() => import('./pages/Editor'))
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'))
@@ -82,7 +82,7 @@ function App() {
             {/* Rotas publicas */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
-            <Route path="/auth/meta/callback" element={<MetaCallbackPage />} />
+            <Route path="/auth/tiktok-callback" element={<TikTokCallbackPage />} />
 
             {/* Editor em tela cheia (protegido) */}
             <Route element={<ProtectedRoute />}>
