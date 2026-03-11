@@ -121,7 +121,7 @@ serve(async (req) => {
       )
 
     } else if (action === 'publish') {
-      // ==================== PUBLISH VIDEO ====================
+      // ==================== PUBLISH VIDEO (FILE_UPLOAD method) ====================
       const body = await req.json()
       const {
         videoUrl,
@@ -136,7 +136,7 @@ serve(async (req) => {
         throw new Error('videoUrl é obrigatório')
       }
 
-      console.log('[TikTok Publish] Iniciando publicação:', { videoUrl, title, privacyLevel })
+      console.log('[TikTok Publish] Iniciando publicação (FILE_UPLOAD):', { videoUrl, title, privacyLevel })
 
       // Mapear privacy level para formato TikTok
       const privacyMap: Record<string, string> = {
@@ -150,7 +150,32 @@ serve(async (req) => {
 
       const tiktokPrivacy = privacyMap[privacyLevel.toLowerCase()] || 'PUBLIC_TO_EVERYONE'
 
-      // 1. Inicializar publicação (Content Posting API)
+      // 1. Baixar o vídeo da URL (Supabase Storage ou qualquer URL pública)
+      console.log('[TikTok Publish] Baixando vídeo de:', videoUrl)
+
+      const videoResponse = await fetch(videoUrl)
+      if (!videoResponse.ok) {
+        throw new Error(`Erro ao baixar vídeo: ${videoResponse.status} ${videoResponse.statusText}`)
+      }
+
+      const videoBuffer = await videoResponse.arrayBuffer()
+      const videoBytes = new Uint8Array(videoBuffer)
+      const videoSize = videoBytes.length
+
+      console.log('[TikTok Publish] Vídeo baixado, tamanho:', videoSize, 'bytes')
+
+      // Validar tamanho mínimo (TikTok requer pelo menos alguns KB)
+      if (videoSize < 1024) {
+        throw new Error('Vídeo muito pequeno. Certifique-se de enviar um arquivo de vídeo válido.')
+      }
+
+      // 2. Definir chunk size (TikTok recomenda 5-10MB por chunk, máximo 64MB)
+      const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
+      const totalChunkCount = Math.ceil(videoSize / CHUNK_SIZE)
+
+      console.log('[TikTok Publish] Chunks:', totalChunkCount, 'de', CHUNK_SIZE, 'bytes cada')
+
+      // 3. Inicializar publicação com FILE_UPLOAD
       const initResponse = await fetch(
         `${TIKTOK_API_URL}/post/publish/video/init/`,
         {
@@ -168,8 +193,10 @@ serve(async (req) => {
               disable_stitch: disableStitch,
             },
             source_info: {
-              source: 'PULL_FROM_URL',
-              video_url: videoUrl,
+              source: 'FILE_UPLOAD',
+              video_size: videoSize,
+              chunk_size: CHUNK_SIZE,
+              total_chunk_count: totalChunkCount,
             },
           }),
         }
@@ -183,14 +210,46 @@ serve(async (req) => {
       }
 
       const publishId = initData.data?.publish_id
+      const uploadUrl = initData.data?.upload_url
 
-      if (!publishId) {
-        throw new Error('Falha ao obter publish_id')
+      if (!publishId || !uploadUrl) {
+        console.error('[TikTok Publish] Resposta init:', initData)
+        throw new Error('Falha ao obter publish_id ou upload_url')
       }
 
       console.log('[TikTok Publish] Publicação iniciada, publish_id:', publishId)
+      console.log('[TikTok Publish] Upload URL obtida')
 
-      // 2. Aguardar processamento (polling)
+      // 4. Fazer upload em chunks
+      for (let chunkIndex = 0; chunkIndex < totalChunkCount; chunkIndex++) {
+        const start = chunkIndex * CHUNK_SIZE
+        const end = Math.min(start + CHUNK_SIZE, videoSize)
+        const chunk = videoBytes.slice(start, end)
+
+        console.log(`[TikTok Publish] Enviando chunk ${chunkIndex + 1}/${totalChunkCount} (bytes ${start}-${end - 1})`)
+
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'video/mp4',
+            'Content-Length': chunk.length.toString(),
+            'Content-Range': `bytes ${start}-${end - 1}/${videoSize}`,
+          },
+          body: chunk,
+        })
+
+        if (!uploadResponse.ok) {
+          const errorText = await uploadResponse.text()
+          console.error('[TikTok Publish] Erro no upload do chunk:', uploadResponse.status, errorText)
+          throw new Error(`Erro no upload do chunk ${chunkIndex + 1}: ${uploadResponse.status}`)
+        }
+
+        console.log(`[TikTok Publish] Chunk ${chunkIndex + 1} enviado com sucesso`)
+      }
+
+      console.log('[TikTok Publish] Upload completo, aguardando processamento...')
+
+      // 5. Aguardar processamento (polling)
       let status = 'PROCESSING'
       let attempts = 0
       const maxAttempts = 30 // 5 minutos (10s * 30)
