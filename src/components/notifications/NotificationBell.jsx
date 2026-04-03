@@ -10,7 +10,7 @@ import {
 } from '../../hooks/queries';
 import { useRealtimeNotifications } from '../../hooks/useRealtimeSubscription';
 import { NotificationPanel } from './NotificationPanel';
-import { requestPermission, getPermissionStatus, playNotificationSound } from '../../lib/pushNotifications';
+import { requestPermission, getPermissionStatus } from '../../lib/pushNotifications';
 
 const BellIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -33,14 +33,6 @@ export function NotificationBell() {
   // Supabase Realtime — invalida queries automaticamente em INSERT/UPDATE/DELETE
   useRealtimeNotifications();
 
-  // Tocar som quando unreadCount aumenta
-  const prevUnreadRef = useRef(unreadCount);
-  useEffect(() => {
-    if (unreadCount > prevUnreadRef.current) {
-      playNotificationSound();
-    }
-    prevUnreadRef.current = unreadCount;
-  }, [unreadCount]);
 
   // Pedir permissao de push na primeira vez que abrir o painel
   const handleOpen = () => {
@@ -67,15 +59,8 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Escutar evento custom de nova notificacao
-  useEffect(() => {
-    const handleNewNotif = () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
-      queryClient.invalidateQueries({ queryKey: queryKeys.unreadCount });
-    };
-    window.addEventListener('notification-created', handleNewNotif);
-    return () => window.removeEventListener('notification-created', handleNewNotif);
-  }, [queryClient]);
+  // Realtime subscription ja invalida as queries automaticamente.
+  // Evento custom removido para evitar invalidacoes duplicadas.
 
   const handleMarkRead = (id) => {
     markAsReadMutation.mutate(id);
@@ -95,6 +80,7 @@ export function NotificationBell() {
         onClick={handleOpen}
         className="relative p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         title="Notificacoes"
+        aria-label={`Notificacoes${unreadCount > 0 ? `, ${unreadCount} nao lidas` : ''}`}
       >
         <BellIcon />
         {unreadCount > 0 && (

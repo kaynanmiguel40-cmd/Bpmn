@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { showLocalNotification, playChatSound } from '../lib/pushNotifications';
+import { showLocalNotification } from '../lib/pushNotifications';
 
 /**
  * Hook generico para Supabase Realtime.
@@ -140,6 +140,7 @@ export function useRealtimeChatSound(enabled = true) {
   const queryClient = useQueryClient();
   // Acumula mensagens recentes para consolidar push
   const pendingRef = useRef({ count: 0, lastSender: '', timer: null });
+  const lastChatSoundRef = useRef(0);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -158,8 +159,6 @@ export function useRealtimeChatSound(enabled = true) {
         (payload) => {
           // So notificar se a mensagem e de outro usuario
           if (payload.new?.user_id && payload.new.user_id !== userId) {
-            playChatSound();
-
             // Acumular e consolidar push (debounce de 2s)
             const p = pendingRef.current;
             p.count++;

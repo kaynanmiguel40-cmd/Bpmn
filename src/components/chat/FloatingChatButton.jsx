@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useChatSummaries } from '../../hooks/queries';
 import { useProfile } from '../../hooks/useProfile';
 import { getUnreadCount } from '../../lib/commentService';
-import { showLocalNotification, playChatSound } from '../../lib/pushNotifications';
+import { showLocalNotification } from '../../lib/pushNotifications';
 import ChatSidePanel from './ChatSidePanel';
 
 export default function FloatingChatButton() {
@@ -23,7 +23,6 @@ export default function FloatingChatButton() {
     if (onLoadNotified.current || !profile.id || unreadCount === 0) return;
     onLoadNotified.current = true;
 
-    playChatSound();
     showLocalNotification({
       title: `${unreadCount} mensagen${unreadCount === 1 ? '' : 's'} nao lida${unreadCount === 1 ? '' : 's'}`,
       body: 'Voce tem mensagens pendentes no chat',
@@ -37,7 +36,7 @@ export default function FloatingChatButton() {
       {/* Floating Button */}
       <button
         onClick={() => setIsOpen(prev => !prev)}
-        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 ${
+        className={`fixed bottom-20 right-4 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 ${
           isOpen
             ? 'bg-slate-600 hover:bg-slate-700 rotate-90'
             : 'bg-blue-500 hover:bg-blue-600 hover:scale-105'
