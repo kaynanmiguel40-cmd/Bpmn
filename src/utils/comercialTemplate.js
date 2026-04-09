@@ -1,19 +1,16 @@
 /**
- * Template BPMN - JORNADA COMERCIAL FYNESS V9 (COMPLETO ENXUTO)
- * Versão enxuta com todas as 7 raias corretas para expandir
+ * Template BPMN - INSIDE SALES FYNESS
+ * Baseado na metodologia Vivendo de SaaS (ZipLine/eGestor)
  *
- * RAIAS:
- * 1. 🎓 Educação - 6 Meses Grátis para Alunos
- * 2. 🤝 Indicação Parceiro - Ativo + Passivo
- * 3. 📱 Produção Conteúdo - Instagram SaaS + Perfis Pessoais
- * 4. 🎯 Prospecção Ativa - Via Redes Sociais
- * 5. 🔍 Google Ads - Alta Intenção
- * 6. 📘 Meta Ads - Descoberta
- * 7. 💰 Núcleo Financeiro - Gateway Asaas
+ * POOLS:
+ * 1. SDR ROBÔ — Qualificação Automática (WhatsApp + CRM)
+ * 2. SDR HUMANO — Conexão e Agendamento (Cadência Transacional)
+ * 3. VENDEDOR (CLOSER) — Venda Consultiva (SPIN + Demo)
+ * 4. NURTURING & EDUCAÇÃO — Moeda de Negociação
  */
 
-// Importar template V9 completo enxuto
-import { COMERCIAL_V9_COMPLETE_XML, COMERCIAL_DIAGRAM_XML as V9_EXPORT } from './comercialTemplateV9Complete';
+// Importar template Inside Sales (Vivendo de SaaS)
+import { COMERCIAL_INSIDE_SALES_XML } from './comercialInsideSalesTemplate';
 
-// Exportar como COMERCIAL_DIAGRAM_XML
-export const COMERCIAL_DIAGRAM_XML = COMERCIAL_V9_COMPLETE_XML;
+// Exportar como COMERCIAL_DIAGRAM_XML (substitui o V9 antigo)
+export const COMERCIAL_DIAGRAM_XML = COMERCIAL_INSIDE_SALES_XML;

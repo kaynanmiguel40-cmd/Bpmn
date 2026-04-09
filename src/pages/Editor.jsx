@@ -12,7 +12,7 @@ import {
   createProject as createProjectDB,
   updateProject as updateProjectDB,
 } from '../lib/supabase';
-import { generateTemplateProcessOrders, getTemplateProcessOrderCount } from '../lib/templateProcessOrders';
+
 
 export default function Editor() {
   const { id } = useParams();
@@ -548,33 +548,80 @@ export default function Editor() {
           <div className="flex items-center gap-2">
             <button
               onClick={async () => {
-                if (window.confirm('Isso vai substituir o diagrama atual pelo Template Comercial V9. Deseja continuar?')) {
+                if (window.confirm('Isso vai substituir o diagrama atual pelo Template Comercial Fyness. Deseja continuar?')) {
                   const ok = await bpmnEditorRef.current?.loadComercialTemplate();
-                  if (ok && projectIdRef.current) {
-                    const total = getTemplateProcessOrderCount();
-                    const { created, errors } = await generateTemplateProcessOrders(projectIdRef.current);
-                    if (created > 0) {
-                      setSuccessMessage(`${created}/${total} Ordens de Processo criadas!`);
-                      setShowSaveToast(true);
-                      setTimeout(() => { setShowSaveToast(false); setSuccessMessage(''); }, 3000);
-                    }
-                    if (errors > 0) {
-                      setErrorMessage(`${errors} ordens falharam ao criar.`);
-                      setShowErrorToast(true);
-                      setTimeout(() => setShowErrorToast(false), 4000);
-                    }
+                  if (ok) {
+                    setSuccessMessage('Template Comercial carregado!');
+                    setShowSaveToast(true);
+                    setTimeout(() => { setShowSaveToast(false); setSuccessMessage(''); }, 3000);
                   }
                 }
               }}
-              className="flex items-center gap-2 px-3 py-2 border border-amber-300 bg-amber-50 rounded-lg text-amber-700 hover:bg-amber-100 transition-colors text-sm"
-              title="Aplicar Template Comercial V9"
+              className="flex items-center gap-2 px-3 py-2 border border-green-300 bg-green-50 rounded-lg text-green-700 hover:bg-green-100 transition-colors text-sm"
+              title="Aplicar Template Comercial Fyness"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>Template</span>
+              <span>Comercial</span>
             </button>
-
+            <button
+              onClick={async () => {
+                if (window.confirm('Isso vai substituir o diagrama atual pelo Template Marketing Fyness. Deseja continuar?')) {
+                  const ok = await bpmnEditorRef.current?.loadMarketingTemplate();
+                  if (ok) {
+                    setSuccessMessage('Template Marketing carregado!');
+                    setShowSaveToast(true);
+                    setTimeout(() => { setShowSaveToast(false); setSuccessMessage(''); }, 3000);
+                  }
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-2 border border-purple-300 bg-purple-50 rounded-lg text-purple-700 hover:bg-purple-100 transition-colors text-sm"
+              title="Aplicar Template Marketing Fyness"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+              </svg>
+              <span>Marketing</span>
+            </button>
+            <button
+              onClick={async () => {
+                if (window.confirm('Isso vai substituir o diagrama atual pelo Template RH Fyness. Deseja continuar?')) {
+                  const ok = await bpmnEditorRef.current?.loadRhTemplate();
+                  if (ok) {
+                    setSuccessMessage('Template RH carregado!');
+                    setShowSaveToast(true);
+                    setTimeout(() => { setShowSaveToast(false); setSuccessMessage(''); }, 3000);
+                  }
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-2 border border-orange-300 bg-orange-50 rounded-lg text-orange-700 hover:bg-orange-100 transition-colors text-sm"
+              title="Aplicar Template RH Fyness (Contratacao de Vendedor)"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <span>RH</span>
+            </button>
+            <button
+              onClick={async () => {
+                if (window.confirm('Isso vai substituir o diagrama atual pelo Template Pós-Venda Fyness. Deseja continuar?')) {
+                  const ok = await bpmnEditorRef.current?.loadPosVendaTemplate();
+                  if (ok) {
+                    setSuccessMessage('Template Pós-Venda carregado!');
+                    setShowSaveToast(true);
+                    setTimeout(() => { setShowSaveToast(false); setSuccessMessage(''); }, 3000);
+                  }
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-2 border border-teal-300 bg-teal-50 rounded-lg text-teal-700 hover:bg-teal-100 transition-colors text-sm"
+              title="Aplicar Template Pós-Venda Fyness"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Pós-Venda</span>
+            </button>
             <button
               onClick={() => setShowPdfModal(true)}
               disabled={isExportingPdf}
