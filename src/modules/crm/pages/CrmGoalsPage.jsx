@@ -579,7 +579,7 @@ export function CrmGoalsPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                       <button onClick={() => handleEdit(goal)}
                         className="p-1 rounded text-slate-400 hover:text-blue-600 transition-colors">
                         <Pencil size={13} />

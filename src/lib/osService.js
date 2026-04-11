@@ -39,6 +39,8 @@ export function dbToOrder(row) {
     emergencyNumber: row.emergency_number || null,
     eapTaskId: row.eap_task_id || null,
     wbsPath: row.wbs_path || null,
+    scheduledPauses: Array.isArray(row.scheduled_pauses) ? row.scheduled_pauses : [],
+    dependsOn: Array.isArray(row.depends_on) ? row.depends_on : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -156,6 +158,8 @@ const orderService = createCRUDService({
     supervisor: 'supervisor',
     eapTaskId: 'eap_task_id',
     wbsPath: 'wbs_path',
+    scheduledPauses: 'scheduled_pauses',
+    dependsOn: 'depends_on',
   },
 });
 

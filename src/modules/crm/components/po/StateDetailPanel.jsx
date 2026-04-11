@@ -16,7 +16,7 @@ import {
 } from '../../data/brazilStates';
 import CityProspectCard from './CityProspectCard';
 
-export default function StateDetailPanel({ selectedState, onClose }) {
+export default function StateDetailPanel({ selectedState, onClose, onCityClick }) {
   const [citySearch, setCitySearch] = useState('');
 
   const stateData = useMemo(() => {
@@ -149,6 +149,7 @@ export default function StateDetailPanel({ selectedState, onClose }) {
               key={city.name}
               city={city}
               cityStatus={getCityStatus(selectedState, city.name)}
+              onClick={() => onCityClick?.(city.name)}
             />
           ))
         ) : (

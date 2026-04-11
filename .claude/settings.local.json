@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build)",
+      "Bash(where node)",
+      "Bash(powershell -NoProfile -Command \"Get-Command node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source\")",
+      "Bash(powershell -NoProfile -EncodedCommand \"JABlAG4AdgA6AFAAYQB0AGgAIAA9ACAAJwBDADoAXABQAHIAbwBnAHIAYQBtACAARgBpAGwAZQBzAFwAbgBvAGQAZQBqAHMAOwAnACAAKwAgACQAZQBuAHYAOgBQAGEAdABoADsAIABjAGQAIAAnAEMAOgBcAFUAcwBlAHIAcwBcAGsAYQB5AG4AYQBcAEIAcABtAG4AJwA7ACAAbgBwAG0AIAByAHUAbgAgAGIAdQBpAGwAZAAgADIAPgAmADEA\")",
+      "Bash(cmd.exe /c \"git --version 2>nul && echo OK || echo NAO_INSTALADO\")",
+      "Bash(npm.cmd --version)",
+      "Bash(code --version)",
+      "Bash(\"/c/Program Files/nodejs/node.exe\" --version)",
+      "Bash(PATH=\"/c/Program Files/nodejs:$PATH\")",
+      "Bash(node node_modules/vite/bin/vite.js build)"
+    ]
+  }
+}

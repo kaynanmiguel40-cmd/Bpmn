@@ -7,8 +7,8 @@ import { createCrmContact } from './crmContactsService';
 import { createCrmDeal } from './crmDealsService';
 import { SEGMENT_TO_CNAE, CNAE_TO_SEGMENT, SIZE_TO_PORTE, PORTE_TO_SIZE, REVENUE_TO_CAPITAL, PARTNER_CATEGORY_TO_CNAE, CNAE_TO_PARTNER_CATEGORY, PARTNER_CATEGORY_LABELS } from '../data/cnaeMapping';
 
-// API Casa dos Dados — chave obtida em https://portal.casadosdados.com.br
-const CASA_DOS_DADOS_API_KEY = '3845f12c696f5a8cc50bded9fa6a5df0197604d95f74cb16915c8bdd43398ce22765050eeca421b8e8d06d232ace474ee936efb1d5cf6852b8a6283b1a7fee16';
+// API Casa dos Dados — chave via env var (nunca hardcode!)
+const CASA_DOS_DADOS_API_KEY = import.meta.env.VITE_CASA_DOS_DADOS_API_KEY || '';
 const CASA_DOS_DADOS_URL = 'https://api.casadosdados.com.br/v5/cnpj/pesquisa?tipo_resultado=completo';
 
 // ==================== TRANSFORMADOR ====================

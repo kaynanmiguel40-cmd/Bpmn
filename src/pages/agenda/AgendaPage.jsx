@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAgendaEvents, useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent, useTeamMembers, useOSOrders, useContentPosts, useCreateContentPost, useUpdateContentPost, useDeleteContentPost, useGCalEvents, useCreateGCalEvent, useUpdateGCalEvent, useDeleteGCalEvent } from '../../hooks/queries';
 import { shortName } from '../../lib/teamService';
+import { namesMatch } from '../../lib/kpiUtils';
 import { useProfile } from '../../hooks/useProfile';
 import { expandRecurrences, toDateKey } from '../../lib/recurrenceUtils';
 import { downloadICS } from '../../lib/icsExporter';
@@ -68,8 +69,11 @@ function getMonthDays(year, month) {
 
 function getWeekDays(date) {
   const start = new Date(date);
-  start.setDate(start.getDate() - start.getDay());
-  return Array.from({ length: 7 }, (_, i) => {
+  // Comecar na segunda-feira (sem domingo)
+  const dayOfWeek = start.getDay();
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  start.setDate(start.getDate() + diffToMonday);
+  return Array.from({ length: 6 }, (_, i) => {
     const d = new Date(start);
     d.setDate(d.getDate() + i);
     return d;
@@ -85,6 +89,27 @@ function toLocalDateString(date) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+// ==================== SPLIT AROUND PAUSES ====================
+
+function splitAroundPauses(segStart, segEnd, pauses) {
+  let segments = [{ start: new Date(segStart), end: new Date(segEnd) }];
+  for (const pause of pauses) {
+    const pStart = new Date(pause.start);
+    const pEnd = new Date(pause.end);
+    const next = [];
+    for (const seg of segments) {
+      if (pStart >= seg.end || pEnd <= seg.start) {
+        next.push(seg);
+      } else {
+        if (pStart > seg.start) next.push({ start: seg.start, end: new Date(Math.min(pStart, seg.end)) });
+        if (pEnd < seg.end) next.push({ start: new Date(Math.max(pEnd, seg.start)), end: seg.end });
+      }
+    }
+    segments = next;
+  }
+  return segments.filter(s => s.end > s.start);
 }
 
 // ==================== OVERLAP LAYOUT (estilo Google Calendar) ====================
@@ -228,7 +253,7 @@ export default function AgendaPage() {
   // Lista completa: membros cadastrados + perfil logado
   const allMembers = useMemo(() => {
     if (!profile.name) return teamMembers;
-    const alreadyIn = teamMembers.some(m => m.name.toLowerCase().trim() === profile.name.toLowerCase().trim());
+    const alreadyIn = teamMembers.some(m => namesMatch(m.name, profile.name));
     if (alreadyIn) return teamMembers;
     return [{ id: 'profile_self', name: profile.name, role: profile.role || '', color: '#3b82f6' }, ...teamMembers];
   }, [teamMembers, profile]);
@@ -236,7 +261,7 @@ export default function AgendaPage() {
   // ID do membro do usuario logado (para DayView individual)
   const myMemberId = useMemo(() => {
     if (!profile.name) return null;
-    const match = teamMembers.find(m => m.name.toLowerCase().trim() === profile.name.toLowerCase().trim());
+    const match = teamMembers.find(m => namesMatch(m.name, profile.name));
     return match ? match.id : 'profile_self';
   }, [teamMembers, profile]);
 
@@ -279,16 +304,14 @@ export default function AgendaPage() {
   });
 
 
-  // Inicializar filtros quando teamMembers e profile estiverem prontos
+  // Inicializar filtros com apenas o usuario logado (padrao: ver so o meu)
   useEffect(() => {
-    if (loadingMembers || !teamMembers.length) return;
+    if (loadingMembers || !teamMembers.length || !myMemberId) return;
     setActiveFilters(prev => {
       if (prev.length > 0) return prev; // ja inicializado
-      const profName = profile?.name?.toLowerCase().trim();
-      const profAlreadyIn = profName && teamMembers.some(m => m.name.toLowerCase().trim() === profName);
-      return profAlreadyIn ? teamMembers.map(m => m.id) : ['profile_self', ...teamMembers.map(m => m.id)];
+      return [myMemberId];
     });
-  }, [teamMembers, profile, loadingMembers]);
+  }, [teamMembers, loadingMembers, myMemberId]);
 
   // ==================== HANDLERS ====================
 
@@ -595,16 +618,22 @@ export default function AgendaPage() {
         return hasAssignee && (os.actualStart || os.estimatedStart || os.slaDeadline || os.createdAt);
       })
       .forEach(os => {
-        const responsibleName = os.assignee || os.assignedTo || '';
-        const member = allMembers.find(m => m.name.toLowerCase().trim() === responsibleName.toLowerCase().trim());
-
         let start, end;
-        if (os.actualStart) {
+        // Prioridade: datas reais > datas estimadas > SLA > fallback
+        const hasActualStart = os.actualStart && String(os.actualStart).trim();
+        const hasActualEnd = os.actualEnd && String(os.actualEnd).trim();
+        const hasEstStart = os.estimatedStart && String(os.estimatedStart).trim();
+        const hasEstEnd = os.estimatedEnd && String(os.estimatedEnd).trim();
+
+        if (hasActualStart) {
           start = new Date(os.actualStart);
-          end = os.actualEnd ? new Date(os.actualEnd) : new Date(start.getTime() + 2 * 3600000);
-        } else if (os.estimatedStart) {
+          end = hasActualEnd ? new Date(os.actualEnd) : (hasEstEnd ? new Date(os.estimatedEnd) : new Date(start.getTime() + 2 * 3600000));
+        } else if (hasEstStart) {
           start = new Date(os.estimatedStart);
-          end = os.estimatedEnd ? new Date(os.estimatedEnd) : new Date(start.getTime() + 1 * 3600000);
+          end = hasEstEnd ? new Date(os.estimatedEnd) : new Date(start.getTime() + 1 * 3600000);
+        } else if (hasEstEnd) {
+          end = new Date(os.estimatedEnd);
+          start = new Date(end.getTime() - 1 * 3600000);
         } else if (os.slaDeadline) {
           end = new Date(os.slaDeadline);
           start = new Date(end.getTime() - 1 * 3600000);
@@ -614,68 +643,217 @@ export default function AgendaPage() {
           start = new Date(end.getTime() - 1 * 3600000);
         }
 
+        // Guard: datas invalidas
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+
         // Guard: garantir que end > start
         if (end <= start) {
           end = new Date(start.getTime() + 2 * 3600000);
         }
 
+        // Collect all unique assignee names from assignee + assignedTo (comma-separated)
+        const assigneeNames = [...new Set([
+          ...(os.assignee ? [os.assignee] : []),
+          ...(os.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean),
+        ])];
+        // If no assignees, still show the event (with null assignee)
+        const people = assigneeNames.length > 0 ? assigneeNames : [''];
+
         const osNum = os.type === 'emergency' ? `EMG-${os.emergencyNumber}` : `#${os.number}`;
-        const baseEvent = {
-          title: `O.S. ${osNum} - ${os.title}`,
-          description: os.client ? `Cliente: ${os.client}` : os.description || '',
-          assignee: member?.id || null,
-          type: 'os',
-          color: OS_STATUS_COLORS[os.status] || '#f97316',
-          _isOS: true,
-          _osId: os.id,
-          _osStatus: os.status,
-          _osPriority: os.priority,
-        };
 
-        // OS concluida: mostra horario real (sem split)
-        if (os.status === 'done') {
-          result.push({ ...baseEvent, id: `os_cal_${os.id}`, startDate: start.toISOString(), endDate: end.toISOString() });
-          return;
-        }
+        people.forEach((personName, personIdx) => {
+          const member = personName ? allMembers.find(m => m.name.toLowerCase().trim() === personName.toLowerCase().trim()) : null;
 
-        // Split: OS nao pode passar das 18h (continua no proximo dia as 08h)
-        let segStart = new Date(start);
-        let segIdx = 0;
-        while (segStart < end) {
-          const dayEnd = new Date(segStart);
-          dayEnd.setHours(BIZ_END_H, 0, 0, 0);
+          const baseEvent = {
+            title: `O.S. ${osNum} - ${os.title}`,
+            description: os.client ? `Cliente: ${os.client}` : os.description || '',
+            assignee: member?.id || null,
+            type: 'os',
+            color: OS_STATUS_COLORS[os.status] || '#f97316',
+            _isOS: true,
+            _osId: os.id,
+            _osStatus: os.status,
+            _osPriority: os.priority,
+            _isCritical: false,
+          };
 
-          // Se segStart ja passou do fim do expediente, pula pro proximo dia
-          if (segStart >= dayEnd) {
-            segStart.setDate(segStart.getDate() + 1);
-            segStart.setHours(BIZ_START_H, 0, 0, 0);
-            continue;
+          // OS concluida: mostra horario real (sem split)
+          if (os.status === 'done') {
+            result.push({ ...baseEvent, id: `os_cal_${os.id}_p${personIdx}`, startDate: start.toISOString(), endDate: end.toISOString() });
+            return;
           }
 
-          const segEnd = end <= dayEnd ? end : dayEnd;
-          result.push({
-            ...baseEvent,
-            id: `os_cal_${os.id}${segIdx > 0 ? `_seg${segIdx}` : ''}`,
-            startDate: segStart.toISOString(),
-            endDate: segEnd.toISOString(),
-          });
-          segIdx++;
+          // Filtrar pausas: so aplicar pausas desta pessoa ou pausas globais (sem assignee)
+          const allPauses = os.scheduledPauses || [];
+          const pauses = allPauses.filter(p => !p.assignee || p.assignee === personName);
 
-          if (end > dayEnd) {
-            segStart = new Date(segStart);
-            segStart.setDate(segStart.getDate() + 1);
-            segStart.setHours(BIZ_START_H, 0, 0, 0);
-          } else {
-            break;
+          // Split: OS nao pode passar das 18h (continua no proximo dia as 08h)
+          // Pula domingos (getDay() === 0)
+          let segStart = new Date(start);
+          let segIdx = 0;
+          while (segStart < end) {
+            // Pular domingo
+            if (segStart.getDay() === 0) {
+              segStart.setDate(segStart.getDate() + 1);
+              segStart.setHours(BIZ_START_H, 0, 0, 0);
+              continue;
+            }
+
+            const dayEnd = new Date(segStart);
+            dayEnd.setHours(BIZ_END_H, 0, 0, 0);
+
+            // Se segStart ja passou do fim do expediente, pula pro proximo dia
+            if (segStart >= dayEnd) {
+              segStart.setDate(segStart.getDate() + 1);
+              segStart.setHours(BIZ_START_H, 0, 0, 0);
+              continue;
+            }
+
+            const segEnd = end <= dayEnd ? end : dayEnd;
+
+            if (pauses.length > 0) {
+              const subSegs = splitAroundPauses(segStart, segEnd, pauses);
+              subSegs.forEach((sub, subIdx) => {
+                result.push({
+                  ...baseEvent,
+                  id: `os_cal_${os.id}_p${personIdx}${segIdx > 0 ? `_seg${segIdx}` : ''}${subIdx > 0 ? `_sub${subIdx}` : ''}`,
+                  startDate: sub.start.toISOString(),
+                  endDate: sub.end.toISOString(),
+                });
+              });
+            } else {
+              result.push({
+                ...baseEvent,
+                id: `os_cal_${os.id}_p${personIdx}${segIdx > 0 ? `_seg${segIdx}` : ''}`,
+                startDate: segStart.toISOString(),
+                endDate: segEnd.toISOString(),
+              });
+            }
+            segIdx++;
+
+            if (end > dayEnd) {
+              segStart = new Date(segStart);
+              segStart.setDate(segStart.getDate() + 1);
+              segStart.setHours(BIZ_START_H, 0, 0, 0);
+            } else {
+              break;
+            }
+
+            // Safety: max 30 segmentos
+            if (segIdx >= 30) break;
           }
 
-          // Safety: max 30 segmentos
-          if (segIdx >= 30) break;
-        }
+          // Pausas nao sao exibidas como blocos separados — apenas cortam os segmentos de trabalho.
+          // O espaco vazio na agenda ja indica visualmente que nao ha trabalho naquele periodo.
+        });
       });
 
     return result;
   }, [osOrders, allMembers]);
+
+  // Critical path calculation
+  const criticalPathIds = useMemo(() => {
+    if (!osOrders?.length) return new Set();
+
+    const nodes = new Map();
+    for (const os of osOrders) {
+      if (os.status === 'done') continue;
+      const s = os.estimatedStart || os.actualStart;
+      const e = os.estimatedEnd || os.actualEnd;
+      if (!s || !e) continue;
+      const start = new Date(s).getTime();
+      const end = new Date(e).getTime();
+      if (isNaN(start) || isNaN(end)) continue;
+      nodes.set(os.id, { id: os.id, start, end, duration: end - start, deps: os.dependsOn || [] });
+    }
+
+    if (nodes.size === 0) return new Set();
+
+    // Forward pass: compute earliest finish
+    const ef = new Map();
+    const computed = new Set();
+
+    function computeEF(id) {
+      if (computed.has(id)) return ef.get(id) || 0;
+      computed.add(id);
+      const node = nodes.get(id);
+      if (!node) return 0;
+
+      let earliestStart = node.start;
+      for (const dep of node.deps) {
+        const depEF = computeEF(dep);
+        if (depEF > earliestStart) earliestStart = depEF;
+      }
+      const finish = earliestStart + node.duration;
+      ef.set(id, finish);
+      return finish;
+    }
+
+    for (const id of nodes.keys()) computeEF(id);
+
+    // Find the maximum earliest finish (project end)
+    let maxEF = 0;
+    for (const [, v] of ef) if (v > maxEF) maxEF = v;
+
+    // Backward pass
+    const successors = new Map();
+    for (const [id, node] of nodes) {
+      for (const dep of node.deps) {
+        if (!successors.has(dep)) successors.set(dep, []);
+        successors.get(dep).push(id);
+      }
+    }
+
+    const lf = new Map();
+    const computedLF = new Set();
+
+    function computeLF(id) {
+      if (computedLF.has(id)) return lf.get(id) || maxEF;
+      computedLF.add(id);
+      const node = nodes.get(id);
+      if (!node) return maxEF;
+
+      const succs = successors.get(id) || [];
+      if (succs.length === 0) {
+        lf.set(id, maxEF);
+        return maxEF;
+      }
+
+      let latestFinish = Infinity;
+      for (const sId of succs) {
+        const sNode = nodes.get(sId);
+        if (!sNode) continue;
+        const sLF = computeLF(sId);
+        const ls = sLF - sNode.duration;
+        if (ls < latestFinish) latestFinish = ls;
+      }
+      lf.set(id, latestFinish);
+      return latestFinish;
+    }
+
+    for (const id of nodes.keys()) computeLF(id);
+
+    // Critical = nodes where EF == LF (zero float, 1h tolerance)
+    const critical = new Set();
+    for (const [id] of nodes) {
+      const e = ef.get(id) || 0;
+      const l = lf.get(id) || 0;
+      if (Math.abs(e - l) < 3600000) critical.add(id);
+    }
+
+    return critical;
+  }, [osOrders]);
+
+  // Update osCalendarEvents with critical path info
+  const osCalendarEventsWithCritical = useMemo(() => {
+    if (criticalPathIds.size === 0) return osCalendarEvents;
+    return osCalendarEvents.map(ev => {
+      if (ev._isOS && ev._osId && criticalPathIds.has(ev._osId)) {
+        return { ...ev, _isCritical: true };
+      }
+      return ev;
+    });
+  }, [osCalendarEvents, criticalPathIds]);
 
   // Eventos de um dia (com expansao de recorrencia + O.S. + filtro de pessoa)
   const getEventsForDay = useCallback((date) => {
@@ -686,14 +864,14 @@ export default function AgendaPage() {
     const expanded = expandRecurrences(events, dayStart, dayEnd);
 
     // Incluir O.S. que caem neste dia
-    const osForDay = osCalendarEvents.filter(e => {
+    const osForDay = osCalendarEventsWithCritical.filter(e => {
       const start = new Date(e.startDate);
       const end = new Date(e.endDate);
       return end >= dayStart && start < dayEnd;
     });
 
     return [...expanded, ...osForDay].filter(e => !e.assignee || activeFilters.includes(e.assignee));
-  }, [events, osCalendarEvents, activeFilters]);
+  }, [events, osCalendarEventsWithCritical, activeFilters]);
 
   // Todos os eventos do dia sem filtro de pessoa (usado pelo DayView individual)
   const getAllEventsForDay = useCallback((date) => {
@@ -701,13 +879,13 @@ export default function AgendaPage() {
     const dayEnd = new Date(dayStart);
     dayEnd.setDate(dayEnd.getDate() + 1);
     const expanded = expandRecurrences(events, dayStart, dayEnd);
-    const osForDay = osCalendarEvents.filter(e => {
+    const osForDay = osCalendarEventsWithCritical.filter(e => {
       const start = new Date(e.startDate);
       const end = new Date(e.endDate);
       return end >= dayStart && start < dayEnd;
     });
     return [...expanded, ...osForDay];
-  }, [events, osCalendarEvents]);
+  }, [events, osCalendarEventsWithCritical]);
 
   // Horario comercial calculado a partir dos membros filtrados
   const businessHours = useMemo(() => {
@@ -730,7 +908,7 @@ export default function AgendaPage() {
     if (view === 'week') {
       const week = getWeekDays(currentDate);
       const start = week[0];
-      const end = week[6];
+      const end = week[week.length - 1];
       if (start.getMonth() === end.getMonth()) {
         return `${start.getDate()} - ${end.getDate()} ${MONTHS_PT[start.getMonth()]} ${start.getFullYear()}`;
       }
@@ -940,7 +1118,7 @@ export default function AgendaPage() {
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         {view === 'month' && <MonthView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onDayClick={(d) => { setCurrentDate(d); setView('day'); }} onEventClick={openEditModal} allMembers={allMembers} />}
         {view === 'week' && <WeekView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} />}
-        {view === 'day' && <DayView currentDate={currentDate} today={today} getAllEventsForDay={getAllEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} dayViewMember={dayViewMember} setDayViewMember={setDayViewMember} />}
+        {view === 'day' && <DayView currentDate={currentDate} today={today} getAllEventsForDay={getAllEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} dayViewMember={dayViewMember} setDayViewMember={setDayViewMember} updateEventMutation={updateEventMutation} />}
         {view === 'posts' && <PostingsView contentPosts={contentPosts} createPost={createPostMutation} updatePost={updatePostMutation} deletePost={deletePostMutation} allMembers={allMembers} />}
       </div>
 
@@ -991,7 +1169,7 @@ export default function AgendaPage() {
           onClose={() => setViewingEvent(null)}
           onEdit={handlePopoverEdit}
           onDelete={handlePopoverDelete}
-          onNavigateOS={viewingEvent._isOS ? () => { setViewingEvent(null); routerNavigate('/financial'); } : null}
+          onNavigateOS={viewingEvent._isOS ? () => { setViewingEvent(null); routerNavigate('/financial', { state: { openOsId: viewingEvent._osId } }); } : null}
         />
       )}
 
@@ -1015,17 +1193,21 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
   return (
     <div className="h-full flex flex-col">
       {/* Header dias da semana */}
-      <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700">
-        {DAYS_PT.map(day => (
-          <div key={day} className="px-2 py-2 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-            {day}
+      <div className="overflow-x-auto">
+        <div className="min-w-[700px]">
+          <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700">
+            {DAYS_PT.map(day => (
+              <div key={day} className="px-2 py-2 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
+                {day}
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
 
       {/* Grid de dias */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-7">
+      <div className="flex-1 overflow-y-auto overflow-x-auto">
+        <div className="grid grid-cols-7 min-w-[700px]">
         {days.map(({ date, isCurrentMonth }, i) => {
           const dayEvents = getEventsForDay(date);
           const isToday = isSameDay(date, today);
@@ -1047,13 +1229,14 @@ function MonthView({ currentDate, today, getEventsForDay, onDayClick, onEventCli
               <div className="space-y-0.5">
                 {dayEvents.map(event => {
                   const member = allMembers.find(m => m.id === event.assignee);
-                  const bgColor = member?.color || event.color || '#3b82f6';
+                  // OS: cor por status (azul/laranja/verde/vermelho). Eventos: cor do membro ou do evento.
+                  const bgColor = event._isOS ? (event.color || '#f97316') : (member?.color || event.color || '#3b82f6');
                   return (
                     <div
                       key={event.id}
                       onClick={(e) => { e.stopPropagation(); onEventClick(event, e); }}
-                      className={`text-[10px] px-1.5 py-0.5 rounded truncate text-white font-medium cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5 ${event._isOS ? 'ring-1 ring-white/30' : ''}`}
-                      style={{ backgroundColor: bgColor }}
+                      className={`text-[10px] px-1.5 py-0.5 rounded truncate text-white font-medium cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-0.5 ${event._isOS ? 'ring-1 ring-white/30' : ''} ${event._isCritical ? 'ring-2 ring-red-500 shadow-red-200 dark:shadow-red-900/30 shadow-md' : ''} ${event._isOSPause ? 'opacity-60' : ''}`}
+                      style={{ backgroundColor: bgColor, ...(event._isOSPause ? { backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.15) 4px, rgba(255,255,255,0.15) 8px)' } : {}) }}
                       title={`${event.title} - ${member?.name || ''}`}
                     >
                       {event._isOS && <svg className="w-2.5 h-2.5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
@@ -1093,7 +1276,7 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
   return (
     <div className="h-full flex flex-col">
       {/* Header com dias */}
-      <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-slate-200 dark:border-slate-700">
+      <div className="grid border-b border-slate-200 dark:border-slate-700" style={{ gridTemplateColumns: `60px repeat(${weekDays.length}, 1fr)` }}>
         <div className="border-r border-slate-200 dark:border-slate-700" />
         {weekDays.map((day, i) => {
           const isToday = isSameDay(day, today);
@@ -1165,21 +1348,22 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
                     const colWidth = 100 / event._totalCols;
                     const left = event._col * colWidth;
 
-                    // Cor do membro (na semana, distinguir por pessoa)
+                    // OS: cor por status. Eventos normais: cor do membro.
                     const member = allMembers.find(m => m.id === event.assignee);
-                    const bgColor = member?.color || event.color || '#3b82f6';
+                    const bgColor = event._isOS ? (event.color || '#f97316') : (member?.color || event.color || '#3b82f6');
 
                     return (
                       <div
                         key={event.id}
                         onClick={(e) => { e.stopPropagation(); onEventClick(event, e); }}
-                        className={`absolute rounded px-1 py-0.5 text-white text-[10px] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm pointer-events-auto ${event._isOS ? 'ring-1 ring-white/30' : ''}`}
+                        className={`absolute rounded px-1 py-0.5 text-white text-[10px] overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm pointer-events-auto ${event._isOS ? 'ring-1 ring-white/30' : ''} ${event._isCritical ? 'ring-2 ring-red-500 shadow-red-200 dark:shadow-red-900/30 shadow-md' : ''} ${event._isOSPause ? 'opacity-60' : ''}`}
                         style={{
                           backgroundColor: bgColor,
                           top: `${top}px`,
                           height: `${height}px`,
                           left: `calc(${left}% + 1px)`,
                           width: `calc(${colWidth}% - 2px)`,
+                          ...(event._isOSPause ? { backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.15) 4px, rgba(255,255,255,0.15) 8px)' } : {}),
                         }}
                         title={`${event.title} - ${member?.name || ''} ${formatTime(start)}-${formatTime(end)}`}
                       >
@@ -1208,7 +1392,7 @@ function WeekView({ currentDate, today, getEventsForDay, onEventClick, onSlotCli
 
 // ==================== VIEW DIARIA ====================
 
-function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotClick, allMembers, businessHours, dayViewMember, setDayViewMember }) {
+function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotClick, allMembers, businessHours, dayViewMember, setDayViewMember, updateEventMutation }) {
   const allDayEvents = useMemo(() => getAllEventsForDay(currentDate), [getAllEventsForDay, currentDate]);
 
   // Filtra apenas eventos do membro selecionado (eventos sem assignee, como do Google Calendar, sempre aparecem)
@@ -1223,6 +1407,80 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
   const isToday = isSameDay(currentDate, today);
   const SLOT_HEIGHT = 64; // h-16 = 64px
   const FIRST_HOUR = HOURS[0]; // 7
+
+  // ---- Drag-to-move state ----
+  const [draggingEvent, setDraggingEvent] = useState(null);
+  const [dragStartY, setDragStartY] = useState(0);
+  const [dragOffsetMinutes, setDragOffsetMinutes] = useState(0);
+  const gridRef = useRef(null);
+
+  const canDragEvent = useCallback((event) => {
+    // Don't drag OS events or read-only Google Calendar events
+    if (event._isOS) return false;
+    if (event.syncSource === 'google' && !event.googleEventId) return false;
+    return true;
+  }, []);
+
+  const handleDragStart = useCallback((event, e) => {
+    if (!canDragEvent(event)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingEvent(event);
+    setDragStartY(e.clientY);
+    setDragOffsetMinutes(0);
+  }, [canDragEvent]);
+
+  const handleDragMove = useCallback((e) => {
+    if (!draggingEvent) return;
+    const deltaY = e.clientY - dragStartY;
+    const deltaMinutes = (deltaY / SLOT_HEIGHT) * 60;
+    // Snap to 15-minute increments
+    const snapped = Math.round(deltaMinutes / 15) * 15;
+    setDragOffsetMinutes(snapped);
+  }, [draggingEvent, dragStartY, SLOT_HEIGHT]);
+
+  const handleDragEnd = useCallback(async () => {
+    if (!draggingEvent || dragOffsetMinutes === 0) {
+      setDraggingEvent(null);
+      setDragOffsetMinutes(0);
+      return;
+    }
+    const start = new Date(draggingEvent.startDate);
+    const end = new Date(draggingEvent.endDate);
+    start.setMinutes(start.getMinutes() + dragOffsetMinutes);
+    end.setMinutes(end.getMinutes() + dragOffsetMinutes);
+
+    // Resolve the real event ID (for recurrence instances use parent)
+    const realId = draggingEvent._parentId || draggingEvent.id;
+
+    try {
+      await updateEventMutation.mutateAsync({
+        id: realId,
+        updates: {
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+        },
+      });
+      toast.success('Evento movido para ' + formatTime(start) + ' - ' + formatTime(end));
+    } catch (err) {
+      console.error('Erro ao mover evento:', err);
+      toast.error('Erro ao mover evento');
+    }
+    setDraggingEvent(null);
+    setDragOffsetMinutes(0);
+  }, [draggingEvent, dragOffsetMinutes, updateEventMutation]);
+
+  useEffect(() => {
+    if (!draggingEvent) return;
+    const onMove = (e) => handleDragMove(e);
+    const onUp = () => handleDragEnd();
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [draggingEvent, handleDragMove, handleDragEnd]);
 
   const selectedMember = allMembers.find(m => m.id === dayViewMember);
 
@@ -1318,12 +1576,17 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
           })}
 
           {/* Camada de eventos (absoluta sobre a grid inteira) */}
-          <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: '60px', right: '0px' }}>
+          <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: '60px', right: '0px' }} ref={gridRef}>
             {layoutEvents.map(event => {
-              const start = new Date(event.startDate);
-              const end = new Date(event.endDate);
-              const startHour = start.getHours() + start.getMinutes() / 60;
-              const endHour = end.getHours() + end.getMinutes() / 60;
+              const isDragging = draggingEvent && draggingEvent.id === event.id;
+              const effectiveStart = isDragging
+                ? new Date(new Date(event.startDate).getTime() + dragOffsetMinutes * 60000)
+                : new Date(event.startDate);
+              const effectiveEnd = isDragging
+                ? new Date(new Date(event.endDate).getTime() + dragOffsetMinutes * 60000)
+                : new Date(event.endDate);
+              const startHour = effectiveStart.getHours() + effectiveStart.getMinutes() / 60;
+              const endHour = effectiveEnd.getHours() + effectiveEnd.getMinutes() / 60;
               // Clamp ao range visivel
               const clampedStart = Math.max(startHour, FIRST_HOUR);
               const clampedEnd = Math.min(endHour, FIRST_HOUR + HOURS.length);
@@ -1337,18 +1600,23 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
               const left = event._col * colWidth;
 
               const eventType = EVENT_TYPES.find(t => t.id === event.type);
+              const draggable = canDragEvent(event);
 
               return (
                 <div
                   key={event.id}
-                  onClick={(e) => { e.stopPropagation(); onEventClick(event, e); }}
-                  className={`absolute rounded-lg px-3 py-1.5 text-white overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm pointer-events-auto ${event._isOS ? 'ring-2 ring-orange-300' : ''}`}
+                  onMouseDown={draggable ? (e) => handleDragStart(event, e) : undefined}
+                  onClick={(e) => { if (draggingEvent) return; e.stopPropagation(); onEventClick(event, e); }}
+                  className={`absolute rounded-lg px-3 py-1.5 text-white overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 shadow-sm pointer-events-auto ${event._isOS ? 'ring-2 ring-orange-300' : ''} ${event._isCritical ? 'ring-2 ring-red-500 shadow-red-200 dark:shadow-red-900/30 shadow-md' : ''} ${event._isOSPause ? 'opacity-60' : ''} ${draggable ? 'cursor-move' : ''} ${isDragging ? 'opacity-80 ring-2 ring-white shadow-lg z-50' : ''}`}
                   style={{
                     backgroundColor: event.color || '#3b82f6',
                     top: `${top}px`,
                     height: `${height}px`,
                     left: `calc(${left}% + 2px)`,
                     width: `calc(${colWidth}% - 6px)`,
+                    transition: isDragging ? 'none' : undefined,
+                    userSelect: isDragging ? 'none' : undefined,
+                    ...(event._isOSPause ? { backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.15) 4px, rgba(255,255,255,0.15) 8px)' } : {}),
                   }}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -1380,7 +1648,10 @@ function DayView({ currentDate, today, getAllEventsForDay, onEventClick, onSlotC
                     </div>
                   </div>
                   <div className="text-xs opacity-80 mt-0.5">
-                    {formatTime(start)} - {formatTime(end)}
+                    {isDragging
+                      ? <span className="font-bold">{formatTime(effectiveStart)} - {formatTime(effectiveEnd)}</span>
+                      : <>{formatTime(effectiveStart)} - {formatTime(effectiveEnd)}</>
+                    }
                   </div>
                   {event.description && (
                     <div className="text-xs opacity-70 mt-0.5 truncate">{event.description}</div>
@@ -1568,7 +1839,11 @@ function EventPopover({ event, allMembers, onClose, onEdit, onDelete, onNavigate
           {/* Descricao */}
           {event.description && (
             <div className="pt-2 mt-1 border-t border-slate-100 dark:border-slate-700">
-              <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed line-clamp-6">{event.description}</p>
+              {event._isOS ? (
+                <div className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-6 prose prose-xs dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: event.description }} />
+              ) : (
+                <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed line-clamp-6">{event.description}</p>
+              )}
             </div>
           )}
 
@@ -2207,17 +2482,21 @@ function PostingsView({ contentPosts, createPost, updatePost, deletePost, allMem
       {/* Grid mensal */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Dias da semana */}
-        <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700">
-          {DAYS_PT.map(day => (
-            <div key={day} className="px-2 py-1.5 text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">
-              {day}
+        <div className="overflow-x-auto">
+          <div className="min-w-[700px]">
+            <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700">
+              {DAYS_PT.map(day => (
+                <div key={day} className="px-2 py-1.5 text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">
+                  {day}
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
 
         {/* Celulas dos dias */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="grid grid-cols-7">
+        <div className="flex-1 overflow-y-auto overflow-x-auto">
+          <div className="grid grid-cols-7 min-w-[700px]">
             {days.map(({ date, isCurrentMonth }, i) => {
               const dayPosts = getPostsForDay(date);
               const isToday = isSameDay(date, today);

@@ -4,7 +4,7 @@
  * Layout otimizado: KPIs compactos no topo, mapa ocupa maximo de espaco.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { Map, Calendar, TrendingUp, Crosshair, Globe } from 'lucide-react';
 import BrazilMap, { COLOR_MODES } from './BrazilMap';
 import StateDetailPanel from './StateDetailPanel';
@@ -14,8 +14,14 @@ import { useDealsWithMeetings } from '../../hooks/useCrmQueries';
 export default function ProspectingDashboard() {
   const [selectedState, setSelectedState] = useState(null);
   const [colorMode, setColorMode] = useState(COLOR_MODES.REGION);
+  const mapRef = useRef(null);
 
   const stats = useMemo(() => getProspectionStats(), []);
+
+  // Ao clicar numa cidade no painel lateral, navega para ela no mapa
+  const handleCityClick = useCallback((cityName) => {
+    mapRef.current?.navigateToCity(cityName);
+  }, []);
 
   // Reunioes agendadas para pins no mapa
   const { data: dealsWithMeetings = [] } = useDealsWithMeetings();
@@ -78,6 +84,7 @@ export default function ProspectingDashboard() {
         {/* Map */}
         <div className={`flex-1 min-w-0 transition-all duration-300 h-full`}>
           <BrazilMap
+            ref={mapRef}
             selectedState={selectedState}
             onSelectState={setSelectedState}
             colorMode={colorMode}
@@ -95,6 +102,7 @@ export default function ProspectingDashboard() {
             <StateDetailPanel
               selectedState={selectedState}
               onClose={() => setSelectedState(null)}
+              onCityClick={handleCityClick}
             />
           )}
         </div>

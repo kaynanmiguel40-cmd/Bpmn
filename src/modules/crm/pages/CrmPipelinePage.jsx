@@ -111,7 +111,7 @@ function DealCard({ deal, onDragStart, onMarkLost }) {
       {deal.status === 'open' && (
         <button
           onClick={(e) => { e.stopPropagation(); onMarkLost(deal.id); }}
-          className="absolute right-1.5 top-9 opacity-0 group-hover:opacity-100 transition-opacity z-10 px-1.5 py-0.5 text-[10px] font-medium rounded bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 shadow-sm border border-rose-200 dark:border-rose-800"
+          className="absolute right-1.5 top-9 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10 px-1.5 py-0.5 text-[10px] font-medium rounded bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 shadow-sm border border-rose-200 dark:border-rose-800"
           title="Marcar como perdido"
         >
           Perdido
@@ -511,6 +511,7 @@ export function CrmPipelinePage() {
   const moveMutation = useMoveCrmDeal();
   const lostMutation = useMarkDealLost();
   const deletePipelineMutation = useDeleteCrmPipeline();
+  const seedMutation = useSeedCommercialPipelines();
   const { data: allMembers = [] } = useTeamMembers();
   const crmMembers = allMembers.filter(m => m.crmRole);
 
@@ -531,6 +532,7 @@ export function CrmPipelinePage() {
   const [dragOverStageId, setDragOverStageId] = useState(null);
   const [createPipelineOpen, setCreatePipelineOpen] = useState(false);
   const [deletePipelineConfirm, setDeletePipelineConfirm] = useState(false);
+  const [resetCrmConfirm, setResetCrmConfirm] = useState(false);
   const [lostModalDealId, setLostModalDealId] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [meetingModalData, setMeetingModalData] = useState(null); // { dealId, dealTitle, dealCity }
@@ -673,7 +675,9 @@ export function CrmPipelinePage() {
               onChange={(e) => {
                 if (e.target.value === '__new__') {
                   setCreatePipelineOpen(true);
-                  // Reset select back to current pipeline
+                  requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
+                } else if (e.target.value === '__reset__') {
+                  setResetCrmConfirm(true);
                   requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
                 } else {
                   setSelectedPipelineId(e.target.value || null);
@@ -684,6 +688,7 @@ export function CrmPipelinePage() {
               {(pipelines || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               <option disabled>──────────</option>
               <option value="__new__">+ Nova Pipeline</option>
+              <option value="__reset__">Resetar CRM (Pipelines BPMN)</option>
             </select>
 
             {/* Excluir pipeline selecionada */}
@@ -789,6 +794,24 @@ export function CrmPipelinePage() {
         confirmLabel="Excluir"
         variant="danger"
         loading={deletePipelineMutation.isPending}
+      />
+
+      <CrmConfirmDialog
+        open={resetCrmConfirm}
+        onCancel={() => setResetCrmConfirm(false)}
+        onConfirm={() => {
+          seedMutation.mutate(undefined, {
+            onSuccess: () => {
+              setResetCrmConfirm(false);
+              setSelectedPipelineId(null);
+            },
+          });
+        }}
+        title="Resetar CRM"
+        message="Isso vai APAGAR todos os dados de teste (deals, contatos, empresas, atividades, propostas, pipelines, metas) e criar as 6 pipelines comerciais do BPMN V9. Continuar?"
+        confirmLabel="Limpar e Criar"
+        variant="danger"
+        loading={seedMutation.isPending}
       />
     </div>
   );

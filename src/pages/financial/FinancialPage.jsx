@@ -69,6 +69,8 @@ const EMPTY_FORM = {
   projectId: null,
   parentOrderId: null,
   blockReason: null,
+  scheduledPauses: [],
+  dependsOn: [],
 };
 
 const EMPTY_PROJECT_FORM = {
@@ -157,14 +159,16 @@ export default function FinancialPage() {
   const loading = loadingOrders || loadingProjects || loadingSectors || loadingMembers || loadingEvents;
 
   const [viewingOrder, setViewingOrder] = useState(null);
+  const openedFromExternalRef = useRef(false);
 
-  // Auto-abrir OS quando navegado da EAP com state.openOsId
+  // Auto-abrir OS quando navegado da Rotina/Agenda/EAP com state.openOsId
   useEffect(() => {
     const osId = location.state?.openOsId;
     if (!osId || loading) return;
     const os = orders.find(o => o.id === osId);
     if (os) {
       setViewingOrder(os);
+      openedFromExternalRef.current = true;
       // Limpar o state para nao reabrir ao voltar
       window.history.replaceState({}, '');
     }
@@ -174,6 +178,7 @@ export default function FinancialPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [filterMember, setFilterMember] = useState('all');
   // Nome do usuario atual para assignee: prioriza nome do team_member (match por profile.name)
   const currentUser = useMemo(() => {
@@ -184,6 +189,7 @@ export default function FinancialPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [showDone, setShowDone] = useState(false);
   const [donePage, setDonePage] = useState(0);
+  const [doneSearch, setDoneSearch] = useState('');
   const CARDS_PER_COL = 20;
   const [expandedCols, setExpandedCols] = useState({});
   const [draggingId, setDraggingId] = useState(null);
@@ -193,7 +199,7 @@ export default function FinancialPage() {
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
   const [projectForm, setProjectForm] = useState({ ...EMPTY_PROJECT_FORM });
-  const [sectorFilter, setSectorFilter] = useState('all');
+  // sectorFilter removido - agora projetos sao agrupados por setor diretamente
   const [projectSearch, setProjectSearch] = useState('');
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(null);
   // Sector management
@@ -276,6 +282,16 @@ export default function FinancialPage() {
     return filteredOrders.filter(o => o.status === 'done');
   }, [filteredOrders]);
 
+  const filteredDoneOrders = useMemo(() => {
+    if (!doneSearch) return doneOrders;
+    const q = doneSearch.toLowerCase();
+    return doneOrders.filter(o =>
+      o.title?.toLowerCase().includes(q) ||
+      o.client?.toLowerCase().includes(q) ||
+      String(o.number).includes(doneSearch)
+    );
+  }, [doneOrders, doneSearch]);
+
   const isEapProject = selectedProject?.eapProjectId;
 
   const ordersByColumn = useMemo(() => {
@@ -318,15 +334,12 @@ export default function FinancialPage() {
   // Projetos filtrados
   const filteredProjects = useMemo(() => {
     let list = projects;
-    if (sectorFilter !== 'all') {
-      list = list.filter(p => p.sector === sectorFilter);
-    }
     if (projectSearch.trim()) {
       const q = projectSearch.trim().toLowerCase();
       list = list.filter(p => p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
     }
     return list;
-  }, [projects, sectorFilter, projectSearch]);
+  }, [projects, projectSearch]);
 
   // O.S. sem projeto
   const orphanOrders = useMemo(() => {
@@ -369,13 +382,54 @@ export default function FinancialPage() {
       projectId: order.projectId || null,
       parentOrderId: order.parentOrderId || null,
       blockReason: order.blockReason || null,
+      scheduledPauses: order.scheduledPauses || [],
+      dependsOn: order.dependsOn || [],
     });
+    setShowCreateForm(true);
+  };
+
+  const handleDuplicate = (order) => {
+    setEditingOrder(null); // create mode, not edit
+    setEmergencyFormMode(false);
+    setForm({
+      title: `${order.title} (copia)`,
+      description: order.description || '',
+      checklist: (order.checklist || []).map((item, i) => ({
+        ...item,
+        id: Date.now() + i,
+        done: false,
+        startedAt: null,
+        completedAt: null,
+        durationMin: null,
+        pausedAt: null,
+        accumulatedMin: 0,
+      })),
+      priority: order.priority || 'medium',
+      category: order.category || 'internal',
+      client: order.client || '',
+      clientId: order.clientId || '',
+      location: order.location || '',
+      notes: order.notes || '',
+      assignedTo: order.assignedTo || '',
+      supervisor: order.supervisor || '',
+      estimatedStart: order.estimatedStart || '',
+      estimatedEnd: order.estimatedEnd || '',
+      attachments: order.attachments || [],
+      projectId: order.projectId || null,
+      parentOrderId: null,
+      blockReason: null,
+      scheduledPauses: [],
+      dependsOn: [],
+    });
+    setViewingOrder(null);
     setShowCreateForm(true);
   };
 
   const handleSave = async (formOverride) => {
     const currentForm = formOverride || form;
-    if (!currentForm.title.trim()) return;
+    if (!currentForm.title.trim() || saving) return;
+    setSaving(true);
+    try {
 
     if (editingOrder) {
       // Edicao: salva direto
@@ -397,10 +451,12 @@ export default function FinancialPage() {
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(8, 0, 0, 0);
-        autoEstimatedStart = tomorrow.toISOString().slice(0, 16);
+        // Usar formato local (YYYY-MM-DDTHH:mm) para datetime-local, nao UTC
+        const toLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        autoEstimatedStart = toLocal(tomorrow);
         const endTime = new Date(tomorrow);
         endTime.setHours(9, 0, 0, 0);
-        autoEstimatedEnd = autoEstimatedEnd || endTime.toISOString().slice(0, 16);
+        autoEstimatedEnd = autoEstimatedEnd || toLocal(endTime);
       }
       const previewData = {
         id: `preview_${Date.now()}`,
@@ -421,6 +477,7 @@ export default function FinancialPage() {
       setPendingOrder(previewData);
       setShowCreateForm(false);
     }
+    } finally { setSaving(false); }
   };
 
   const handleConfirmOrder = async () => {
@@ -703,7 +760,6 @@ export default function FinancialPage() {
       setSelectedProject({ ...selectedProject, sector: '' });
     }
     setShowDeleteSectorModal(null);
-    if (sectorFilter === id) setSectorFilter('all');
   };
 
   // ==================== RENDER ====================
@@ -740,6 +796,13 @@ export default function FinancialPage() {
     const projectName = projects.find(p => p.id === viewingOrder.projectId)?.name || null;
     return (
       <>
+        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
+          <button onClick={() => { setViewingOrder(null); if (!selectedProject) setSelectedProject(null); }} className="hover:text-fyness-primary transition-colors">Projetos</button>
+          <span>/</span>
+          <button onClick={() => setViewingOrder(null)} className="hover:text-fyness-primary transition-colors">{selectedProject?.name || 'Kanban'}</button>
+          <span>/</span>
+          <span className="text-slate-800 dark:text-slate-100 font-medium">O.S. #{viewingOrder.number}</span>
+        </div>
         <OSDocument
           order={viewingOrder}
           currentUser={currentUser}
@@ -753,7 +816,15 @@ export default function FinancialPage() {
           profileId={profile.id || null}
           teamMembers={allMembers}
           allOrders={orders}
-          onBack={() => setViewingOrder(null)}
+          onBack={() => {
+            if (openedFromExternalRef.current) {
+              openedFromExternalRef.current = false;
+              navigate(-1);
+            } else {
+              setViewingOrder(null);
+            }
+          }}
+          onDuplicate={() => handleDuplicate(viewingOrder)}
           onEdit={canEditOS ? () => openEdit(viewingOrder) : null}
           onClaim={() => handleClaim(viewingOrder.id)}
           onRelease={() => handleRelease(viewingOrder.id)}
@@ -805,6 +876,7 @@ export default function FinancialPage() {
             isEmergency={emergencyFormMode}
             emergencyNumber={nextEmergencyNumber}
             allOrders={orders}
+            saving={saving}
           />
         )}
         {showDeleteModal && (
@@ -824,6 +896,12 @@ export default function FinancialPage() {
     const sector = sectors.find(s => s.id === selectedProject.sector);
     return (
       <div className="h-full flex flex-col">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
+          <button onClick={() => setSelectedProject(null)} className="hover:text-fyness-primary transition-colors">Projetos</button>
+          <span>/</span>
+          <span className="text-slate-800 dark:text-slate-100 font-medium">{selectedProject.name}</span>
+        </div>
         {/* Header do Kanban */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -955,7 +1033,7 @@ export default function FinancialPage() {
         )}
 
         {/* Kanban por Prioridade */}
-        <div className="grid grid-cols-3 gap-4 min-h-[400px]">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-h-[400px]">
           {PRIORITY_COLUMNS.map((column) => {
             const colOrders = ordersByColumn[column.id] || [];
             const isOver = dragOverCol === column.id && !dropTarget;
@@ -1031,24 +1109,35 @@ export default function FinancialPage() {
         {/* Secao Concluidas */}
         {doneOrders.length > 0 && (
           <div className="mt-4">
-            <button
-              onClick={() => setShowDone(!showDone)}
-              className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
-            >
-              <svg className={`w-4 h-4 transition-transform ${showDone ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <span className="flex items-center gap-2">
-                Concluidas
-                <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs px-2 py-0.5 rounded-full font-medium">{doneOrders.length}</span>
-              </span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowDone(!showDone)}
+                className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+              >
+                <svg className={`w-4 h-4 transition-transform ${showDone ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <span className="flex items-center gap-2">
+                  Concluidas
+                  <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs px-2 py-0.5 rounded-full font-medium">{doneOrders.length}</span>
+                </span>
+              </button>
+              {showDone && (
+                <input
+                  type="text"
+                  placeholder="Buscar concluidas..."
+                  value={doneSearch}
+                  onChange={e => { setDoneSearch(e.target.value); setDonePage(0); }}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 w-56"
+                />
+              )}
+            </div>
 
             {showDone && (() => {
               const perPage = 15;
-              const totalPages = Math.ceil(doneOrders.length / perPage);
+              const totalPages = Math.ceil(filteredDoneOrders.length / perPage);
               const page = Math.min(donePage, totalPages - 1);
-              const pagedOrders = doneOrders.slice(page * perPage, (page + 1) * perPage);
+              const pagedOrders = filteredDoneOrders.slice(page * perPage, (page + 1) * perPage);
               return (
                 <div className="mt-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                   <table className="w-full text-sm">
@@ -1080,18 +1169,25 @@ export default function FinancialPage() {
                             <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-100">{order.title}</td>
                             <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400">{order.client || '-'}</td>
                             <td className="px-4 py-2.5">
-                              <div className="flex flex-col gap-0.5">
-                                {order.assignedTo && (
-                                  <span className="text-[10px] text-blue-600 font-medium">Para: {shortName(order.assignedTo)}</span>
-                                )}
-                                {member ? (
+                              <div className="flex flex-wrap gap-1">
+                                {(order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).length > 0 ? (
+                                  (order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                                    const m2 = allMembers.find(tm => namesMatch(tm.name, name));
+                                    return (
+                                      <span key={i} className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                                        {m2 && <span className="w-4 h-4 rounded-full text-white text-[8px] font-bold flex items-center justify-center" style={{ backgroundColor: m2.color || '#94a3b8' }}>{(m2.name || '?')[0]}</span>}
+                                        {shortName(name)}
+                                      </span>
+                                    );
+                                  })
+                                ) : member ? (
                                   <div className="flex items-center gap-1.5">
                                     <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: member.color }}>{member.name.charAt(0)}</div>
                                     <span className="text-slate-600 dark:text-slate-300">{shortName(member.name)}</span>
                                   </div>
-                                ) : !order.assignedTo ? (
+                                ) : (
                                   <span className="text-slate-400 dark:text-slate-500 italic">-</span>
-                                ) : null}
+                                )}
                               </div>
                             </td>
                             <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{formatDate(order.actualStart)}</td>
@@ -1173,7 +1269,7 @@ export default function FinancialPage() {
                         <td colSpan="7" className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Total</td>
                         <td className="px-4 py-2.5 text-right">
                           <span className="text-sm font-bold text-blue-600">
-                            {formatCurrency(doneOrders.reduce((sum, o) => sum + calcOSCost(o, allMembers).totalCost, 0))}
+                            {formatCurrency(filteredDoneOrders.reduce((sum, o) => sum + calcOSCost(o, allMembers).totalCost, 0))}
                           </span>
                         </td>
                       </tr>
@@ -1183,7 +1279,7 @@ export default function FinancialPage() {
                   {totalPages > 1 && (
                     <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
                       <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {page * perPage + 1}-{Math.min((page + 1) * perPage, doneOrders.length)} de {doneOrders.length}
+                        {page * perPage + 1}-{Math.min((page + 1) * perPage, filteredDoneOrders.length)} de {filteredDoneOrders.length}
                       </span>
                       <div className="flex items-center gap-1">
                         <button
@@ -1328,6 +1424,7 @@ export default function FinancialPage() {
             isEmergency={emergencyFormMode}
             emergencyNumber={nextEmergencyNumber}
             allOrders={orders}
+            saving={saving}
           />
         )}
 
@@ -1406,7 +1503,7 @@ export default function FinancialPage() {
                     toast(isFinished ? 'Projeto reaberto' : 'Projeto finalizado', 'success');
                   });
                 }}
-                className={`p-1 rounded transition-colors opacity-0 group-hover:opacity-100 ${
+                className={`p-1 rounded transition-colors md:opacity-0 md:group-hover:opacity-100 ${
                   isFinished
                     ? 'text-amber-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
                     : 'text-green-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
@@ -1427,7 +1524,7 @@ export default function FinancialPage() {
             {canManageProjects && (
               <button
                 onClick={(e) => { e.stopPropagation(); openEditProject(project); }}
-                className="p-1 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors opacity-0 group-hover:opacity-100"
+                className="p-1 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors md:opacity-0 md:group-hover:opacity-100"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -1512,114 +1609,106 @@ export default function FinancialPage() {
           />
         </div>
 
-        {/* Filtro por setor (chips) */}
-        <div className="flex items-center gap-1.5">
+        {/* Gerenciar setores */}
+        {canManageProjects && (
           <button
-            onClick={() => setSectorFilter('all')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-              sectorFilter === 'all'
-                ? 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-800'
-                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-            }`}
+            onClick={openCreateSector}
+            className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-700 dark:hover:text-slate-200 transition-colors flex items-center gap-1"
+            title="Novo setor"
           >
-            Todos
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            </svg>
+            Setor
           </button>
-          {sectors.map(s => (
-            <div key={s.id} className="relative group/sector">
-              <button
-                onClick={() => setSectorFilter(sectorFilter === s.id ? 'all' : s.id)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                  sectorFilter === s.id
-                    ? 'text-white pr-7'
-                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                }`}
-                style={sectorFilter === s.id ? { backgroundColor: s.color } : undefined}
-              >
-                {s.label}
-              </button>
-              {canManageProjects && sectorFilter === s.id && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); openEditSector(s); }}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-white/70 hover:text-white transition-colors"
-                  title="Editar setor"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          ))}
-          {canManageProjects && (
-            <button
-              onClick={openCreateSector}
-              className="px-2 py-1.5 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-              title="Novo setor"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          )}
-        </div>
+        )}
 
       </div>
 
-      {/* Grid de Projetos separado por tipo */}
+      {/* Grid de Projetos separado por setor */}
       <div className="flex-1 overflow-y-auto">
         {(() => {
           const activeProjects = filteredProjects.filter(p => p.status !== 'finished');
           const finishedProjects = filteredProjects.filter(p => p.status === 'finished');
-          const projectFolders = activeProjects.filter(p => p.projectType === 'project' || p.eapProjectId);
-          const execFolders = activeProjects.filter(p => p.projectType !== 'project' && !p.eapProjectId);
+
+          // Agrupar projetos ativos por setor
+          const projectsBySector = {};
+          activeProjects.forEach(p => {
+            const sectorId = p.sector || '__sem_setor__';
+            if (!projectsBySector[sectorId]) projectsBySector[sectorId] = [];
+            projectsBySector[sectorId].push(p);
+          });
+
+          // Ordenar setores: setores cadastrados primeiro, sem setor por ultimo
+          const sectorOrder = sectors.map(s => s.id);
+          const sortedSectorIds = Object.keys(projectsBySector).sort((a, b) => {
+            if (a === '__sem_setor__') return 1;
+            if (b === '__sem_setor__') return -1;
+            const ia = sectorOrder.indexOf(a);
+            const ib = sectorOrder.indexOf(b);
+            return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+          });
 
           return (
             <>
-              {/* ---- PROJETOS (EAP) ---- */}
-              {projectFolders.length > 0 && (
+              {/* ---- PROJETOS POR SETOR ---- */}
+              {sortedSectorIds.map(sectorId => {
+                const sectorProjects = projectsBySector[sectorId];
+                const sector = sectors.find(s => s.id === sectorId);
+                const sectorLabel = sector ? sector.label : 'Sem Setor';
+                const sectorColor = sector ? sector.color : '#94a3b8';
+
+                return (
+                  <div key={sectorId} className="mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sectorColor }} />
+                      <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">{sectorLabel}</h2>
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{sectorProjects.length}</span>
+                      {canManageProjects && sector && (
+                        <button
+                          onClick={() => openEditSector(sector)}
+                          className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors opacity-0 group-hover:opacity-100"
+                          title="Editar setor"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {sectorProjects.map(project => renderProjectCard(project))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Card "Sem Projeto" (O.S. orfas) */}
+              {orphanOrders.length > 0 && !projectSearch.trim() && (
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-3">
-                    <svg className="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                    <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Projeto</h2>
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">{projectFolders.length}</span>
+                    <InboxIcon size={16} className="text-slate-400" />
+                    <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Sem Projeto</h2>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{orphanOrders.length}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {projectFolders.map(project => renderProjectCard(project))}
-                  </div>
-                </div>
-              )}
-
-              {/* ---- OPERACOES (sem EAP) ---- */}
-              {(execFolders.length > 0 || orphanOrders.length > 0) && (
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Operacoes</h2>
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">{execFolders.length}</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {execFolders.map(project => renderProjectCard(project))}
-
-                    {/* Card "Sem Projeto" */}
-                    {orphanOrders.length > 0 && sectorFilter === 'all' && !projectSearch.trim() && (
-                      <div
-                        onClick={() => setSelectedProject({ id: '__no_project__', name: 'Sem Projeto', color: '#94a3b8', sector: null })}
-                        className="group bg-white dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 p-5 cursor-pointer hover:shadow-lg hover:border-slate-400 dark:hover:border-slate-500 transition-all duration-200 hover:-translate-y-0.5"
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="text-slate-400 dark:text-slate-500">
-                            <InboxIcon size={40} />
-                          </div>
-                        </div>
-                        <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Sem Projeto</h3>
-                        <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">Ordens de servico nao atribuidas a nenhum projeto</p>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                          <span className="font-medium">{orphanOrders.length} O.S.</span>
-                          <span className="text-slate-300 dark:text-slate-600">|</span>
-                          <span className="text-blue-600">{orphanOrders.filter(o => o.status === 'in_progress').length} andamento</span>
+                    <div
+                      onClick={() => setSelectedProject({ id: '__no_project__', name: 'Sem Projeto', color: '#94a3b8', sector: null })}
+                      className="group bg-white dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 p-5 cursor-pointer hover:shadow-lg hover:border-slate-400 dark:hover:border-slate-500 transition-all duration-200 hover:-translate-y-0.5"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="text-slate-400 dark:text-slate-500">
+                          <InboxIcon size={40} />
                         </div>
                       </div>
-                    )}
+                      <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Sem Projeto</h3>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">Ordens de servico nao atribuidas a nenhum projeto</p>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        <span className="font-medium">{orphanOrders.length} O.S.</span>
+                        <span className="text-slate-300 dark:text-slate-600">|</span>
+                        <span className="text-blue-600">{orphanOrders.filter(o => o.status === 'in_progress').length} andamento</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1646,12 +1735,12 @@ export default function FinancialPage() {
                   </div>
                   <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-300 mb-1">Nenhum projeto encontrado</h3>
                   <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">
-                    {projectSearch.trim() || sectorFilter !== 'all'
+                    {projectSearch.trim()
                       ? 'Tente ajustar os filtros de busca'
                       : 'Crie seu primeiro projeto para organizar as O.S.'
                     }
                   </p>
-                  {canManageProjects && !projectSearch.trim() && sectorFilter === 'all' && (
+                  {canManageProjects && !projectSearch.trim() && (
                     <button onClick={openCreateProject} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
                       Criar Projeto
                     </button>
@@ -1843,21 +1932,25 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
           );
         })()}
         <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
-          <div className="flex flex-col gap-0.5">
-            {order.assignedTo && (
-              <div className="flex items-center gap-1">
-                <span className="text-[9px] text-slate-400 dark:text-slate-500">Para:</span>
-                <span className="text-[11px] font-medium text-blue-600">{shortName(order.assignedTo)}</span>
-              </div>
-            )}
-            {member ? (
+          <div className="flex flex-wrap gap-1">
+            {(order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).length > 0 ? (
+              (order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                const m = teamMembers.find(tm => namesMatch(tm.name, name));
+                return (
+                  <span key={i} className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                    {m && <span className="w-4 h-4 rounded-full text-white text-[8px] font-bold flex items-center justify-center" style={{ backgroundColor: m.color || '#94a3b8' }}>{(m.name || '?')[0]}</span>}
+                    {shortName(name)}
+                  </span>
+                );
+              })
+            ) : member ? (
               <div className="flex items-center gap-1.5">
                 <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: member.color }}>{member.name.charAt(0)}</div>
                 <span className="text-xs text-slate-600 dark:text-slate-300">{shortName(member.name)}</span>
               </div>
-            ) : !order.assignedTo ? (
+            ) : (
               <span className="text-xs text-slate-400 dark:text-slate-500 italic">Sem responsavel</span>
-            ) : null}
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             {order.attachments && order.attachments.length > 0 && (
@@ -1883,7 +1976,7 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
 
 // ==================== DOCUMENTO O.S. ====================
 
-function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, onRelease, onMoveForward, onMoveBack, onDelete, isManager, canEditOS, canDeleteOS, canViewCosts, profileName, profileCpf, profileId, teamMembers, allOrders = [], onViewOrder, onUpdateOrder }) {
+function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplicate, onClaim, onRelease, onMoveForward, onMoveBack, onDelete, isManager, canEditOS, canDeleteOS, canViewCosts, profileName, profileCpf, profileId, teamMembers, allOrders = [], onViewOrder, onUpdateOrder }) {
   // Ref para manter checklist mais recente e evitar closures obsoletas
   const checklistRef = useRef(order.checklist || []);
   checklistRef.current = order.checklist || [];
@@ -1913,6 +2006,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
       const pauseTime = new Date(now);
       pauseTime.setHours(WORK_END_HOUR, 0, 0, 0);
       onUpdateOrder(order.id, { pausedAt: pauseTime.toISOString() });
+      toast.info('O.S. pausada automaticamente as 18:00');
     };
     autoPause();
     const interval = setInterval(autoPause, 60_000);
@@ -1970,7 +2064,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
   const parentOrder = isEmergency && order.parentOrderId ? allOrders.find(o => o.id === order.parentOrderId) : null;
   const childEmergencies = allOrders.filter(o => o.type === 'emergency' && o.parentOrderId === order.id);
 
-  const [showComments, setShowComments] = useState(false);
+  // Chat sempre visivel (removido toggle showComments)
 
   const handlePrint = () => {
     window.print();
@@ -2019,12 +2113,14 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
           {onEdit && (
             <button onClick={onEdit} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">Editar</button>
           )}
-          <button onClick={() => setShowComments(prev => !prev)} className={`px-3 py-1.5 border text-sm rounded-lg transition-colors flex items-center gap-1.5 ${showComments ? 'border-fyness-primary bg-fyness-primary/10 text-fyness-primary' : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-            </svg>
-            Comentar
-          </button>
+          {onDuplicate && (
+            <button onClick={onDuplicate} className="px-3 py-1.5 border border-blue-300 dark:border-blue-600 text-blue-600 dark:text-blue-400 text-sm rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              Duplicar
+            </button>
+          )}
           <button onClick={handlePrint} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors flex items-center gap-1.5">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -2247,9 +2343,16 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Atribuido a</label>
               {order.assignedTo ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-blue-500">{order.assignedTo.charAt(0)}</div>
-                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{order.assignedTo}</span>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {(order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                    const m3 = teamMembers.find(tm => namesMatch(tm.name, name));
+                    return (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: m3?.color || '#3b82f6' }}>{(name || '?')[0]}</div>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{name}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-slate-400 dark:text-slate-500 mt-1 italic">Ninguem</p>
@@ -2276,9 +2379,16 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
             </svg>
             <label className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Supervisor</label>
             {order.supervisor ? (
-              <div className="flex items-center gap-2 ml-1">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold bg-amber-500">{order.supervisor.charAt(0)}</div>
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{order.supervisor}</span>
+              <div className="flex flex-wrap items-center gap-2 ml-1">
+                {(order.supervisor || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                  const sv = teamMembers.find(tm => namesMatch(tm.name, name));
+                  return (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: sv?.color || '#f59e0b' }}>{(name || '?')[0]}</div>
+                      <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{name}</span>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-slate-400 dark:text-slate-500 ml-1 italic">Nenhum</p>
@@ -2514,7 +2624,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                             )}
                             {/* Botoes de acao do grupo */}
                             {canEditOS && isGrouped && editingGroupKey !== groupKey && (
-                              <div className="flex items-center gap-1 opacity-0 group-hover/grphdr:opacity-100 transition-opacity">
+                              <div className="flex items-center gap-1 md:opacity-0 md:group-hover/grphdr:opacity-100 transition-opacity">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setEditingGroupKey(groupKey); }}
                                   className="p-1 text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors rounded"
@@ -2623,7 +2733,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
                                             </svg>
                                             <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-violet-600 dark:text-violet-400 hover:underline font-medium max-w-[200px] truncate">{link.label}</a>
-                                            <button onClick={() => handleRemoveGroupLink(groupKey, link.id)} className="p-0.5 text-violet-300 dark:text-violet-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover/link:opacity-100 transition-all">
+                                            <button onClick={() => handleRemoveGroupLink(groupKey, link.id)} className="p-0.5 text-violet-300 dark:text-violet-600 hover:text-red-500 dark:hover:text-red-400 md:opacity-0 md:group-hover/link:opacity-100 transition-all">
                                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                             </button>
                                           </div>
@@ -2638,7 +2748,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                                             {grpOutput.files.filter(f => f.type === 'image').map(f => (
                                               <div key={f.id} className="relative group/file">
                                                 <img src={f.data} alt={f.label} className="w-full h-20 object-cover rounded-lg border border-violet-200 dark:border-violet-800/50" />
-                                                <button onClick={() => handleRemoveGroupFile(groupKey, f.id)} className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover/file:opacity-100 transition-all shadow">
+                                                <button onClick={() => handleRemoveGroupFile(groupKey, f.id)} className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full md:opacity-0 md:group-hover/file:opacity-100 transition-all shadow">
                                                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                                 </button>
                                                 <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{f.label}</p>
@@ -2652,7 +2762,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
                                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                                             </svg>
                                             <a href={f.data} download={f.label} className="text-[11px] text-violet-600 dark:text-violet-400 hover:underline font-medium flex-1 truncate">{f.label}</a>
-                                            <button onClick={() => handleRemoveGroupFile(groupKey, f.id)} className="p-0.5 text-violet-300 dark:text-violet-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover/file:opacity-100 transition-all">
+                                            <button onClick={() => handleRemoveGroupFile(groupKey, f.id)} className="p-0.5 text-violet-300 dark:text-violet-600 hover:text-red-500 dark:hover:text-red-400 md:opacity-0 md:group-hover/file:opacity-100 transition-all">
                                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                             </button>
                                           </div>
@@ -2910,21 +3020,24 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onClaim, 
         </div>
       </div>
 
-      {/* Painel de Comentarios inline */}
-      {showComments && (
-        <div className="max-w-3xl mx-auto mt-4 print:hidden">
-          <OSChatPanel
-            orderId={order.id}
-            orderAssignee={order.assignee}
-            orderNumber={order.number}
-            userName={profileName}
-            userId={profileId}
-            userColor={member?.color}
-            teamMembers={teamMembers}
-            readOnly={order.status === 'done'}
-          />
+      {/* Chat fixo — sempre visivel, independente do status da O.S. */}
+      <div className="max-w-3xl mx-auto mt-6 print:hidden">
+        <div className="flex items-center gap-2 mb-3">
+          <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+          </svg>
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Comentarios</h3>
         </div>
-      )}
+        <OSChatPanel
+          orderId={order.id}
+          orderAssignee={order.assignee}
+          orderNumber={order.number}
+          userName={profileName}
+          userId={profileId}
+          userColor={member?.color}
+          teamMembers={teamMembers}
+        />
+      </div>
     </div>
   );
 }
@@ -3073,9 +3186,16 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Atribuido a</label>
               {order.assignedTo ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-blue-500">{order.assignedTo.charAt(0)}</div>
-                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{order.assignedTo}</span>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {(order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                    const m3 = teamMembers.find(tm => namesMatch(tm.name, name));
+                    return (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: m3?.color || '#3b82f6' }}>{(name || '?')[0]}</div>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{name}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-slate-400 dark:text-slate-500 mt-1 italic">Ninguem</p>
@@ -3352,9 +3472,58 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
   );
 }
 
+// ==================== PAUSE ADDER ====================
+
+function PauseAdder({ onAdd, assignees }) {
+  const [open, setOpen] = useState(false);
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [reason, setReason] = useState('');
+  const [person, setPerson] = useState('');
+  const people = (assignees || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium flex items-center gap-1">
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+        Adicionar pausa
+      </button>
+    );
+  }
+
+  return (
+    <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-lg space-y-2">
+      {people.length > 1 && (
+        <div>
+          <label className="text-[10px] text-slate-500 dark:text-slate-400">Para quem?</label>
+          <select value={person} onChange={(e) => setPerson(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-fyness-primary">
+            <option value="">Todos</option>
+            {people.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] text-slate-500 dark:text-slate-400">Inicio da pausa</label>
+          <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-fyness-primary" />
+        </div>
+        <div>
+          <label className="text-[10px] text-slate-500 dark:text-slate-400">Fim da pausa</label>
+          <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} min={start || undefined} className="w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-fyness-primary" />
+        </div>
+      </div>
+      <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo (opcional)" className="w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-fyness-primary" />
+      <div className="flex gap-2">
+        <button type="button" onClick={() => { if (start && end) { onAdd({ start, end, reason, assignee: person || null }); setStart(''); setEnd(''); setReason(''); setPerson(''); setOpen(false); } }} disabled={!start || !end} className="px-3 py-1 bg-fyness-primary text-white text-xs rounded-lg hover:bg-fyness-secondary disabled:opacity-50 disabled:cursor-not-allowed">Adicionar</button>
+        <button type="button" onClick={() => setOpen(false)} className="px-3 py-1 text-slate-500 text-xs hover:text-slate-700">Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 // ==================== MODAL FORMULARIO O.S. ====================
 
-function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose, onDelete, teamMembers, isEmergency = false, emergencyNumber = 1, allOrders = [], clients = [] }) {
+function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose, onDelete, teamMembers, isEmergency = false, emergencyNumber = 1, allOrders = [], clients = [], saving = false }) {
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
   const inProgressOrders = allOrders.filter(o => o.type !== 'emergency' && (o.status === 'in_progress' || o.status === 'available'));
   const [linkUrl, setLinkUrl] = useState('');
@@ -3365,6 +3534,48 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
   const [pendingNewGroup, setPendingNewGroup] = useState(null);
   const checklistTextareaRef = useRef(null);
+  const initialFormRef = useRef(JSON.stringify(form));
+  // Resetar referencia inicial quando o modal abre com dados diferentes (editar outro OS)
+  useEffect(() => { initialFormRef.current = JSON.stringify(form); }, [editing, number]);
+
+  // Fechar com Escape (global) e proteger contra fechar com dados alterados
+  const isDirty = JSON.stringify(form) !== initialFormRef.current;
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const safeClose = useCallback(() => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
+
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') {
+        if (showDiscardConfirm) { setShowDiscardConfirm(false); return; }
+        safeClose();
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [safeClose, showDiscardConfirm]);
+
+  // Focus trap: keep Tab within modal
+  useEffect(() => {
+    const modal = document.querySelector('[role="dialog"]');
+    if (!modal) return;
+    const focusable = modal.querySelectorAll('input, button, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const handleTab = (e) => {
+      if (e.key !== 'Tab') return;
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', handleTab);
+    return () => window.removeEventListener('keydown', handleTab);
+  }, []);
 
   // Helper: parseia linhas de texto em itens de checklist
   const parseChecklistLines = (text) => {
@@ -3433,8 +3644,8 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label="Formulario de Ordem de Servico" onClick={safeClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className={`p-6 border-b ${isEmergency ? 'border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-950/20' : 'border-slate-200 dark:border-slate-700'} flex items-center justify-between shrink-0`}>
           <h3 className={`text-lg font-semibold ${isEmergency ? 'text-red-700 dark:text-red-300' : 'text-slate-800 dark:text-slate-100'}`}>
             {isEmergency
@@ -3442,7 +3653,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
               : editing ? `Editar O.S. #${number}` : `Nova O.S. #${number}`
             }
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+          <button onClick={safeClose} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
             <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -3452,7 +3663,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
         <div className="p-6 space-y-4 overflow-y-auto">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Titulo do Servico *</label>
-            <input type="text" value={form.title} onChange={(e) => update('title', e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Ex: Manutencao do servidor principal" autoFocus onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }} />
+            <input type="text" value={form.title} onChange={(e) => update('title', e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Ex: Manutencao do servidor principal" autoFocus />
           </div>
 
           {/* Projeto */}
@@ -3503,41 +3714,71 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            {/* Atribuir a (multiplos) */}
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Atribuir a</label>
-              <div className="relative">
-                <select
-                  value={form.assignedTo || ''}
-                  onChange={(e) => update('assignedTo', e.target.value || null)}
-                  className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-                >
-                  <option value="">Ninguem (disponivel para todos)</option>
-                  {teamMembers.map(m => (
-                    <option key={m.id} value={m.name}>{shortName(m.name)}</option>
-                  ))}
-                </select>
-                <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {(form.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map(name => (
+                  <span key={name} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded-full">
+                    {name}
+                    <button type="button" onClick={() => {
+                      const updated = (form.assignedTo || '').split(',').map(s => s.trim()).filter(s => s && s !== name).join(', ');
+                      update('assignedTo', updated || null);
+                    }} className="hover:text-red-500 transition-colors">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </span>
+                ))}
               </div>
+              <select
+                value=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  const current = (form.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean);
+                  if (!current.some(s => namesMatch(s, e.target.value))) {
+                    update('assignedTo', [...current, e.target.value].join(', '));
+                  }
+                }}
+                className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+              >
+                <option value="">Adicionar pessoa...</option>
+                {teamMembers.filter(m => !(form.assignedTo || '').split(',').some(s => namesMatch(s.trim(), m.name))).map(m => (
+                  <option key={m.id} value={m.name}>{m.name}</option>
+                ))}
+              </select>
             </div>
+            {/* Supervisor (multiplos) */}
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Supervisor</label>
-              <div className="relative">
-                <select
-                  value={form.supervisor || ''}
-                  onChange={(e) => update('supervisor', e.target.value || null)}
-                  className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
-                >
-                  <option value="">Sem supervisor</option>
-                  {teamMembers.map(m => (
-                    <option key={m.id} value={m.name}>{shortName(m.name)}</option>
-                  ))}
-                </select>
-                <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {(form.supervisor || '').split(',').map(s => s.trim()).filter(Boolean).map(name => (
+                  <span key={name} className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs rounded-full">
+                    {name}
+                    <button type="button" onClick={() => {
+                      const updated = (form.supervisor || '').split(',').map(s => s.trim()).filter(s => s && s !== name).join(', ');
+                      update('supervisor', updated || null);
+                    }} className="hover:text-red-500 transition-colors">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </span>
+                ))}
               </div>
+              <select
+                value=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  const current = (form.supervisor || '').split(',').map(s => s.trim()).filter(Boolean);
+                  if (!current.some(s => namesMatch(s, e.target.value))) {
+                    update('supervisor', [...current, e.target.value].join(', '));
+                  }
+                }}
+                className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+              >
+                <option value="">Adicionar supervisor...</option>
+                {teamMembers.filter(m => !(form.supervisor || '').split(',').some(s => namesMatch(s.trim(), m.name))).map(m => (
+                  <option key={m.id} value={m.name}>{m.name}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -3615,6 +3856,27 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
             </div>
           </div>
 
+          {/* Pausas Programadas */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">Pausas Programadas</label>
+            {(form.scheduledPauses || []).map((pause, idx) => (
+              <div key={idx} className="flex items-center gap-2 mb-2 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                <div className="flex-1 text-xs text-slate-600 dark:text-slate-300">
+                  {pause.assignee && <span className="font-medium text-amber-600 dark:text-amber-400 mr-1.5">{pause.assignee}:</span>}
+                  {!pause.assignee && (form.assignedTo || '').includes(',') && <span className="font-medium text-slate-400 mr-1.5">Todos:</span>}
+                  <span>{new Date(pause.start).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="mx-1">{'\u2192'}</span>
+                  <span>{new Date(pause.end).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  {pause.reason && <span className="ml-2 text-slate-400">({pause.reason})</span>}
+                </div>
+                <button type="button" onClick={() => update('scheduledPauses', (form.scheduledPauses || []).filter((_, i) => i !== idx))} className="p-1 text-slate-400 hover:text-red-500 transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            ))}
+            <PauseAdder assignees={form.assignedTo} onAdd={(pause) => update('scheduledPauses', [...(form.scheduledPauses || []), pause])} />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Descricao do Servico</label>
             <NotionEditor content={form.description} onChange={(html) => update('description', html)} placeholder="Descreva o servico a ser executado..." minHeight="100px" />
@@ -3650,7 +3912,19 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 
               // Remover tarefa
               const removeTask = (taskId) => {
-                update('checklist', cl.filter(i => i.id !== taskId));
+                const removedItem = cl.find(i => i.id === taskId);
+                const removedIndex = cl.findIndex(i => i.id === taskId);
+                const newChecklist = cl.filter(i => i.id !== taskId);
+                update('checklist', newChecklist);
+                if (removedItem) {
+                  toast.undo(`Tarefa "${removedItem.text}" removida`, () => {
+                    setForm(prev => {
+                      const restored = [...(prev.checklist || [])];
+                      restored.splice(removedIndex, 0, removedItem);
+                      return { ...prev, checklist: restored };
+                    });
+                  });
+                }
               };
 
               // Alternar done de uma tarefa
@@ -3768,7 +4042,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                                 onFocus={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                                 className={`text-sm flex-1 bg-transparent border-none outline-none focus:ring-0 p-0 hover:bg-slate-100 dark:hover:bg-slate-700/40 focus:bg-slate-100 dark:focus:bg-slate-700/40 rounded px-1 -mx-1 transition-colors resize-none overflow-hidden ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200'}`}
                               />
-                              <button type="button" onClick={() => removeTask(item.id)} className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
+                              <button type="button" onClick={() => removeTask(item.id)} className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 md:opacity-0 md:group-hover:opacity-100 transition-all">
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                               </button>
                             </div>
@@ -4027,7 +4301,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                         </div>
                       </>
                     )}
-                    <button onClick={() => removeAttachment(att.id)} className="p-1 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors opacity-0 group-hover:opacity-100">
+                    <button onClick={() => removeAttachment(att.id)} className="p-1 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors md:opacity-0 md:group-hover:opacity-100">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
@@ -4081,13 +4355,35 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
             )}
           </div>
           <div className="flex gap-3">
-            <button onClick={onClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm">Cancelar</button>
-            <button onClick={handleSaveClick} disabled={!form.title.trim()} className={`px-4 py-2 ${isEmergency ? 'bg-red-600 hover:bg-red-700' : 'bg-fyness-primary hover:bg-fyness-secondary'} text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed`}>
-              {isEmergency ? 'Gerar Emergencial' : editing ? 'Salvar' : 'Gerar O.S.'}
+            <button onClick={safeClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm">Cancelar</button>
+            <button onClick={handleSaveClick} disabled={!form.title.trim() || saving} className={`px-4 py-2 ${isEmergency ? 'bg-red-600 hover:bg-red-700' : 'bg-fyness-primary hover:bg-fyness-secondary'} text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}>
+              {saving && <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
+              {saving ? 'Salvando...' : isEmergency ? 'Gerar Emergencial' : editing ? 'Salvar' : 'Gerar O.S.'}
             </button>
           </div>
         </div>
       </div>
+
+      {/* Popup de confirmacao de descarte */}
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]" onClick={() => setShowDiscardConfirm(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-150" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 text-center mb-2">Descartar alteracoes?</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center">Voce tem alteracoes nao salvas. Deseja descarta-las?</p>
+            </div>
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 flex gap-3 justify-end">
+              <button onClick={() => setShowDiscardConfirm(false)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm font-medium">Continuar editando</button>
+              <button onClick={onClose} className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-sm font-medium">Descartar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4097,9 +4393,15 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 function ProjectFormModal({ form, setForm, editing, sectors, onSave, onClose, onDelete }) {
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
 
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label="Formulario de Pasta de OS" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
             {editing ? 'Editar Pasta de OS' : 'Nova Pasta de OS'}
@@ -4152,7 +4454,6 @@ function ProjectFormModal({ form, setForm, editing, sectors, onSave, onClose, on
               className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
               placeholder="Ex: Landing Page Institucional"
               autoFocus
-              onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
             />
           </div>
 
@@ -4258,9 +4559,15 @@ function ProjectFormModal({ form, setForm, editing, sectors, onSave, onClose, on
 function SectorFormModal({ form, setForm, editing, onSave, onClose, onDelete }) {
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
 
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label="Formulario de Setor" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
             {editing ? 'Editar Setor' : 'Novo Setor'}
@@ -4283,7 +4590,6 @@ function SectorFormModal({ form, setForm, editing, onSave, onClose, onDelete }) 
               placeholder="Ex: Juridico"
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === 'Escape') onClose();
                 if (e.key === 'Enter' && form.label.trim()) onSave();
               }}
             />
@@ -4335,9 +4641,15 @@ function SectorFormModal({ form, setForm, editing, onSave, onClose, onDelete }) 
 // ==================== MODAL DE CONFIRMACAO ====================
 
 function DeleteModal({ title, message, onCancel, onConfirm }) {
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onCancel]);
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label="Confirmacao de exclusao" onClick={onCancel}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="p-6">
           <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">

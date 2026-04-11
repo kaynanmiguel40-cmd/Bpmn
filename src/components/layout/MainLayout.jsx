@@ -52,22 +52,50 @@ const MoonIcon = () => (
 
 // Header search now uses the centralized searchAll from searchService (Supabase)
 
-function Header({ onMenuToggle }) {
+function Header({ onMenuToggle, mobileOpen }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
+  const [showAllResults, setShowAllResults] = useState(false);
   const searchRef = useRef(null);
+  const debounceTimerRef = useRef(null);
 
-  const handleSearch = useCallback(async (value) => {
-    setSearchQuery(value);
-    if (value.length >= 2) {
-      const data = await searchAll(value);
-      setSearchResults(data);
-      setShowResults(true);
+  const MAX_RESULTS = 8;
+
+  // Debounce: atrasa a busca real por 300ms apos o usuario parar de digitar
+  useEffect(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
+  }, [searchQuery]);
+
+  // Reset "mostrar mais" quando a busca muda
+  useEffect(() => {
+    setShowAllResults(false);
+  }, [searchQuery]);
+
+  // Executar busca quando o termo debounced muda
+  useEffect(() => {
+    if (debouncedQuery.length >= 2) {
+      searchAll(debouncedQuery).then(data => {
+        setSearchResults(data);
+        setShowResults(true);
+      });
     } else {
+      setSearchResults([]);
+      setShowResults(false);
+    }
+  }, [debouncedQuery]);
+
+  const handleSearchInput = useCallback((value) => {
+    setSearchQuery(value);
+    if (value.length < 2) {
       setSearchResults([]);
       setShowResults(false);
     }
@@ -118,6 +146,7 @@ function Header({ onMenuToggle }) {
           onClick={onMenuToggle}
           className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors md:hidden"
           aria-label="Abrir menu"
+          aria-expanded={mobileOpen}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -150,34 +179,48 @@ function Header({ onMenuToggle }) {
             aria-label="Buscar ordens de servico e eventos"
             placeholder="Buscar O.S., eventos..."
             value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => handleSearchInput(e.target.value)}
             onFocus={() => { if (searchQuery.length >= 2) setShowResults(true); }}
             className="w-64 pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
           />
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">
             <SearchIcon />
           </div>
+          {!searchQuery && (
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden md:inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium text-slate-400 bg-slate-100 dark:bg-slate-700 dark:text-slate-500 rounded border border-slate-200 dark:border-slate-600">⌘K</kbd>
+          )}
 
           {showResults && (
-            <div className="absolute top-full mt-1 left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+            <div role="listbox" aria-label="Resultados da busca" className="absolute top-full mt-1 left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
               {searchResults.length === 0 ? (
                 <div className="px-4 py-3 text-sm text-slate-400 dark:text-slate-500 text-center">Nenhum resultado para &ldquo;{searchQuery}&rdquo;</div>
               ) : (
-                searchResults.map((r, i) => (
-                  <button
-                    key={`${r.type}-${r.id}-${i}`}
-                    onClick={() => handleResultClick(r)}
-                    className="w-full px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0"
-                  >
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${r.type === 'os' ? 'bg-fyness-primary' : 'bg-amber-500'}`}>
-                      {r.type === 'os' ? 'OS' : 'AG'}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{r.label}</div>
-                      <div className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{r.sub}</div>
-                    </div>
-                  </button>
-                ))
+                <>
+                  {(showAllResults ? searchResults : searchResults.slice(0, MAX_RESULTS)).map((r, i) => (
+                    <button
+                      key={`${r.type}-${r.id}-${i}`}
+                      role="option"
+                      onClick={() => handleResultClick(r)}
+                      className="w-full px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0"
+                    >
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${r.type === 'os' ? 'bg-fyness-primary' : 'bg-amber-500'}`}>
+                        {r.type === 'os' ? 'OS' : 'AG'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{r.label}</div>
+                        <div className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{r.sub}</div>
+                      </div>
+                    </button>
+                  ))}
+                  {searchResults.length > MAX_RESULTS && !showAllResults && (
+                    <button
+                      onClick={() => setShowAllResults(true)}
+                      className="w-full px-4 py-2 text-xs text-center text-blue-600 dark:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      Mostrar mais {searchResults.length - MAX_RESULTS} resultados
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -217,7 +260,7 @@ export function MainLayout() {
       <div className="flex-1 flex flex-col overflow-hidden transition-all duration-300">
         {/* Header */}
         <div className="print:hidden">
-          <Header onMenuToggle={() => setMobileMenuOpen(true)} />
+          <Header onMenuToggle={() => setMobileMenuOpen(true)} mobileOpen={mobileMenuOpen} />
         </div>
 
         {/* Page Content */}

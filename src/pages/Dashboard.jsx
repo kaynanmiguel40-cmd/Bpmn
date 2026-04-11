@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { FYNESS_TEMPLATE_XML, EMPTY_DIAGRAM_XML } from '../utils/fynessTemplate';
-import { COMERCIAL_DIAGRAM_XML } from '../utils/comercialTemplate';
+import { EMPTY_DIAGRAM_XML } from '../utils/fynessTemplate';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   getCompanies,
@@ -25,7 +24,6 @@ export default function Dashboard() {
   const [showDeleteModal, setShowDeleteModal] = useState(null);
   const [newProjectName, setNewProjectName] = useState('');
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
-  const [newProjectTemplate, setNewProjectTemplate] = useState('empty');
   const [showDependencyModal, setShowDependencyModal] = useState(null);
   const [selectedParent, setSelectedParent] = useState('');
   const [cardPositions, setCardPositions] = useState({});
@@ -234,12 +232,12 @@ export default function Dashboard() {
   const handleCreateBlank = (companyId) => {
     setSelectedCompanyForProject(companyId);
     setNewProjectName('Novo Diagrama');
-    setNewProjectTemplate('empty');
+
     setShowNewProjectModal(true);
   };
 
   const handleConfirmCreate = async () => {
-    const xmlToUse = newProjectTemplate === 'comercial' ? COMERCIAL_DIAGRAM_XML : EMPTY_DIAGRAM_XML;
+    const xmlToUse = EMPTY_DIAGRAM_XML;
     const result = await createProjectDB({
       name: newProjectName,
       xml: xmlToUse,
@@ -253,7 +251,7 @@ export default function Dashboard() {
     if (result) {
       setShowNewProjectModal(false);
       setNewProjectName('');
-      setNewProjectTemplate('empty');
+  
       setSelectedCompanyForProject(null);
       navigate(`/editor/${result.id}`);
     }
@@ -566,8 +564,8 @@ export default function Dashboard() {
                                   d={pathD}
                                   fill="none"
                                   stroke={color}
-                                  strokeWidth="4"
-                                  strokeOpacity="0.2"
+                                  strokeWidth="5"
+                                  strokeOpacity="0.5"
                                   strokeLinecap="round"
                                 />
                                 <path
@@ -584,7 +582,7 @@ export default function Dashboard() {
                         </svg>
 
                         {/* Cards Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 relative z-10">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 relative z-10">
                           {companyProjects.map((project) => {
                             const levelColor = getLevelColor(project.level || 0);
                             return (
@@ -608,7 +606,7 @@ export default function Dashboard() {
                                   </div>
 
                                   <div className="absolute inset-0 bg-white/0 group-hover:bg-white/90 dark:group-hover:bg-slate-800/90 transition-all flex items-center justify-center">
-                                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-fyness-primary font-medium text-xs">
+                                    <span className="md:opacity-0 md:group-hover:opacity-100 transition-opacity text-fyness-primary font-medium text-xs">
                                       Abrir
                                     </span>
                                   </div>
@@ -873,48 +871,6 @@ export default function Dashboard() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
-                  Template Inicial
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setNewProjectTemplate('empty')}
-                    className={`p-3 rounded-lg border-2 text-left transition-all ${
-                      newProjectTemplate === 'empty'
-                        ? 'border-fyness-primary bg-fyness-primary/5 dark:bg-fyness-primary/10'
-                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Vazio</span>
-                    </div>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">Diagrama em branco</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setNewProjectTemplate('comercial')}
-                    className={`p-3 rounded-lg border-2 text-left transition-all ${
-                      newProjectTemplate === 'comercial'
-                        ? 'border-fyness-primary bg-fyness-primary/5 dark:bg-fyness-primary/10'
-                        : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                      </svg>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Comercial V9</span>
-                    </div>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">Jornada completa de vendas</p>
-                  </button>
-                </div>
-              </div>
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex gap-3 justify-end">

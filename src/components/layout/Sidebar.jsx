@@ -11,8 +11,10 @@
 
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { getProfile } from '../../lib/profileService';
+import { supabase } from '../../lib/supabase';
 import logoFyness from '../../assets/logo-fyness.png';
 import {
   DashboardIcon, SalesIcon, KanbanIcon, AgendaIcon,
@@ -34,20 +36,27 @@ function NavItem({ to, icon: Icon, label, isCollapsed, badge, onClick }) {
       className={`
         flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200
         ${isActive
-          ? 'bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary dark:text-blue-400 font-medium'
+          ? 'bg-fyness-primary/15 dark:bg-fyness-primary/20 text-fyness-primary dark:text-blue-400 font-medium border-l-[3px] border-fyness-primary'
           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
         }
         ${isCollapsed ? 'justify-center' : ''}
       `}
       title={isCollapsed ? label : undefined}
     >
-      <Icon />
+      <span className="relative">
+        <Icon />
+        {badge && isCollapsed && (
+          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+            {badge > 9 ? '9+' : badge}
+          </span>
+        )}
+      </span>
       {!isCollapsed && (
         <>
           <span className="flex-1">{label}</span>
           {badge && (
-            <span className="px-2 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full">
-              {badge}
+            <span className="min-w-[20px] h-5 px-1.5 text-[11px] font-bold bg-red-500 text-white rounded-full flex items-center justify-center">
+              {badge > 99 ? '99+' : badge}
             </span>
           )}
         </>
@@ -70,6 +79,31 @@ const PinIcon = ({ pinned }) => (
 export function Sidebar({ mobileOpen = false, onMobileClose }) {
   const { signOut } = useAuth();
   const navigate = useNavigate();
+
+  // Contar leads nao atendidos (deals no primeiro stage de cada pipeline)
+  const { data: newLeadsCount = 0 } = useQuery({
+    queryKey: ['crmNewLeadsCount'],
+    queryFn: async () => {
+      // Buscar todos os stages com position = 1 (primeiro stage = lead novo)
+      const { data: firstStages } = await supabase
+        .from('crm_pipeline_stages')
+        .select('id')
+        .eq('position', 1);
+      if (!firstStages?.length) return 0;
+      const stageIds = firstStages.map(s => s.id);
+      // Contar deals ativos nesses stages
+      const { count } = await supabase
+        .from('crm_deals')
+        .select('id', { count: 'exact', head: true })
+        .in('stage_id', stageIds)
+        .eq('status', 'open')
+        .is('deleted_at', null);
+      return count || 0;
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
   const [isPinned, setIsPinned] = useState(() => {
     try { return localStorage.getItem('sidebar-pinned') === 'true'; } catch { return false; }
   });
@@ -152,6 +186,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
               {mobileOpen ? (
                 <button
                   onClick={onMobileClose}
+                  aria-label="Fechar menu"
                   className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 md:hidden"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -162,6 +197,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
                 <button
                   onClick={togglePin}
                   title={isPinned ? 'Desafixar menu' : 'Fixar menu aberto'}
+                  aria-label={isPinned ? 'Desafixar menu' : 'Fixar menu'}
                   className={`p-1.5 rounded-lg transition-colors hidden md:block ${
                     isPinned
                       ? 'text-fyness-primary dark:text-blue-400 bg-fyness-primary/10 dark:bg-blue-900/30'
@@ -185,7 +221,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
 
           <div className="my-4 border-t border-slate-200 dark:border-slate-700" />
 
-          <NavItem to="/crm" icon={CrmIcon} label="CRM" isCollapsed={effectiveCollapsed} badge={effectiveCollapsed ? undefined : 'Novo'} onClick={handleNavClick} />
+          <NavItem to="/crm" icon={CrmIcon} label="CRM" isCollapsed={effectiveCollapsed} badge={newLeadsCount > 0 ? newLeadsCount : undefined} onClick={handleNavClick} />
           <NavItem to="/sales" icon={SalesIcon} label="Processos" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/reports" icon={ReportIcon} label="Relatorios" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/settings" icon={SettingsIcon} label="Configuracoes" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
@@ -237,6 +273,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
                 </button>
                 <button
                   onClick={handleLogout}
+                  aria-label="Sair"
                   className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
                 >
                   <LogoutIcon />

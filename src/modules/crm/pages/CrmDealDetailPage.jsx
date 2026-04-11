@@ -87,8 +87,8 @@ export function CrmDealDetailPage() {
     return (
       <div className="animate-pulse space-y-6">
         <div className="h-8 w-40 bg-slate-200 dark:bg-slate-700 rounded" />
-        <div className="flex gap-6">
-          <div className="w-80 shrink-0 space-y-4">
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="w-full lg:w-80 shrink-0 space-y-4">
             {[1, 2, 3, 4].map(i => <div key={i} className="h-16 bg-slate-200 dark:bg-slate-700 rounded-xl" />)}
           </div>
           <div className="flex-1 space-y-4">
@@ -156,9 +156,9 @@ export function CrmDealDetailPage() {
       </div>
 
       {/* ===== LAYOUT 2 COLUNAS ===== */}
-      <div className="flex gap-6">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* SIDEBAR */}
-        <div className="w-80 shrink-0 space-y-3">
+        <div className="w-full lg:w-80 shrink-0 space-y-3">
           {/* Valor */}
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
             <div className="flex items-center gap-2 mb-1">

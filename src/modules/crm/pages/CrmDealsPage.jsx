@@ -145,7 +145,7 @@ export function CrmDealsPage() {
       key: 'actions',
       label: '',
       render: (_, row) => (
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           {row.status === 'open' && (
             <>
               <button onClick={(e) => { e.stopPropagation(); wonMutation.mutate(row.id); }}

@@ -274,13 +274,22 @@ function markNotified(key) {
  * Verifica OS com prazo proximo ou atrasado e envia notificacoes.
  * Usa localStorage para evitar duplicatas no mesmo dia.
  */
-export async function checkAndNotifyDeadlines(orders, teamMembers) {
-  if (!orders?.length || !teamMembers?.length) return;
+/**
+ * Verifica OS com prazo proximo ou atrasado e envia notificacoes.
+ * Usa localStorage para evitar duplicatas no mesmo dia.
+ * IMPORTANTE: cada browser so cria notificacoes para o PROPRIO usuario logado (currentUserId),
+ * evitando que multiplos browsers criem notificacoes duplicadas para outros usuarios.
+ */
+export async function checkAndNotifyDeadlines(orders, teamMembers, currentUserId) {
+  if (!orders?.length || !teamMembers?.length || !currentUserId) return;
 
   const now = new Date();
   const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   const notified = getNotifiedToday();
-  const managers = getManagers(teamMembers);
+
+  // Descobrir se o usuario atual e manager
+  const currentMember = teamMembers.find(m => m.authUserId === currentUserId);
+  const isCurrentManager = currentMember?.role && MANAGER_ROLES.some(r => currentMember.role.toLowerCase().includes(r));
 
   for (const order of orders) {
     if (order.status === 'done' || !order.estimatedEnd) continue;
@@ -288,18 +297,20 @@ export async function checkAndNotifyDeadlines(orders, teamMembers) {
     const deadline = new Date(order.estimatedEnd);
     if (isNaN(deadline.getTime())) continue;
 
-    const assigneeMember = findMemberByName(order.assignee, teamMembers);
+    const assigneeMember = findMemberByName(order.assignee, teamMembers)
+      || findMemberByName(order.assignedTo, teamMembers);
+    const isMyOS = assigneeMember?.authUserId === currentUserId;
 
     // ATRASADA
     if (deadline < now) {
       const overdueKey = `overdue_${order.id}`;
       if (notified[overdueKey]) continue;
 
-      // Notificar assignee
-      if (assigneeMember?.authUserId) {
+      // Notificar apenas se a OS e minha OU se sou manager
+      if (isMyOS) {
         try {
           await notify({
-            userId: assigneeMember.authUserId,
+            userId: currentUserId,
             type: 'warning',
             title: `O.S. #${order.number || ''} atrasada!`,
             message: `${order.title || ''} — prazo era ${deadline.toLocaleDateString('pt-BR')}`,
@@ -307,17 +318,13 @@ export async function checkAndNotifyDeadlines(orders, teamMembers) {
             entityId: order.id,
           });
         } catch { /* silenciar */ }
-      }
-
-      // Notificar managers
-      for (const mgr of managers) {
-        if (!mgr.authUserId || mgr.authUserId === assigneeMember?.authUserId) continue;
+      } else if (isCurrentManager && assigneeMember?.authUserId !== currentUserId) {
         try {
           await notify({
-            userId: mgr.authUserId,
+            userId: currentUserId,
             type: 'warning',
             title: `O.S. #${order.number || ''} atrasada`,
-            message: `${order.title || ''} (${order.assignee || 'Sem responsavel'})`,
+            message: `${order.title || ''} (${order.assignee || order.assignedTo || 'Sem responsavel'})`,
             entityType: 'os_order',
             entityId: order.id,
           });
@@ -328,23 +335,21 @@ export async function checkAndNotifyDeadlines(orders, teamMembers) {
       continue;
     }
 
-    // PROXIMO DO PRAZO (dentro de 24h)
-    if (deadline <= in24h) {
+    // PROXIMO DO PRAZO (dentro de 24h) — so notifica o assignee
+    if (deadline <= in24h && isMyOS) {
       const warningKey = `warning_${order.id}`;
       if (notified[warningKey]) continue;
 
-      if (assigneeMember?.authUserId) {
-        try {
-          await notify({
-            userId: assigneeMember.authUserId,
-            type: 'deadline_warning',
-            title: `Prazo proximo: O.S. #${order.number || ''}`,
-            message: `${order.title || ''} vence ${deadline.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
-            entityType: 'os_order',
-            entityId: order.id,
-          });
-        } catch { /* silenciar */ }
-      }
+      try {
+        await notify({
+          userId: currentUserId,
+          type: 'deadline_warning',
+          title: `Prazo proximo: O.S. #${order.number || ''}`,
+          message: `${order.title || ''} vence ${deadline.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
+          entityType: 'os_order',
+          entityId: order.id,
+        });
+      } catch { /* silenciar */ }
 
       markNotified(warningKey);
     }

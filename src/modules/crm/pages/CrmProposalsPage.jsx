@@ -127,7 +127,7 @@ export function CrmProposalsPage() {
       key: 'actions',
       label: '',
       render: (_, row) => (
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           {/* Acoes rapidas de status */}
           {row.status === 'draft' && (
             <button onClick={(e) => { e.stopPropagation(); statusMutation.mutate({ id: row.id, status: 'sent' }); }}

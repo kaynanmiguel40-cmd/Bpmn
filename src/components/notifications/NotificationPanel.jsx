@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const TYPE_STYLES = {
   info: {
@@ -45,13 +45,17 @@ function formatTimeAgo(dateStr) {
 }
 
 export function NotificationPanel({ notifications, onMarkRead, onMarkAllRead, onDelete, onClose }) {
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('unread');
 
-  const filtered = filter === 'all'
-    ? notifications
-    : filter === 'unread'
-      ? notifications.filter(n => !n.isRead)
-      : notifications.filter(n => n.isRead);
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
+  const filtered = filter === 'unread'
+    ? notifications.filter(n => !n.isRead)
+    : notifications.filter(n => n.isRead);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -82,7 +86,6 @@ export function NotificationPanel({ notifications, onMarkRead, onMarkAllRead, on
       {/* Filters */}
       <div className="px-4 py-2 flex gap-1 border-b border-slate-100 dark:border-slate-700 shrink-0">
         {[
-          { id: 'all', label: 'Todas' },
           { id: 'unread', label: 'Nao lidas' },
           { id: 'read', label: 'Lidas' },
         ].map(f => (

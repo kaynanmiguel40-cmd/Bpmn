@@ -102,6 +102,9 @@ export function GlobalSearch() {
             onChange={(e) => handleSearch(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Buscar O.S., eventos, paginas..."
+            aria-label="Buscar O.S., eventos, paginas"
+            aria-autocomplete="list"
+            aria-controls="global-search-results"
             className="flex-1 bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-none"
           />
           <kbd className="hidden sm:inline-flex items-center px-2 py-0.5 text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 rounded">
@@ -110,7 +113,7 @@ export function GlobalSearch() {
         </div>
 
         {/* Results */}
-        <div className="max-h-80 overflow-y-auto">
+        <div id="global-search-results" role="listbox" aria-label="Resultados da busca" className="max-h-80 overflow-y-auto">
           {query.length >= 2 && results.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum resultado para &ldquo;{query}&rdquo;</p>
@@ -127,6 +130,8 @@ export function GlobalSearch() {
                   return (
                     <button
                       key={`${r.type}-${r.id}`}
+                      role="option"
+                      aria-selected={isSelected}
                       onClick={() => handleSelect(r)}
                       className={`w-full px-4 py-2.5 flex items-center gap-3 transition-colors ${
                         isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'

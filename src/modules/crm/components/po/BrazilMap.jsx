@@ -12,7 +12,7 @@
  * - Pins de comercios/parceiros no nivel municipio
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Loader2, ArrowLeft, RotateCw } from 'lucide-react';
 import {
   BRAZIL_STATES,
@@ -58,7 +58,7 @@ const PIN_NEON = {
   lead:     { fill: '#22d3ee', stroke: '#06b6d4', glow: '#22d3ee60' },
 };
 
-export default function BrazilMap({ selectedState, onSelectState, colorMode = COLOR_MODES.REGION, meetingPins = [] }) {
+const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, colorMode = COLOR_MODES.REGION, meetingPins = [] }, ref) {
   // Dados geograficos
   const [statesGeo, setStatesGeo] = useState(null);
   const [municipalitiesGeo, setMunicipalitiesGeo] = useState(null);
@@ -181,6 +181,18 @@ export default function BrazilMap({ selectedState, onSelectState, colorMode = CO
     setHoveredFeature(null);
     setHoveredPin(null);
   }, []);
+
+  // ── Expor navigateToCity para uso externo (ex: clicar na cidade do painel lateral) ──
+  useImperativeHandle(ref, () => ({
+    navigateToCity(cityName) {
+      if (!municipalityFeatures.length) return;
+      const norm = normalizeText(cityName);
+      const mf = municipalityFeatures.find(m => normalizeText(m.name) === norm);
+      if (mf) {
+        handleMunicipalityClick(mf);
+      }
+    },
+  }), [municipalityFeatures, handleMunicipalityClick]);
 
   // ── Voltar ──
   const handleBack = useCallback(() => {
@@ -716,6 +728,7 @@ export default function BrazilMap({ selectedState, onSelectState, colorMode = CO
       )}
     </div>
   );
-}
+});
 
+export default BrazilMap;
 export { COLOR_MODES };

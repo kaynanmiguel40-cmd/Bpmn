@@ -186,12 +186,35 @@ export function normName(str) {
   return (str || '').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-/** Verifica se dois nomes "batem" (parcial, sem acento) */
+/** Verifica se dois nomes "batem" (parcial, sem acento, ou primeiro+ultimo nome) */
 export function namesMatch(nameA, nameB) {
   const a = normName(nameA);
   const b = normName(nameB);
   if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  // Comparar primeiro+ultimo nome: "kaynan silva" vs "kaynan miguel luper silva"
+  const partsA = a.split(/\s+/);
+  const partsB = b.split(/\s+/);
+  if (partsA.length >= 2 && partsB.length >= 2) {
+    const firstLastA = `${partsA[0]} ${partsA[partsA.length - 1]}`;
+    const firstLastB = `${partsB[0]} ${partsB[partsB.length - 1]}`;
+    if (firstLastA === firstLastB) return true;
+  }
+  // Comparar só primeiro nome se um dos lados tem apenas 1 parte
+  if (partsA[0] === partsB[0] && (partsA.length === 1 || partsB.length === 1)) return true;
+  return false;
+}
+
+/** Verifica se um nome esta na lista comma-separated de assignees */
+export function isAssignedTo(assignedToField, name) {
+  if (!assignedToField || !name) return false;
+  return assignedToField.split(',').some(s => namesMatch(s.trim(), name));
+}
+
+/** Parseia campo comma-separated em array de nomes */
+export function parseAssignees(field) {
+  if (!field) return [];
+  return field.split(',').map(s => s.trim()).filter(Boolean);
 }
 
 // ─── Helpers Diversos ────────────────────────────────────────────

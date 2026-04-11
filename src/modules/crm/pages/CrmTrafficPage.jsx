@@ -336,7 +336,7 @@ export function CrmTrafficPage() {
       key: 'actions',
       label: '',
       render: (_, row) => (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           <button onClick={(e) => { e.stopPropagation(); handleEdit(row); }}
             className="p-1 rounded text-slate-400 hover:text-blue-600 transition-colors">
             <Pencil size={14} />

@@ -21,13 +21,15 @@ function formatPopulation(pop) {
   return `${pop} hab.`;
 }
 
-export default function CityProspectCard({ city, cityStatus }) {
+export default function CityProspectCard({ city, cityStatus, onClick }) {
   const status = cityStatus?.status || city.status || 'none';
   const config = PROSPECT_STATUS[status];
   const StatusIcon = STATUS_ICONS[status] || Circle;
 
   return (
-    <div className="group relative rounded-lg border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800/50 p-3 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-sm transition-all duration-200">
+    <div
+      onClick={onClick}
+      className="group relative rounded-lg border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800/50 p-3 hover:border-cyan-400 dark:hover:border-cyan-500 hover:shadow-sm hover:shadow-cyan-500/10 transition-all duration-200 cursor-pointer">
       {/* Header: city name + status */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">

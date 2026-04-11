@@ -7,18 +7,59 @@
  * - Concluido: finalizei
  */
 
-import { useState, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOSOrders, useOSProjects, useTeamMembers } from '../../hooks/queries';
 import { updateOSOrder } from '../../lib/osService';
-import { namesMatch } from '../../lib/kpiUtils';
+import { namesMatch, isAssignedTo } from '../../lib/kpiUtils';
 import { useProfile } from '../../hooks/useProfile';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyOSCompleted } from '../../lib/notificationTriggers';
 import { PRIORITIES, ROUTINE_COLUMNS as COLUMNS } from '../../constants/colors';
 import { formatDateShortMonth as formatDate, formatCurrency } from '../../lib/formatters';
 import { sortByDeadline, sortByActualEnd } from '../../lib/orderSorting';
+import { toast } from '../../contexts/ToastContext';
+
+function ElapsedTimer({ startTime, pausedAt }) {
+  const [elapsed, setElapsed] = useState('');
+
+  useEffect(() => {
+    if (!startTime) return;
+
+    const update = () => {
+      const start = new Date(startTime);
+      const now = pausedAt ? new Date(pausedAt) : new Date();
+      let diffMs = now - start;
+      if (diffMs < 0) diffMs = 0;
+
+      const hours = Math.floor(diffMs / 3600000);
+      const mins = Math.floor((diffMs % 3600000) / 60000);
+      const secs = Math.floor((diffMs % 60000) / 1000);
+
+      if (hours > 0) {
+        setElapsed(`${hours}h ${String(mins).padStart(2, '0')}m`);
+      } else {
+        setElapsed(`${mins}m ${String(secs).padStart(2, '0')}s`);
+      }
+    };
+
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [startTime, pausedAt]);
+
+  if (!startTime) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs font-mono">
+      <span className={`w-1.5 h-1.5 rounded-full ${pausedAt ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}`} />
+      <span className={pausedAt ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}>
+        {elapsed}
+      </span>
+    </div>
+  );
+}
 
 export function RoutinePage() {
   const navigate = useNavigate();
@@ -36,8 +77,12 @@ export function RoutinePage() {
   const [expValue, setExpValue] = useState('');
   const [expQty, setExpQty] = useState('1');
 
-  // Seletor de membro (só disponível para managers/admins)
-  const [selectedMember, setSelectedMember] = useState('me'); // 'me' | 'all' | memberId
+  // Seletor de membro (só disponível para managers/admins) — persistido na URL
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedMember = searchParams.get('member') || 'me';
+  const setSelectedMember = useCallback((value) => {
+    setSearchParams(value === 'me' ? {} : { member: value }, { replace: true });
+  }, [setSearchParams]);
 
   // Drag-and-drop state
   const [draggingId, setDraggingId] = useState(null);
@@ -63,7 +108,7 @@ export function RoutinePage() {
 
     const matchFn = (o) =>
       filterName
-        ? (namesMatch(o.assignedTo, filterName) || namesMatch(o.assignee, filterName))
+        ? (isAssignedTo(o.assignedTo, filterName) || namesMatch(o.assignee, filterName))
         : true;
 
     return {
@@ -305,6 +350,15 @@ export function RoutinePage() {
       }
     }
     await Promise.all(batchUpdates.map(u => updateOSOrder(u.id, u)));
+
+    // Undo toast quando arrastar para concluido
+    if (statusChanged && newStatus === 'done') {
+      const previousStatus = draggedOrder.status;
+      toast.undo(`O.S. #${draggedOrder.number} marcada como concluida`, async () => {
+        await updateOSOrder(draggedId, { status: previousStatus, actualEnd: null });
+        queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+      });
+    }
   };
 
   const doneWeeks = useMemo(() => groupByWeek(myOrders.done), [myOrders.done, groupByWeek]);
@@ -391,7 +445,7 @@ export function RoutinePage() {
         </div>
       ) : (
         /* Kanban Board */
-        <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 min-h-0">
           {COLUMNS.map((column) => {
             const items = columnData[column.id];
             const isColOver = dragOverCol === column.id && !dropTarget;
@@ -642,6 +696,13 @@ export function RoutinePage() {
 
                         {/* Title */}
                         <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">{order.title}</h4>
+
+                        {/* Elapsed timer for in-progress orders */}
+                        {order.status === 'in_progress' && order.actualStart && (
+                          <div className="mb-1">
+                            <ElapsedTimer startTime={order.actualStart} pausedAt={order.pausedAt} />
+                          </div>
+                        )}
 
                         {/* Responsavel (visivel apenas para manager vendo outra pessoa/todos) */}
                         {isReadOnly && (order.assignee || order.assignedTo) && (

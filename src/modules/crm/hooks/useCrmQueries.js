@@ -4,7 +4,7 @@ import { toast } from '../../../contexts/ToastContext';
 // Services
 import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany, softDeleteCrmCompany } from '../services/crmCompaniesService';
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
-import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, reorderCrmStages, addCrmStage, deleteCrmStage, setWinStage, ensurePartnersPipeline, seedCommercialPipelines } from '../services/crmPipelinesService';
+import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, reorderCrmStages, addCrmStage, deleteCrmStage, setWinStage, ensurePartnersPipeline, seedCommercialPipelines, cleanAllCrmTestData } from '../services/crmPipelinesService';
 import { getCrmDeals, getDealsByPipeline, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, getDealActivities, getDealStageHistory, getDealsWithMeetings, schedulePartnerMeeting } from '../services/crmDealsService';
 import { getCrmActivities, getActivitiesForCalendar, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity } from '../services/crmActivitiesService';
 import { getCrmProposals, getCrmProposalById, createCrmProposal, updateCrmProposal, softDeleteCrmProposal, updateCrmProposalStatus } from '../services/crmProposalsService';
@@ -212,8 +212,8 @@ export function useSeedCommercialPipelines() {
   return useMutation({
     mutationFn: seedCommercialPipelines,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
-      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      // Invalida TODAS as queries do CRM pois limpamos tudo antes
+      qc.invalidateQueries({ queryKey: ['crm'] });
     },
   });
 }

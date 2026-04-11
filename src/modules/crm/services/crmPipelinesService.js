@@ -294,12 +294,37 @@ export async function deleteCrmStage(stageId) {
   return true;
 }
 
+// ==================== LIMPEZA COMPLETA CRM ====================
+
+/**
+ * Remove TODOS os dados de teste do CRM:
+ * - Soft-delete em deals, contacts, companies, activities, proposals
+ * - Hard-delete em pipelines (CASCADE apaga stages e historico)
+ * - Hard-delete em goals
+ */
+export async function cleanAllCrmTestData() {
+  const now = new Date().toISOString();
+
+  // Soft-delete em todas as tabelas com deleted_at
+  const softDeleteTables = ['crm_deals', 'crm_activities', 'crm_contacts', 'crm_companies', 'crm_proposals'];
+  for (const table of softDeleteTables) {
+    await supabase.from(table).update({ deleted_at: now }).is('deleted_at', null);
+  }
+
+  // Hard-delete em pipelines (CASCADE apaga stages + historico)
+  await supabase.from('crm_pipelines').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+  // Hard-delete em goals
+  await supabase.from('crm_goals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+  return true;
+}
+
 // ==================== SEED PIPELINES COMERCIAIS (BPMN V9) ====================
 
 /**
- * Cria os 6 pipelines de venda mapeados das raias do BPMN Comercial V9.
- * Cada canal de aquisicao vira um pipeline com etapas baseadas nas tasks do processo.
- * (Trial e Gateway Financeiro sao processos internos, nao pipelines de venda)
+ * Limpa todos os dados de teste e cria os 6 pipelines de venda
+ * mapeados das raias do BPMN Comercial V9.
  *
  * 1. Educacao (Funil Invertido)
  * 2. Indicacao (Parceiros - 30% comissao)
@@ -309,6 +334,8 @@ export async function deleteCrmStage(stageId) {
  * 6. Meta Ads (Discovery)
  */
 export async function seedCommercialPipelines() {
+  // Limpar dados de teste primeiro
+  await cleanAllCrmTestData();
   const PIPELINES = [
     {
       name: 'Educacao',

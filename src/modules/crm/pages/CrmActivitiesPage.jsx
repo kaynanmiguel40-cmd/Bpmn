@@ -156,12 +156,12 @@ export function CrmActivitiesPage() {
           )}
           <button onClick={(e) => { e.stopPropagation(); handleEdit(row); }}
             title="Editar"
-            className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors opacity-0 group-hover:opacity-100">
+            className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors md:opacity-0 md:group-hover:opacity-100">
             <Pencil size={14} />
           </button>
           <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); }}
             title="Excluir"
-            className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors opacity-0 group-hover:opacity-100">
+            className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors md:opacity-0 md:group-hover:opacity-100">
             <Trash2 size={14} />
           </button>
         </div>

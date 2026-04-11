@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getOSOrders } from '../../lib/osService';
 import { getDeadlineStatus, getAlertOrders } from '../../lib/deadlineUtils';
 import { getRecentActivities } from '../../lib/activityLogService';
@@ -16,6 +17,7 @@ function KpiMini({ label, value, color }) {
 }
 
 export default function MyDayPage() {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [activities, setActivities] = useState([]);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
@@ -102,7 +104,7 @@ export default function MyDayPage() {
                 const dl = getDeadlineStatus(o);
                 const isOverdue = dl.status === 'overdue';
                 return (
-                  <div key={o.id} className={`flex items-center justify-between px-3 py-2 rounded-lg ${isOverdue ? 'bg-red-50 dark:bg-red-900/10' : 'bg-amber-50 dark:bg-amber-900/10'}`}>
+                  <div key={o.id} onClick={() => navigate('/financial', { state: { openOsId: o.id } })} className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${isOverdue ? 'bg-red-50 dark:bg-red-900/10 hover:bg-red-100/50 dark:hover:bg-red-900/20' : 'bg-amber-50 dark:bg-amber-900/10 hover:bg-amber-100/50 dark:hover:bg-amber-900/20'}`}>
                     <div className="min-w-0">
                       <span className={`text-sm font-medium ${isOverdue ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'}`}>
                         #{o.number} {o.title}
@@ -131,7 +133,7 @@ export default function MyDayPage() {
           ) : (
             <div className="space-y-2">
               {upcoming.map(o => (
-                <div key={o.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-700/50">
+                <div key={o.id} onClick={() => navigate('/financial', { state: { openOsId: o.id } })} className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                   <span className="text-sm text-slate-700 dark:text-slate-200">#{o.number} {o.title}</span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">{o.deadline.label}</span>
                 </div>
