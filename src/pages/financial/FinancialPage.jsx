@@ -200,6 +200,7 @@ export default function FinancialPage() {
   const [editingProject, setEditingProject] = useState(null);
   const [projectForm, setProjectForm] = useState({ ...EMPTY_PROJECT_FORM });
   const [sectorFilter, setSectorFilter] = useState(null);
+  const [sectorInitialized, setSectorInitialized] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(null);
   // Sector management
@@ -207,6 +208,15 @@ export default function FinancialPage() {
   const [editingSector, setEditingSector] = useState(null);
   const [sectorForm, setSectorForm] = useState({ ...EMPTY_SECTOR_FORM });
   const [showDeleteSectorModal, setShowDeleteSectorModal] = useState(null);
+
+  // Selecionar primeiro setor automaticamente
+  useEffect(() => {
+    if (!sectorInitialized && sectors.length > 0) {
+      setSectorFilter(sectors[0].id);
+      setSectorInitialized(true);
+    }
+  }, [sectors, sectorInitialized]);
+
   // Preview de O.S. antes de confirmar (fluxo: form -> preview -> confirmar)
   const [pendingOrder, setPendingOrder] = useState(null);
   // Modo emergencial do formulario
@@ -763,7 +773,10 @@ export default function FinancialPage() {
       setSelectedProject({ ...selectedProject, sector: '' });
     }
     setShowDeleteSectorModal(null);
-    if (sectorFilter === id) setSectorFilter(null);
+    if (sectorFilter === id) {
+      const remaining = sectors.filter(s => s.id !== id);
+      setSectorFilter(remaining.length > 0 ? remaining[0].id : null);
+    }
   };
 
   // ==================== RENDER ====================
@@ -1618,7 +1631,7 @@ export default function FinancialPage() {
           {sectors.map(s => (
             <div key={s.id} className="relative group/sector">
               <button
-                onClick={() => setSectorFilter(sectorFilter === s.id ? null : s.id)}
+                onClick={() => setSectorFilter(s.id)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                   sectorFilter === s.id
                     ? 'text-white pr-7'
@@ -1659,35 +1672,15 @@ export default function FinancialPage() {
       {/* Grid de Projetos */}
       <div className="flex-1 overflow-y-auto">
         {(() => {
-          const activeProjects = filteredProjects.filter(p => p.status !== 'finished');
-          const finishedProjects = filteredProjects.filter(p => p.status === 'finished');
+          const projectsWithSector = filteredProjects.filter(p => p.sector);
+          const activeProjects = projectsWithSector.filter(p => p.status !== 'finished');
+          const finishedProjects = projectsWithSector.filter(p => p.status === 'finished');
 
           return (
             <>
-              {(activeProjects.length > 0 || orphanOrders.length > 0) && (
+              {activeProjects.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
                   {activeProjects.map(project => renderProjectCard(project))}
-
-                  {/* Card "Sem Projeto" (O.S. orfas) */}
-                  {orphanOrders.length > 0 && !sectorFilter && !projectSearch.trim() && (
-                    <div
-                      onClick={() => setSelectedProject({ id: '__no_project__', name: 'Sem Projeto', color: '#94a3b8', sector: null })}
-                      className="group bg-white dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 p-5 cursor-pointer hover:shadow-lg hover:border-slate-400 dark:hover:border-slate-500 transition-all duration-200 hover:-translate-y-0.5"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="text-slate-400 dark:text-slate-500">
-                          <InboxIcon size={40} />
-                        </div>
-                      </div>
-                      <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Sem Projeto</h3>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">Ordens de servico nao atribuidas a nenhum projeto</p>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                        <span className="font-medium">{orphanOrders.length} O.S.</span>
-                        <span className="text-slate-300 dark:text-slate-600">|</span>
-                        <span className="text-blue-600">{orphanOrders.filter(o => o.status === 'in_progress').length} andamento</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
