@@ -8,11 +8,11 @@ conn.on('ready', () => {
 
   const cmd = `
     set -e
-    cd /opt/fyness/frontend
+    cd /var/www/bpmn
 
-    echo "=== Git stash + pull ==="
-    git stash --include-untracked
-    git pull origin master
+    echo "=== Git pull ==="
+    git stash --include-untracked 2>/dev/null || true
+    git pull origin main
 
     echo "=== Instalando dependencias ==="
     npm install
@@ -35,5 +35,5 @@ conn.on('ready', () => {
       conn.end();
     });
   });
-}).connect({ host: '187.127.6.160', port: 22, username: 'root', password: 'Fyness123456#', readyTimeout: 20000 });
+}).connect({ host: '31.97.16.109', port: 22, username: 'root', password: 'Holding123456#', readyTimeout: 20000 });
 conn.on('error', err => console.error('Erro:', err.message));

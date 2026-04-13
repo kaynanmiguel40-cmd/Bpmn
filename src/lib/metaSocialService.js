@@ -440,6 +440,85 @@ export async function publishImageToInstagram({ imageUrl, caption }) {
   };
 }
 
+/**
+ * Publica carrossel no Instagram (ate 10 imagens/videos)
+ */
+export async function publishCarouselToInstagram({ mediaUrls, caption }) {
+  const tokens = await getSavedTokens();
+  if (!tokens?.instagram_account_id) {
+    throw new Error('Conta Instagram nao conectada');
+  }
+
+  const accessToken = tokens.access_token;
+  const igUserId = tokens.instagram_account_id;
+
+  // 1. Criar container para cada midia
+  const childIds = [];
+  for (const url of mediaUrls) {
+    const isVideo = /\.(mp4|mov|avi|webm)$/i.test(url);
+    const params = {
+      is_carousel_item: 'true',
+      access_token: accessToken,
+    };
+    if (isVideo) {
+      params.media_type = 'VIDEO';
+      params.video_url = url;
+    } else {
+      params.image_url = url;
+    }
+
+    const res = await fetch(`${GRAPH_API}/v21.0/${igUserId}/media`, {
+      method: 'POST',
+      body: new URLSearchParams(params),
+    });
+    const data = await res.json();
+    if (data.error) {
+      throw new Error(data.error.message || 'Erro ao criar item do carrossel');
+    }
+
+    if (isVideo) {
+      await waitForMediaReady(data.id, accessToken);
+    }
+    childIds.push(data.id);
+  }
+
+  // 2. Criar container do carrossel
+  const carouselRes = await fetch(`${GRAPH_API}/v21.0/${igUserId}/media`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      media_type: 'CAROUSEL',
+      children: childIds.join(','),
+      caption: caption || '',
+      access_token: accessToken,
+    }),
+  });
+  const carouselData = await carouselRes.json();
+  if (carouselData.error) {
+    throw new Error(carouselData.error.message || 'Erro ao criar carrossel');
+  }
+
+  // 3. Publicar
+  const publishRes = await fetch(`${GRAPH_API}/v21.0/${igUserId}/media_publish`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      creation_id: carouselData.id,
+      access_token: accessToken,
+    }),
+  });
+  const publishData = await publishRes.json();
+  if (publishData.error) {
+    throw new Error(publishData.error.message || 'Erro ao publicar carrossel');
+  }
+
+  await logPublishResult({
+    platform: 'instagram',
+    media_id: publishData.id,
+    status: 'success',
+  });
+
+  return { id: publishData.id, platform: 'instagram' };
+}
+
 /** Aguarda video ficar pronto para publicar */
 async function waitForMediaReady(containerId, accessToken, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i++) {
@@ -471,6 +550,22 @@ async function waitForMediaReady(containerId, accessToken, maxAttempts = 30) {
  */
 export async function publishToFacebook() {
   throw new Error('Publicacao no Facebook requer configuracao adicional. Use apenas Instagram por enquanto.');
+}
+
+export async function publishTextToFacebook() {
+  throw new Error('Publicacao no Facebook requer configuracao adicional. Use apenas Instagram por enquanto.');
+}
+
+export async function publishImageToFacebook() {
+  throw new Error('Publicacao no Facebook requer configuracao adicional. Use apenas Instagram por enquanto.');
+}
+
+export async function publishVideoToFacebook() {
+  throw new Error('Publicacao no Facebook requer configuracao adicional. Use apenas Instagram por enquanto.');
+}
+
+export async function getFacebookStatus() {
+  return { connected: false, message: 'Facebook nao configurado' };
 }
 
 // ==================== RATE LIMITS ====================
