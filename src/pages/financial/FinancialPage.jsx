@@ -199,7 +199,7 @@ export default function FinancialPage() {
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
   const [projectForm, setProjectForm] = useState({ ...EMPTY_PROJECT_FORM });
-  // sectorFilter removido - agora projetos sao agrupados por setor diretamente
+  const [sectorFilter, setSectorFilter] = useState(null);
   const [projectSearch, setProjectSearch] = useState('');
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(null);
   // Sector management
@@ -334,12 +334,15 @@ export default function FinancialPage() {
   // Projetos filtrados
   const filteredProjects = useMemo(() => {
     let list = projects;
+    if (sectorFilter) {
+      list = list.filter(p => p.sector === sectorFilter);
+    }
     if (projectSearch.trim()) {
       const q = projectSearch.trim().toLowerCase();
       list = list.filter(p => p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
     }
     return list;
-  }, [projects, projectSearch]);
+  }, [projects, sectorFilter, projectSearch]);
 
   // O.S. sem projeto
   const orphanOrders = useMemo(() => {
@@ -760,6 +763,7 @@ export default function FinancialPage() {
       setSelectedProject({ ...selectedProject, sector: '' });
     }
     setShowDeleteSectorModal(null);
+    if (sectorFilter === id) setSectorFilter(null);
   };
 
   // ==================== RENDER ====================
@@ -1609,89 +1613,63 @@ export default function FinancialPage() {
           />
         </div>
 
-        {/* Gerenciar setores */}
-        {canManageProjects && (
-          <button
-            onClick={openCreateSector}
-            className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-700 dark:hover:text-slate-200 transition-colors flex items-center gap-1"
-            title="Novo setor"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            Setor
-          </button>
-        )}
+        {/* Filtro por setor (chips) */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {sectors.map(s => (
+            <div key={s.id} className="relative group/sector">
+              <button
+                onClick={() => setSectorFilter(sectorFilter === s.id ? null : s.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                  sectorFilter === s.id
+                    ? 'text-white pr-7'
+                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                }`}
+                style={sectorFilter === s.id ? { backgroundColor: s.color } : undefined}
+              >
+                {s.label}
+              </button>
+              {canManageProjects && sectorFilter === s.id && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); openEditSector(s); }}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+                  title="Editar setor"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          ))}
+          {canManageProjects && (
+            <button
+              onClick={openCreateSector}
+              className="px-2 py-1.5 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              title="Novo setor"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          )}
+        </div>
 
       </div>
 
-      {/* Grid de Projetos separado por setor */}
+      {/* Grid de Projetos */}
       <div className="flex-1 overflow-y-auto">
         {(() => {
           const activeProjects = filteredProjects.filter(p => p.status !== 'finished');
           const finishedProjects = filteredProjects.filter(p => p.status === 'finished');
 
-          // Agrupar projetos ativos por setor
-          const projectsBySector = {};
-          activeProjects.forEach(p => {
-            const sectorId = p.sector || '__sem_setor__';
-            if (!projectsBySector[sectorId]) projectsBySector[sectorId] = [];
-            projectsBySector[sectorId].push(p);
-          });
-
-          // Ordenar setores: setores cadastrados primeiro, sem setor por ultimo
-          const sectorOrder = sectors.map(s => s.id);
-          const sortedSectorIds = Object.keys(projectsBySector).sort((a, b) => {
-            if (a === '__sem_setor__') return 1;
-            if (b === '__sem_setor__') return -1;
-            const ia = sectorOrder.indexOf(a);
-            const ib = sectorOrder.indexOf(b);
-            return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-          });
-
           return (
             <>
-              {/* ---- PROJETOS POR SETOR ---- */}
-              {sortedSectorIds.map(sectorId => {
-                const sectorProjects = projectsBySector[sectorId];
-                const sector = sectors.find(s => s.id === sectorId);
-                const sectorLabel = sector ? sector.label : 'Sem Setor';
-                const sectorColor = sector ? sector.color : '#94a3b8';
+              {(activeProjects.length > 0 || orphanOrders.length > 0) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+                  {activeProjects.map(project => renderProjectCard(project))}
 
-                return (
-                  <div key={sectorId} className="mb-6">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sectorColor }} />
-                      <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">{sectorLabel}</h2>
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{sectorProjects.length}</span>
-                      {canManageProjects && sector && (
-                        <button
-                          onClick={() => openEditSector(sector)}
-                          className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors opacity-0 group-hover:opacity-100"
-                          title="Editar setor"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {sectorProjects.map(project => renderProjectCard(project))}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Card "Sem Projeto" (O.S. orfas) */}
-              {orphanOrders.length > 0 && !projectSearch.trim() && (
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <InboxIcon size={16} className="text-slate-400" />
-                    <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Sem Projeto</h2>
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{orphanOrders.length}</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {/* Card "Sem Projeto" (O.S. orfas) */}
+                  {orphanOrders.length > 0 && !sectorFilter && !projectSearch.trim() && (
                     <div
                       onClick={() => setSelectedProject({ id: '__no_project__', name: 'Sem Projeto', color: '#94a3b8', sector: null })}
                       className="group bg-white dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 p-5 cursor-pointer hover:shadow-lg hover:border-slate-400 dark:hover:border-slate-500 transition-all duration-200 hover:-translate-y-0.5"
@@ -1709,7 +1687,7 @@ export default function FinancialPage() {
                         <span className="text-blue-600">{orphanOrders.filter(o => o.status === 'in_progress').length} andamento</span>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -1735,12 +1713,12 @@ export default function FinancialPage() {
                   </div>
                   <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-300 mb-1">Nenhum projeto encontrado</h3>
                   <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">
-                    {projectSearch.trim()
+                    {projectSearch.trim() || sectorFilter
                       ? 'Tente ajustar os filtros de busca'
                       : 'Crie seu primeiro projeto para organizar as O.S.'
                     }
                   </p>
-                  {canManageProjects && !projectSearch.trim() && (
+                  {canManageProjects && !projectSearch.trim() && !sectorFilter && (
                     <button onClick={openCreateProject} className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors text-sm font-medium">
                       Criar Projeto
                     </button>
