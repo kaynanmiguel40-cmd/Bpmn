@@ -57,14 +57,125 @@ FILTROS ELIMINATORIOS:
  </bpmn2:collaboration>
 
  <bpmn2:process id="Process_RH" isExecutable="false">
-   <bpmn2:startEvent id="Start_RH" name="Candidato" />
-   <bpmn2:task id="Task_Filtros" name="Filtros eliminatorios (experiencia + estabilidade)" />
+   <bpmn2:startEvent id="Start_RH" name="Candidato">
+     <bpmn2:documentation>Candidato chegou por indicacao, LinkedIn, Indeed ou outro canal.
+Antes de gastar tempo com entrevista, verificar curriculo nos filtros eliminatorios.</bpmn2:documentation>
+   </bpmn2:startEvent>
+
+   <bpmn2:task id="Task_Filtros" name="Filtros eliminatorios (experiencia + estabilidade)">
+     <bpmn2:documentation>FILTROS ELIMINATORIOS — checar ANTES de gastar tempo:
+
+1. Tem pelo menos 1 ano de experiencia profissional? (qualquer area)
+   NAO = descarta imediatamente
+
+2. Fica pulando de emprego? (6 meses aqui, 8 ali, nunca fica)
+   SIM = descarta — sem resiliencia, vai sair rapido
+
+3. Tem pelo menos 1 experiencia longa (1+ ano no mesmo lugar)?
+   NAO = descarta
+
+SE PASSOU NOS 3: agendar entrevista.
+SE NAO PASSOU: agradece e dispensa. Nao perca tempo.</bpmn2:documentation>
+   </bpmn2:task>
+
    <bpmn2:exclusiveGateway id="GW1" name="Passou?" />
    <bpmn2:endEvent id="End_Nao1" name="Nao" />
-   <bpmn2:task id="Task_Entrevista" name="Entrevista (passado + valores)" />
+
+   <bpmn2:task id="Task_Entrevista" name="Entrevista (passado + valores)">
+     <bpmn2:documentation>ENTREVISTA (30-45 min):
+
+═══════════════════════════════════
+ETAPA 1 — SOBRE O CHEFE ANTERIOR:
+═══════════════════════════════════
+"Me fala do seu chefe anterior. Como profissional, o que ele tem de BOM?"
+(deixa falar)
+"E o que ele poderia MELHORAR?"
+(preste atencao: fala com maturidade ou so reclama?)
+
+"O que ele FALARIA sobre voce? Coisas boas E ruins."
+(se trava e nao fala nada ruim de si = problema)
+
+═══════════════════════════════════
+ETAPA 2 — CONTEXTO:
+═══════════════════════════════════
+- "Por que saiu do ultimo emprego?"
+- "O que busca nessa oportunidade?"
+- "Qual a maior conquista da sua carreira?"
+- "Me conta uma situacao dificil que enfrentou e como resolveu"
+
+═══════════════════════════════════
+ETAPA 3 — VALORES (eliminatorio):
+═══════════════════════════════════
+Faca de forma natural, como parte da conversa:
+
+- "O que faz uma pessoa ter sucesso na vida?"
+  BOM: esforco, dedicacao, correr atras
+  RUIM: sorte, contatos, nasceu no lugar certo
+
+- "Quando algo da errado no trabalho, de quem e a responsabilidade?"
+  BOM: minha primeiro, depois analiso o contexto
+  RUIM: culpa o chefe, a empresa, o governo
+
+- "O que voce pensa sobre empreendedorismo no Brasil?"
+  BOM: admira quem empreende, entende a dificuldade
+  RUIM: acha que empresa so explora, patrao e vilao
+
+- "Prefere estabilidade ou crescimento baseado em resultado?"
+  BOM: quer crescer por merito, aceita desafios
+  RUIM: so quer estabilidade, nao quer se arriscar
+
+- "Se um colega nao esta rendendo, o que voce faria?"
+  BOM: conversa, ajuda, cobra
+  RUIM: ignora, "nao e problema meu"
+
+NAO ALINHADO COM VALORES = NAO CONTRATA.
+Habilidade se treina. Valores nao.</bpmn2:documentation>
+   </bpmn2:task>
+
    <bpmn2:exclusiveGateway id="GW2" name="Alinhado?" />
    <bpmn2:endEvent id="End_Nao2" name="Nao" />
-   <bpmn2:task id="Task_Nota" name="Dar nota nas 7 caracteristicas" />
+
+   <bpmn2:task id="Task_Nota" name="Dar nota nas 7 caracteristicas">
+     <bpmn2:documentation>SCORECARD — dar nota 1-10 em cada:
+
+1. TREINABILIDADE (peso 10 — MAIS IMPORTANTE)
+   Aceita feedback e APLICA no dia seguinte.
+   TESTE: roleplay de venda → feedback → refaz.
+   Aplicou? Nota alta. Ignorou? Nota zero.
+
+2. CURIOSIDADE (peso 9)
+   Pesquisou o Fyness antes? Faz perguntas?
+   Nao sabe nada da empresa = nota baixa.
+
+3. DISCIPLINA E COMPROMETIMENTO (peso 8)
+   Chegou no horario? Curriculo organizado?
+   "Me conta seu dia tipico, hora por hora"
+
+4. HISTORICO DE CONQUISTAS (peso 8)
+   "Qual a maior conquista da sua vida?"
+   Ja venceu em algo = sabe correr atras.
+
+5. EXPERIENCIA COM VENDAS (peso 7)
+   Ja vendeu por telefone/WhatsApp?
+   IDEAL: SaaS | ACEITAVEL: telefone | ALERTA: porta a porta
+
+6. RACIOCINIO RAPIDO (peso 7)
+   Explique o Fyness em 2min. Peca pra ele te vender.
+   Criou argumentos = alta | Repetiu = media | Travou = baixa
+
+7. VOZ E COMUNICACAO (peso 6)
+   Energia ou entediado? Firme ou inseguro?
+   80% da venda e por telefone. A voz e a ferramenta.
+
+═══════════════════════════════════
+SOMAR (maximo 70):
+Acima de 50 = CONTRATA
+40 a 50 = COM RESSALVA (acompanhar 90 dias)
+Abaixo de 40 = NAO CONTRATA
+
+REGRA: Treinabilidade menor que 6 = NAO CONTRATA.</bpmn2:documentation>
+   </bpmn2:task>
+
    <bpmn2:exclusiveGateway id="GW3" name="Nota >= 40?" />
    <bpmn2:endEvent id="End_Nao3" name="Nao" />
    <bpmn2:endEvent id="End_Sim" name="CONTRATADO!" />

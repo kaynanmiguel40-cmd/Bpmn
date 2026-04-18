@@ -274,8 +274,6 @@ ACAO POR SCORE:
 - Amarelo: WhatsApp "Oi [Nome], percebi que voce nao usou [funcionalidade] essa semana. Posso te ajudar?"
 - Vermelho: ir para Gatilho risco churn IMEDIATO</bpmn2:documentation>
      <bpmn2:incoming>Flow_CS_01</bpmn2:incoming>
-     <bpmn2:incoming>Flow_CS_Recuperou_Sim</bpmn2:incoming>
-     <bpmn2:incoming>Flow_CS_Ficou_Sim</bpmn2:incoming>
      <bpmn2:outgoing>Flow_CS_02</bpmn2:outgoing>
      <bpmn2:outgoing>Flow_CS_Parallel_Renovacao</bpmn2:outgoing>
      <bpmn2:outgoing>Flow_CS_Parallel_Inadimplencia</bpmn2:outgoing>
@@ -420,6 +418,24 @@ REGRA: Nao existe churn sem motivo catalogado.</bpmn2:documentation>
      <bpmn2:incoming>Flow_CS_10</bpmn2:incoming>
    </bpmn2:endEvent>
 
+   <bpmn2:endEvent id="End_CS_Resolvido" name="Insatisfacao resolvida">
+     <bpmn2:documentation>Cliente foi ouvido, problema entendido e resolvido.
+Volta ao ciclo normal de Health Score mensal.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_CS_LigarInsatisfacao_Back</bpmn2:incoming>
+   </bpmn2:endEvent>
+
+   <bpmn2:endEvent id="End_CS_Recuperado" name="Cliente recuperado">
+     <bpmn2:documentation>Gatilho de risco acionou, conversamos com o cliente e ele voltou a usar.
+Volta ao ciclo normal de Health Score mensal.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_CS_Recuperou_Sim</bpmn2:incoming>
+   </bpmn2:endEvent>
+
+   <bpmn2:endEvent id="End_CS_Mantido" name="Cliente mantido">
+     <bpmn2:documentation>Negociacao anti-churn bem sucedida. Cliente aceitou condicoes e ficou.
+Volta ao ciclo normal de Health Score mensal.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_CS_Ficou_Sim</bpmn2:incoming>
+   </bpmn2:endEvent>
+
    <!-- CAMINHOS PARALELOS -->
    <bpmn2:task id="Task_CS_Renovacao" name="Renovacao contrato - ligar 30 dias antes">
      <bpmn2:documentation>RENOVACAO DE CONTRATO — Contato 30 dias antes do vencimento:
@@ -470,12 +486,12 @@ Cobrar no dia seguinte e CUIDADO, nao grosseria.</bpmn2:documentation>
    <bpmn2:sequenceFlow id="Flow_CS_05" sourceRef="Task_CS_NPS" targetRef="Gw_CS_NPS" />
    <bpmn2:sequenceFlow id="Flow_CS_06_Sim" name="Sim" sourceRef="Gw_CS_NPS" targetRef="Link_CS_ToIndicacao" />
    <bpmn2:sequenceFlow id="Flow_CS_07_Nao" name="Nao" sourceRef="Gw_CS_NPS" targetRef="Task_CS_LigarInsatisfacao" />
-   <bpmn2:sequenceFlow id="Flow_CS_LigarInsatisfacao_Back" sourceRef="Task_CS_LigarInsatisfacao" targetRef="Task_CS_HealthScore" />
+   <bpmn2:sequenceFlow id="Flow_CS_LigarInsatisfacao_Back" sourceRef="Task_CS_LigarInsatisfacao" targetRef="End_CS_Resolvido" />
    <bpmn2:sequenceFlow id="Flow_CS_08" sourceRef="Task_CS_GatilhoRisco" targetRef="Gw_CS_Recuperou" />
-   <bpmn2:sequenceFlow id="Flow_CS_Recuperou_Sim" name="Sim" sourceRef="Gw_CS_Recuperou" targetRef="Task_CS_HealthScore" />
+   <bpmn2:sequenceFlow id="Flow_CS_Recuperou_Sim" name="Sim" sourceRef="Gw_CS_Recuperou" targetRef="End_CS_Recuperado" />
    <bpmn2:sequenceFlow id="Flow_CS_Recuperou_Nao" name="Nao" sourceRef="Gw_CS_Recuperou" targetRef="Task_CS_Negociacao" />
    <bpmn2:sequenceFlow id="Flow_CS_09" sourceRef="Task_CS_Negociacao" targetRef="Gw_CS_Ficou" />
-   <bpmn2:sequenceFlow id="Flow_CS_Ficou_Sim" name="Sim" sourceRef="Gw_CS_Ficou" targetRef="Task_CS_HealthScore" />
+   <bpmn2:sequenceFlow id="Flow_CS_Ficou_Sim" name="Sim" sourceRef="Gw_CS_Ficou" targetRef="End_CS_Mantido" />
    <bpmn2:sequenceFlow id="Flow_CS_Ficou_Nao" name="Nao" sourceRef="Gw_CS_Ficou" targetRef="Task_CS_CatalogarMotivo" />
    <bpmn2:sequenceFlow id="Flow_CS_10" sourceRef="Task_CS_CatalogarMotivo" targetRef="End_CS_Cancelou" />
    <bpmn2:sequenceFlow id="Flow_CS_Parallel_Renovacao" sourceRef="Task_CS_HealthScore" targetRef="Task_CS_Renovacao" />
@@ -754,7 +770,7 @@ LTV alto, churn baixo, CAC dos indicados = zero.</bpmn2:documentation>
      <!-- ═══════════════════════════════════════════════════════ -->
      <bpmndi:BPMNShape id="Shape_Pool_CS" bpmnElement="Pool_CS" isHorizontal="true"
        bioc:stroke="#1565C0" bioc:fill="#E3F2FD">
-       <dc:Bounds x="160" y="380" width="2200" height="300" />
+       <dc:Bounds x="160" y="380" width="2200" height="360" />
        <bpmndi:BPMNLabel />
      </bpmndi:BPMNShape>
 
@@ -857,16 +873,16 @@ LTV alto, churn baixo, CAC dos indicados = zero.</bpmn2:documentation>
        </bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
 
-     <!-- Task: Renovacao contrato (parallel, right side) -->
+     <!-- Task: Renovacao contrato (parallel, above Health Score) -->
      <bpmndi:BPMNShape id="Shape_Task_CS_Renovacao" bpmnElement="Task_CS_Renovacao"
        bioc:stroke="#1565C0" bioc:fill="#E3F2FD">
-       <dc:Bounds x="1450" y="400" width="190" height="60" />
+       <dc:Bounds x="260" y="400" width="200" height="40" />
      </bpmndi:BPMNShape>
 
-     <!-- Task: Prevencao inadimplencia (parallel, right side) -->
+     <!-- Task: Prevencao inadimplencia (parallel, below Health Score) -->
      <bpmndi:BPMNShape id="Shape_Task_CS_Inadimplencia" bpmnElement="Task_CS_Inadimplencia"
        bioc:stroke="#1565C0" bioc:fill="#E3F2FD">
-       <dc:Bounds x="1450" y="480" width="210" height="60" />
+       <dc:Bounds x="260" y="550" width="200" height="40" />
      </bpmndi:BPMNShape>
 
      <!-- EDGES: CS / RETENCAO -->
@@ -917,27 +933,39 @@ LTV alto, churn baixo, CAC dos indicados = zero.</bpmn2:documentation>
          <dc:Bounds x="770" y="472" width="21" height="14" />
        </bpmndi:BPMNLabel>
      </bpmndi:BPMNEdge>
-     <!-- Ligar insatisfacao back to Health Score -->
+     <!-- Ligar insatisfacao → End: Insatisfacao resolvida -->
      <bpmndi:BPMNEdge id="Edge_Flow_CS_LigarInsatisfacao_Back" bpmnElement="Flow_CS_LigarInsatisfacao_Back">
-       <di:waypoint x="905" y="525" />
-       <di:waypoint x="905" y="640" />
-       <di:waypoint x="360" y="640" />
-       <di:waypoint x="360" y="535" />
+       <di:waypoint x="980" y="495" />
+       <di:waypoint x="1040" y="495" />
      </bpmndi:BPMNEdge>
+
+     <bpmndi:BPMNShape id="Shape_End_CS_Resolvido" bpmnElement="End_CS_Resolvido"
+       bioc:stroke="#1565C0" bioc:fill="#E3F2FD">
+       <dc:Bounds x="1040" y="477" width="36" height="36" />
+       <bpmndi:BPMNLabel>
+         <dc:Bounds x="1010" y="520" width="100" height="14" />
+       </bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
      <bpmndi:BPMNEdge id="Edge_Flow_CS_08" bpmnElement="Flow_CS_08">
        <di:waypoint x="700" y="585" />
        <di:waypoint x="745" y="585" />
      </bpmndi:BPMNEdge>
-     <!-- Recuperou SIM: back to Health Score -->
+     <!-- Recuperou SIM → End: Cliente recuperado -->
      <bpmndi:BPMNEdge id="Edge_Flow_CS_Recuperou_Sim" bpmnElement="Flow_CS_Recuperou_Sim">
-       <di:waypoint x="770" y="560" />
-       <di:waypoint x="770" y="540" />
-       <di:waypoint x="360" y="540" />
-       <di:waypoint x="360" y="535" />
+       <di:waypoint x="770" y="610" />
+       <di:waypoint x="770" y="660" />
        <bpmndi:BPMNLabel>
-         <dc:Bounds x="560" y="522" width="20" height="14" />
+         <dc:Bounds x="775" y="625" width="20" height="14" />
        </bpmndi:BPMNLabel>
      </bpmndi:BPMNEdge>
+
+     <bpmndi:BPMNShape id="Shape_End_CS_Recuperado" bpmnElement="End_CS_Recuperado"
+       bioc:stroke="#1565C0" bioc:fill="#E3F2FD">
+       <dc:Bounds x="752" y="660" width="36" height="36" />
+       <bpmndi:BPMNLabel>
+         <dc:Bounds x="720" y="700" width="100" height="14" />
+       </bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
      <!-- Recuperou NAO: to Negociacao -->
      <bpmndi:BPMNEdge id="Edge_Flow_CS_Recuperou_Nao" bpmnElement="Flow_CS_Recuperou_Nao">
        <di:waypoint x="795" y="585" />
@@ -950,16 +978,22 @@ LTV alto, churn baixo, CAC dos indicados = zero.</bpmn2:documentation>
        <di:waypoint x="980" y="585" />
        <di:waypoint x="1025" y="585" />
      </bpmndi:BPMNEdge>
-     <!-- Ficou SIM: back to Health Score -->
+     <!-- Ficou SIM → End: Cliente mantido -->
      <bpmndi:BPMNEdge id="Edge_Flow_CS_Ficou_Sim" bpmnElement="Flow_CS_Ficou_Sim">
-       <di:waypoint x="1050" y="560" />
-       <di:waypoint x="1050" y="540" />
-       <di:waypoint x="360" y="540" />
-       <di:waypoint x="360" y="535" />
+       <di:waypoint x="1050" y="610" />
+       <di:waypoint x="1050" y="660" />
        <bpmndi:BPMNLabel>
-         <dc:Bounds x="700" y="522" width="20" height="14" />
+         <dc:Bounds x="1055" y="625" width="20" height="14" />
        </bpmndi:BPMNLabel>
      </bpmndi:BPMNEdge>
+
+     <bpmndi:BPMNShape id="Shape_End_CS_Mantido" bpmnElement="End_CS_Mantido"
+       bioc:stroke="#1565C0" bioc:fill="#E3F2FD">
+       <dc:Bounds x="1032" y="660" width="36" height="36" />
+       <bpmndi:BPMNLabel>
+         <dc:Bounds x="1000" y="700" width="100" height="14" />
+       </bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
      <!-- Ficou NAO: to Catalogar -->
      <bpmndi:BPMNEdge id="Edge_Flow_CS_Ficou_Nao" bpmnElement="Flow_CS_Ficou_Nao">
        <di:waypoint x="1075" y="585" />
@@ -972,17 +1006,15 @@ LTV alto, churn baixo, CAC dos indicados = zero.</bpmn2:documentation>
        <di:waypoint x="1290" y="585" />
        <di:waypoint x="1332" y="585" />
      </bpmndi:BPMNEdge>
-     <!-- Parallel: Health Score to Renovacao -->
+     <!-- Parallel: Health Score to Renovacao (up) -->
      <bpmndi:BPMNEdge id="Edge_Flow_CS_Parallel_Renovacao" bpmnElement="Flow_CS_Parallel_Renovacao">
-       <di:waypoint x="430" y="475" />
-       <di:waypoint x="440" y="430" />
-       <di:waypoint x="1450" y="430" />
+       <di:waypoint x="360" y="455" />
+       <di:waypoint x="360" y="440" />
      </bpmndi:BPMNEdge>
-     <!-- Parallel: Health Score to Inadimplencia -->
+     <!-- Parallel: Health Score to Inadimplencia (down) -->
      <bpmndi:BPMNEdge id="Edge_Flow_CS_Parallel_Inadimplencia" bpmnElement="Flow_CS_Parallel_Inadimplencia">
-       <di:waypoint x="430" y="510" />
-       <di:waypoint x="440" y="510" />
-       <di:waypoint x="1450" y="510" />
+       <di:waypoint x="360" y="535" />
+       <di:waypoint x="360" y="550" />
      </bpmndi:BPMNEdge>
 
      <!-- ═══════════════════════════════════════════════════════ -->
@@ -990,72 +1022,72 @@ LTV alto, churn baixo, CAC dos indicados = zero.</bpmn2:documentation>
      <!-- ═══════════════════════════════════════════════════════ -->
      <bpmndi:BPMNShape id="Shape_Pool_Indicacao" bpmnElement="Pool_Indicacao" isHorizontal="true"
        bioc:stroke="#E65100" bioc:fill="#FFF3E0">
-       <dc:Bounds x="160" y="750" width="1400" height="250" />
+       <dc:Bounds x="160" y="790" width="1400" height="250" />
        <bpmndi:BPMNLabel />
      </bpmndi:BPMNShape>
 
      <!-- Link: ← CS -->
      <bpmndi:BPMNShape id="Shape_Link_Ind_FromCS" bpmnElement="Link_Ind_FromCS"
        bioc:stroke="#E65100" bioc:fill="#FFF3E0">
-       <dc:Bounds x="210" y="857" width="36" height="36" />
+       <dc:Bounds x="210" y="897" width="36" height="36" />
        <bpmndi:BPMNLabel>
-         <dc:Bounds x="205" y="900" width="46" height="14" />
+         <dc:Bounds x="205" y="940" width="46" height="14" />
        </bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
 
      <!-- Task: Pedir depoimento -->
      <bpmndi:BPMNShape id="Shape_Task_Ind_Depoimento" bpmnElement="Task_Ind_Depoimento"
        bioc:stroke="#E65100" bioc:fill="#FFF3E0">
-       <dc:Bounds x="290" y="835" width="160" height="80" />
+       <dc:Bounds x="290" y="875" width="160" height="80" />
      </bpmndi:BPMNShape>
 
      <!-- Task: Programa de indicacao -->
      <bpmndi:BPMNShape id="Shape_Task_Ind_Programa" bpmnElement="Task_Ind_Programa"
        bioc:stroke="#E65100" bioc:fill="#FFF3E0">
-       <dc:Bounds x="500" y="835" width="200" height="80" />
+       <dc:Bounds x="500" y="875" width="200" height="80" />
      </bpmndi:BPMNShape>
 
      <!-- Task: Comunidade ativa -->
      <bpmndi:BPMNShape id="Shape_Task_Ind_Comunidade" bpmnElement="Task_Ind_Comunidade"
        bioc:stroke="#E65100" bioc:fill="#FFF3E0">
-       <dc:Bounds x="750" y="835" width="160" height="80" />
+       <dc:Bounds x="750" y="875" width="160" height="80" />
      </bpmndi:BPMNShape>
 
      <!-- Task: Feedback pro produto -->
      <bpmndi:BPMNShape id="Shape_Task_Ind_Feedback" bpmnElement="Task_Ind_Feedback"
        bioc:stroke="#E65100" bioc:fill="#FFF3E0">
-       <dc:Bounds x="960" y="835" width="170" height="80" />
+       <dc:Bounds x="960" y="875" width="170" height="80" />
      </bpmndi:BPMNShape>
 
      <!-- End: Cliente promotor da marca -->
      <bpmndi:BPMNShape id="Shape_End_Ind_Promotor" bpmnElement="End_Ind_Promotor"
        bioc:stroke="#E65100" bioc:fill="#FFF3E0">
-       <dc:Bounds x="1192" y="857" width="36" height="36" />
+       <dc:Bounds x="1192" y="897" width="36" height="36" />
        <bpmndi:BPMNLabel>
-         <dc:Bounds x="1160" y="900" width="100" height="27" />
+         <dc:Bounds x="1160" y="940" width="100" height="27" />
        </bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
 
      <!-- EDGES: INDICACAO -->
      <bpmndi:BPMNEdge id="Edge_Flow_Ind_01" bpmnElement="Flow_Ind_01">
-       <di:waypoint x="246" y="875" />
-       <di:waypoint x="290" y="875" />
+       <di:waypoint x="246" y="915" />
+       <di:waypoint x="290" y="915" />
      </bpmndi:BPMNEdge>
      <bpmndi:BPMNEdge id="Edge_Flow_Ind_02" bpmnElement="Flow_Ind_02">
-       <di:waypoint x="450" y="875" />
-       <di:waypoint x="500" y="875" />
+       <di:waypoint x="450" y="915" />
+       <di:waypoint x="500" y="915" />
      </bpmndi:BPMNEdge>
      <bpmndi:BPMNEdge id="Edge_Flow_Ind_03" bpmnElement="Flow_Ind_03">
-       <di:waypoint x="700" y="875" />
-       <di:waypoint x="750" y="875" />
+       <di:waypoint x="700" y="915" />
+       <di:waypoint x="750" y="915" />
      </bpmndi:BPMNEdge>
      <bpmndi:BPMNEdge id="Edge_Flow_Ind_04" bpmnElement="Flow_Ind_04">
-       <di:waypoint x="910" y="875" />
-       <di:waypoint x="960" y="875" />
+       <di:waypoint x="910" y="915" />
+       <di:waypoint x="960" y="915" />
      </bpmndi:BPMNEdge>
      <bpmndi:BPMNEdge id="Edge_Flow_Ind_05" bpmnElement="Flow_Ind_05">
-       <di:waypoint x="1130" y="875" />
-       <di:waypoint x="1192" y="875" />
+       <di:waypoint x="1130" y="915" />
+       <di:waypoint x="1192" y="915" />
      </bpmndi:BPMNEdge>
 
      <!-- ═══════════════════════════════════════════════════════ -->
