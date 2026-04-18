@@ -1965,15 +1965,26 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
   }, [order.id]);
 
   // Auto-pause: pausa a O.S. inteira apos o fim do expediente (18h)
+  // Usa ref para garantir que so dispare UMA vez por sessao (evita loop de toasts
+  // em sabado/domingo quando isAfterHours e sempre true).
+  const autoPausedRef = useRef(false);
   useEffect(() => {
+    // Se ja esta pausada, marcar como "paused" e nao tentar de novo
+    if (order.pausedAt) {
+      autoPausedRef.current = true;
+      return;
+    }
+    if (!onUpdateOrder || order.status !== 'in_progress') return;
+
     const autoPause = () => {
+      if (autoPausedRef.current) return;
       const now = new Date();
       const day = now.getDay();
       const hour = now.getHours();
       const isAfterHours = hour >= WORK_END_HOUR || day === 0 || day === 6;
-      if (!isAfterHours || !onUpdateOrder) return;
-      // Se a O.S. esta em andamento e nao esta pausada, pausar
-      if (order.status !== 'in_progress' || order.pausedAt) return;
+      if (!isAfterHours) return;
+
+      autoPausedRef.current = true;
       const pauseTime = new Date(now);
       pauseTime.setHours(WORK_END_HOUR, 0, 0, 0);
       onUpdateOrder(order.id, { pausedAt: pauseTime.toISOString() });
