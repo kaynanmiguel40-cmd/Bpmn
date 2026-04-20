@@ -3,11 +3,9 @@ import BpmnJS from 'bpmn-js/lib/Modeler';
 import translateModule, { customTranslate } from '../utils/bpmnTranslations';
 import customResizeModule from '../utils/customResizeProvider';
 import connectionCrossingsModule from '../utils/connectionCrossings';
-import { COMERCIAL_DIAGRAM_XML } from '../utils/comercialTemplate'; // Usa V8 automaticamente
-
-import { MARKETING_TEMPLATE_XML } from '../utils/marketingTemplate';
-import { RH_TEMPLATE_XML } from '../utils/rhTemplate';
-import { POS_VENDA_TEMPLATE_XML } from '../utils/posVendaTemplate';
+// Templates BPMN sao pesados (~8k linhas totais) e carregados sob demanda via
+// dynamic import nas funcoes loadXxxTemplate abaixo, evitando inflar o chunk
+// inicial do Editor.
 import { toast } from '../contexts/ToastContext';
 
 // Dicionário completo de traduções para tooltips
@@ -537,6 +535,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
       if (!modelerRef.current) return false;
 
       try {
+        const { COMERCIAL_DIAGRAM_XML } = await import('../utils/comercialTemplate');
         await modelerRef.current.importXML(COMERCIAL_DIAGRAM_XML);
 
         const canvas = modelerRef.current.get('canvas');
@@ -640,6 +639,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
       if (!modelerRef.current) return false;
 
       try {
+        const { MARKETING_TEMPLATE_XML } = await import('../utils/marketingTemplate');
         await modelerRef.current.importXML(MARKETING_TEMPLATE_XML);
 
         const canvas = modelerRef.current.get('canvas');
@@ -683,6 +683,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
       if (!modelerRef.current) return false;
 
       try {
+        const { RH_TEMPLATE_XML } = await import('../utils/rhTemplate');
         await modelerRef.current.importXML(RH_TEMPLATE_XML);
 
         const canvas = modelerRef.current.get('canvas');
@@ -726,6 +727,7 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
       if (!modelerRef.current) return false;
 
       try {
+        const { POS_VENDA_TEMPLATE_XML } = await import('../utils/posVendaTemplate');
         await modelerRef.current.importXML(POS_VENDA_TEMPLATE_XML);
 
         const canvas = modelerRef.current.get('canvas');
