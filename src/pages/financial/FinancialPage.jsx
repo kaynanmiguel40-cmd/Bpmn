@@ -1043,7 +1043,7 @@ export default function FinancialPage() {
         </div>
 
         {/* Area scrollavel com todo o conteudo */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
 
         {/* Botao "Ver na EAP" para projetos vinculados */}
         {isEapProject && (
@@ -1096,7 +1096,7 @@ export default function FinancialPage() {
             return (
               <div
                 key={column.id}
-                className={`flex flex-col rounded-xl border-2 overflow-hidden transition-all duration-200 ${
+                className={`flex flex-col rounded-xl border-2 overflow-hidden ${
                   isOver
                     ? 'border-fyness-primary bg-fyness-primary/5 shadow-lg'
                     : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
@@ -1124,7 +1124,7 @@ export default function FinancialPage() {
                   <h3 className="text-sm font-semibold text-white">{column.title}</h3>
                   <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">{colOrders.length}</span>
                 </div>
-                <div className={`flex-1 overflow-y-auto p-3 space-y-0 min-h-[100px] ${isOver ? 'bg-fyness-primary/5' : ''}`}>
+                <div className={`flex-1 overflow-y-auto overscroll-contain p-3 space-y-0 min-h-[100px] ${isOver ? 'bg-fyness-primary/5' : ''}`}>
                   {colOrders.length === 0 ? (
                     <div className={`text-center py-8 text-sm ${isOver ? 'text-fyness-primary font-medium' : 'text-slate-400 dark:text-slate-500'}`}>
                       {isOver ? 'Soltar aqui' : column.emptyText}
@@ -1709,7 +1709,7 @@ export default function FinancialPage() {
       </div>
 
       {/* Grid de Projetos */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overscroll-contain">
         {(() => {
           const projectsWithSector = filteredProjects.filter(p => p.sector);
           const activeProjects = projectsWithSector.filter(p => p.status !== 'finished');
@@ -1852,11 +1852,11 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
         onDragEnd={!isEmergency ? onDragEnd : undefined}
         onDragOver={!isEmergency ? handleDragOver : undefined}
         onClick={onClick}
-        className={`rounded-lg p-3 transition-all group ${
+        className={`rounded-lg p-3 transition-shadow group ${
           isEmergency
             ? `bg-white dark:bg-slate-800 border-l-4 border-red-500 border-t border-r border-b border-t-red-200 dark:border-t-red-800/50 border-r-red-200 dark:border-r-red-800/50 border-b-red-200 dark:border-b-red-800/50 cursor-pointer hover:shadow-md hover:shadow-red-100 dark:hover:shadow-red-900/20 w-72`
             : `bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-grab active:cursor-grabbing ${
-              isDragging ? 'opacity-40 scale-95 shadow-none' : 'hover:shadow-md hover:border-fyness-primary/30'
+              isDragging ? 'opacity-40 scale-95 shadow-none' : 'hover:shadow-md'
             }`
         }`}
       >
