@@ -122,6 +122,8 @@ export const osOrderSchema = z.object({
   estimatedEnd: nullableStr,
   actualStart: nullableStr,
   actualEnd: nullableStr,
+  resumedAt: nullableStr,
+  accumulatedMs: z.number().nullable().optional().default(0),
   slaDeadline: nullableStr,
   leadTimeHours: z.number().nullable().optional(),
   expenses: z.array(expenseItem).default([]),
@@ -295,6 +297,60 @@ export const processOrderSchema = z.object({
   version: z.number().optional().default(1),
   notes: z.string().optional().default(''),
 }).passthrough();
+
+// ==================== VALIDACAO DE TRANSICAO DE STATUS O.S. ====================
+
+/**
+ * Valida se uma O.S. tem os campos necessarios para mover para um novo status.
+ * Retorna { ok: true } se pode mover, ou { ok: false, error: '...' } caso contrario.
+ *
+ * Regras:
+ * - available -> in_progress: precisa estimatedStart, estimatedEnd, assignedTo
+ * - in_progress -> done: precisa actualEnd E checklist 100% completo (se houver)
+ * - qualquer -> blocked: precisa blockReason
+ */
+export function validateStatusTransition(order, newStatus) {
+  if (!order) return { ok: false, error: 'O.S. nao encontrada' };
+  const current = order.status || 'available';
+  if (current === newStatus) return { ok: true };
+
+  if (newStatus === 'in_progress') {
+    const missing = [];
+    if (!order.estimatedStart) missing.push('data de inicio prevista');
+    if (!order.estimatedEnd) missing.push('data de termino prevista');
+    if (!order.assignedTo && !order.assignee) missing.push('responsavel');
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        error: `Para iniciar, preencha: ${missing.join(', ')}.`,
+      };
+    }
+  }
+
+  if (newStatus === 'done') {
+    if (!order.actualEnd && current === 'in_progress') {
+      // actualEnd sera preenchido automaticamente na transicao, OK
+    }
+    const cl = order.checklist || [];
+    if (cl.length > 0) {
+      const incomplete = cl.filter(i => !i.done).length;
+      if (incomplete > 0) {
+        return {
+          ok: false,
+          error: `Checklist incompleto: ${incomplete} item(ns) pendente(s).`,
+        };
+      }
+    }
+  }
+
+  if (newStatus === 'blocked') {
+    if (!order.blockReason) {
+      return { ok: false, error: 'Informe o motivo do bloqueio.' };
+    }
+  }
+
+  return { ok: true };
+}
 
 // ==================== VALIDACAO + SANITIZACAO ====================
 

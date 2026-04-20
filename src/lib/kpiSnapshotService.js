@@ -1,6 +1,7 @@
 import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabase';
 import { calcKPIs } from './kpiUtils';
+import { getOffline } from './offlineDB';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -11,6 +12,8 @@ function dbToSnapshot(row) {
     userName: row.user_name || '',
     period: row.period, // 'YYYY-MM'
     metrics: row.metrics || {},
+    isClosed: row.is_closed || false,
+    closedAt: row.closed_at || null,
     createdAt: row.created_at,
   };
 }
@@ -26,6 +29,8 @@ const snapshotService = createCRUDService({
     userName: 'user_name',
     period: 'period',
     metrics: 'metrics',
+    isClosed: 'is_closed',
+    closedAt: 'closed_at',
   },
   orderBy: 'period',
   orderAsc: true,
@@ -69,10 +74,28 @@ export async function saveMonthlySnapshot(orders, events, targetHours, userName)
   const existingSnapshot = existing.find(s => s.period === period);
 
   if (existingSnapshot) {
+    // Snapshots fechados sao imutaveis - nao atualizar
+    if (existingSnapshot.isClosed) {
+      return existingSnapshot;
+    }
     return snapshotService.update(existingSnapshot.id, { metrics });
   }
 
-  return snapshotService.create({ userName, period, metrics });
+  return snapshotService.create({ userName, period, metrics, isClosed: false });
+}
+
+/** Fecha snapshots de periodos anteriores ao mes atual (imutabiliza historico). */
+export async function closeExpiredSnapshots(userName) {
+  const current = getCurrentPeriod();
+  const history = await getHistory(userName);
+  const toClose = history.filter(s => !s.isClosed && s.period < current);
+  for (const snap of toClose) {
+    await snapshotService.update(snap.id, {
+      isClosed: true,
+      closedAt: new Date().toISOString(),
+    });
+  }
+  return toClose.length;
 }
 
 export async function getHistory(userName, limit = 12) {
@@ -84,7 +107,7 @@ export async function getHistory(userName, limit = 12) {
     .limit(limit);
 
   if (error) {
-    const local = JSON.parse(localStorage.getItem('kpi_snapshots') || '[]');
+    const local = await getOffline('kpi_snapshots');
     return local
       .filter(s => s.user_name === userName)
       .sort((a, b) => a.period.localeCompare(b.period))

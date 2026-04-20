@@ -17,6 +17,7 @@ import {
   createOSOrder, updateOSOrder, deleteOSOrder, updateOSOrdersBatch,
   clearProjectFromOrders, clearSectorFromProjects,
 } from '../../lib/osService';
+import { startTimer, closeOpenSession } from '../../lib/timeEntryService';
 import { toast } from '../../contexts/ToastContext';
 import { useProfile } from '../../hooks/useProfile';
 import { shortName } from '../../lib/teamService';
@@ -29,7 +30,7 @@ import { useRealtimeOSOrders, useRealtimeTeamMembers } from '../../hooks/useReal
 import OSChatPanel from '../../components/chat/OSChatPanel';
 import AutoTextarea from '../../components/ui/AutoTextarea';
 import NotionEditor from '../../components/ui/NotionEditor';
-import { sanitizeRichText } from '../../lib/validation';
+import { sanitizeRichText, validateStatusTransition } from '../../lib/validation';
 import {
   PRIORITIES_LIST as PRIORITIES, OS_STATUS_LABELS as STATUS_LABELS,
   PRIORITY_COLUMNS, CATEGORIES, BLOCK_REASONS,
@@ -543,6 +544,10 @@ export default function FinancialPage() {
   const handleClaim = async (orderId) => {
     const now = new Date().toISOString();
     const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    // Validar transicao para in_progress
+    const check = validateStatusTransition({ ...order, assignedTo: profile.name || currentUser }, 'in_progress');
+    if (!check.ok) { toast.error(check.error); return; }
     // Inicializar startedAt da primeira tarefa nao-feita
     let checklistUpdate = {};
     if (order?.checklist?.length > 0) {
@@ -559,9 +564,14 @@ export default function FinancialPage() {
       assignee: profile.name || currentUser,
       status: 'in_progress',
       actualStart: now,
+      resumedAt: now,
+      accumulatedMs: 0,
+      pausedAt: null,
       ...checklistUpdate,
     });
     if (updated) {
+      // Log imutavel: iniciar sessao de trabalho
+      startTimer(orderId, profile.name || currentUser).catch(() => {});
       queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
       if (viewingOrder?.id === orderId) setViewingOrder(updated);
     }
@@ -573,6 +583,8 @@ export default function FinancialPage() {
       status: 'available',
     });
     if (updated) {
+      // Log imutavel: fechar sessao aberta
+      closeOpenSession(orderId).catch(() => {});
       queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
       if (viewingOrder?.id === orderId) setViewingOrder(updated);
     }
@@ -582,6 +594,10 @@ export default function FinancialPage() {
     const now = new Date().toISOString();
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
+    const nextStatus = order.status === 'available' ? 'in_progress' : order.status === 'in_progress' ? 'done' : null;
+    if (!nextStatus) return;
+    const check = validateStatusTransition(order, nextStatus);
+    if (!check.ok) { toast.error(check.error); return; }
     let updates;
     if (order.status === 'available') {
       updates = { assignee: currentUser, status: 'in_progress', actualStart: now };
@@ -599,6 +615,13 @@ export default function FinancialPage() {
     else return;
     const updated = await updateOSOrder(orderId, updates);
     if (updated) {
+      // Log imutavel: iniciar/encerrar sessao de trabalho
+      if (order.status === 'available' && updates.status === 'in_progress') {
+        startTimer(orderId, profile.name || currentUser).catch(() => {});
+      }
+      if (order.status === 'in_progress' && updates.status === 'done') {
+        closeOpenSession(orderId).catch(() => {});
+      }
       queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
       if (viewingOrder?.id === orderId) setViewingOrder(updated);
       // Notificar managers quando OS e concluida
@@ -617,6 +640,13 @@ export default function FinancialPage() {
     else return;
     const updated = await updateOSOrder(orderId, updates);
     if (updated) {
+      // Log imutavel: reabrir sessao se voltou pra in_progress, fechar se voltou pra available
+      if (order.status === 'done' && updates.status === 'in_progress') {
+        startTimer(orderId, profile.name || currentUser).catch(() => {});
+      }
+      if (order.status === 'in_progress' && updates.status === 'available') {
+        closeOpenSession(orderId).catch(() => {});
+      }
       queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === orderId ? updated : o));
       if (viewingOrder?.id === orderId) setViewingOrder(updated);
     }
@@ -1964,31 +1994,47 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
     if (needsFix) onUpdateOrder(order.id, { checklist: cleaned });
   }, [order.id]);
 
-  // Auto-pause: pausa a O.S. inteira apos o fim do expediente (18h)
-  // Usa ref para garantir que so dispare UMA vez por sessao (evita loop de toasts
-  // em sabado/domingo quando isAfterHours e sempre true).
+  // Auto-pause: pausa a O.S. automaticamente quando aberta fora do horario de trabalho
+  // (antes de 09h, depois de 18h, ou em fins de semana).
+  // Dispara apenas UMA vez por sessao: se o usuario retomar manualmente, respeita
+  // a decisao dele e nao pausa novamente — permitindo trabalhar fora do horario.
   const autoPausedRef = useRef(false);
   useEffect(() => {
-    // Se ja esta pausada, marcar como "paused" e nao tentar de novo
+    // Se ja esta pausada (manual ou auto), marcar ref e nao tentar auto-pausar
     if (order.pausedAt) {
       autoPausedRef.current = true;
       return;
     }
+    // Se usuario retomou apos auto-pause, respeita decisao (nao pausa de novo)
+    if (autoPausedRef.current) return;
+
     if (!onUpdateOrder || order.status !== 'in_progress') return;
 
-    const autoPause = () => {
+    const autoPause = async () => {
       if (autoPausedRef.current) return;
       const now = new Date();
       const day = now.getDay();
       const hour = now.getHours();
-      const isAfterHours = hour >= WORK_END_HOUR || day === 0 || day === 6;
+      const isAfterHours = hour >= WORK_END_HOUR || hour < WORK_START_HOUR || day === 0 || day === 6;
       if (!isAfterHours) return;
 
+      // Marca antes do await para evitar disparos duplicados durante a mutation
       autoPausedRef.current = true;
       const pauseTime = new Date(now);
-      pauseTime.setHours(WORK_END_HOUR, 0, 0, 0);
-      onUpdateOrder(order.id, { pausedAt: pauseTime.toISOString() });
-      toast.info('O.S. pausada automaticamente as 18:00');
+      if (hour >= WORK_END_HOUR) {
+        pauseTime.setHours(WORK_END_HOUR, 0, 0, 0);
+      }
+      // Calcula tempo trabalhado desde ultimo start/resume para acumular
+      const lastStart = order.resumedAt || order.actualStart;
+      const runningMs = lastStart ? Math.max(0, pauseTime - new Date(lastStart)) : 0;
+      const newAccumulated = (order.accumulatedMs || 0) + runningMs;
+      try {
+        await onUpdateOrder(order.id, { pausedAt: pauseTime.toISOString(), accumulatedMs: newAccumulated });
+        toast.info('O.S. pausada automaticamente — fora do horario de trabalho');
+      } catch {
+        // Se falhar, permite nova tentativa
+        autoPausedRef.current = false;
+      }
     };
     autoPause();
     const interval = setInterval(autoPause, 60_000);
@@ -2072,12 +2118,19 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
           {order.status === 'in_progress' && (
             <>
               {order.pausedAt ? (
-                <button onClick={() => onUpdateOrder && onUpdateOrder(order.id, { pausedAt: null })} className="px-3 py-1.5 bg-emerald-500 text-white text-sm rounded-lg hover:bg-emerald-600 transition-colors font-medium flex items-center gap-1.5">
+                <button onClick={() => onUpdateOrder && onUpdateOrder(order.id, { pausedAt: null, resumedAt: new Date().toISOString() })} title="Clique para retomar" className="px-3 py-1.5 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 transition-colors font-medium flex items-center gap-1.5">
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                  Retomar
+                  Pausado
                 </button>
               ) : (
-                <button onClick={() => onUpdateOrder && onUpdateOrder(order.id, { pausedAt: new Date().toISOString() })} className="px-3 py-1.5 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 transition-colors font-medium flex items-center gap-1.5">
+                <button onClick={() => {
+                  if (!onUpdateOrder) return;
+                  const now = new Date();
+                  const lastStart = order.resumedAt || order.actualStart;
+                  const runningMs = lastStart ? Math.max(0, now - new Date(lastStart)) : 0;
+                  const newAccumulated = (order.accumulatedMs || 0) + runningMs;
+                  onUpdateOrder(order.id, { pausedAt: now.toISOString(), accumulatedMs: newAccumulated });
+                }} className="px-3 py-1.5 bg-slate-500 text-white text-sm rounded-lg hover:bg-slate-600 transition-colors font-medium flex items-center gap-1.5">
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
                   Pausar
                 </button>

@@ -1,5 +1,6 @@
 import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabase';
+import { getOffline } from './offlineDB';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -48,7 +49,7 @@ export async function getEntriesForOrder(orderId) {
     .order('created_at', { ascending: false });
 
   if (error) {
-    const local = JSON.parse(localStorage.getItem('os_time_entries') || '[]');
+    const local = await getOffline('os_time_entries');
     return local.filter(e => e.order_id === orderId).map(dbToTimeEntry);
   }
   return (data || []).map(dbToTimeEntry);
@@ -67,7 +68,7 @@ export async function getEntriesForUser(userName, startDate, endDate) {
   const { data, error } = await query;
 
   if (error) {
-    const local = JSON.parse(localStorage.getItem('os_time_entries') || '[]');
+    const local = await getOffline('os_time_entries');
     return local
       .filter(e => e.user_name === userName)
       .map(dbToTimeEntry);
@@ -120,4 +121,17 @@ export async function addManualEntry({ orderId, userName, startTime, endTime, no
 export async function getTotalHoursForOrder(orderId) {
   const entries = await getEntriesForOrder(orderId);
   return entries.reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
+}
+
+/** Encontra a sessao aberta (end_time null) de uma OS. */
+export async function getOpenEntry(orderId) {
+  const entries = await getEntriesForOrder(orderId);
+  return entries.find(e => !e.endTime) || null;
+}
+
+/** Fecha qualquer sessao aberta de uma O.S. Retorna o entry fechado ou null. */
+export async function closeOpenSession(orderId) {
+  const open = await getOpenEntry(orderId);
+  if (!open) return null;
+  return stopTimer(open.id);
 }

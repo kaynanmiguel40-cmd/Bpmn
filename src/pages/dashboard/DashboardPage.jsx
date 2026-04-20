@@ -18,9 +18,10 @@ import {
   isCurrentMonth, isLastMonth, isInRange, filterByPeriod,
   loadProfileSync, findCurrentUser, namesMatch,
   calcCapacity, calcAvgLeadTime, calcSLACompliance, calcCategoryBreakdown,
+  countMembersWithoutSalary,
 } from '../../lib/kpiUtils';
 import { toInputDate } from '../../lib/formatters';
-import { getHistory, calculateTrends, saveMonthlySnapshot } from '../../lib/kpiSnapshotService';
+import { getHistory, calculateTrends, saveMonthlySnapshot, closeExpiredSnapshots } from '../../lib/kpiSnapshotService';
 import { TrendCard } from '../../components/trends/TrendCard';
 import { ProjectionWidget } from '../../components/trends/ProjectionWidget';
 import { useRealtimeOSOrders } from '../../hooks/useRealtimeSubscription';
@@ -168,6 +169,8 @@ function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange
     (async () => {
       const userName = currentUser.name || profile.name || '';
       if (!userName) return;
+      // Fechar snapshots de meses passados (imutabiliza historico)
+      await closeExpiredSnapshots(userName);
       await saveMonthlySnapshot(myOrders, myEvents, targetHours, userName);
       const history = await getHistory(userName);
       setKpiHistory(history);
@@ -222,15 +225,8 @@ function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange
         </p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <KPICard
-          title="Tempo Medio de Entrega"
-          value={`${kpi.avgDeliveryMonth} dias`}
-          subtitle={`Geral: ${kpi.avgDelivery} dias`}
-          icon={ClockIcon}
-          color="blue"
-        />
+      {/* KPI Cards - 4 metricas essenciais */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="Taxa de Conclusao"
           value={`${kpi.completionRate}%`}
@@ -241,55 +237,43 @@ function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange
         <KPICard
           title="Entrega no Prazo"
           value={`${kpi.onTimeRate}%`}
-          subtitle={kpi.avgDelay > 0 ? `Atraso medio: ${kpi.avgDelay} dias` : 'Sem atrasos'}
+          subtitle={kpi.avgDelay > 0 ? `Atraso medio: ${kpi.avgDelay} dias` : kpi.doneMonth === 0 ? 'Sem dados' : 'Sem atrasos'}
           icon={TargetIcon}
-          color={parseInt(kpi.onTimeRate) >= 80 ? 'green' : parseInt(kpi.onTimeRate) >= 50 ? 'amber' : 'red'}
+          color={kpi.doneMonth === 0 ? 'blue' : parseInt(kpi.onTimeRate) >= 80 ? 'green' : parseInt(kpi.onTimeRate) >= 50 ? 'amber' : 'red'}
         />
         <KPICard
           title="Produtividade"
           value={`${kpi.productivityMonth}%`}
-          subtitle={`${kpi.estimatedHours.toFixed(0)}h prev. / ${kpi.realizedHours.toFixed(0)}h realiz.`}
+          subtitle={kpi.productivityMissingMonth > 0
+            ? `${kpi.estimatedHours.toFixed(0)}h prev. / ${kpi.realizedHours.toFixed(0)}h realiz. (${kpi.productivityMissingMonth} sem estim.)`
+            : `${kpi.estimatedHours.toFixed(0)}h prev. / ${kpi.realizedHours.toFixed(0)}h realiz.`}
           icon={SpeedIcon}
           color={parseInt(kpi.productivityMonth) >= 90 ? 'green' : parseInt(kpi.productivityMonth) >= 60 ? 'purple' : 'orange'}
           trend={parseInt(kpi.productivityChange)}
         />
         <KPICard
-          title="Reunioes"
-          value={kpi.pastMeetings === 0 ? 'Nenhum dado' : `${kpi.meetingAttendance}% presenca`}
-          subtitle={kpi.pastMeetings === 0 ? 'Nenhuma reuniao no periodo' : `${kpi.meetingPunctuality}% no horario · ${kpi.attendedMeetings} de ${kpi.pastMeetings}`}
-          icon={MeetingIcon}
-          color={kpi.pastMeetings === 0 ? 'blue' : parseInt(kpi.meetingAttendance) >= 80 ? 'green' : parseInt(kpi.meetingAttendance) >= 60 ? 'amber' : 'red'}
-        />
-        <KPICard
-          title="Atrasos"
-          value={formatLateTime(kpi.totalLateMinutes)}
-          subtitle={kpi.lateArrivals === 0 ? 'Nenhum atraso registrado' : `${kpi.lateArrivals} ocorrencia${kpi.lateArrivals > 1 ? 's' : ''} em ${kpi.attendedMeetings} reunioes`}
-          icon={AlertIcon}
-          color={kpi.lateArrivals === 0 ? 'green' : kpi.lateArrivals <= 2 ? 'amber' : 'red'}
+          title="Aproveitamento"
+          value={`${kpi.utilization}%`}
+          subtitle={`${kpi.hoursMonth.toFixed(0)}h de ${targetHours}h`}
+          icon={ChartIcon}
+          color={parseInt(kpi.utilization) >= 70 ? 'green' : 'orange'}
         />
       </div>
 
-      {/* Gauges + Hours Progress */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Gauge cards */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-4">Indicadores</h3>
-          <div className="flex items-center justify-around">
-            <GaugeChart
-              value={parseInt(kpi.reworkRate)}
-              label="Retrabalho"
-              color={parseInt(kpi.reworkRate) <= 15 ? '#22c55e' : parseInt(kpi.reworkRate) <= 30 ? '#f97316' : '#ef4444'}
-            />
-            <GaugeChart
-              value={parseInt(kpi.utilization)}
-              label="Aproveitamento"
-              color={parseInt(kpi.utilization) >= 70 ? '#3b82f6' : '#ef4444'}
-            />
-          </div>
+      {/* Evolucao + Retrabalho */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Retrabalho gauge compacto */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 flex flex-col items-center justify-center">
+          <GaugeChart
+            value={parseInt(kpi.reworkRate)}
+            label="Taxa de Retrabalho"
+            color={parseInt(kpi.reworkRate) <= 15 ? '#22c55e' : parseInt(kpi.reworkRate) <= 30 ? '#f97316' : '#ef4444'}
+          />
+          <p className="text-[10px] text-slate-400 mt-2">{kpi.reworkCount} de {kpi.reworkTotal} O.S.</p>
         </div>
 
         {/* Curva S - Produtividade */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 lg:col-span-2">
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 lg:col-span-3">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Evolucao de Produtividade</h3>
@@ -441,13 +425,8 @@ function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange
               </div>
             </div>
 
-            <div className="pt-2 space-y-3">
-              <HorizontalBar label="Utilizacao" value={parseInt(kpi.utilization)} maxValue={100} color="#3b82f6" suffix="%" />
-              <HorizontalBar label="Meta de Horas" value={kpi.hoursMonth.toFixed(0)} maxValue={targetHours} color="#22c55e" suffix={`h / ${targetHours}h`} />
-            </div>
-
             {/* Insight rapido */}
-            {parseInt(kpi.onTimeRate) < 70 && (
+            {parseInt(kpi.onTimeRate) < 70 && parseInt(kpi.onTimeRate) > 0 && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
                 <p className="text-xs text-amber-700 flex items-start gap-2">
                   <span className="shrink-0 mt-0.5">⚠</span>
@@ -646,57 +625,62 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard
-          title="Tempo Medio Entrega"
-          value={`${kpi.avgDeliveryMonth} dias`}
-          subtitle={`Geral: ${kpi.avgDelivery} dias`}
-          icon={ClockIcon}
-          color="blue"
-        />
+      {/* Alerta de integridade de dados */}
+      {(() => {
+        const missingSalary = countMembersWithoutSalary(allMembers);
+        const warnings = [];
+        if (missingSalary > 0) {
+          warnings.push(`${missingSalary} membro(s) sem salario cadastrado — custos incompletos`);
+        }
+        if (kpi.productivityMissingMonth > 0) {
+          warnings.push(`${kpi.productivityMissingMonth} O.S. sem estimativa no periodo — nao incluidas na produtividade`);
+        }
+        if (warnings.length === 0) return null;
+        return (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 flex items-start gap-3">
+            <AlertIcon className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Atencao com a integridade dos dados:</p>
+              <ul className="mt-1 space-y-0.5 text-xs text-amber-700 dark:text-amber-400">
+                {warnings.map((w, i) => <li key={i}>• {w}</li>)}
+              </ul>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* KPI Cards - 5 metricas essenciais para gestor */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard
           title="Taxa de Conclusao"
           value={`${kpi.completionRate}%`}
-          subtitle={`${kpi.doneMonth} no mes`}
+          subtitle={`${kpi.doneMonth} concluidas no mes`}
           icon={CheckCircleIcon}
           color={parseInt(kpi.completionRate) >= 80 ? 'green' : parseInt(kpi.completionRate) >= 50 ? 'amber' : 'red'}
         />
         <KPICard
           title="Entrega no Prazo"
           value={`${kpi.onTimeRate}%`}
-          subtitle={kpi.avgDelay > 0 ? `Atraso medio: ${kpi.avgDelay}d` : 'Sem atrasos'}
+          subtitle={kpi.avgDelay > 0 ? `Atraso medio: ${kpi.avgDelay}d${kpi.avgDeviation !== kpi.avgDelay ? ` | desvio: ${kpi.avgDeviation}d` : ''}` : kpi.doneMonth === 0 ? 'Sem dados' : 'Sem atrasos'}
           icon={TargetIcon}
-          color={parseInt(kpi.onTimeRate) >= 80 ? 'green' : parseInt(kpi.onTimeRate) >= 50 ? 'amber' : 'red'}
+          color={kpi.doneMonth === 0 ? 'blue' : parseInt(kpi.onTimeRate) >= 80 ? 'green' : parseInt(kpi.onTimeRate) >= 50 ? 'amber' : 'red'}
         />
         <KPICard
           title="Produtividade"
           value={`${kpi.productivityMonth}%`}
-          subtitle={`${kpi.estimatedHours.toFixed(0)}h prev. / ${kpi.realizedHours.toFixed(0)}h realiz.`}
+          subtitle={kpi.productivityMissingMonth > 0
+            ? `${kpi.estimatedHours.toFixed(0)}h prev. / ${kpi.realizedHours.toFixed(0)}h realiz. (${kpi.productivityMissingMonth} sem estim.)`
+            : `${kpi.estimatedHours.toFixed(0)}h prev. / ${kpi.realizedHours.toFixed(0)}h realiz.`}
           icon={SpeedIcon}
           color={parseInt(kpi.productivityMonth) >= 90 ? 'green' : parseInt(kpi.productivityMonth) >= 60 ? 'purple' : 'orange'}
           trend={parseInt(kpi.productivityChange)}
         />
         <KPICard
-          title="Aproveitamento de Horas"
+          title="Aproveitamento"
           value={`${kpi.utilization}%`}
           subtitle={`${kpi.hoursMonth.toFixed(0)}h de ${targetHours}h`}
           icon={ChartIcon}
           color={parseInt(kpi.utilization) >= 70 ? 'green' : 'orange'}
-        />
-        <KPICard
-          title="Reunioes"
-          value={kpi.pastMeetings === 0 ? 'Nenhum dado' : `${kpi.meetingAttendance}% presenca`}
-          subtitle={kpi.pastMeetings === 0 ? 'Nenhuma reuniao no periodo' : `${kpi.meetingPunctuality}% no horario · ${kpi.attendedMeetings} de ${kpi.pastMeetings}`}
-          icon={MeetingIcon}
-          color={kpi.pastMeetings === 0 ? 'blue' : parseInt(kpi.meetingAttendance) >= 80 ? 'green' : parseInt(kpi.meetingAttendance) >= 60 ? 'amber' : 'red'}
-        />
-        <KPICard
-          title="Atrasos"
-          value={formatLateTime(kpi.totalLateMinutes)}
-          subtitle={kpi.lateArrivals === 0 ? 'Nenhum atraso registrado' : `${kpi.lateArrivals} ocorrencia${kpi.lateArrivals > 1 ? 's' : ''} em ${kpi.attendedMeetings} reunioes`}
-          icon={AlertIcon}
-          color={kpi.lateArrivals === 0 ? 'green' : kpi.lateArrivals <= 2 ? 'amber' : 'red'}
         />
         <KPICard
           title="Custo Medio / O.S."
@@ -736,10 +720,10 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
                     <p className="text-[10px] text-slate-400">{mk.productivityMonth}% produtividade</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-center mb-3">
+                <div className="grid grid-cols-3 gap-2 text-center mb-3">
                   <div>
                     <p className="text-lg font-bold text-emerald-600">{mk.doneMonth}</p>
-                    <p className="text-[10px] text-slate-400">Concl. (mes)</p>
+                    <p className="text-[10px] text-slate-400">Concluidas</p>
                   </div>
                   <div>
                     <p className={`text-lg font-bold ${onTimePct >= 80 ? 'text-emerald-600' : onTimePct >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
@@ -747,27 +731,12 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
                     </p>
                     <p className="text-[10px] text-slate-400">No prazo</p>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-center mb-3">
                   <div>
-                    <p className={`text-sm font-bold ${parseInt(mk.meetingAttendance) >= 80 ? 'text-blue-600' : 'text-amber-600'}`}>
-                      {mk.meetingAttendance}%
-                    </p>
-                    <p className="text-[10px] text-slate-400">Reunioes</p>
-                  </div>
-                  <div>
-                    <p className={`text-sm font-bold ${mk.lateArrivals === 0 ? 'text-emerald-600' : mk.lateArrivals <= 2 ? 'text-amber-600' : 'text-red-600'}`}>
-                      {formatLateTime(mk.totalLateMinutes)}
-                    </p>
-                    <p className="text-[10px] text-slate-400">Atrasos</p>
+                    <p className="text-lg font-bold text-blue-600">{mk.inProgress}</p>
+                    <p className="text-[10px] text-slate-400">Ativas</p>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div>
-                    <div className="flex justify-between text-[10px] text-slate-400 mb-0.5">
-                      <span>Tempo medio: {mk.avgDeliveryMonth}d</span>
-                    </div>
-                  </div>
                   <div>
                     <div className="flex justify-between text-[10px] text-slate-400 mb-0.5">
                       <span>Aproveitamento</span>

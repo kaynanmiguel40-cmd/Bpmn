@@ -108,8 +108,15 @@ export function calcChecklistItemMinutes(item) {
   return base;
 }
 
-/** Horas realizadas: usa actualStart->actualEnd (horas uteis seg-sex 09-18h), checklist como fallback */
+/** Horas realizadas: usa time entries (log imutavel) > actualStart/End > checklist */
 export function calcOSHours(order) {
+  // Prioridade 0: log imutavel de time entries (anti-manipulacao)
+  if (Array.isArray(order.timeEntries) && order.timeEntries.length > 0) {
+    const totalMin = order.timeEntries
+      .filter(e => (e.durationMinutes || e.duration_minutes || 0) > 0)
+      .reduce((sum, e) => sum + (e.durationMinutes || e.duration_minutes || 0), 0);
+    if (totalMin > 0) return totalMin / 60;
+  }
   // Prioridade 1: actualStart/actualEnd (horas uteis, 09-18h seg-sex)
   if (order.actualStart && order.actualEnd) {
     const hours = calcWorkingHoursBetween(order.actualStart, order.actualEnd);
@@ -157,24 +164,44 @@ export function calcDelayDays(order) {
 
 // ─── Helpers de Custo ────────────────────────────────────────────
 
-/** Calcula valor/hora de um membro da equipe */
+/** Calcula valor/hora de um membro da equipe. Retorna null se salario nao cadastrado. */
 export function getMemberHourlyRate(member) {
+  if (!member) return null;
   const salary = parseFloat(member.salaryMonth || member.salary_month || 0);
   const hours = parseFloat(member.hoursMonth || member.hours_month || 176);
-  if (salary <= 0 || hours <= 0) return 0;
+  if (salary <= 0 || hours <= 0) return null;
   return salary / hours;
 }
 
-/** Calcula custo total de uma O.S. (mão de obra + gastos materiais) */
+/** Calcula custo total de uma O.S. (mão de obra + gastos materiais).
+ *  salaryMissing = true quando membro existe mas nao tem salario cadastrado. */
 export function calcOSCost(order, membersList) {
   const hours = calcOSHours(order);
   const member = membersList.find(m =>
     namesMatch(m.name, order.assignee) || namesMatch(m.name, order.assignedTo)
   );
-  const hourlyRate = member ? getMemberHourlyRate(member) : 0;
-  const laborCost = hours * hourlyRate;
+  const hourlyRate = getMemberHourlyRate(member);
+  const salaryMissing = !!member && hourlyRate === null;
+  const effectiveRate = hourlyRate || 0;
+  const laborCost = hours * effectiveRate;
   const materialCost = (order.expenses || []).reduce((acc, e) => acc + (e.value || 0) * (e.quantity || 1), 0);
-  return { hours, hourlyRate, laborCost, materialCost, totalCost: laborCost + materialCost, memberFound: !!member };
+  return {
+    hours,
+    hourlyRate: effectiveRate,
+    laborCost,
+    materialCost,
+    totalCost: laborCost + materialCost,
+    memberFound: !!member,
+    salaryMissing,
+  };
+}
+
+/** Conta membros ativos sem salario cadastrado. */
+export function countMembersWithoutSalary(membersList) {
+  return (membersList || []).filter(m => {
+    const salary = parseFloat(m.salaryMonth || m.salary_month || 0);
+    return salary <= 0;
+  }).length;
 }
 
 // ─── Formatação ──────────────────────────────────────────────────
@@ -322,22 +349,26 @@ export function calcKPIs(ordersList, eventsList, targetHours, dateRange = null) 
   const totalMes = doneMonth.length + inProgress.length;
   const completionRate = totalMes > 0 ? (doneMonth.length / totalMes) * 100 : 0;
 
-  // Entrega no prazo
-  const withEstimate = done.filter(o => o.estimatedEnd && o.actualEnd);
+  // Entrega no prazo (0% quando sem dados, nao 100%)
+  const withEstimate = doneMonth.filter(o => o.estimatedEnd && o.actualEnd);
   const onTime = withEstimate.filter(o => calcDelayDays(o) <= 0);
-  const onTimeRate = withEstimate.length > 0 ? (onTime.length / withEstimate.length) * 100 : 100;
+  const onTimeRate = withEstimate.length > 0 ? (onTime.length / withEstimate.length) * 100 : 0;
 
-  // Atraso medio (somente dos atrasados)
+  // Atraso medio (somente dos atrasados - dias positivos)
   const delays = withEstimate.map(o => calcDelayDays(o)).filter(d => d > 0);
   const avgDelay = delays.length > 0 ? delays.reduce((s, d) => s + d, 0) / delays.length : 0;
 
-  // Horas de reuniao do periodo (contam como trabalho)
+  // Desvio medio de estimativa (considera adiantamentos e atrasos - precisao de estimativa)
+  const allDelays = withEstimate.map(o => calcDelayDays(o)).filter(d => d !== null);
+  const avgDeviation = allDelays.length > 0 ? allDelays.reduce((s, d) => s + d, 0) / allDelays.length : 0;
+  const avgDeviationAbs = allDelays.length > 0 ? allDelays.reduce((s, d) => s + Math.abs(d), 0) / allDelays.length : 0;
+
+  // Horas de reuniao do periodo (horas uteis, consistente com OS)
   const calcMeetingHours = (evts, periodFn) => {
     return evts
       .filter(e => e.type === 'meeting' && e.startDate && e.endDate && periodFn(e.startDate))
       .reduce((sum, e) => {
-        const diffMs = new Date(e.endDate) - new Date(e.startDate);
-        return sum + Math.max(0, diffMs / MS_PER_HOUR);
+        return sum + Math.max(0, calcWorkingHoursBetween(e.startDate, e.endDate));
       }, 0);
   };
   const meetingHoursMonth = calcMeetingHours(eventsList, inPeriod);
@@ -351,32 +382,45 @@ export function calcKPIs(ordersList, eventsList, targetHours, dateRange = null) 
   const hoursPercent = targetHours > 0 ? Math.min((hoursMonth / targetHours) * 100, 100) : 0;
 
   // Produtividade = Horas Previstas / Horas Realizadas * 100
-  const realizedHours = done.reduce((sum, o) => sum + calcOSHours(o), 0);
-  const estimatedHours = done.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
+  // IMPORTANTE: exclui O.S. sem estimativa (evita distorcao por dados faltantes)
+  const hasEstimate = (o) => o.estimatedStart && o.estimatedEnd;
+  const doneWithEst = done.filter(hasEstimate);
+  const realizedHours = doneWithEst.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const estimatedHours = doneWithEst.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
   const productivity = realizedHours > 0 ? (estimatedHours / realizedHours) * 100 : 0;
+  const productivityMissing = done.length - doneWithEst.length;
 
-  // Variacao periodo anterior
-  const realizedHoursMonth = doneMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
-  const estimatedHoursMonth = doneMonth.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
+  // Variacao periodo anterior (mesma regra: so com estimativa)
+  const doneMonthWithEst = doneMonth.filter(hasEstimate);
+  const doneLastWithEst = doneLastMonth.filter(hasEstimate);
+  const realizedHoursMonth = doneMonthWithEst.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const estimatedHoursMonth = doneMonthWithEst.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
   const productivityMonth = realizedHoursMonth > 0 ? (estimatedHoursMonth / realizedHoursMonth) * 100 : 0;
-  const realizedHoursLast = doneLastMonth.reduce((sum, o) => sum + calcOSHours(o), 0);
-  const estimatedHoursLast = doneLastMonth.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
+  const realizedHoursLast = doneLastWithEst.reduce((sum, o) => sum + calcOSHours(o), 0);
+  const estimatedHoursLast = doneLastWithEst.reduce((sum, o) => sum + calcEstimatedHours(o), 0);
   const productivityLast = realizedHoursLast > 0 ? (estimatedHoursLast / realizedHoursLast) * 100 : 0;
   const productivityChange = productivityLast > 0 ? productivityMonth - productivityLast : 0;
+  const productivityMissingMonth = doneMonth.length - doneMonthWithEst.length;
 
   // Carga de trabalho
   const workload = inProgress.length;
 
-  // Utilizacao: proporcionada ao range selecionado
+  // Utilizacao: horas uteis reais no range (seg-sex 09-18h com intervalo)
   const rangeStart = dateRange ? new Date(dateRange.start) : new Date(now.getFullYear(), now.getMonth(), 1);
   const rangeEnd = dateRange ? new Date(dateRange.end) : now;
+  const rangeStartWork = new Date(rangeStart);
+  rangeStartWork.setHours(WORK_START_HOUR, 0, 0, 0);
+  const rangeEndWork = new Date(rangeEnd);
+  rangeEndWork.setHours(WORK_END_HOUR, 0, 0, 0);
+  const rawAvailableHours = calcWorkingHoursBetween(rangeStartWork.toISOString(), rangeEndWork.toISOString());
+  // Descontar 1h de intervalo por dia util no range
   const rangeDays = Math.max(1, Math.round((rangeEnd - rangeStart) / (1000 * 60 * 60 * 24)) + 1);
-  const workDaysSoFar = Math.max(1, Math.floor(rangeDays * WORK_DAYS_PER_WEEK / DAYS_PER_WEEK));
-  const availableHoursSoFar = workDaysSoFar * HOURS_PER_WORKDAY;
+  const workDaysInRange = Math.max(1, Math.floor(rangeDays * WORK_DAYS_PER_WEEK / DAYS_PER_WEEK));
+  const availableHoursSoFar = Math.max(1, rawAvailableHours - workDaysInRange);
   const utilization = availableHoursSoFar > 0 ? Math.min((hoursMonth / availableHoursSoFar) * 100, 100) : 0;
 
-  // Taxa de retrabalho
-  const doneWithEstimate = done.filter(o => calcEstimatedHours(o) > 0 && calcOSHours(o) > 0);
+  // Taxa de retrabalho (filtrado por periodo, nao global)
+  const doneWithEstimate = doneMonth.filter(o => calcEstimatedHours(o) > 0 && calcOSHours(o) > 0);
   const reworkOrders = doneWithEstimate.filter(o => calcOSHours(o) > calcEstimatedHours(o) * REWORK_THRESHOLD);
   const reworkRate = doneWithEstimate.length > 0 ? (reworkOrders.length / doneWithEstimate.length) * 100 : 0;
 
@@ -395,6 +439,8 @@ export function calcKPIs(ordersList, eventsList, targetHours, dateRange = null) 
     completionRate: completionRate.toFixed(0),
     onTimeRate: onTimeRate.toFixed(0),
     avgDelay: avgDelay.toFixed(1),
+    avgDeviation: avgDeviation.toFixed(1),
+    avgDeviationAbs: avgDeviationAbs.toFixed(1),
     hoursMonth,
     hoursLastMonth,
     hoursPercent,
@@ -403,6 +449,8 @@ export function calcKPIs(ordersList, eventsList, targetHours, dateRange = null) 
     productivity: productivity.toFixed(0),
     productivityMonth: productivityMonth.toFixed(0),
     productivityChange: productivityChange.toFixed(0),
+    productivityMissing,
+    productivityMissingMonth,
     realizedHours: realizedHoursMonth,
     estimatedHours: estimatedHoursMonth,
     doneMonth: doneMonth.length,
