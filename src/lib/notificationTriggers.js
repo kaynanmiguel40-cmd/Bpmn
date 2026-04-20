@@ -345,7 +345,7 @@ export async function checkAndNotifyDeadlines(orders, teamMembers, currentUserId
           userId: currentUserId,
           type: 'deadline_warning',
           title: `Prazo proximo: O.S. #${order.number || ''}`,
-          message: `${order.title || ''} vence ${deadline.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
+          message: `${order.title || ''} vence ${deadline.toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
           entityType: 'os_order',
           entityId: order.id,
         });

@@ -165,10 +165,21 @@ export function RoutinePage() {
   };
 
   const handleFinish = async (orderId) => {
-    const now = new Date().toISOString();
+    const order = orders.find(o => o.id === orderId);
+    const now = new Date();
+
+    // Acumular tempo pendente do segmento aberto (se nao estava pausado) para que
+    // reopens futuros nao re-contem este intervalo.
+    let accumulatedMs = order?.accumulatedMs || 0;
+    if (order && !order.pausedAt && order.actualStart) {
+      const segmentStart = order.resumedAt || order.actualStart;
+      accumulatedMs += Math.max(0, now - new Date(segmentStart));
+    }
+
     const updated = await updateOSOrder(orderId, {
       status: 'done',
-      actualEnd: now,
+      actualEnd: now.toISOString(),
+      accumulatedMs,
     });
     if (updated) {
       queryClient.invalidateQueries({ queryKey: ['osOrders'] });
@@ -177,9 +188,13 @@ export function RoutinePage() {
   };
 
   const handleReopen = async (orderId) => {
+    // Inicia novo segmento de trabalho — mantem accumulatedMs acumulado anteriormente
+    // e evita que o ElapsedTimer re-conte desde actualStart.
     const updated = await updateOSOrder(orderId, {
       status: 'in_progress',
       actualEnd: '',
+      resumedAt: new Date().toISOString(),
+      pausedAt: null,
     });
     if (updated) {
       queryClient.invalidateQueries({ queryKey: ['osOrders'] });

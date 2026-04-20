@@ -620,7 +620,16 @@ export default function FinancialPage() {
         }
       }
     }
-    else if (order.status === 'in_progress') updates = { status: 'done', actualEnd: now };
+    else if (order.status === 'in_progress') {
+      // Acumular tempo pendente do segmento aberto (se nao estava pausado) — evita
+      // dupla contagem caso a OS seja reaberta depois.
+      let accumulatedMs = order.accumulatedMs || 0;
+      if (!order.pausedAt && order.actualStart) {
+        const segmentStart = order.resumedAt || order.actualStart;
+        accumulatedMs += Math.max(0, new Date(now) - new Date(segmentStart));
+      }
+      updates = { status: 'done', actualEnd: now, accumulatedMs };
+    }
     else return;
     const updated = await updateOSOrder(orderId, updates);
     if (updated) {
@@ -644,7 +653,16 @@ export default function FinancialPage() {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
     let updates;
-    if (order.status === 'done') updates = { status: 'in_progress', actualEnd: '' };
+    if (order.status === 'done') {
+      // Inicia novo segmento no reopen — mantem accumulatedMs e evita re-contar
+      // desde actualStart no ElapsedTimer.
+      updates = {
+        status: 'in_progress',
+        actualEnd: '',
+        resumedAt: new Date().toISOString(),
+        pausedAt: null,
+      };
+    }
     else if (order.status === 'in_progress') updates = { assignee: null, status: 'available', actualStart: '' };
     else return;
     const updated = await updateOSOrder(orderId, updates);

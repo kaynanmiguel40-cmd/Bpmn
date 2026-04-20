@@ -94,8 +94,10 @@ export function createCRUDService(config) {
       return transform ? local.map(r => transform(r) || r) : local;
     }
 
-    // Salvar no IndexedDB para acesso offline futuro
-    saveOffline(table, data || []);
+    // Salvar no IndexedDB para acesso offline futuro (fire-and-forget — nao atrasa a UI)
+    saveOffline(table, data || []).catch(err =>
+      console.warn(`[${table}] saveOffline falhou:`, err?.message || err)
+    );
 
     return transform ? (data || []).map(transform) : (data || []);
   }
