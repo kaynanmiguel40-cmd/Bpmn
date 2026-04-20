@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmDealSchema } from '../schemas/crmValidation';
 import { triggerAutomationsForDeal } from './crmAutomationsService';
+import { createCrmActivity } from './crmActivitiesService';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -430,7 +431,6 @@ export async function schedulePartnerMeeting(dealId, { date, time, notes, city }
   });
 
   // 5. Criar atividade CRM vinculada ao deal
-  const { createCrmActivity } = await import('./crmActivitiesService');
   await createCrmActivity({
     title: meetingTitle,
     description: notes || '',
