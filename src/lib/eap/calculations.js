@@ -85,6 +85,9 @@ export function calculateSummaryDates(parentId, tasks) {
   let totalWeight = 0;
   let weightedProgress = 0;
   for (const child of children) {
+    // Milestones (duracao 0) sao eventos, nao entregaveis — nao entram no rollup
+    // de progresso; caso contrario distorcem o percentual do pai.
+    if (child.isMilestone) continue;
     const w = child.durationDays || 1;
     totalWeight += w;
     weightedProgress += (child.progress || 0) * w;

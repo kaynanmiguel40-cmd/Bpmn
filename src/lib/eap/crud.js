@@ -39,14 +39,15 @@ function dbToProject(row) {
   };
 }
 
-/** Normaliza timestamp do Supabase para "YYYY-MM-DDTHH:MM" (datetime-local) */
+/** Normaliza timestamp do Supabase para "YYYY-MM-DDTHH:MM" (datetime-local).
+ *  datetime-local espera hora LOCAL — usar getUTC* fazia a hora flutuar por TZ. */
 function normalizeDateTime(val) {
   if (!val) return '';
   if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(val)) return val;
   const d = new Date(val);
   if (isNaN(d)) return '';
   const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function dbToTask(row) {

@@ -827,6 +827,12 @@ export default function GanttChart({ project, tasks, teamMembers, osOrders = [],
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
+    // Guarda contra datas invertidas — evita persistir estado invalido.
+    if (newStartDate && newEndDate && new Date(newEndDate) < new Date(newStartDate)) {
+      addToast('Data final nao pode ser anterior a inicial', 'error');
+      return;
+    }
+
     const undoChanges = [];
     const completedUpdates = [];
     const duration = calcDuration(newStartDate, newEndDate);
