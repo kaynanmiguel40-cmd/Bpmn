@@ -13,6 +13,7 @@ import {
   useCrmPipelines,
   useCrmContacts,
   useCrmCompanies,
+  useCreateCrmCompany,
   useCreateCrmDeal,
   useUpdateCrmDeal,
 } from '../hooks/useCrmQueries';
@@ -28,10 +29,15 @@ function formatPhoneDisplay(val) {
   return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
 }
 
-// Formata numero como moeda brasileira para exibicao no input
+// Formata numero como moeda brasileira para exibicao no input.
+// Padrao "calculadora": dígitos entram por trás (1 -> R$ 0,01 -> R$ 0,10 ->
+// R$ 1,00). Cursor fica sempre no fim, o que esse padrao espera — resolve o
+// bug em que cada tecla resetava a digitacao pela vírgula injetada no meio.
 function formatCurrencyInput(num) {
-  if (!num && num !== 0) return '';
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
+  if (num === null || num === undefined || num === '') return '';
+  const n = typeof num === 'number' ? num : parseFloat(num);
+  if (isNaN(n) || n === 0) return '';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
 }
 
 const STATUS_OPTIONS = [
@@ -167,22 +173,98 @@ function ContactField({ freeValue, onFreeChange, linkedId, onLinkChange }) {
   );
 }
 
+// Combobox hibrido para empresa: digita livremente (freeText) OU seleciona existente.
+// Se ao salvar o freeText nao estiver vinculado, a empresa e criada no banco.
+function CompanyField({ freeValue, onFreeChange, linkedId, onLinkChange }) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const { data } = useCrmCompanies({ search, perPage: 8 });
+  const items = data?.data || [];
+
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const linked = items.find(c => c.id === linkedId);
+
+  function handleInput(e) {
+    const val = e.target.value;
+    onFreeChange(val);
+    setSearch(val);
+    onLinkChange(null);
+    setOpen(true);
+  }
+
+  function handleSelect(item) {
+    onFreeChange(item.name);
+    onLinkChange(item.id);
+    setSearch('');
+    setOpen(false);
+  }
+
+  function handleClear() {
+    onFreeChange('');
+    onLinkChange(null);
+    setSearch('');
+  }
+
+  const displayValue = linked ? linked.name : freeValue;
+
+  return (
+    <div className="relative" ref={ref}>
+      <input
+        type="text"
+        value={displayValue || ''}
+        onChange={handleInput}
+        onFocus={() => { setSearch(freeValue || ''); setOpen(true); }}
+        placeholder="Nome da empresa (ou busque uma existente)"
+        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+      />
+      {(freeValue || linkedId) && (
+        <button type="button" onClick={handleClear}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+          <X size={14} />
+        </button>
+      )}
+      {linkedId && (
+        <span className="absolute right-7 top-1/2 -translate-y-1/2 text-xs text-fyness-primary font-medium">vinculado</span>
+      )}
+      {open && items.length > 0 && (
+        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+          {items.map(item => (
+            <button key={item.id} type="button"
+              onClick={() => handleSelect(item)}
+              className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
+              <span className="font-medium text-slate-800 dark:text-slate-200">{item.name}</span>
+              {item.segment && <span className="text-xs text-slate-400">({item.segment})</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = null, defaultStageId = null }) {
   const isEdit = !!deal;
   const createMutation = useCreateCrmDeal();
   const updateMutation = useUpdateCrmDeal();
-  const isPending = createMutation.isPending || updateMutation.isPending;
+  const createCompanyMutation = useCreateCrmCompany();
+  const isPending = createMutation.isPending || updateMutation.isPending || createCompanyMutation.isPending;
 
   const { data: pipelines = [] } = useCrmPipelines();
   const { data: allMembers = [] } = useTeamMembers();
   const crmMembers = allMembers.filter(m => m.crmRole);
 
-  const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
+  const { register, handleSubmit, control, reset, watch, setValue, getValues, formState: { errors } } = useForm({
     resolver: zodResolver(crmDealSchema),
     defaultValues: {
-      title: '', value: 0, probability: 50, segment: '',
+      title: '', value: 0, probability: 0, segment: '',
       contactName: '', contactPhone: '', contactEmail: '', contactId: null,
-      companyId: null, pipelineId: null, stageId: null,
+      companyName: '', companyId: null, pipelineId: null, stageId: null,
       expectedCloseDate: null, status: 'open', lostReason: '',
       ownerId: null,
     },
@@ -192,50 +274,98 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   const selectedStatus = watch('status');
   const stages = pipelines?.find(p => p.id === selectedPipelineId)?.stages || [];
 
+  // Modo "Outros" do segmento — controla exibicao do input livre independente
+  // do valor do form (que e o texto final digitado).
+  const [isCustomSegment, setIsCustomSegment] = useState(false);
+
+  // Reset do form SO quando abre o modal ou muda o deal selecionado.
+  // Nao pode depender de `pipelines` porque esse array muda a cada realtime/
+  // refetch e acabava apagando campos ja digitados pelo usuario.
   useEffect(() => {
-    if (open && deal) {
+    if (!open) return;
+    const knownSegments = SEGMENT_OPTIONS.filter(s => s !== 'Outros');
+    if (deal) {
+      setIsCustomSegment(!!deal.segment && !knownSegments.includes(deal.segment));
       reset({
         title: deal.title || '',
         value: deal.value || 0,
-        probability: deal.probability ?? 50,
+        probability: deal.probability ?? 0,
         segment: deal.segment || '',
         contactName: deal.contactName || deal.contact?.name || '',
         contactPhone: deal.contactPhone || deal.contact?.phone || '',
         contactEmail: deal.contactEmail || deal.contact?.email || '',
         contactId: deal.contactId || null,
+        companyName: deal.company?.name || '',
         companyId: deal.companyId || null,
-        pipelineId: deal.pipelineId || pipelines?.[0]?.id || null,
+        pipelineId: deal.pipelineId || null,
         stageId: deal.stageId || null,
         expectedCloseDate: deal.expectedCloseDate ? deal.expectedCloseDate.split('T')[0] : null,
         status: deal.status || 'open',
         lostReason: deal.lostReason || '',
         ownerId: deal.ownerId || null,
       });
-    } else if (open) {
-      const pId = defaultPipelineId || pipelines?.[0]?.id || null;
-      const sId = defaultStageId || pipelines?.find(p => p.id === pId)?.stages?.[0]?.id || null;
+    } else {
+      setIsCustomSegment(false);
       reset({
-        title: '', value: 0, probability: 50, segment: '',
+        title: '', value: 0, probability: 0, segment: '',
         contactName: '', contactPhone: '', contactEmail: '', contactId: null,
-        companyId: null, pipelineId: pId, stageId: sId,
+        companyId: null, pipelineId: null, stageId: null,
         expectedCloseDate: null, status: 'open', lostReason: '',
         ownerId: null,
       });
     }
-  }, [open, deal, pipelines, defaultPipelineId, defaultStageId, reset]);
+  }, [open, deal, reset]);
 
-  // Auto-select first stage when pipeline changes
+  // Aplicar pipeline/stage default quando a lista carrega — via setValue
+  // (preserva os demais campos digitados) e so se ainda estiver vazio.
+  useEffect(() => {
+    if (!open || !pipelines?.length) return;
+    const current = getValues();
+    if (!current.pipelineId) {
+      const pId = (deal?.pipelineId) || defaultPipelineId || pipelines[0].id;
+      setValue('pipelineId', pId);
+      if (!current.stageId) {
+        const sId = (deal?.stageId) || defaultStageId || pipelines.find(p => p.id === pId)?.stages?.[0]?.id || null;
+        if (sId) setValue('stageId', sId);
+      }
+    }
+  }, [open, pipelines, deal, defaultPipelineId, defaultStageId, setValue, getValues]);
+
+  // Auto-select first stage when pipeline changes (novo deal)
   useEffect(() => {
     if (selectedPipelineId && !isEdit) {
       const pipelineStages = pipelines?.find(p => p.id === selectedPipelineId)?.stages || [];
       if (pipelineStages.length > 0) {
-        setValue('stageId', pipelineStages[0].id);
+        const current = getValues('stageId');
+        const stillValid = pipelineStages.some(s => s.id === current);
+        if (!stillValid) setValue('stageId', pipelineStages[0].id);
       }
     }
-  }, [selectedPipelineId, pipelines, setValue, isEdit]);
+  }, [selectedPipelineId, pipelines, setValue, getValues, isEdit]);
 
   const onSubmit = async (data) => {
-    const payload = { ...data, ownerId: data.ownerId || null };
+    let companyId = data.companyId || null;
+
+    // Se o usuario digitou nome de empresa mas nao vinculou a uma existente,
+    // criar a empresa agora e usar o id retornado no deal.
+    const typedCompany = (data.companyName || '').trim();
+    if (!companyId && typedCompany) {
+      try {
+        const newCompany = await createCompanyMutation.mutateAsync({
+          name: typedCompany,
+          segment: data.segment || '',
+        });
+        companyId = newCompany?.id || null;
+      } catch (_) {
+        // toast de erro ja disparado pelo service; aborta submit
+        return;
+      }
+    }
+
+    // companyName e campo so da UI — nao vai pro banco do deal
+    const { companyName: _ignore, ...rest } = data;
+    const payload = { ...rest, companyId, ownerId: data.ownerId || null };
+
     if (isEdit) {
       await updateMutation.mutateAsync({ id: deal.id, updates: payload });
     } else {
@@ -281,10 +411,14 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
                   inputMode="numeric"
                   value={formatCurrencyInput(field.value)}
                   onChange={(e) => {
-                    const raw = e.target.value.replace(/[^\d,]/g, '');
-                    const digits = raw.replace(',', '.');
-                    const num = parseFloat(digits);
-                    field.onChange(isNaN(num) ? 0 : num);
+                    // Estrategia "calculadora": extrai TODOS os digitos da string
+                    // e trata como centavos. Cursor no fim, tecla por tecla empurra
+                    // da direita. Ex: "5" -> 0.05, "50" -> 0.50, "500" -> 5.00.
+                    const digits = e.target.value.replace(/\D/g, '');
+                    if (!digits) { field.onChange(0); return; }
+                    // Limita a 12 digitos (R$ 9.999.999.999,99) pra nao explodir
+                    const cents = parseInt(digits.slice(0, 12), 10);
+                    field.onChange(cents / 100);
                   }}
                   placeholder="R$ 0,00"
                   className={fieldClass('value')}
@@ -293,18 +427,68 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Probabilidade (%)</label>
-            <input type="number" min="0" max="100" {...register('probability', { valueAsNumber: true })}
-              placeholder="50" className={fieldClass('probability')} />
+            <Controller name="probability" control={control}
+              render={({ field }) => (
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={field.value === undefined || field.value === null ? '' : String(field.value)}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    // Bloqueia a tecla se o numero resultante passar de 100 —
+                    // ex: 10 aceita mais 0 (vira 100), mas 11 ou 20 recusam o
+                    // proximo digito porque ultrapassariam o limite.
+                    const digits = e.target.value.replace(/\D/g, '');
+                    if (digits === '') { field.onChange(undefined); return; }
+                    const n = parseInt(digits, 10);
+                    if (n > 100) return;
+                    field.onChange(n);
+                  }}
+                  placeholder="0"
+                  className={fieldClass('probability')}
+                />
+              )} />
           </div>
         </div>
 
         {/* Segmento */}
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Segmento</label>
-          <select {...register('segment')} className={fieldClass('segment')}>
-            <option value="">Selecione o segmento...</option>
-            {SEGMENT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <Controller name="segment" control={control}
+            render={({ field }) => {
+              const selectValue = isCustomSegment ? 'Outros' : (field.value || '');
+              return (
+                <div className="space-y-2">
+                  <select
+                    value={selectValue}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === 'Outros') {
+                        setIsCustomSegment(true);
+                        field.onChange('');
+                      } else {
+                        setIsCustomSegment(false);
+                        field.onChange(v);
+                      }
+                    }}
+                    className={fieldClass('segment')}
+                  >
+                    <option value="">Selecione o segmento...</option>
+                    {SEGMENT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  {isCustomSegment && (
+                    <input
+                      type="text"
+                      value={field.value || ''}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      placeholder="Digite o segmento..."
+                      autoFocus
+                      className={fieldClass('segment')}
+                    />
+                  )}
+                </div>
+              );
+            }} />
         </div>
 
         {/* Contato */}
@@ -351,11 +535,17 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         {/* Empresa */}
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Empresa</label>
-          <Controller name="companyId" control={control}
-            render={({ field }) => (
-              <EntityCombobox value={field.value} onChange={field.onChange}
-                placeholder="Buscar empresa..." useQueryHook={useCrmCompanies}
-                extraInfo={(item) => item.segment && <span className="text-xs text-slate-400">({item.segment})</span>} />
+          <Controller name="companyName" control={control}
+            render={({ field: freeField }) => (
+              <Controller name="companyId" control={control}
+                render={({ field: idField }) => (
+                  <CompanyField
+                    freeValue={freeField.value}
+                    onFreeChange={freeField.onChange}
+                    linkedId={idField.value}
+                    onLinkChange={idField.onChange}
+                  />
+                )} />
             )} />
         </div>
 

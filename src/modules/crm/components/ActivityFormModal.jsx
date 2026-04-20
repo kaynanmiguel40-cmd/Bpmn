@@ -16,6 +16,16 @@ import {
   useUpdateCrmActivity,
 } from '../hooks/useCrmQueries';
 
+// Converte Date ou ISO string para formato aceito pelo <input type="datetime-local">:
+// "YYYY-MM-DDTHH:MM" (hora LOCAL do usuario, sem fuso).
+function toLocalDatetimeInput(val) {
+  if (!val) return '';
+  const d = val instanceof Date ? val : new Date(val);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const ACTIVITY_TYPES = [
   { value: 'call', label: 'Ligacao', icon: Phone, color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700' },
   { value: 'email', label: 'Email', icon: Mail, color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 border-violet-300 dark:border-violet-700' },
@@ -96,17 +106,22 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
         type: activity.type || 'call',
         contactId: activity.contactId || null,
         dealId: activity.dealId || null,
-        startDate: activity.startDate ? activity.startDate.split('T')[0] : '',
-        endDate: activity.endDate ? activity.endDate.split('T')[0] : null,
+        startDate: toLocalDatetimeInput(activity.startDate),
+        endDate: toLocalDatetimeInput(activity.endDate),
         completed: activity.completed || false,
       });
     } else if (open) {
-      const today = new Date().toISOString().split('T')[0];
+      // Default: agora, arredondado pra proxima meia-hora, duracao 30min
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + (30 - (now.getMinutes() % 30 || 30)), 0, 0);
+      const end = new Date(now.getTime() + 30 * 60 * 1000);
       reset({
         title: '', description: '', type: 'call',
         contactId: defaultContactId || null,
         dealId: defaultDealId || null,
-        startDate: today, endDate: null, completed: false,
+        startDate: toLocalDatetimeInput(now),
+        endDate: toLocalDatetimeInput(end),
+        completed: false,
       });
     }
   }, [open, activity, reset, defaultDealId, defaultContactId]);
@@ -172,16 +187,16 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
           {errors.title && <p className="text-xs text-rose-500 mt-0.5">{errors.title.message}</p>}
         </div>
 
-        {/* Datas */}
+        {/* Data + Hora */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Data Inicio *</label>
-            <input type="date" {...register('startDate')} className={fieldClass('startDate')} />
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Inicio *</label>
+            <input type="datetime-local" {...register('startDate')} className={fieldClass('startDate')} />
             {errors.startDate && <p className="text-xs text-rose-500 mt-0.5">{errors.startDate.message}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Data Fim</label>
-            <input type="date" {...register('endDate')} className={fieldClass('endDate')} />
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Fim</label>
+            <input type="datetime-local" {...register('endDate')} className={fieldClass('endDate')} />
           </div>
         </div>
 

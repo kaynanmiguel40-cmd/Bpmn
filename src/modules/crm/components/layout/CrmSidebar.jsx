@@ -68,7 +68,7 @@ function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact }) {
       aria-current={isActive ? 'page' : undefined}
       aria-label={label}
       className={`
-        flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200
+        flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors duration-150
         ${isActive
           ? 'bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary dark:text-blue-400 font-medium'
           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
@@ -102,27 +102,27 @@ export function CrmSidebar() {
       onMouseEnter={() => { if (!isPinned) setIsCollapsed(false); }}
       onMouseLeave={() => { if (!isPinned) setIsCollapsed(true); }}
       className={`
-        flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 h-screen sticky top-0
-        ${isCollapsed ? 'w-16' : 'w-64'}
+        flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700/60 transition-[width] duration-200 ease-out h-screen sticky top-0
+        ${isCollapsed ? 'w-14' : 'w-48'}
       `}
     >
       {/* Logo Header */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-700">
+      <div className="h-14 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-700/60">
         {isCollapsed ? (
-          <img src={logoFyness} alt="Fyness" className="w-8 h-8 object-contain mx-auto" />
+          <img src={logoFyness} alt="Fyness" className="w-7 h-7 object-contain mx-auto" />
         ) : (
           <>
-            <div className="flex items-center gap-2">
-              <img src={logoFyness} alt="Fyness" className="w-8 h-8 object-contain" />
-              <div>
-                <span className="font-bold text-slate-800 dark:text-slate-100">Fyness</span>
-                <span className="ml-1 text-xs font-medium text-fyness-primary">CRM</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <img src={logoFyness} alt="Fyness" className="w-7 h-7 object-contain shrink-0" />
+              <div className="truncate">
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Fyness</span>
+                <span className="ml-1 text-[11px] font-medium text-fyness-primary">CRM</span>
               </div>
             </div>
             <button
               onClick={togglePin}
               title={isPinned ? 'Desafixar menu' : 'Fixar menu aberto'}
-              className={`p-1.5 rounded-lg transition-colors ${
+              className={`p-1 rounded-md transition-colors ${
                 isPinned
                   ? 'text-fyness-primary dark:text-blue-400 bg-fyness-primary/10 dark:bg-blue-900/30'
                   : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -135,28 +135,28 @@ export function CrmSidebar() {
       </div>
 
       {/* Voltar ao Fyness */}
-      <div className="px-3 pt-3 pb-1">
+      <div className="px-2 pt-2 pb-0.5">
         <button
           onClick={() => navigate('/dashboard')}
           className={`
-            flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors
+            flex items-center gap-2 w-full px-2.5 py-1 rounded-md text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors
             ${isCollapsed ? 'justify-center px-2' : ''}
           `}
           title="Voltar ao Fyness"
         >
-          <ArrowLeft size={14} className="shrink-0" />
+          <ArrowLeft size={13} className="shrink-0" />
           {!isCollapsed && <span>Voltar ao Fyness</span>}
         </button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto" role="navigation" aria-label="Menu CRM">
+      <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto" role="navigation" aria-label="Menu CRM">
         {crmNavItems.map((item, idx) =>
           item.divider ? (
-            <div key={`div-${idx}`} className="my-3 border-t border-slate-200 dark:border-slate-700" />
+            <div key={`div-${idx}`} className="my-2 border-t border-slate-200 dark:border-slate-700/60" />
           ) : item.section ? (
             !isCollapsed && (
-              <div key={`sec-${idx}`} className="pt-4 pb-1 px-3">
+              <div key={`sec-${idx}`} className="pt-3 pb-1 px-2.5">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   {item.section}
                 </span>
@@ -174,15 +174,6 @@ export function CrmSidebar() {
           )
         )}
       </nav>
-
-      {/* Footer */}
-      <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-700">
-        {!isCollapsed && (
-          <div className="text-[10px] text-slate-400 dark:text-slate-600 text-center">
-            Fyness CRM v1.0
-          </div>
-        )}
-      </div>
     </aside>
   );
 }

@@ -86,7 +86,7 @@ export function CrmDataTable({
                   key={row.id || idx}
                   onClick={() => onRowClick?.(row)}
                   className={`
-                    transition-colors
+                    group transition-colors
                     ${onRowClick ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''}
                   `}
                 >

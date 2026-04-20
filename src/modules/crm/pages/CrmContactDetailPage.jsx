@@ -220,7 +220,7 @@ export function CrmContactDetailPage() {
                             {act.completed && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
                           </div>
                           <span className="text-xs text-slate-400">
-                            {act.startDate ? new Date(act.startDate).toLocaleDateString('pt-BR') : ''}
+                            {act.startDate ? new Date(act.startDate).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
                           </span>
                         </div>
                       </div>

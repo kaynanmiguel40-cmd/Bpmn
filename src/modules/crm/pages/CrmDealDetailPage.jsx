@@ -357,7 +357,7 @@ export function CrmDealDetailPage() {
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{act.description}</p>
                               )}
                               <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
-                                <span>{formatDate(act.startDate)}</span>
+                                <span>{formatDateTime(act.startDate)}</span>
                                 {act.contact && (
                                   <>
                                     <span>·</span>

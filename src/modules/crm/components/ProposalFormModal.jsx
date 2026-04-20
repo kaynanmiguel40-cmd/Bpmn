@@ -20,6 +20,21 @@ const STATUS_OPTIONS = [
 const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 
+// Mascara de moeda BRL tipo calculadora: digitos entram por tras como centavos.
+// "5" -> R$ 0,05  | "50" -> R$ 0,50  | "5000" -> R$ 50,00
+function formatCurrencyInput(num) {
+  if (num === null || num === undefined || num === '') return '';
+  const n = typeof num === 'number' ? num : parseFloat(num);
+  if (isNaN(n) || n === 0) return '';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
+}
+
+function parseCurrencyInput(str) {
+  const digits = (str || '').replace(/\D/g, '').slice(0, 12);
+  if (!digits) return 0;
+  return parseInt(digits, 10) / 100;
+}
+
 function DealCombobox({ value, onChange, placeholder }) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
@@ -222,7 +237,17 @@ export function ProposalFormModal({ open, onClose, proposal = null }) {
                       <input type="number" min="0" step="1" {...register(`items.${index}.quantity`, { valueAsNumber: true })} className={inputClass} />
                     </div>
                     <div className="col-span-2">
-                      <input type="number" min="0" step="0.01" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} className={inputClass} />
+                      <Controller name={`items.${index}.unitPrice`} control={control}
+                        render={({ field }) => (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={formatCurrencyInput(field.value)}
+                            onChange={(e) => field.onChange(parseCurrencyInput(e.target.value))}
+                            placeholder="R$ 0,00"
+                            className={inputClass}
+                          />
+                        )} />
                     </div>
                     <div className="col-span-1">
                       <input type="number" min="0" max="100" step="1" {...register(`items.${index}.discountPercent`, { valueAsNumber: true })} className={inputClass} />

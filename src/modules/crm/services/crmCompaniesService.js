@@ -91,8 +91,10 @@ export async function getCrmCompanies(filters = {}) {
     };
   }
 
-  // Sem filtros: usar factory
-  return companyService.getAll();
+  // Sem filtros: usar factory. Normalizar para { data, count } — consumidores
+  // (ex: EntityCombobox) esperam esse shape.
+  const all = await companyService.getAll();
+  return { data: all, count: all.length };
 }
 
 export async function getCrmCompanyById(id) {

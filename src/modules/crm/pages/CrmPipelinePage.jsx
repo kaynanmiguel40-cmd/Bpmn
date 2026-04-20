@@ -512,7 +512,6 @@ export function CrmPipelinePage() {
   const moveMutation = useMoveCrmDeal();
   const lostMutation = useMarkDealLost();
   const deletePipelineMutation = useDeleteCrmPipeline();
-  const seedMutation = useSeedCommercialPipelines();
   const { data: allMembers = [] } = useTeamMembers();
   const crmMembers = allMembers.filter(m => m.crmRole);
 
@@ -533,7 +532,6 @@ export function CrmPipelinePage() {
   const [dragOverStageId, setDragOverStageId] = useState(null);
   const [createPipelineOpen, setCreatePipelineOpen] = useState(false);
   const [deletePipelineConfirm, setDeletePipelineConfirm] = useState(false);
-  const [resetCrmConfirm, setResetCrmConfirm] = useState(false);
   const [lostModalDealId, setLostModalDealId] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [meetingModalData, setMeetingModalData] = useState(null); // { dealId, dealTitle, dealCity }
@@ -686,9 +684,6 @@ export function CrmPipelinePage() {
                 if (e.target.value === '__new__') {
                   setCreatePipelineOpen(true);
                   requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
-                } else if (e.target.value === '__reset__') {
-                  setResetCrmConfirm(true);
-                  requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
                 } else {
                   setSelectedPipelineId(e.target.value || null);
                 }
@@ -698,7 +693,6 @@ export function CrmPipelinePage() {
               {(pipelines || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               <option disabled>──────────</option>
               <option value="__new__">+ Nova Pipeline</option>
-              <option value="__reset__">Resetar CRM (Pipelines BPMN)</option>
             </select>
 
             {/* Excluir pipeline selecionada */}
@@ -834,23 +828,6 @@ export function CrmPipelinePage() {
         loading={deletePipelineMutation.isPending}
       />
 
-      <CrmConfirmDialog
-        open={resetCrmConfirm}
-        onCancel={() => setResetCrmConfirm(false)}
-        onConfirm={() => {
-          seedMutation.mutate(undefined, {
-            onSuccess: () => {
-              setResetCrmConfirm(false);
-              setSelectedPipelineId(null);
-            },
-          });
-        }}
-        title="Resetar CRM"
-        message="Isso vai APAGAR todos os dados de teste (deals, contatos, empresas, atividades, propostas, pipelines, metas) e criar as 6 pipelines comerciais do BPMN V9. Continuar?"
-        confirmLabel="Limpar e Criar"
-        variant="danger"
-        loading={seedMutation.isPending}
-      />
     </div>
   );
 }

@@ -66,6 +66,7 @@ export const crmDealSchema = z.object({
   contactPhone: nullableStr,
   contactEmail: z.string().email('Email invalido').optional().or(z.literal('')).default(''),
   contactId: z.string().nullable().optional().default(null),
+  companyName: nullableStr,
   companyId: z.string().nullable().optional().default(null),
   pipelineId: z.string().nullable().optional().default(null),
   stageId: z.string().nullable().optional().default(null),
