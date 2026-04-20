@@ -546,6 +546,18 @@ export function CrmPipelinePage() {
 
   const hasFilters = searchQuery || valueFilter !== 'all' || probFilter !== 'all' || ownerFilter !== 'all';
 
+  // Totais da pipeline (valores agregados)
+  const pipelineTotals = useMemo(() => {
+    const allDeals = (pipelineData?.stages || []).flatMap(s => s.deals || []);
+    const open = allDeals.filter(d => d.status === 'open');
+    const won = allDeals.filter(d => d.status === 'won');
+    const totalAll = allDeals.reduce((s, d) => s + (d.value || 0), 0);
+    const totalOpen = open.reduce((s, d) => s + (d.value || 0), 0);
+    const totalWon = won.reduce((s, d) => s + (d.value || 0), 0);
+    const weighted = open.reduce((s, d) => s + (d.value || 0) * ((d.probability ?? 50) / 100), 0);
+    return { totalAll, totalOpen, totalWon, weighted, count: allDeals.length, openCount: open.length, wonCount: won.length };
+  }, [pipelineData]);
+
   const filterDeals = useCallback((deals) => {
     if (!deals) return [];
     return deals.filter(d => {
@@ -712,6 +724,32 @@ export function CrmPipelinePage() {
         }
       />
 
+      {/* Totais da pipeline */}
+      {!isLoading && pipelines && pipelines.length > 0 && pipelineTotals.count > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Total da Pipeline</p>
+            <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{formatCurrency(pipelineTotals.totalAll)}</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{pipelineTotals.count} negocios</p>
+          </div>
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
+            <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium uppercase tracking-wider">Em Aberto</p>
+            <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{formatCurrency(pipelineTotals.totalOpen)}</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{pipelineTotals.openCount} negocios</p>
+          </div>
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium uppercase tracking-wider">Ponderado (prob.)</p>
+            <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{formatCurrency(pipelineTotals.weighted)}</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">valor esperado</p>
+          </div>
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium uppercase tracking-wider">Ganhos</p>
+            <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{formatCurrency(pipelineTotals.totalWon)}</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{pipelineTotals.wonCount} fechados</p>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex gap-4 overflow-x-auto pb-4">
           {[1, 2, 3, 4, 5].map(i => (
@@ -723,7 +761,7 @@ export function CrmPipelinePage() {
           onCreateManual={() => setCreatePipelineOpen(true)}
         />
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-180px)]">
+        <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-280px)]">
           {(pipelineData?.stages || []).map(stage => (
             <StageColumn
               key={stage.id}
