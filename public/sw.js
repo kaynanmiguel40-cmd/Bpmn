@@ -1,14 +1,7 @@
-const CACHE_NAME = 'fyness-os-v2';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-];
+const CACHE_NAME = 'fyness-os-v3';
 
-// Install — cache only the shell
+// Install — NAO pre-cachear HTML (evita servir chunks antigos apos deploy)
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
   self.skipWaiting();
 });
 
@@ -41,10 +34,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation — network first, fallback to cached index.html (SPA)
+  // Navigation — sempre rede (nao cachear HTML para evitar chunks antigos apos deploy)
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => caches.match('/index.html'))
+      fetch(request).catch(() => new Response(
+        '<h1>Offline</h1><p>Verifique sua conexao.</p>',
+        { headers: { 'Content-Type': 'text/html' } }
+      ))
     );
     return;
   }

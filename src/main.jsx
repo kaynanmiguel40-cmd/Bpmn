@@ -13,6 +13,37 @@ import './index.css'
 // Registrar Service Worker para PWA
 registerSW()
 
+// Recarregar automaticamente se um chunk antigo falhar (apos deploy)
+// Evita tela branca quando usuario tem HTML em cache apontando para chunks removidos
+const RELOAD_FLAG = 'chunk-reload-attempt';
+window.addEventListener('error', (event) => {
+  const msg = event?.message || '';
+  const isChunkError =
+    msg.includes('Failed to fetch dynamically imported module') ||
+    msg.includes('Loading chunk') ||
+    msg.includes('Importing a module script failed');
+  if (!isChunkError) return;
+  // Evitar loop: so recarregar uma vez por sessao
+  if (sessionStorage.getItem(RELOAD_FLAG)) return;
+  sessionStorage.setItem(RELOAD_FLAG, '1');
+  window.location.reload();
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const msg = event?.reason?.message || '';
+  const isChunkError =
+    msg.includes('Failed to fetch dynamically imported module') ||
+    msg.includes('Loading chunk') ||
+    msg.includes('Importing a module script failed');
+  if (!isChunkError) return;
+  if (sessionStorage.getItem(RELOAD_FLAG)) return;
+  sessionStorage.setItem(RELOAD_FLAG, '1');
+  window.location.reload();
+});
+// Limpar flag quando a pagina carregar com sucesso (apos o reload dar certo)
+window.addEventListener('load', () => {
+  setTimeout(() => sessionStorage.removeItem(RELOAD_FLAG), 3000);
+});
+
 // React Query client global
 const queryClient = new QueryClient({
   defaultOptions: {
