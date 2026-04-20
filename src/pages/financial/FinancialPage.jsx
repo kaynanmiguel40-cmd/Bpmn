@@ -442,6 +442,15 @@ export default function FinancialPage() {
   const handleSave = async (formOverride) => {
     const currentForm = formOverride || form;
     if (!currentForm.title.trim() || saving) return;
+    // Validacoes obrigatorias
+    const missing = [];
+    if (!currentForm.assignedTo && !currentForm.assignee) missing.push('responsavel');
+    if (!currentForm.estimatedStart) missing.push('data de inicio');
+    if (!currentForm.estimatedEnd) missing.push('data de termino');
+    if (missing.length > 0) {
+      toast.error(`Preencha: ${missing.join(', ')}.`);
+      return;
+    }
     setSaving(true);
     try {
 
@@ -3751,7 +3760,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
           <div className="grid grid-cols-2 gap-3">
             {/* Atribuir a (multiplos) */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Atribuir a</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Atribuir a <span className="text-red-500">*</span></label>
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {(form.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map(name => (
                   <span key={name} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded-full">
@@ -3877,7 +3886,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Previsao de Inicio</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Previsao de Inicio <span className="text-red-500">*</span></label>
               <input type="datetime-local" value={form.estimatedStart} onChange={(e) => {
                 update('estimatedStart', e.target.value);
                 if (form.estimatedEnd && e.target.value && e.target.value > form.estimatedEnd) {
@@ -3886,7 +3895,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
               }} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Previsao de Entrega</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Previsao de Entrega <span className="text-red-500">*</span></label>
               <input type="datetime-local" value={form.estimatedEnd} onChange={(e) => update('estimatedEnd', e.target.value)} min={form.estimatedStart || undefined} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" />
             </div>
           </div>
@@ -4391,7 +4400,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
           </div>
           <div className="flex gap-3">
             <button onClick={safeClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm">Cancelar</button>
-            <button onClick={handleSaveClick} disabled={!form.title.trim() || saving} className={`px-4 py-2 ${isEmergency ? 'bg-red-600 hover:bg-red-700' : 'bg-fyness-primary hover:bg-fyness-secondary'} text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}>
+            <button onClick={handleSaveClick} disabled={!form.title.trim() || !(form.assignedTo || form.assignee) || !form.estimatedStart || !form.estimatedEnd || saving} className={`px-4 py-2 ${isEmergency ? 'bg-red-600 hover:bg-red-700' : 'bg-fyness-primary hover:bg-fyness-secondary'} text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}>
               {saving && <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
               {saving ? 'Salvando...' : isEmergency ? 'Gerar Emergencial' : editing ? 'Salvar' : 'Gerar O.S.'}
             </button>
