@@ -21,16 +21,25 @@ import { formatDateShortMonth as formatDate, formatCurrency } from '../../lib/fo
 import { sortByDeadline, sortByActualEnd } from '../../lib/orderSorting';
 import { toast } from '../../contexts/ToastContext';
 
-function ElapsedTimer({ startTime, pausedAt }) {
+function ElapsedTimer({ startTime, pausedAt, resumedAt, accumulatedMs }) {
   const [elapsed, setElapsed] = useState('');
 
   useEffect(() => {
     if (!startTime) return;
 
     const update = () => {
-      const start = new Date(startTime);
-      const now = pausedAt ? new Date(pausedAt) : new Date();
-      let diffMs = now - start;
+      const accumulated = accumulatedMs || 0;
+      let diffMs;
+
+      if (pausedAt) {
+        // Pausado: mostra apenas o tempo acumulado (congelado)
+        diffMs = accumulated;
+      } else {
+        // Rodando: acumulado + tempo desde ultima retomada (ou start inicial)
+        const segmentStart = new Date(resumedAt || startTime);
+        const runningMs = Math.max(0, new Date() - segmentStart);
+        diffMs = accumulated + runningMs;
+      }
       if (diffMs < 0) diffMs = 0;
 
       const hours = Math.floor(diffMs / 3600000);
@@ -47,7 +56,7 @@ function ElapsedTimer({ startTime, pausedAt }) {
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
-  }, [startTime, pausedAt]);
+  }, [startTime, pausedAt, resumedAt, accumulatedMs]);
 
   if (!startTime) return null;
 
@@ -700,7 +709,7 @@ export function RoutinePage() {
                         {/* Elapsed timer for in-progress orders */}
                         {order.status === 'in_progress' && order.actualStart && (
                           <div className="mb-1">
-                            <ElapsedTimer startTime={order.actualStart} pausedAt={order.pausedAt} />
+                            <ElapsedTimer startTime={order.actualStart} pausedAt={order.pausedAt} resumedAt={order.resumedAt} accumulatedMs={order.accumulatedMs} />
                           </div>
                         )}
 

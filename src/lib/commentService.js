@@ -1,5 +1,6 @@
 import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabase';
+import { getOffline } from './offlineDB';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -48,7 +49,7 @@ export async function getCommentsByOrder(orderId) {
     .order('created_at', { ascending: true });
 
   if (error) {
-    const local = JSON.parse(localStorage.getItem('os_comments') || '[]');
+    const local = await getOffline('os_comments');
     return local.filter(c => c.order_id === orderId).map(dbToComment);
   }
   return (data || []).map(dbToComment);
@@ -73,7 +74,7 @@ export async function getChatSummaries() {
     .order('created_at', { ascending: false });
 
   if (error) {
-    const local = JSON.parse(localStorage.getItem('os_comments') || '[]');
+    const local = await getOffline('os_comments');
     return buildSummaries(local.map(dbToComment));
   }
   return buildSummaries((data || []).map(dbToComment));
@@ -108,7 +109,7 @@ export async function getCommentCounts(orderIds) {
     .in('order_id', orderIds);
 
   if (error) {
-    const local = JSON.parse(localStorage.getItem('os_comments') || '[]');
+    const local = await getOffline('os_comments');
     const counts = {};
     local.forEach(c => {
       if (orderIds.includes(c.order_id)) {

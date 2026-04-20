@@ -14,6 +14,11 @@ import { getProcessOrdersByProject, getProcessOrderByElement, createProcessOrder
 import { supabase } from '../lib/supabase';
 import { pushEventToGCal, getGCalConnectionStatus, fetchGCalEvents, createGCalEvent, updateGCalEvent, deleteGCalEvent, syncOSToGCal, deleteOSFromGCal } from '../lib/googleCalendarService';
 
+/** Log falha de sync com GCal sem bloquear o fluxo principal */
+function logGCalSyncError(action, err) {
+  console.warn(`[GCal Sync] Falha ao ${action}:`, err?.message || err);
+}
+
 // ==================== HOOK FACTORIES ====================
 
 /** Cria um hook de query simples */
@@ -71,7 +76,7 @@ export function useCreateOSOrder() {
     mutationFn: createOSOrder,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: queryKeys.osOrders });
-      if (data) syncOSToGCal(data).catch(() => {});
+      if (data) syncOSToGCal(data).catch(err => logGCalSyncError('sincronizar OS criada', err));
     },
   });
 }
@@ -85,7 +90,7 @@ export function useUpdateOSOrder() {
       // Buscar O.S. atualizada para sincronizar com Google Calendar
       const orders = qc.getQueryData(queryKeys.osOrders);
       const os = orders?.find(o => o.id === variables.id);
-      if (os) syncOSToGCal({ ...os, ...variables.updates }).catch(() => {});
+      if (os) syncOSToGCal({ ...os, ...variables.updates }).catch(err => logGCalSyncError('sincronizar OS atualizada', err));
     },
   });
 }
@@ -94,7 +99,7 @@ export function useDeleteOSOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id) => {
-      deleteOSFromGCal(id).catch(() => {});
+      deleteOSFromGCal(id).catch(err => logGCalSyncError('remover OS do GCal', err));
       return deleteOSOrder(id);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osOrders }),
@@ -132,7 +137,7 @@ export function useCreateAgendaEvent() {
     mutationFn: createAgendaEvent,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: queryKeys.agendaEvents });
-      if (data?.id) pushEventToGCal(data.id, 'create').catch(() => {});
+      if (data?.id) pushEventToGCal(data.id, 'create').catch(err => logGCalSyncError('criar evento no GCal', err));
     },
   });
 }
@@ -143,7 +148,7 @@ export function useUpdateAgendaEvent() {
     mutationFn: ({ id, updates }) => updateAgendaEvent(id, updates),
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: queryKeys.agendaEvents });
-      if (variables?.id) pushEventToGCal(variables.id, 'update').catch(() => {});
+      if (variables?.id) pushEventToGCal(variables.id, 'update').catch(err => logGCalSyncError('atualizar evento no GCal', err));
     },
   });
 }
@@ -153,7 +158,7 @@ export function useDeleteAgendaEvent() {
   return useMutation({
     mutationFn: (id) => {
       // Guardar o ID antes de deletar para poder fazer push
-      pushEventToGCal(id, 'delete').catch(() => {});
+      pushEventToGCal(id, 'delete').catch(err => logGCalSyncError('deletar evento do GCal', err));
       return deleteAgendaEvent(id);
     },
     onSuccess: () => {

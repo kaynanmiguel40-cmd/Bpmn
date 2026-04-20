@@ -57,21 +57,17 @@ export function exportOSToExcel(orders, members, period = '') {
   // ==================== ABA 3: CUSTOS ====================
   const costHeaders = ['#', 'Titulo', 'Responsavel', 'Horas', 'Taxa/h', 'Custo Mao de Obra', 'Custo Materiais', 'Custo Total'];
   const costRows = orders.filter(o => o.status === 'done').map(o => {
-    const member = members.find(m => m.name === o.assignee);
-    const rate = member ? getMemberHourlyRate(member) : 0;
-    const hours = calcOSHours(o);
-    const cost = calcOSCost(o, member);
-    const materialCost = (o.expenses || []).reduce((sum, e) => sum + (e.quantity || 1) * (e.unitPrice || e.unit_price || 0), 0);
+    const cost = calcOSCost(o, members);
 
     return [
       o.type === 'emergency' ? `EMG-${o.emergencyNumber}` : o.number,
       o.title,
       o.assignee || '-',
-      hours.toFixed(1),
-      formatCurrency(rate),
-      formatCurrency(hours * rate),
-      formatCurrency(materialCost),
-      formatCurrency(cost),
+      cost.hours.toFixed(1),
+      formatCurrency(cost.hourlyRate),
+      formatCurrency(cost.laborCost),
+      formatCurrency(cost.materialCost),
+      formatCurrency(cost.totalCost),
     ];
   });
 
@@ -97,7 +93,7 @@ export function exportKPIsToExcel(orders, members, events, period = '') {
     const done = memberOrders.filter(o => o.status === 'done').length;
     const total = memberOrders.length;
     const hours = memberOrders.filter(o => o.status === 'done').reduce((sum, o) => sum + calcOSHours(o), 0);
-    const cost = memberOrders.filter(o => o.status === 'done').reduce((sum, o) => sum + calcOSCost(o, m), 0);
+    const totalCost = memberOrders.filter(o => o.status === 'done').reduce((sum, o) => sum + calcOSCost(o, members).totalCost, 0);
     const meetings = events.filter(e => e.type === 'meeting' && (e.assignee === m.name || (e.attendees || []).some(a => a.name === m.name))).length;
 
     return [
@@ -106,7 +102,7 @@ export function exportKPIsToExcel(orders, members, events, period = '') {
       done,
       total > 0 ? `${((done / total) * 100).toFixed(1)}%` : '0%',
       hours.toFixed(1),
-      formatCurrency(cost),
+      formatCurrency(totalCost),
       meetings,
     ];
   });

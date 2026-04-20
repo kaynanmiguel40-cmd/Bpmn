@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { handleError } from './errorHandler';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -128,7 +129,7 @@ export async function getProfile() {
       return emptyProfile;
     }
   } catch (err) {
-    console.error('Erro ao buscar profile:', err);
+    handleError(err, 'getProfile', { showToast: false });
     // Mesmo com erro, retornar profile com id para useEffect funcionar
     try {
       const local = JSON.parse(localStorage.getItem(localKey(userId)) || '{}');
@@ -166,7 +167,7 @@ export async function saveProfile(profile) {
     .single();
 
   if (error) {
-    console.log('⚠️ Supabase nao conectado, salvando perfil no localStorage');
+    handleError(error, 'saveProfile', { showToast: false });
     localStorage.setItem(localKey(id), JSON.stringify(profile));
     localStorage.setItem('settings_profile', JSON.stringify(profile));
     window.dispatchEvent(new Event('profile-updated'));

@@ -169,7 +169,7 @@ export async function createCrmActivity(data) {
 
       // Push para Google Calendar
       if (agendaEvent?.id) {
-        pushEventToGCal(agendaEvent.id, 'create').catch(() => {});
+        pushEventToGCal(agendaEvent.id, 'create').catch(err => console.warn('[GCal Sync] Falha ao sincronizar atividade CRM:', err?.message || err));
       }
     } catch {
       // Nao bloqueia a criacao da atividade se falhar a criacao do evento

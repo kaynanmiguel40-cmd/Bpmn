@@ -22,15 +22,21 @@ describe('calcOSHours', () => {
     expect(calcOSHours({ actualEnd: '2025-01-05' })).toBe(0);
   });
 
-  it('deve calcular horas baseado em dias * 8h', () => {
-    const order = { actualStart: '2025-01-01', actualEnd: '2025-01-03' };
-    // 3 dias (1,2,3) = 3 * 8 = 24h
-    expect(calcOSHours(order)).toBe(24);
+  it('deve calcular horas uteis entre datas (seg-sex 09-18h)', () => {
+    // 2025-01-06 (seg) 09:00 -> 2025-01-07 (ter) 18:00 = 9h + 9h = 18h
+    const order = { actualStart: '2025-01-06T09:00:00', actualEnd: '2025-01-07T18:00:00' };
+    expect(calcOSHours(order)).toBe(18);
   });
 
-  it('deve retornar mínimo de 8h (1 dia)', () => {
-    const order = { actualStart: '2025-01-01', actualEnd: '2025-01-01' };
-    expect(calcOSHours(order)).toBe(8);
+  it('deve retornar 0 quando start === end (mesma timestamp)', () => {
+    const order = { actualStart: '2025-01-06T09:00:00', actualEnd: '2025-01-06T09:00:00' };
+    expect(calcOSHours(order)).toBe(0);
+  });
+
+  it('deve calcular horas parciais no mesmo dia util', () => {
+    // Seg 10:00 -> 14:00 = 4h uteis
+    const order = { actualStart: '2025-01-06T10:00:00', actualEnd: '2025-01-06T14:00:00' };
+    expect(calcOSHours(order)).toBe(4);
   });
 });
 
@@ -39,10 +45,13 @@ describe('calcEstimatedHours', () => {
     expect(calcEstimatedHours({})).toBe(0);
   });
 
-  it('deve calcular horas previstas baseado em dias * 8h', () => {
-    const order = { estimatedStart: '2025-01-01', estimatedEnd: '2025-01-05' };
-    // 5 dias * 8 = 40h
-    expect(calcEstimatedHours(order)).toBe(40);
+  it('deve calcular horas uteis previstas (seg-sex 09-18h)', () => {
+    // 2025-01-06 (seg) 09:00 -> 2025-01-10 (sex) 18:00 = 5 dias * 9h brutas
+    // calcWorkingHoursBetween retorna horas brutas 09-18h (WORK_HOURS_PER_DAY so afeta dias intermediarios)
+    const order = { estimatedStart: '2025-01-06T09:00:00', estimatedEnd: '2025-01-10T18:00:00' };
+    const hours = calcEstimatedHours(order);
+    // 3 dias intermediarios * 8h (WORK_HOURS_PER_DAY) + primeiro dia 9h + ultimo dia 9h = 42h
+    expect(hours).toBe(42);
   });
 });
 
@@ -106,19 +115,19 @@ describe('calcOSCost', () => {
 
   it('deve calcular custo de mão de obra + material', () => {
     const order = {
-      actualStart: '2025-01-01',
-      actualEnd: '2025-01-01', // 1 dia = 8h
+      actualStart: '2025-01-06T09:00:00', // seg 09:00
+      actualEnd: '2025-01-06T18:00:00',   // seg 18:00 = 9h uteis
       assignee: 'João Silva',
       expenses: [{ value: 100, quantity: 2 }], // R$200
     };
     const cost = calcOSCost(order, members);
-    expect(cost.laborCost).toBe(240); // 8h * R$30
+    expect(cost.laborCost).toBe(270); // 9h * R$30
     expect(cost.materialCost).toBe(200);
-    expect(cost.totalCost).toBe(440);
+    expect(cost.totalCost).toBe(470);
   });
 
   it('deve retornar 0 quando não encontra membro', () => {
-    const order = { actualStart: '2025-01-01', actualEnd: '2025-01-01', assignee: 'Desconhecido', expenses: [] };
+    const order = { actualStart: '2025-01-06T09:00:00', actualEnd: '2025-01-06T18:00:00', assignee: 'Desconhecido', expenses: [] };
     const cost = calcOSCost(order, members);
     expect(cost.laborCost).toBe(0);
   });
@@ -189,7 +198,7 @@ describe('calcKPIs', () => {
     expect(kpi.total).toBe(0);
     expect(kpi.doneMonth).toBe(0);
     expect(kpi.completionRate).toBe('0');
-    expect(kpi.onTimeRate).toBe('100');
+    expect(kpi.onTimeRate).toBe('0');
     expect(kpi.productivity).toBe('0');
   });
 

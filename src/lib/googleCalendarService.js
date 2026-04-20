@@ -8,7 +8,7 @@
 
 import { supabase } from './supabaseClient';
 
-const GOOGLE_CLIENT_ID = '523251352765-5t10u9q8idu2909v8uppqr12l4envfs7.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const GCAL_API = 'https://www.googleapis.com/calendar/v3';
 const SCOPES = 'https://www.googleapis.com/auth/calendar';
 

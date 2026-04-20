@@ -31,7 +31,7 @@ export const DAYS_PER_WEEK = 7;
 
 export const WORK_START_HOUR = 9;
 export const WORK_END_HOUR = 18;
-export const WORK_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR; // 9h uteis
+export const WORK_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR - 1; // 8h uteis (9h-18h com 1h intervalo)
 
 // ─── Metas Mensais ──────────────────────────────────────────────
 

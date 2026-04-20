@@ -1,6 +1,7 @@
 import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabaseClient';
 import { processOrderSchema } from './validation';
+import { handleError } from './errorHandler';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -83,7 +84,7 @@ export async function getProcessOrdersByProject(projectId) {
     .order('created_at', { ascending: true });
 
   if (error) {
-    console.error('[process_orders] getByProject erro:', error.message);
+    handleError(error, 'getProcessOrdersByProject', { showToast: false });
     return [];
   }
   return (data || []).map(dbToProcessOrder);
@@ -104,7 +105,7 @@ export async function getProcessOrderByElement(projectId, elementId) {
   if (error) {
     // PGRST116 = row not found — normal para elementos sem ordem
     if (error.code !== 'PGRST116') {
-      console.error('[process_orders] getByElement erro:', error.message);
+      handleError(error, 'getProcessOrderByElement', { showToast: false });
     }
     return null;
   }

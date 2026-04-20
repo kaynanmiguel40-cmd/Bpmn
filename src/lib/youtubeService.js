@@ -33,6 +33,7 @@
  */
 
 import { supabase } from './supabaseClient';
+import { handleError } from './errorHandler';
 
 const CLIENT_ID = import.meta.env.VITE_YOUTUBE_CLIENT_ID || '';
 const REDIRECT_URI = import.meta.env.VITE_YOUTUBE_REDIRECT_URI || '';
@@ -142,7 +143,7 @@ export async function exchangeCodeForTokens(code, state) {
     throw new Error('Usuário não autenticado no Supabase');
   }
 
-  console.log('[YouTube] Trocando código via Edge Function...');
+  console.debug('[YouTube] Trocando código via Edge Function...');
 
   // Chamar Edge Function para trocar código por tokens (server-side)
   const response = await fetch(`${YOUTUBE_OAUTH_FUNCTION}/exchange`, {
@@ -157,11 +158,11 @@ export async function exchangeCodeForTokens(code, state) {
   const data = await response.json();
 
   if (data.error) {
-    console.error('[YouTube] Erro na troca de token:', data.error);
+    handleError(new Error(data.error), 'YouTube.exchangeCode');
     throw new Error(data.error);
   }
 
-  console.log('[YouTube] Tokens obtidos com sucesso!');
+  console.debug('[YouTube] Tokens obtidos com sucesso!');
   return data;
 }
 
@@ -174,7 +175,7 @@ export async function refreshAccessToken() {
     throw new Error('Usuário não autenticado no Supabase');
   }
 
-  console.log('[YouTube] Renovando token via Edge Function...');
+  console.debug('[YouTube] Renovando token via Edge Function...');
 
   const response = await fetch(`${YOUTUBE_OAUTH_FUNCTION}/refresh`, {
     method: 'POST',
@@ -188,11 +189,11 @@ export async function refreshAccessToken() {
   const data = await response.json();
 
   if (data.error) {
-    console.error('[YouTube] Erro ao renovar token:', data.error);
+    handleError(new Error(data.error), 'YouTube.refreshToken');
     throw new Error(data.error);
   }
 
-  console.log('[YouTube] Token renovado com sucesso!');
+  console.debug('[YouTube] Token renovado com sucesso!');
   return data;
 }
 
@@ -270,13 +271,13 @@ async function fetchChannelInfo() {
     const data = await response.json();
 
     if (data.error) {
-      console.error('[YouTube] Erro ao buscar canal:', data.error);
+      handleError(new Error(data.error), 'YouTube.fetchChannelInfo', { showToast: false });
       return null;
     }
 
     return data;
   } catch (err) {
-    console.error('[YouTube] Erro ao buscar canal:', err);
+    handleError(err, 'YouTube.fetchChannelInfo', { showToast: false });
     return null;
   }
 }
@@ -318,7 +319,7 @@ export async function publishToYouTube({
     throw new Error('Usuário não autenticado no Supabase');
   }
 
-  console.log('[YouTube] Iniciando publicação via Edge Function:', {
+  console.debug('[YouTube] Iniciando publicação via Edge Function:', {
     videoUrl,
     title,
     privacyStatus,
@@ -346,11 +347,11 @@ export async function publishToYouTube({
   const data = await response.json();
 
   if (data.error) {
-    console.error('[YouTube] Erro na publicação:', data.error);
+    handleError(new Error(data.error), 'YouTube.publish');
     throw new Error(data.error);
   }
 
-  console.log('[YouTube] Publicação concluída:', data);
+  console.debug('[YouTube] Publicação concluída:', data);
 
   // Log de sucesso
   await logPublishResult({

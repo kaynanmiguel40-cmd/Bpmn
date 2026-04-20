@@ -28,6 +28,7 @@
  */
 
 import { supabase } from './supabaseClient';
+import { handleError } from './errorHandler';
 
 const CLIENT_KEY = import.meta.env.VITE_TIKTOK_CLIENT_KEY || '';
 const REDIRECT_URI = import.meta.env.VITE_TIKTOK_REDIRECT_URI || '';
@@ -69,7 +70,7 @@ async function saveTokens(tokens) {
     .upsert(tokenData, { onConflict: 'user_id,platform' });
 
   if (error) {
-    console.error('[TikTok] Erro ao salvar tokens:', error);
+    handleError(error, 'TikTok.saveTokens', { showToast: false });
     throw new Error('Erro ao salvar tokens: ' + error.message);
   }
 
@@ -164,7 +165,7 @@ export async function exchangeCodeForTokens(code, state) {
     throw new Error('Usuário não autenticado no Supabase');
   }
 
-  console.log('[TikTok] Trocando código via Edge Function...');
+  console.debug('[TikTok] Trocando código via Edge Function...');
 
   // Chamar Edge Function para trocar código por tokens (server-side)
   const response = await fetch(`${TIKTOK_OAUTH_FUNCTION}/exchange`, {
@@ -179,11 +180,11 @@ export async function exchangeCodeForTokens(code, state) {
   const data = await response.json();
 
   if (data.error) {
-    console.error('[TikTok] Erro na troca de token:', data.error);
+    handleError(new Error(data.error), 'TikTok.exchangeCode');
     throw new Error(data.error);
   }
 
-  console.log('[TikTok] Tokens obtidos com sucesso!');
+  console.debug('[TikTok] Tokens obtidos com sucesso!');
   return data;
 }
 
@@ -197,7 +198,7 @@ export async function refreshAccessToken() {
     throw new Error('Usuário não autenticado no Supabase');
   }
 
-  console.log('[TikTok] Renovando token via Edge Function...');
+  console.debug('[TikTok] Renovando token via Edge Function...');
 
   const response = await fetch(`${TIKTOK_OAUTH_FUNCTION}/refresh`, {
     method: 'POST',
@@ -211,11 +212,11 @@ export async function refreshAccessToken() {
   const data = await response.json();
 
   if (data.error) {
-    console.error('[TikTok] Erro ao renovar token:', data.error);
+    handleError(new Error(data.error), 'TikTok.refreshToken');
     throw new Error(data.error);
   }
 
-  console.log('[TikTok] Token renovado com sucesso!');
+  console.debug('[TikTok] Token renovado com sucesso!');
   return data;
 }
 
@@ -234,7 +235,7 @@ async function getValidAccessToken() {
   const marginMs = 5 * 60 * 1000; // 5 minutos
 
   if (expiresAt.getTime() - marginMs < now.getTime()) {
-    console.log('[TikTok] Token expirado, renovando...');
+    console.debug('[TikTok] Token expirado, renovando...');
     await refreshAccessToken();
     // Refetch tokens do banco após renovação
     stored = await getStoredTokens();
@@ -320,13 +321,13 @@ async function fetchUserInfo() {
     const data = await response.json();
 
     if (data.error) {
-      console.error('[TikTok] Erro ao buscar usuário:', data.error);
+      handleError(new Error(data.error), 'TikTok.fetchUserInfo', { showToast: false });
       return null;
     }
 
     return data.user;
   } catch (err) {
-    console.error('[TikTok] Erro ao buscar usuário:', err);
+    handleError(err, 'TikTok.fetchUserInfo', { showToast: false });
     return null;
   }
 }
@@ -374,7 +375,7 @@ export async function publishToTikTok({
   // Truncar título se necessário (TikTok limita a 150 caracteres)
   const caption = title.length > 150 ? title.substring(0, 147) + '...' : title;
 
-  console.log('[TikTok] Iniciando publicação via Edge Function:', { videoUrl, caption, privacyLevel });
+  console.debug('[TikTok] Iniciando publicação via Edge Function:', { videoUrl, caption, privacyLevel });
 
   // Chamar Edge Function para publicar (server-side - evita CORS)
   const response = await fetch(`${TIKTOK_PUBLISH_FUNCTION}/publish`, {
@@ -396,11 +397,11 @@ export async function publishToTikTok({
   const data = await response.json();
 
   if (data.error) {
-    console.error('[TikTok] Erro na publicação:', data.error);
+    handleError(new Error(data.error), 'TikTok.publish');
     throw new Error(data.error);
   }
 
-  console.log('[TikTok] Publicação concluída:', data);
+  console.debug('[TikTok] Publicação concluída:', data);
 
   // Log de sucesso
   await logPublishResult({

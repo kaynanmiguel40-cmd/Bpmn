@@ -66,12 +66,6 @@ export async function saveOffline(tableName, items) {
     }
   } catch (err) {
     console.warn(`[OfflineDB] Erro ao salvar ${tableName}:`, err);
-    // Fallback para localStorage
-    try {
-      localStorage.setItem(tableName, JSON.stringify(items));
-    } catch {
-      // localStorage tambem falhou
-    }
   }
 }
 
@@ -84,12 +78,7 @@ export async function getOffline(tableName) {
     return await table.toArray();
   } catch (err) {
     console.warn(`[OfflineDB] Erro ao ler ${tableName}:`, err);
-    // Fallback para localStorage
-    try {
-      return JSON.parse(localStorage.getItem(tableName) || '[]');
-    } catch {
-      return [];
-    }
+    return [];
   }
 }
 

@@ -28,21 +28,36 @@ function registerForSync(service) {
   registeredServices.push(service);
 }
 
-async function syncPendingItems() {
-  let synced = 0;
-  for (const svc of registeredServices) {
-    synced += await svc.syncPending();
+/** Tenta sync com retry e backoff exponencial */
+async function syncWithRetry(maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      let synced = 0;
+      for (const svc of registeredServices) {
+        synced += await svc.syncPending();
+      }
+      if (synced > 0) {
+        toast(`${synced} item(ns) sincronizado(s) com o servidor`, 'success');
+      }
+      return synced;
+    } catch (err) {
+      const delay = Math.min(1000 * 2 ** attempt, 30000); // 1s, 2s, 4s... max 30s
+      console.warn(`[Sync] Tentativa ${attempt + 1}/${maxRetries} falhou, retry em ${delay}ms:`, err?.message || err);
+      if (attempt < maxRetries - 1) {
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
   }
-  if (synced > 0) {
-    toast(`${synced} item(ns) sincronizado(s) com o servidor`, 'success');
-  }
+  console.error('[Sync] Todas as tentativas falharam. Itens permanecem na fila offline.');
+  toast('Falha ao sincronizar — tentaremos novamente mais tarde', 'warning');
+  return 0;
 }
 
 // Detectar reconexão
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     console.log('[Sync] Conexao restaurada, sincronizando...');
-    syncPendingItems();
+    syncWithRetry();
   });
 }
 
@@ -267,23 +282,25 @@ export function createCRUDService(config) {
     let synced = 0;
 
     for (const entry of tablePending) {
+      let success = false;
+
       if (entry.operation === 'delete') {
         const { error } = await supabase.from(table).delete().eq('id', entry.item_id);
-        if (!error) {
-          synced++;
-          await clearPendingSync(table, entry.item_id);
-        }
+        success = !error;
+        if (error) console.warn(`[${table}] Sync delete falhou para ${entry.item_id}:`, error.message);
       } else {
-        // upsert
         const local = await getOffline(table);
         const item = local.find(r => r.id === entry.item_id);
         if (item) {
           const { error } = await supabase.from(table).upsert([item], { onConflict: 'id' });
-          if (!error) {
-            synced++;
-            await clearPendingSync(table, entry.item_id);
-          }
+          success = !error;
+          if (error) console.warn(`[${table}] Sync upsert falhou para ${entry.item_id}:`, error.message);
         }
+      }
+
+      if (success) {
+        synced++;
+        await clearPendingSync(table, entry.item_id);
       }
     }
     return synced;

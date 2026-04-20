@@ -1,5 +1,6 @@
 import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabase';
+import { getOffline } from './offlineDB';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -52,7 +53,7 @@ export async function getRecentActivities(limit = 20) {
     .limit(limit);
 
   if (error) {
-    const local = JSON.parse(localStorage.getItem('activity_logs') || '[]');
+    const local = await getOffline('activity_logs');
     return local.slice(0, limit).map(dbToActivity);
   }
   return (data || []).map(dbToActivity);
@@ -68,7 +69,7 @@ export async function getActivitiesForEntity(entityType, entityId, limit = 50) {
     .limit(limit);
 
   if (error) {
-    const local = JSON.parse(localStorage.getItem('activity_logs') || '[]');
+    const local = await getOffline('activity_logs');
     return local
       .filter(r => r.entity_type === entityType && r.entity_id === entityId)
       .slice(0, limit)
