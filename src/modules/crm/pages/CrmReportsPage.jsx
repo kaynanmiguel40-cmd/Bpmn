@@ -1,20 +1,21 @@
 /**
  * CrmReportsPage - Relatorios do CRM com dados reais.
- * Tabs: Vendas | Funil | Atividades | Forecast
+ * Tabs: Vendas | Vendedores | Funil | Atividades.
+ * (Forecast tem pagina dedicada em /crm/forecast)
  * Filtro de periodo com atalhos rapidos.
  */
 
 import { useState, useMemo } from 'react';
 import {
-  DollarSign, BarChart3, CalendarCheck, TrendingUp, TrendingDown,
+  DollarSign, BarChart3, CalendarCheck, TrendingUp,
   Clock, Target, CheckCircle, XCircle, Phone, Mail, Video,
-  MapPin, FileText, Coffee, ChevronRight, Trophy, ChevronDown,
-  Calendar, Building2, User, Percent, Receipt,
+  MapPin, FileText, Coffee, ChevronRight, Trophy,
+  User,
 } from 'lucide-react';
 import { CrmPageHeader, CrmBadge } from '../components/ui';
 import {
   useSalesReport, useFunnelReport, useActivitiesReport, useCrmPipelines,
-  useForecastReport, useCrmDashboardKPIs, useSellersReport,
+  useSellersReport,
 } from '../hooks/useCrmQueries';
 
 // ==================== HELPERS ====================
@@ -62,7 +63,6 @@ const TABS = [
   { key: 'sellers', label: 'Vendedores', icon: User },
   { key: 'funnel', label: 'Funil', icon: BarChart3 },
   { key: 'activities', label: 'Atividades', icon: CalendarCheck },
-  { key: 'forecast', label: 'Forecast', icon: TrendingUp },
 ];
 
 const TYPE_ICONS = {
@@ -614,200 +614,6 @@ function ActivitiesTab({ startDate, endDate }) {
 
 // ==================== FORECAST TAB ====================
 
-function ForecastMonthRow({ monthData }) {
-  const [open, setOpen] = useState(false);
-  const isNoDate = monthData.month === 'sem_data';
-  const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-  function getMonthLabel(key) {
-    if (!key || key === 'sem_data') return 'Sem data';
-    const parts = key.split('-');
-    const idx = parseInt(parts[1], 10) - 1;
-    return `${monthNames[idx] || parts[1]}/${parts[0]?.slice(2)}`;
-  }
-
-  return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-      >
-        <div className="shrink-0 text-slate-400 dark:text-slate-500">
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </div>
-        <div className="flex items-center gap-2 min-w-0">
-          <Calendar size={14} className="text-slate-400 shrink-0" />
-          <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-            {isNoDate ? 'Sem data definida' : getMonthLabel(monthData.month)}
-          </span>
-          <CrmBadge variant="neutral" size="sm">{monthData.deals.length} deal{monthData.deals.length !== 1 ? 's' : ''}</CrmBadge>
-        </div>
-        <div className="ml-auto flex items-center gap-6 shrink-0">
-          <div className="text-right hidden sm:block">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">Total</div>
-            <div className="text-sm font-bold text-slate-700 dark:text-slate-300">{formatCurrency(monthData.totalValue)}</div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">Ponderado</div>
-            <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(monthData.weightedValue)}</div>
-          </div>
-        </div>
-      </button>
-
-      {open && (
-        <div className="border-t border-slate-200 dark:border-slate-700/50">
-          <div className="hidden sm:grid grid-cols-12 gap-2 px-5 py-2 text-[10px] uppercase tracking-wider text-slate-400 font-medium bg-slate-50 dark:bg-slate-800/30">
-            <div className="col-span-4">Negocio</div>
-            <div className="col-span-2">Estagio</div>
-            <div className="col-span-2 text-right">Valor</div>
-            <div className="col-span-2 text-center">Prob.</div>
-            <div className="col-span-2 text-right">Ponderado</div>
-          </div>
-          {monthData.deals.map((deal) => (
-            <div key={deal.id} className="grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-2 px-5 py-2.5 border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-              <div className="sm:col-span-4 min-w-0">
-                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{deal.title}</div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 truncate">
-                  {deal.contact && <span className="flex items-center gap-1"><User size={10} />{deal.contact}</span>}
-                  {deal.company && <span className="flex items-center gap-1"><Building2 size={10} />{deal.company}</span>}
-                </div>
-              </div>
-              <div className="sm:col-span-2 flex items-center">
-                <span className="text-xs text-slate-500 truncate">{deal.stage || '—'}</span>
-              </div>
-              <div className="sm:col-span-2 flex items-center sm:justify-end">
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{formatCurrency(deal.value)}</span>
-              </div>
-              <div className="sm:col-span-2 flex items-center sm:justify-center gap-2">
-                <div className="w-14 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      deal.probability >= 80 ? 'bg-emerald-500' :
-                      deal.probability >= 50 ? 'bg-blue-500' :
-                      deal.probability >= 30 ? 'bg-amber-500' : 'bg-rose-500'
-                    }`}
-                    style={{ width: `${deal.probability}%` }}
-                  />
-                </div>
-                <span className={`text-xs font-bold ${
-                  deal.probability >= 80 ? 'text-emerald-600' :
-                  deal.probability >= 50 ? 'text-blue-600' :
-                  deal.probability >= 30 ? 'text-amber-600' : 'text-rose-600'
-                }`}>{deal.probability}%</span>
-              </div>
-              <div className="sm:col-span-2 flex items-center sm:justify-end">
-                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(deal.weightedValue)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ForecastTab({ startDate, endDate }) {
-  const { data: forecast, isLoading: loadingForecast } = useForecastReport();
-  const { data: sales, isLoading: loadingSales } = useSalesReport(startDate, endDate);
-  const { data: kpis } = useCrmDashboardKPIs();
-
-  const isLoading = loadingForecast || loadingSales;
-
-  const totalDeals = useMemo(() => {
-    if (!forecast?.months) return 0;
-    return forecast.months.reduce((sum, m) => sum + m.deals.length, 0);
-  }, [forecast?.months]);
-
-  // Receita real do periodo
-  const realRevenue = sales?.won?.totalValue || 0;
-  const forecastVsReal = forecast?.totalWeighted > 0
-    ? Math.round((realRevenue / forecast.totalWeighted) * 100)
-    : 0;
-
-  if (isLoading) return <ReportSkeleton />;
-  if (!forecast) return <EmptyReport message="Nao foi possivel gerar o forecast." />;
-
-  return (
-    <div className="space-y-4">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KpiCard icon={DollarSign} iconClass="bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400"
-          label="Pipeline Total" value={formatCurrency(forecast.totalPipeline)}
-          sub="valor bruto" />
-        <KpiCard icon={TrendingUp} iconClass="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400"
-          label="Receita Ponderada" value={formatCurrency(forecast.totalWeighted)}
-          sub="ajustado por prob." />
-        <KpiCard icon={Trophy} iconClass="bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"
-          label="Receita Real" value={formatCurrency(realRevenue)}
-          sub={`${sales?.won?.count || 0} deal${(sales?.won?.count || 0) !== 1 ? 's' : ''} ganho${(sales?.won?.count || 0) !== 1 ? 's' : ''}`} />
-        <KpiCard icon={Target} iconClass="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-          label="Deals Abertos" value={totalDeals}
-          sub={`${forecast.months?.length || 0} periodo${(forecast.months?.length || 0) !== 1 ? 's' : ''}`} />
-        <KpiCard icon={Receipt} iconClass="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400"
-          label="Ticket Medio" value={formatCurrency(sales?.avgDealValue)}
-          sub="por deal ganho" />
-        <KpiCard icon={Percent} iconClass="bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400"
-          label="Real vs Previsto" value={`${forecastVsReal}%`}
-          sub={forecastVsReal >= 100 ? 'acima do previsto' : 'do forecast'} />
-      </div>
-
-      {/* Barra visual Pipeline vs Ponderado vs Real */}
-      {forecast.totalPipeline > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
-          <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Pipeline vs Forecast vs Receita Real</h4>
-          <div className="space-y-2.5">
-            {[
-              { label: 'Pipeline Total', value: forecast.totalPipeline, color: 'bg-slate-400', max: forecast.totalPipeline },
-              { label: 'Forecast Ponderado', value: forecast.totalWeighted, color: 'bg-violet-500', max: forecast.totalPipeline },
-              { label: 'Receita Real', value: realRevenue, color: 'bg-emerald-500', max: forecast.totalPipeline },
-            ].map(bar => {
-              const pct = bar.max > 0 ? Math.min(100, Math.round((bar.value / bar.max) * 100)) : 0;
-              return (
-                <div key={bar.label} className="flex items-center gap-3">
-                  <div className="w-36 shrink-0 text-right">
-                    <span className="text-xs text-slate-600 dark:text-slate-400">{bar.label}</span>
-                  </div>
-                  <div className="flex-1 h-6 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden">
-                    <div
-                      className={`h-full ${bar.color} rounded-lg flex items-center px-2 transition-all`}
-                      style={{ width: `${Math.max(pct, 3)}%` }}
-                    >
-                      {pct > 20 && <span className="text-[10px] font-bold text-white">{formatCurrency(bar.value)}</span>}
-                    </div>
-                  </div>
-                  {pct <= 20 && (
-                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400 w-24 text-right shrink-0">
-                      {formatCurrency(bar.value)}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Detalhamento por mes */}
-      {forecast.months?.length > 0 && (
-        <div>
-          <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
-            Detalhamento por Periodo
-          </h4>
-          <div className="space-y-3">
-            {forecast.months.map((m) => (
-              <ForecastMonthRow key={m.month} monthData={m} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {totalDeals === 0 && (
-        <EmptyReport message="Nenhum deal aberto para forecast." />
-      )}
-    </div>
-  );
-}
-
 // ==================== EMPTY STATE ====================
 
 function EmptyReport({ message }) {
@@ -941,7 +747,6 @@ export function CrmReportsPage() {
       {activeTab === 'sellers' && <SellersTab startDate={startDate} endDate={endDate} />}
       {activeTab === 'funnel' && <FunnelTab pipelineId={pipelineId} />}
       {activeTab === 'activities' && <ActivitiesTab startDate={startDate} endDate={endDate} />}
-      {activeTab === 'forecast' && <ForecastTab startDate={startDate} endDate={endDate} />}
     </div>
   );
 }
