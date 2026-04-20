@@ -55,8 +55,11 @@ export function CrmContactDetailPage() {
   // Auto-save notes
   const saveNotes = useCallback(async (value) => {
     setNotesSaving(true);
-    await updateMutation.mutateAsync({ id, updates: { notes: value } });
-    setNotesSaving(false);
+    try {
+      await updateMutation.mutateAsync({ id, updates: { notes: value } });
+    } finally {
+      setNotesSaving(false);
+    }
   }, [id, updateMutation]);
 
   if (isLoading) {

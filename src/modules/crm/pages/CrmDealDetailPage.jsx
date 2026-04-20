@@ -78,8 +78,11 @@ export function CrmDealDetailPage() {
   const saveNotes = useCallback(async (value) => {
     if (!dealId) return;
     setNotesSaving(true);
-    await updateMutation.mutateAsync({ id: dealId, updates: { notes: value } });
-    setNotesSaving(false);
+    try {
+      await updateMutation.mutateAsync({ id: dealId, updates: { notes: value } });
+    } finally {
+      setNotesSaving(false);
+    }
   }, [dealId, updateMutation]);
 
   // Loading

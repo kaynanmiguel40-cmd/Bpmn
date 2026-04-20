@@ -3,7 +3,7 @@
  * Tabs: Equipe | Segmentos | Preferências
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Users, Tag, Settings, Check, Plus, Save, X, AlertTriangle, Globe, Zap,
 } from 'lucide-react';
@@ -223,11 +223,17 @@ function PreferenciasTab() {
 
   const [currency, setCurrency] = useState(() => loadPref('crm-currency', 'BRL'));
   const [saved, setSaved]       = useState(false);
+  const savedTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+  }, []);
 
   const handleSave = () => {
     savePref('crm-currency', currency);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
   };
 
   return (
