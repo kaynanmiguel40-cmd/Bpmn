@@ -96,29 +96,40 @@ export async function getCrmCompanies(filters = {}) {
 }
 
 export async function getCrmCompanyById(id) {
+  // Single round-trip: empresa + contatos + deals via embedded select.
+  // PostgREST permite filtrar tabelas embutidas pelo nome.field.
   const { data, error } = await supabase
     .from('crm_companies')
-    .select('*')
+    .select(`
+      *,
+      crm_contacts(id, name, email, phone, position, status, deleted_at),
+      crm_deals(id, title, value, status, stage_id, created_at, deleted_at)
+    `)
     .eq('id', id)
     .is('deleted_at', null)
+    .is('crm_contacts.deleted_at', null)
+    .is('crm_deals.deleted_at', null)
     .single();
 
   if (error) return null;
 
   const company = dbToCrmCompany(data);
 
-  // Buscar contatos e deals da empresa
-  const [contactsRes, dealsRes] = await Promise.all([
-    supabase.from('crm_contacts').select('*').eq('company_id', id).is('deleted_at', null).order('name'),
-    supabase.from('crm_deals').select('*').eq('company_id', id).is('deleted_at', null).order('created_at', { ascending: false }),
-  ]);
+  const contacts = Array.isArray(data.crm_contacts) ? data.crm_contacts : [];
+  const deals = Array.isArray(data.crm_deals) ? data.crm_deals : [];
 
-  company.contacts = (contactsRes.data || []).map(r => ({
-    id: r.id, name: r.name, email: r.email, phone: r.phone, position: r.position, status: r.status,
-  }));
-  company.deals = (dealsRes.data || []).map(r => ({
-    id: r.id, title: r.title, value: r.value, status: r.status, stageId: r.stage_id,
-  }));
+  company.contacts = contacts
+    .filter(r => !r.deleted_at)
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .map(r => ({
+      id: r.id, name: r.name, email: r.email, phone: r.phone, position: r.position, status: r.status,
+    }));
+  company.deals = deals
+    .filter(r => !r.deleted_at)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .map(r => ({
+      id: r.id, title: r.title, value: r.value, status: r.status, stageId: r.stage_id,
+    }));
 
   return company;
 }

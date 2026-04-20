@@ -19,6 +19,19 @@ export function useRealtimeSubscription(table, queryKeys, options = {}) {
   const queryClient = useQueryClient();
   const { enabled = true, onInsert, onUpdate, onDelete } = options;
 
+  // Refs para manter callbacks e queryKeys sempre atualizados sem recriar o canal
+  const queryKeysRef = useRef(queryKeys);
+  const onInsertRef = useRef(onInsert);
+  const onUpdateRef = useRef(onUpdate);
+  const onDeleteRef = useRef(onDelete);
+
+  useEffect(() => {
+    queryKeysRef.current = queryKeys;
+    onInsertRef.current = onInsert;
+    onUpdateRef.current = onUpdate;
+    onDeleteRef.current = onDelete;
+  });
+
   useEffect(() => {
     if (!enabled) return;
 
@@ -29,17 +42,17 @@ export function useRealtimeSubscription(table, queryKeys, options = {}) {
         { event: '*', schema: 'public', table },
         (payload) => {
           // Invalidar queries relevantes para forcar refetch
-          queryKeys.forEach((key) => {
+          (queryKeysRef.current || []).forEach((key) => {
             queryClient.invalidateQueries({ queryKey: Array.isArray(key) ? key : [key] });
           });
 
           // Callbacks opcionais por tipo de evento
-          if (payload.eventType === 'INSERT' && onInsert) {
-            onInsert(payload.new);
-          } else if (payload.eventType === 'UPDATE' && onUpdate) {
-            onUpdate(payload.new, payload.old);
-          } else if (payload.eventType === 'DELETE' && onDelete) {
-            onDelete(payload.old);
+          if (payload.eventType === 'INSERT' && onInsertRef.current) {
+            onInsertRef.current(payload.new);
+          } else if (payload.eventType === 'UPDATE' && onUpdateRef.current) {
+            onUpdateRef.current(payload.new, payload.old);
+          } else if (payload.eventType === 'DELETE' && onDeleteRef.current) {
+            onDeleteRef.current(payload.old);
           }
         }
       )

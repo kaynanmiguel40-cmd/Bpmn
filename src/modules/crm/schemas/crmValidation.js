@@ -80,7 +80,7 @@ export const crmDealSchema = z.object({
 export const crmActivitySchema = z.object({
   title: z.string().min(1, 'Titulo da atividade e obrigatorio'),
   description: z.string().optional().default(''),
-  type: z.enum(['call', 'email', 'meeting', 'task', 'lunch', 'visit']),
+  type: z.enum(['call', 'email', 'meeting', 'task', 'lunch', 'visit']).default('task'),
   contactId: z.string().nullable().optional().default(null),
   dealId: z.string().nullable().optional().default(null),
   startDate: z.string().min(1, 'Data de inicio e obrigatoria'),

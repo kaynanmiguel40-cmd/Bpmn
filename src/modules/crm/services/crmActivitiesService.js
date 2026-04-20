@@ -103,17 +103,22 @@ export async function getCrmActivities(filters = {}) {
 }
 
 export async function getActivitiesForCalendar(startDate, endDate) {
+  // Intersecao de [start_date, end_date] com [startDate, endDate].
+  // Evento ponta (sem end_date) entra se start_date estiver no intervalo.
   let query = supabase
     .from('crm_activities')
     .select('*, crm_contacts(id, name, avatar_color), crm_deals(id, title)')
     .is('deleted_at', null)
     .order('start_date');
 
-  if (startDate) {
-    query = query.gte('start_date', startDate);
-  }
   if (endDate) {
     query = query.lte('start_date', endDate);
+  }
+  if (startDate) {
+    // end_date >= startDate OU (end_date null E start_date >= startDate)
+    query = query.or(
+      `end_date.gte.${startDate},and(end_date.is.null,start_date.gte.${startDate})`
+    );
   }
 
   const { data, error } = await query;

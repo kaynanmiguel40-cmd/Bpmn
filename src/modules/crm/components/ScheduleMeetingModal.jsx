@@ -17,13 +17,13 @@ export function ScheduleMeetingModal({ open, onClose, dealId, dealTitle, dealCit
   const dateRef = useRef(null);
 
   useEffect(() => {
-    if (open) {
-      setDate('');
-      setTime('09:00');
-      setCity(dealCity || '');
-      setNotes('');
-      setTimeout(() => dateRef.current?.focus(), 100);
-    }
+    if (!open) return;
+    setDate('');
+    setTime('09:00');
+    setCity(dealCity || '');
+    setNotes('');
+    const timer = setTimeout(() => dateRef.current?.focus(), 100);
+    return () => clearTimeout(timer);
   }, [open, dealCity]);
 
   if (!open) return null;

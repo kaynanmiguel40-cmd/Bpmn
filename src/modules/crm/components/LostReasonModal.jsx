@@ -11,10 +11,10 @@ export function LostReasonModal({ open, onClose, onConfirm, isPending }) {
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (open) {
-      setReason('');
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
+    if (!open) return;
+    setReason('');
+    const timer = setTimeout(() => inputRef.current?.focus(), 100);
+    return () => clearTimeout(timer);
   }, [open]);
 
   if (!open) return null;

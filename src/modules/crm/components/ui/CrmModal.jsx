@@ -20,6 +20,27 @@ const sizeMap = {
   xl: 'max-w-4xl',
 };
 
+// Contador global de modais abertos — libera overflow apenas quando 0.
+// Evita que modal A fechar restaure scroll enquanto modal B ainda esta aberto.
+let openModalCount = 0;
+let previousBodyOverflow = null;
+
+function acquireBodyLock() {
+  if (openModalCount === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  openModalCount += 1;
+}
+
+function releaseBodyLock() {
+  openModalCount = Math.max(0, openModalCount - 1);
+  if (openModalCount === 0) {
+    document.body.style.overflow = previousBodyOverflow ?? '';
+    previousBodyOverflow = null;
+  }
+}
+
 export function CrmModal({ open, onClose, title, size = 'md', children, footer }) {
   const overlayRef = useRef(null);
 
@@ -33,14 +54,13 @@ export function CrmModal({ open, onClose, title, size = 'md', children, footer }
     return () => document.removeEventListener('keydown', handleEsc);
   }, [open, onClose]);
 
-  // Bloquear scroll do body
+  // Bloquear scroll do body (stack-safe — conta modais empilhados)
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
+    if (!open) return;
+    acquireBodyLock();
+    return () => {
+      releaseBodyLock();
+    };
   }, [open]);
 
   if (!open) return null;

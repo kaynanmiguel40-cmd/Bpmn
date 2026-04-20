@@ -461,20 +461,42 @@ function removeDealFromPipelineCache(qc, dealId) {
   });
 }
 
+// Helper: snapshot profundo das queries de pipelineDeals para rollback
+function snapshotPipelineDeals(qc) {
+  return qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] })
+    .filter(([, d]) => d != null)
+    .map(([key, d]) => [key, JSON.parse(JSON.stringify(d))]);
+}
+
+function restorePipelineDealsSnapshot(qc, snapshot) {
+  if (!snapshot) return;
+  snapshot.forEach(([queryKey, oldData]) => {
+    qc.setQueryData(queryKey, oldData);
+  });
+}
+
 export function useMarkDealWon() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: markDealAsWon,
     onMutate: async (dealId) => {
       await qc.cancelQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      const snapshot = snapshotPipelineDeals(qc);
       removeDealFromPipelineCache(qc, dealId);
+      return { snapshot };
+    },
+    onError: (_err, _vars, context) => {
+      restorePipelineDealsSnapshot(qc, context?.snapshot);
+      toast('Erro ao marcar negocio como ganho', 'error');
+    },
+    onSuccess: () => {
+      toast('Negocio marcado como ganho!', 'success');
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       qc.invalidateQueries({ queryKey: ['crm', 'learnedProbabilities'] });
-      toast('Negocio marcado como ganho!', 'success');
     },
   });
 }
@@ -485,6 +507,7 @@ export function useMarkDealLost() {
     mutationFn: ({ dealId, reason }) => markDealAsLost(dealId, reason),
     onMutate: async ({ dealId }) => {
       await qc.cancelQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      const snapshot = snapshotPipelineDeals(qc);
       // Marcar como perdido no cache (sem remover)
       const allQueries = qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] });
       allQueries.forEach(([queryKey, oldData]) => {
@@ -495,13 +518,20 @@ export function useMarkDealLost() {
         }));
         qc.setQueryData(queryKey, { ...oldData, stages: updatedStages });
       });
+      return { snapshot };
+    },
+    onError: (_err, _vars, context) => {
+      restorePipelineDealsSnapshot(qc, context?.snapshot);
+      toast('Erro ao marcar negocio como perdido', 'error');
+    },
+    onSuccess: () => {
+      toast('Negocio marcado como perdido', 'warning');
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       qc.invalidateQueries({ queryKey: ['crm', 'learnedProbabilities'] });
-      toast('Negocio marcado como perdido', 'warning');
     },
   });
 }
@@ -551,6 +581,7 @@ export function useCreateCrmActivity() {
     mutationFn: createCrmActivity,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['agendaEvents'] });
@@ -565,6 +596,9 @@ export function useUpdateCrmActivity() {
     mutationFn: ({ id, updates }) => updateCrmActivity(id, updates),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['agendaEvents'] });
     },
   });
 }
@@ -575,7 +609,10 @@ export function useDeleteCrmActivity() {
     mutationFn: softDeleteCrmActivity,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      qc.invalidateQueries({ queryKey: ['agendaEvents'] });
       toast('Atividade excluida', 'success');
     },
   });
@@ -587,6 +624,8 @@ export function useCompleteCrmActivity() {
     mutationFn: completeCrmActivity,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       toast('Atividade concluida', 'success');
     },

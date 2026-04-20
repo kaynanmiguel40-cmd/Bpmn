@@ -36,8 +36,8 @@ export async function getCrmDashboardKPIs() {
       // Deals ganhos neste mes
       supabase.from('crm_deals').select('id, value').eq('status', 'won').gte('closed_at', startOfMonth).is('deleted_at', null),
 
-      // Todos os deals fechados (won + lost) para taxa de conversao
-      supabase.from('crm_deals').select('id, status').in('status', ['won', 'lost']).is('deleted_at', null),
+      // Deals fechados (won + lost) no mes atual — para taxa de conversao do periodo
+      supabase.from('crm_deals').select('id, status').in('status', ['won', 'lost']).gte('closed_at', startOfMonth).is('deleted_at', null),
 
       // Atividades pendentes
       supabase.from('crm_activities').select('id', { count: 'exact', head: true }).eq('completed', false).is('deleted_at', null),

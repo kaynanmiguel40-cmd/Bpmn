@@ -641,6 +641,10 @@ export async function sendToPipeline(prospectIds, pipelineId, stageId) {
   let errors = 0;
 
   for (const p of prospects) {
+    // Rastreia o que foi criado neste ciclo para permitir rollback em falha
+    let createdCompanyId = null;
+    let createdContactId = null;
+
     try {
       // 1. Verificar se empresa com mesmo CNPJ ja existe
       let companyId = null;
@@ -668,6 +672,7 @@ export async function sendToPipeline(prospectIds, pipelineId, stageId) {
           state: p.state || '',
         });
         companyId = company?.id;
+        createdCompanyId = companyId;
       }
 
       // 2. Criar contato
@@ -682,10 +687,11 @@ export async function sendToPipeline(prospectIds, pipelineId, stageId) {
           companyId: companyId,
         });
         contactId = contact?.id;
+        createdContactId = contactId;
       }
 
-      // 3. Criar deal
-      await createCrmDeal({
+      // 3. Criar deal — se falhar, o catch reverte empresa/contato criados acima
+      const deal = await createCrmDeal({
         title: p.company_name,
         value: 0,
         pipelineId,
@@ -694,6 +700,7 @@ export async function sendToPipeline(prospectIds, pipelineId, stageId) {
         companyId: companyId || null,
         status: 'open',
       });
+      if (!deal?.id) throw new Error('Falha ao criar deal');
 
       // 4. Marcar prospect como convertido
       await supabase
@@ -704,6 +711,16 @@ export async function sendToPipeline(prospectIds, pipelineId, stageId) {
       success++;
     } catch (err) {
       console.error(`[Prospects] Erro ao converter prospect ${p.id}:`, err);
+
+      // Rollback: soft-delete do que foi criado neste ciclo para nao deixar orfaos
+      const nowIso = new Date().toISOString();
+      if (createdContactId) {
+        await supabase.from('crm_contacts').update({ deleted_at: nowIso }).eq('id', createdContactId);
+      }
+      if (createdCompanyId) {
+        await supabase.from('crm_companies').update({ deleted_at: nowIso }).eq('id', createdCompanyId);
+      }
+
       errors++;
     }
   }

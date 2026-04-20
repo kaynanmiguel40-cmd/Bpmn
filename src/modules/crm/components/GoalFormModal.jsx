@@ -139,9 +139,15 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
     }
     setSmartLoading(true);
     setSmartOpen(true);
-    const result = await getSmartSuggestion(form.periodStart, form.periodEnd);
-    setSmartData(result);
-    setSmartLoading(false);
+    try {
+      const result = await getSmartSuggestion(form.periodStart, form.periodEnd);
+      setSmartData(result);
+    } catch (err) {
+      console.warn('[GoalFormModal] getSmartSuggestion falhou:', err?.message || err);
+      setSmartData(null);
+    } finally {
+      setSmartLoading(false);
+    }
   };
 
   const handleUseSuggestion = () => {

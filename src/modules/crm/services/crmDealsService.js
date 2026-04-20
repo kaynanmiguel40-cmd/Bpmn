@@ -264,13 +264,6 @@ export async function moveDealToStage(dealId, stageId) {
 }
 
 export async function markDealAsWon(dealId) {
-  // Buscar stage atual para gravar no historico
-  const { data: current } = await supabase
-    .from('crm_deals')
-    .select('stage_id, pipeline_id')
-    .eq('id', dealId)
-    .single();
-
   const { data, error } = await supabase
     .from('crm_deals')
     .update({
@@ -286,23 +279,10 @@ export async function markDealAsWon(dealId) {
   if (error) {
     throw new Error(error.message);
   }
-
-  // Gravar transicao final (won) no historico
-  if (current?.stage_id && current?.pipeline_id) {
-    await recordStageTransition(dealId, current.stage_id, current.stage_id, current.pipeline_id);
-  }
-
   return dbToCrmDeal(data);
 }
 
 export async function markDealAsLost(dealId, reason = '') {
-  // Buscar stage atual para gravar no historico
-  const { data: current } = await supabase
-    .from('crm_deals')
-    .select('stage_id, pipeline_id')
-    .eq('id', dealId)
-    .single();
-
   const { data, error } = await supabase
     .from('crm_deals')
     .update({
@@ -319,12 +299,6 @@ export async function markDealAsLost(dealId, reason = '') {
   if (error) {
     throw new Error(error.message);
   }
-
-  // Gravar transicao final (lost) no historico
-  if (current?.stage_id && current?.pipeline_id) {
-    await recordStageTransition(dealId, current.stage_id, current.stage_id, current.pipeline_id);
-  }
-
   return dbToCrmDeal(data);
 }
 
