@@ -2,6 +2,7 @@ import { createCRUDService } from './serviceFactory';
 import { supabase } from './supabase';
 import { osOrderSchema, sectorSchema, osProjectSchema } from './validation';
 import { SLA_HOURS, DEFAULT_SLA_HOURS } from '../constants/sla';
+import { getOffline } from './offlineDB';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -29,6 +30,9 @@ export function dbToOrder(row) {
     estimatedEnd: row.estimated_end || '',
     actualStart: row.actual_start || '',
     actualEnd: row.actual_end || '',
+    pausedAt: row.paused_at || null,
+    resumedAt: row.resumed_at || null,
+    accumulatedMs: row.accumulated_ms || 0,
     slaDeadline: row.sla_deadline || null,
     leadTimeHours: row.lead_time_hours || null,
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
@@ -120,6 +124,24 @@ export const deleteOSProject = (id) => projectService.remove(id);
 
 // ==================== ORDENS DE SERVICO (via factory) ====================
 
+// Campos timestamp que nao podem ser string vazia (Postgres timestamptz rejeita '')
+const TIMESTAMP_FIELDS = [
+  'estimatedStart', 'estimatedEnd', 'actualStart', 'actualEnd',
+  'pausedAt', 'resumedAt', 'slaDeadline',
+];
+
+/** Converte string vazia em null nos campos timestamp (Postgres nao aceita '') */
+function normalizeTimestamps(order) {
+  if (!order || typeof order !== 'object') return order;
+  const result = { ...order };
+  for (const field of TIMESTAMP_FIELDS) {
+    if (result[field] === '' || result[field] === undefined) {
+      result[field] = null;
+    }
+  }
+  return result;
+}
+
 const orderService = createCRUDService({
   table: 'os_orders',
   localKey: 'os_orders',
@@ -147,6 +169,9 @@ const orderService = createCRUDService({
     estimatedEnd: 'estimated_end',
     actualStart: 'actual_start',
     actualEnd: 'actual_end',
+    pausedAt: 'paused_at',
+    resumedAt: 'resumed_at',
+    accumulatedMs: 'accumulated_ms',
     slaDeadline: 'sla_deadline',
     leadTimeHours: 'lead_time_hours',
     attachments: 'attachments',
@@ -164,7 +189,7 @@ const orderService = createCRUDService({
 });
 
 export const getOSOrders = orderService.getAll;
-export const updateOSOrder = (id, updates) => orderService.update(id, updates);
+export const updateOSOrder = (id, updates) => orderService.update(id, normalizeTimestamps(updates));
 export const deleteOSOrder = (id) => orderService.remove(id);
 
 // ==================== FUNÇÕES ESPECIAIS (não cabem na factory) ====================
@@ -177,7 +202,7 @@ async function getNextSequentialNumber(column, filter = null) {
   const { data, error } = await query;
 
   if (error || !data || data.length === 0) {
-    let local = JSON.parse(localStorage.getItem('os_orders') || '[]');
+    let local = await getOffline('os_orders');
     if (filter) local = local.filter(o => o[filter.column] === filter.value);
     const maxNum = local.reduce((acc, o) => Math.max(acc, o[column] || 0), 0);
     return maxNum + 1;
@@ -204,18 +229,19 @@ export function calcSLADeadline(priority) {
 export async function createOSOrder(order) {
   // Auto-calcular SLA se nao fornecido
   const slaDeadline = order.slaDeadline || calcSLADeadline(order.priority || 'medium');
+  const normalized = normalizeTimestamps(order);
 
-  if (order.type === 'emergency') {
+  if (normalized.type === 'emergency') {
     const nextEmg = await getNextEmergencyNumber();
     return orderService.create({
-      ...order,
+      ...normalized,
       slaDeadline,
-      emergencyNumber: order.emergencyNumber || nextEmg,
+      emergencyNumber: normalized.emergencyNumber || nextEmg,
       priority: 'urgent',
     });
   }
   const nextNum = await getNextOrderNumber();
-  return orderService.create({ ...order, slaDeadline, number: order.number || nextNum });
+  return orderService.create({ ...normalized, slaDeadline, number: normalized.number || nextNum });
 }
 
 export async function updateOSOrdersBatch(orderUpdates) {

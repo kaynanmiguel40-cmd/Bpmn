@@ -898,8 +898,27 @@ g[data-element-id^="Lane_"] tspan {
 
 /* ==================== Ocultar badge do Supabase ==================== */
 [data-supabase-badge],
+[class*="supabase-badge" i],
+[class*="supabase-toast" i],
+[class*="supabase-widget" i],
+[class*="supabase-status" i],
+[id*="supabase-badge" i],
+[id*="supabase-widget" i],
 a[href*="supabase.com"],
-div:has(> a[href*="supabase"]) {
+a[href*="supabase.io"],
+div:has(> a[href*="supabase"]),
+iframe[src*="supabase.com"],
+iframe[src*="supabase.io"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Badge do supabase-js devtools / ui-library (se injetado) */
+.sb-ui-badge,
+.supabase-badge,
+#__supabase-root,
+[data-testid*="supabase" i] {
   display: none !important;
 }
 
