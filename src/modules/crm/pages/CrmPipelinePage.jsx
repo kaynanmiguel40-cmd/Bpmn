@@ -5,8 +5,9 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2 } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog } from '../components/ui';
+import CrmDealsPage from './CrmDealsPage';
 import { CrmModal } from '../components/ui/CrmModal';
 import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useSeedCommercialPipelines } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
@@ -190,6 +191,13 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
 
   return (
     <div className="w-72 shrink-0 flex flex-col h-full">
+      {/* Valor total da coluna (destacado em cima) */}
+      <div className="px-3 pt-1 pb-1.5 text-center">
+        <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+          {stage.totalValue > 0 ? formatCurrency(stage.totalValue) : 'R$ 0'}
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -205,13 +213,6 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           {isFiltered ? `${filteredDeals.length} de ${allCount}` : allCount}
         </span>
       </div>
-
-      {/* Total do estagio */}
-      {stage.totalValue > 0 && (
-        <div className="px-3 pb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-          {formatCurrency(stage.totalValue)}
-        </div>
-      )}
 
       {/* Drop zone com scroll vertical */}
       <div
@@ -538,6 +539,15 @@ export function CrmPipelinePage() {
   const [meetingModalData, setMeetingModalData] = useState(null); // { dealId, dealTitle, dealCity }
   const draggingDealId = useRef(null);
 
+  // View mode (kanban ou lista)
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem('crm-pipeline-view') || 'kanban'; } catch { return 'kanban'; }
+  });
+  const switchView = (mode) => {
+    setViewMode(mode);
+    try { localStorage.setItem('crm-pipeline-view', mode); } catch {}
+  };
+
   // Filtros
   const [searchQuery, setSearchQuery] = useState('');
   const [valueFilter, setValueFilter] = useState('all');
@@ -545,18 +555,6 @@ export function CrmPipelinePage() {
   const [ownerFilter, setOwnerFilter] = useState('all');
 
   const hasFilters = searchQuery || valueFilter !== 'all' || probFilter !== 'all' || ownerFilter !== 'all';
-
-  // Totais da pipeline (valores agregados)
-  const pipelineTotals = useMemo(() => {
-    const allDeals = (pipelineData?.stages || []).flatMap(s => s.deals || []);
-    const open = allDeals.filter(d => d.status === 'open');
-    const won = allDeals.filter(d => d.status === 'won');
-    const totalAll = allDeals.reduce((s, d) => s + (d.value || 0), 0);
-    const totalOpen = open.reduce((s, d) => s + (d.value || 0), 0);
-    const totalWon = won.reduce((s, d) => s + (d.value || 0), 0);
-    const weighted = open.reduce((s, d) => s + (d.value || 0) * ((d.probability ?? 50) / 100), 0);
-    return { totalAll, totalOpen, totalWon, weighted, count: allDeals.length, openCount: open.length, wonCount: won.length };
-  }, [pipelineData]);
 
   const filterDeals = useCallback((deals) => {
     if (!deals) return [];
@@ -724,33 +722,35 @@ export function CrmPipelinePage() {
         }
       />
 
-      {/* Totais da pipeline */}
-      {!isLoading && pipelines && pipelines.length > 0 && pipelineTotals.count > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Total da Pipeline</p>
-            <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{formatCurrency(pipelineTotals.totalAll)}</p>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{pipelineTotals.count} negocios</p>
-          </div>
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
-            <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium uppercase tracking-wider">Em Aberto</p>
-            <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{formatCurrency(pipelineTotals.totalOpen)}</p>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{pipelineTotals.openCount} negocios</p>
-          </div>
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
-            <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium uppercase tracking-wider">Ponderado (prob.)</p>
-            <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{formatCurrency(pipelineTotals.weighted)}</p>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">valor esperado</p>
-          </div>
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium uppercase tracking-wider">Ganhos</p>
-            <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{formatCurrency(pipelineTotals.totalWon)}</p>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{pipelineTotals.wonCount} fechados</p>
-          </div>
-        </div>
-      )}
+      {/* Toggle de visualizacao */}
+      <div className="flex items-center gap-1 mb-3 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 w-fit">
+        <button
+          onClick={() => switchView('kanban')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            viewMode === 'kanban'
+              ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+          }`}
+        >
+          <Kanban size={13} />
+          Kanban
+        </button>
+        <button
+          onClick={() => switchView('list')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            viewMode === 'list'
+              ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+          }`}
+        >
+          <List size={13} />
+          Lista
+        </button>
+      </div>
 
-      {isLoading ? (
+      {viewMode === 'list' ? (
+        <CrmDealsPage />
+      ) : isLoading ? (
         <div className="flex gap-4 overflow-x-auto pb-4">
           {[1, 2, 3, 4, 5].map(i => (
             <div key={i} className="w-72 shrink-0 bg-slate-100 dark:bg-slate-800 rounded-xl h-96 animate-pulse" />
@@ -761,7 +761,7 @@ export function CrmPipelinePage() {
           onCreateManual={() => setCreatePipelineOpen(true)}
         />
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-280px)]">
+        <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-210px)]">
           {(pipelineData?.stages || []).map(stage => (
             <StageColumn
               key={stage.id}

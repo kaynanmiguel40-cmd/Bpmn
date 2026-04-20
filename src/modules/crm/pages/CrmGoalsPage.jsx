@@ -30,6 +30,7 @@ import {
 import { CrmPageHeader, CrmBadge, CrmConfirmDialog } from '../components/ui';
 import { useCrmGoals, useGoalsProgress, useDeleteCrmGoal } from '../hooks/useCrmQueries';
 import { GoalFormModal } from '../components/GoalFormModal';
+import CrmForecastPage from './CrmForecastPage';
 
 // ==================== HELPERS ====================
 
@@ -216,6 +217,13 @@ function GoalsSkeleton() {
 // ==================== MAIN COMPONENT ====================
 
 export function CrmGoalsPage() {
+  const [viewTab, setViewTab] = useState(() => {
+    try { return localStorage.getItem('crm-goals-view') || 'metas'; } catch { return 'metas'; }
+  });
+  const switchViewTab = (tab) => {
+    setViewTab(tab);
+    try { localStorage.setItem('crm-goals-view', tab); } catch {}
+  };
   const [statusTab, setStatusTab] = useState('active');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('progress_desc');
@@ -315,12 +323,35 @@ export function CrmGoalsPage() {
 
   useEffect(() => { setSearch(''); }, [statusTab]);
 
+  // Renderizar Forecast em aba separada
+  if (viewTab === 'forecast') {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 w-fit">
+          <button
+            onClick={() => switchViewTab('metas')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+          >
+            <Trophy size={13} /> Metas
+          </button>
+          <button
+            onClick={() => switchViewTab('forecast')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm"
+          >
+            <TrendingUp size={13} /> Forecast
+          </button>
+        </div>
+        <CrmForecastPage />
+      </div>
+    );
+  }
+
   if (isLoading) return <GoalsSkeleton />;
 
   return (
     <div className="space-y-6">
       <CrmPageHeader
-        title="Metas"
+        title="Metas & Forecast"
         subtitle={`${allGoals.length} meta${allGoals.length !== 1 ? 's' : ''}`}
         actions={
           <div className="flex items-center gap-2">
@@ -348,6 +379,22 @@ export function CrmGoalsPage() {
           </div>
         }
       />
+
+      {/* Toggle Metas / Forecast */}
+      <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 w-fit">
+        <button
+          onClick={() => switchViewTab('metas')}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm"
+        >
+          <Trophy size={13} /> Metas
+        </button>
+        <button
+          onClick={() => switchViewTab('forecast')}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+        >
+          <TrendingUp size={13} /> Forecast
+        </button>
+      </div>
 
       {/* Tabs de status */}
       <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg w-fit">

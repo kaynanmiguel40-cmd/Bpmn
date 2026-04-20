@@ -5,11 +5,12 @@
 
 import { useState } from 'react';
 import {
-  Users, Tag, Settings, Check, Plus, Save, X, AlertTriangle, Globe,
+  Users, Tag, Settings, Check, Plus, Save, X, AlertTriangle, Globe, Zap,
 } from 'lucide-react';
 import { CrmPageHeader, CrmAvatar } from '../components/ui';
 import { useTeamMembers } from '../../../hooks/queries';
 import { updateTeamMember } from '../../../lib/teamService';
+import CrmAutomationsPage from './CrmAutomationsPage';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -302,6 +303,7 @@ function PreferenciasTab() {
 const TABS = [
   { id: 'equipe',       label: 'Equipe',       Icon: Users    },
   { id: 'segmentos',    label: 'Segmentos',    Icon: Tag      },
+  { id: 'automacoes',   label: 'Automações',   Icon: Zap      },
   { id: 'preferencias', label: 'Preferências', Icon: Settings },
 ];
 
@@ -339,6 +341,7 @@ export function CrmSettingsPage() {
       {/* Conteúdo */}
       {activeTab === 'equipe'       && <EquipeTab />}
       {activeTab === 'segmentos'    && <SegmentosTab />}
+      {activeTab === 'automacoes'   && <CrmAutomationsPage />}
       {activeTab === 'preferencias' && <PreferenciasTab />}
     </div>
   );
