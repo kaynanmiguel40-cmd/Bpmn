@@ -572,6 +572,8 @@ function ManagerDashboard({ profile, orders, events, selectedMember, onMemberCha
     const costs = monthMeetings.map(meeting => {
       const start = new Date(meeting.startDate);
       const end = new Date(meeting.endDate);
+      // Se endDate ausente/invalido, nao ha como calcular duracao — ignora reuniao.
+      if (isNaN(start) || isNaN(end)) return 0;
       const hours = Math.max((end - start) / 3600000, 0);
       const attendees = meeting.attendees && meeting.attendees.length > 0
         ? meeting.attendees
