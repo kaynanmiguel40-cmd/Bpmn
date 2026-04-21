@@ -6,6 +6,21 @@ import { getOffline } from './offlineDB';
 
 // ==================== TRANSFORMADORES ====================
 
+// Coage qualquer formato vindo do Postgres (DATE "YYYY-MM-DD" ou TIMESTAMPTZ ISO)
+// para o formato aceito por <input type="datetime-local">: "YYYY-MM-DDTHH:mm".
+// Usa UTC para manter consistencia: o usuario digita "08:00", o banco guarda
+// "08:00+00:00", ao ler mostra "08:00" de novo (sem deslocar por timezone).
+// Sem isso, a cada save a hora "recua" N horas e a data acaba sumindo.
+function toDatetimeLocalInput(value) {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T08:00`;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
 export function dbToOrder(row) {
   if (!row) return null;
   return {
@@ -26,10 +41,10 @@ export function dbToOrder(row) {
     assignedTo: row.assigned_to || null,
     supervisor: row.supervisor || null,
     sortOrder: row.sort_order ?? 0,
-    estimatedStart: row.estimated_start || '',
-    estimatedEnd: row.estimated_end || '',
-    actualStart: row.actual_start || '',
-    actualEnd: row.actual_end || '',
+    estimatedStart: toDatetimeLocalInput(row.estimated_start),
+    estimatedEnd: toDatetimeLocalInput(row.estimated_end),
+    actualStart: toDatetimeLocalInput(row.actual_start),
+    actualEnd: toDatetimeLocalInput(row.actual_end),
     pausedAt: row.paused_at || null,
     resumedAt: row.resumed_at || null,
     accumulatedMs: row.accumulated_ms || 0,
@@ -130,13 +145,19 @@ const TIMESTAMP_FIELDS = [
   'pausedAt', 'resumedAt', 'slaDeadline',
 ];
 
-/** Converte string vazia em null nos campos timestamp (Postgres nao aceita '') */
+/** Converte string vazia em null nos campos timestamp (Postgres nao aceita '')
+ *  e adiciona sufixo Z (UTC) em valores "YYYY-MM-DDTHH:mm" para garantir que
+ *  o Postgres interprete como UTC e nao como timezone local. */
 function normalizeTimestamps(order) {
   if (!order || typeof order !== 'object') return order;
   const result = { ...order };
   for (const field of TIMESTAMP_FIELDS) {
-    if (result[field] === '' || result[field] === undefined) {
+    const v = result[field];
+    if (v === '' || v === undefined) {
       result[field] = null;
+    } else if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v)) {
+      // "2026-04-20T08:00" -> "2026-04-20T08:00:00Z" (UTC explicito)
+      result[field] = `${v}:00Z`;
     }
   }
   return result;
