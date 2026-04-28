@@ -11,7 +11,7 @@ import {
   CheckSquare, Square, MinusSquare, Building2,
   MapPin, Briefcase, Filter, DollarSign,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  RotateCw, Phone, Mail, User, Zap, List, Globe, Handshake, Users,
+  RotateCw, Phone, Smartphone, MessageCircle, Mail, User, Zap, List, Globe, Handshake, Users,
 } from 'lucide-react';
 import { CITIES_BY_STATE } from '../data/brazilCities';
 import { CrmBadge, CrmConfirmDialog, CrmModal } from '../components/ui';
@@ -86,9 +86,57 @@ function formatPhone(val) {
   return val;
 }
 
+// Padrao brasileiro: celular tem 11 digitos com 9 inicial apos o DDD; fixo tem 10
+function detectPhoneType(val) {
+  if (!val) return null;
+  const clean = val.replace(/\D/g, '');
+  const local = clean.length >= 12 && clean.startsWith('55') ? clean.slice(2) : clean;
+  if (local.length === 11 && local[2] === '9') return 'mobile';
+  if (local.length === 10) return 'landline';
+  if (local.length === 9 && local[0] === '9') return 'mobile';
+  if (local.length === 8) return 'landline';
+  return null;
+}
+
+function whatsappUrl(val) {
+  if (!val) return null;
+  const clean = val.replace(/\D/g, '');
+  if (clean.length < 10) return null;
+  const withCountry = clean.startsWith('55') && clean.length >= 12 ? clean : `55${clean}`;
+  return `https://wa.me/${withCountry}`;
+}
+
+function tempoDesdeAbertura(dataAbertura) {
+  if (!dataAbertura) return null;
+  const d = new Date(dataAbertura);
+  if (isNaN(d.getTime())) return null;
+  const diffMs = Date.now() - d.getTime();
+  const years = diffMs / (1000 * 60 * 60 * 24 * 365.25);
+  if (years >= 1) {
+    const y = Math.floor(years);
+    return `${y} ano${y > 1 ? 's' : ''}`;
+  }
+  const months = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44)));
+  return `${months} ${months === 1 ? 'mês' : 'meses'}`;
+}
+
+function abbreviateNatureza(natureza) {
+  if (!natureza) return '';
+  const n = natureza.toUpperCase();
+  if (n.includes('MICROEMPRESARIO INDIVIDUAL') || /\bMEI\b/.test(n)) return 'MEI';
+  if (n.includes('LIMITADA')) return 'LTDA';
+  if (n.includes('ANONIMA') || n.includes('ANÔNIMA')) return 'S.A.';
+  if (n.includes('EMPRESARIO INDIVIDUAL') || n.includes('EMPRESÁRIO INDIVIDUAL')) return 'EI';
+  if (n.includes('EIRELI') || n.includes('INDIVIDUAL DE RESPONSABILIDADE')) return 'EIRELI';
+  if (n.includes('COOPERATIVA')) return 'COOP';
+  if (n.includes('ASSOCIACAO') || n.includes('ASSOCIAÇÃO')) return 'ASSOC';
+  if (n.includes('FUNDACAO') || n.includes('FUNDAÇÃO')) return 'FUND';
+  return natureza.length > 18 ? natureza.slice(0, 18) + '…' : natureza;
+}
+
 // ==================== MODAL ENVIAR PARA PIPELINE ====================
 
-function SendToPipelineModal({ open, onClose, selectedCount, selectedIds, onSuccess, prospectMode = 'leads' }) {
+function SendToPipelineModal({ open, onClose, selectedCount, selectedProspects, onSuccess, prospectMode = 'leads' }) {
   const { data: pipelines = [], isLoading: loadingPipelines } = useCrmPipelines();
   const sendMutation = useSendToPipeline();
   const ensurePartnersPipeline = useEnsurePartnersPipeline();
@@ -126,7 +174,7 @@ function SendToPipelineModal({ open, onClose, selectedCount, selectedIds, onSucc
 
   const handleConfirm = async () => {
     if (!pipelineId || !stageId) return;
-    await sendMutation.mutateAsync({ prospectIds: selectedIds, pipelineId, stageId });
+    await sendMutation.mutateAsync({ prospects: selectedProspects, pipelineId, stageId });
     onSuccess?.();
     onClose();
   };
@@ -363,7 +411,7 @@ export function CrmProspectsPage() {
     sortOrder: sortConfig.direction,
   } : null;
 
-  const { data, isLoading, isFetching } = useCrmProspects(filters || { page: 1, perPage: 1 });
+  const { data, isLoading, isFetching } = useCrmProspects(filters);
   const deleteMutation = useDeleteCrmProspect();
 
   const prospects = generated ? (data?.data || []) : [];
@@ -634,13 +682,23 @@ export function CrmProspectsPage() {
         {/* Header da area de resultados */}
         <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-900 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200">
-              {!generated
-                ? 'Resultados'
-                : isLoading
-                  ? 'Buscando...'
-                  : `${total} ${isPartners ? 'parceiro' : 'lead'}${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`
-              }
+            <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-baseline gap-2 flex-wrap">
+              {!generated ? (
+                'Resultados'
+              ) : isLoading ? (
+                'Buscando...'
+              ) : (
+                <>
+                  <span>
+                    {prospects.length} {isPartners ? 'parceiro' : 'lead'}{prospects.length !== 1 ? 's' : ''} baixado{prospects.length !== 1 ? 's' : ''}
+                  </span>
+                  {total > prospects.length && (
+                    <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">
+                      de {total.toLocaleString('pt-BR')} candidatos na base
+                    </span>
+                  )}
+                </>
+              )}
             </h2>
             {generated && (
               <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
@@ -760,37 +818,136 @@ export function CrmProspectsPage() {
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="font-medium text-slate-800 dark:text-slate-200" title={p.companyName}>{p.companyName}</div>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {p.segment ? (
-                            <CrmBadge variant="violet" size="sm">{p.segment}</CrmBadge>
-                          ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="min-w-0">
-                            <div className="text-slate-700 dark:text-slate-300 truncate max-w-[150px]">{p.contactName || '—'}</div>
-                            {p.position && <span className="text-[11px] text-slate-400">{p.position}</span>}
+                          <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1 flex-wrap">
+                            {p.cnpj && <span className="font-mono select-all">{p.cnpj}</span>}
+                            {p.naturezaJuridica && (
+                              <>
+                                <span className="opacity-50">·</span>
+                                <span title={p.naturezaJuridica}>{abbreviateNatureza(p.naturezaJuridica)}</span>
+                              </>
+                            )}
+                            {p.dataAbertura && tempoDesdeAbertura(p.dataAbertura) && (
+                              <>
+                                <span className="opacity-50">·</span>
+                                <span title={`Aberta em ${new Date(p.dataAbertura).toLocaleDateString('pt-BR')}`}>{tempoDesdeAbertura(p.dataAbertura)}</span>
+                              </>
+                            )}
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
-                          {p.phone ? (
-                            <a href={`tel:${p.phone}`} className="flex items-center gap-1 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap text-xs">
-                              <Phone size={11} className="shrink-0" />
-                              {formatPhone(p.phone)}
-                            </a>
+                          {p.segment ? (
+                            <span title={p.cnaeDescricao || p.segment}>
+                              <CrmBadge variant="violet" size="sm">{p.segment}</CrmBadge>
+                            </span>
                           ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
+                          {p.atividadesSecundarias?.length > 0 && (
+                            <div
+                              className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
+                              title={p.atividadesSecundarias.map(a => `${a.code}${a.description ? ' — ' + a.description : ''}`).join('\n')}
+                            >
+                              +{p.atividadesSecundarias.length} CNAE{p.atividadesSecundarias.length > 1 ? 's' : ''}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="min-w-0">
+                            <div className="text-slate-700 dark:text-slate-300 truncate max-w-[150px]" title={p.contactName}>{p.contactName || '—'}</div>
+                            {p.position && <span className="text-[11px] text-slate-400">{p.position}</span>}
+                            {p.socios?.length > 1 && (
+                              <div
+                                className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
+                                title={p.socios.map(s => `${s.name}${s.role ? ' (' + s.role + ')' : ''}${s.capitalPercent != null ? ' — ' + s.capitalPercent + '%' : ''}`).join('\n')}
+                              >
+                                +{p.socios.length - 1} sócio{p.socios.length - 1 > 1 ? 's' : ''}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {p.phone ? (() => {
+                            const type = detectPhoneType(p.phone);
+                            const Icon = type === 'mobile' ? Smartphone : Phone;
+                            const colorClass = type === 'mobile'
+                              ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300'
+                              : type === 'landline'
+                                ? 'text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400'
+                                : 'text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400';
+                            const titleText = type === 'mobile'
+                              ? 'Celular — pode ter WhatsApp'
+                              : type === 'landline'
+                                ? 'Fixo — sem WhatsApp'
+                                : undefined;
+                            return (
+                              <div>
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <a
+                                    href={`tel:${p.phone}`}
+                                    title={titleText}
+                                    className={`flex items-center gap-1 text-xs ${colorClass}`}
+                                  >
+                                    <Icon size={11} className="shrink-0" />
+                                    {formatPhone(p.phone)}
+                                  </a>
+                                  {type === 'mobile' && whatsappUrl(p.phone) && (
+                                    <a
+                                      href={whatsappUrl(p.phone)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title="Abrir no WhatsApp"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center justify-center w-5 h-5 rounded text-[#25D366] hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                                    >
+                                      <MessageCircle size={12} className="shrink-0" />
+                                    </a>
+                                  )}
+                                </div>
+                                {p.phones?.length > 1 && (
+                                  <div
+                                    className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
+                                    title={p.phones.map(t => {
+                                      const tp = detectPhoneType(t);
+                                      const tag = tp === 'mobile' ? 'cel' : tp === 'landline' ? 'fixo' : '?';
+                                      return `${formatPhone(t)} [${tag}]`;
+                                    }).join('\n')}
+                                  >
+                                    +{p.phones.length - 1}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })() : <span className="text-slate-300 dark:text-slate-600">—</span>}
                         </td>
                         <td className="px-3 py-2.5">
                           {p.email ? (
-                            <a href={`mailto:${p.email}`} className="flex items-center gap-1 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 truncate max-w-[160px] text-xs">
-                              <Mail size={11} className="shrink-0" />
-                              {p.email}
-                            </a>
+                            <div>
+                              <a href={`mailto:${p.email}`} className="flex items-center gap-1 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 truncate max-w-[160px] text-xs">
+                                <Mail size={11} className="shrink-0" />
+                                {p.email}
+                              </a>
+                              {p.emails?.length > 1 && (
+                                <div
+                                  className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
+                                  title={p.emails.join('\n')}
+                                >
+                                  +{p.emails.length - 1}
+                                </div>
+                              )}
+                            </div>
                           ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                         </td>
                         <td className="px-3 py-2.5">
                           {SIZE_MAP[p.size] ? (
-                            <span className="text-xs text-slate-600 dark:text-slate-300">{SIZE_MAP[p.size]}</span>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="text-xs text-slate-600 dark:text-slate-300">{SIZE_MAP[p.size]}</span>
+                              {p.simplesNacional && (
+                                <span
+                                  className="inline-flex items-center text-[9px] font-bold px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                  title="Optante do Simples Nacional"
+                                >
+                                  SIMPLES
+                                </span>
+                              )}
+                            </div>
                           ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                         </td>
                         <td className="px-3 py-2.5">
@@ -865,7 +1022,7 @@ export function CrmProspectsPage() {
         open={pipelineModalOpen}
         onClose={() => setPipelineModalOpen(false)}
         selectedCount={selectedIds.size}
-        selectedIds={[...selectedIds]}
+        selectedProspects={prospects.filter(p => selectedIds.has(p.id))}
         onSuccess={() => setSelectedIds(new Set())}
         prospectMode={prospectMode}
       />

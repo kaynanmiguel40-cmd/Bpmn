@@ -3,7 +3,6 @@ import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmProspectSchema } from '../schemas/crmValidation';
 import { createCrmCompany } from './crmCompaniesService';
-import { createCrmContact } from './crmContactsService';
 import { createCrmDeal } from './crmDealsService';
 import { SEGMENT_TO_CNAE, CNAE_TO_SEGMENT, SIZE_TO_PORTE, PORTE_TO_SIZE, REVENUE_TO_CAPITAL, PARTNER_CATEGORY_TO_CNAE, CNAE_TO_PARTNER_CATEGORY, PARTNER_CATEGORY_LABELS } from '../data/cnaeMapping';
 
@@ -88,7 +87,7 @@ const prospectService = createCRUDService({
 function buildApiBody(filters) {
   const body = {
     situacao_cadastral: ['ATIVA'],
-    limite: Math.min(filters.perPage || 50, 1000),
+    limite: Math.min(filters.perPage || 30, 100), // teto rigido p/ economizar creditos
     pagina: filters.page || 1,
     mais_filtros: { somente_matriz: true, com_telefone: true, com_email: true },
   };
@@ -165,11 +164,42 @@ function extractPhone(c) {
   return '';
 }
 
+function extractAllPhones(c) {
+  return (c.contato_telefonico || [])
+    .map(t => t?.completo || (t?.ddd && t?.numero ? `(${t.ddd}) ${t.numero}` : null))
+    .filter(Boolean);
+}
+
 function extractEmail(c) {
   // Casa dos Dados v5: contato_email[].email
   const em = c.contato_email?.[0];
   if (em?.email) return em.email.toLowerCase();
   return '';
+}
+
+function extractAllEmails(c) {
+  return (c.contato_email || [])
+    .map(e => e?.email?.toLowerCase())
+    .filter(Boolean);
+}
+
+function extractSocios(c) {
+  return (c.quadro_societario || c.socios || [])
+    .map(s => ({
+      name: s?.nome || s?.nome_socio || '',
+      role: s?.qualificacao_socio || s?.qualificacao || '',
+      capitalPercent: s?.percentual_capital ?? s?.percentual ?? null,
+    }))
+    .filter(s => s.name);
+}
+
+function extractAtividadesSecundarias(c) {
+  return (c.atividades_secundarias || [])
+    .map(a => ({
+      code: a?.codigo || a?.cnae || '',
+      description: a?.descricao || a?.descricao_cnae || '',
+    }))
+    .filter(a => a.code);
 }
 
 function transformApiCompany(c, index, { isPartner = false, partnerCategory = null } = {}) {
@@ -227,6 +257,18 @@ function transformApiCompany(c, index, { isPartner = false, partnerCategory = nu
     cnaeDescricao: c.atividade_principal?.descricao || '',
     endereco: c.endereco ? `${c.endereco.logradouro || ''}, ${c.endereco.numero || 'S/N'} - ${c.endereco.bairro || ''}` : '',
     cep: c.endereco?.cep || '',
+    // Dados extras Casa dos Dados v5
+    naturezaJuridica: c.natureza_juridica?.descricao || c.natureza_juridica || '',
+    inscricaoEstadual: c.inscricao_estadual || '',
+    simplesNacional: c.simples_nacional?.optante === true,
+    dataAbertura: c.data_abertura || null,
+    situacaoCadastral: c.situacao_cadastral || '',
+    dataSituacaoCadastral: c.data_situacao_cadastral || null,
+    socios: extractSocios(c),
+    phones: extractAllPhones(c),
+    emails: extractAllEmails(c),
+    atividadesSecundarias: extractAtividadesSecundarias(c),
+    enderecoComplemento: c.endereco?.complemento || '',
   };
 }
 
@@ -278,7 +320,7 @@ async function searchLeadsViaAPI(filters = {}) {
 function buildPartnerApiBody(filters) {
   const body = {
     situacao_cadastral: ['ATIVA'],
-    limite: Math.min(filters.perPage || 50, 1000),
+    limite: Math.min(filters.perPage || 30, 100), // teto rigido p/ economizar creditos
     pagina: filters.page || 1,
     mais_filtros: { somente_matriz: true, com_telefone: true, com_email: true },
   };
@@ -622,18 +664,14 @@ export async function softDeleteCrmProspect(id) {
 
 /**
  * Envia prospects selecionados para um pipeline do CRM.
- * Para cada prospect: cria empresa, contato e deal.
+ * Recebe os objetos completos (camelCase, em memoria) — eles podem vir da API
+ * Casa dos Dados (id `api_*`), do fallback local (id `crm_c_*` / `crm_co_*`)
+ * ou de linhas reais persistidas em crm_prospects (id `crm_prs_*`).
+ * Para cada um: cria empresa, contato e deal.
  */
-export async function sendToPipeline(prospectIds, pipelineId, stageId) {
-  // Buscar dados dos prospects
-  const { data: prospects, error } = await supabase
-    .from('crm_prospects')
-    .select('*')
-    .in('id', prospectIds)
-    .is('deleted_at', null);
-
-  if (error || !prospects?.length) {
-    toast('Erro ao buscar prospects para conversao', 'error');
+export async function sendToPipeline(prospects, pipelineId, stageId) {
+  if (!prospects?.length) {
+    toast('Nenhum prospect selecionado', 'error');
     return { success: 0, errors: 0 };
   }
 
@@ -643,7 +681,6 @@ export async function sendToPipeline(prospectIds, pipelineId, stageId) {
   for (const p of prospects) {
     // Rastreia o que foi criado neste ciclo para permitir rollback em falha
     let createdCompanyId = null;
-    let createdContactId = null;
 
     try {
       // 1. Verificar se empresa com mesmo CNPJ ja existe
@@ -661,7 +698,7 @@ export async function sendToPipeline(prospectIds, pipelineId, stageId) {
       // Criar empresa se nao existe
       if (!companyId) {
         const company = await createCrmCompany({
-          name: p.company_name,
+          name: p.companyName,
           cnpj: p.cnpj || '',
           segment: p.segment || '',
           size: p.size || '',
@@ -675,50 +712,41 @@ export async function sendToPipeline(prospectIds, pipelineId, stageId) {
         createdCompanyId = companyId;
       }
 
-      // 2. Criar contato
-      let contactId = null;
-      if (p.contact_name) {
-        const contact = await createCrmContact({
-          name: p.contact_name,
-          email: p.email || '',
-          phone: p.phone || '',
-          position: p.position || '',
-          status: 'lead',
-          companyId: companyId,
-        });
-        contactId = contact?.id;
-        createdContactId = contactId;
-      }
-
-      // 3. Criar deal — se falhar, o catch reverte empresa/contato criados acima
+      // 2. Criar deal direto, sem contato isolado.
+      // O telefone/email vem da Casa dos Dados (PJ, nao pessoal) — manter esses
+      // dados no proprio Lead evita confundir o usuario achando que e telefone do socio.
       const deal = await createCrmDeal({
-        title: p.company_name,
+        title: p.companyName,
         value: 0,
         pipelineId,
         stageId,
-        contactId: contactId || null,
+        contactId: null,
         companyId: companyId || null,
+        contactName: p.contactName || '',
+        contactPhone: p.phone || '',
+        contactEmail: p.email || '',
         status: 'open',
       });
       if (!deal?.id) throw new Error('Falha ao criar deal');
 
-      // 4. Marcar prospect como convertido
-      await supabase
-        .from('crm_prospects')
-        .update({ status: 'converted', updated_at: new Date().toISOString() })
-        .eq('id', p.id);
+      // 3. Marcar prospect como convertido (apenas se for linha persistida)
+      if (typeof p.id === 'string' && p.id.startsWith('crm_prs_')) {
+        await supabase
+          .from('crm_prospects')
+          .update({ status: 'converted', updated_at: new Date().toISOString() })
+          .eq('id', p.id);
+      }
 
       success++;
     } catch (err) {
       console.error(`[Prospects] Erro ao converter prospect ${p.id}:`, err);
 
-      // Rollback: soft-delete do que foi criado neste ciclo para nao deixar orfaos
-      const nowIso = new Date().toISOString();
-      if (createdContactId) {
-        await supabase.from('crm_contacts').update({ deleted_at: nowIso }).eq('id', createdContactId);
-      }
+      // Rollback: soft-delete da empresa criada neste ciclo
       if (createdCompanyId) {
-        await supabase.from('crm_companies').update({ deleted_at: nowIso }).eq('id', createdCompanyId);
+        await supabase
+          .from('crm_companies')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('id', createdCompanyId);
       }
 
       errors++;

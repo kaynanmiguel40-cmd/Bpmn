@@ -913,11 +913,12 @@ export function useDeleteCrmTraffic() {
 
 // ==================== PROSPECTS ====================
 
-export function useCrmProspects(filters = {}) {
+export function useCrmProspects(filters) {
   return useQuery({
     queryKey: [...crmQueryKeys.prospects, filters],
     queryFn: () => getCrmProspects(filters),
-    staleTime: 2 * 60_000, // 2 min — evitar chamadas repetidas na API
+    staleTime: 10 * 60_000, // 10 min — economizar creditos da API Casa dos Dados
+    enabled: !!filters,     // so dispara quando ha filtros reais (apos clicar "Gerar Lista")
   });
 }
 
@@ -975,7 +976,7 @@ export function useDeleteCrmProspect() {
 export function useSendToPipeline() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ prospectIds, pipelineId, stageId }) => sendToPipeline(prospectIds, pipelineId, stageId),
+    mutationFn: ({ prospects, pipelineId, stageId }) => sendToPipeline(prospects, pipelineId, stageId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.prospects });
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
