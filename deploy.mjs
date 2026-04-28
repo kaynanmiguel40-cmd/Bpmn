@@ -1,6 +1,36 @@
 import { createRequire } from 'module';
+import { readFileSync, existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
 const require = createRequire(import.meta.url);
 const { Client } = require('ssh2');
+
+// Le credenciais do .env (que esta no .gitignore — nunca vai pro git).
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const envPath = join(__dirname, '.env');
+
+if (!existsSync(envPath)) {
+  console.error('[deploy] .env nao encontrado em', envPath);
+  console.error('[deploy] Crie o arquivo com DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_PASSWORD.');
+  process.exit(1);
+}
+
+const env = {};
+for (const line of readFileSync(envPath, 'utf-8').split(/\r?\n/)) {
+  const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
+  if (m) env[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
+}
+
+const host = env.DEPLOY_SSH_HOST;
+const port = parseInt(env.DEPLOY_SSH_PORT || '22', 10);
+const username = env.DEPLOY_SSH_USER;
+const password = env.DEPLOY_SSH_PASSWORD;
+
+if (!host || !username || !password) {
+  console.error('[deploy] Variaveis ausentes no .env: DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_PASSWORD.');
+  process.exit(1);
+}
 
 const conn = new Client();
 conn.on('ready', () => {
@@ -35,5 +65,5 @@ conn.on('ready', () => {
       conn.end();
     });
   });
-}).connect({ host: '31.97.16.109', port: 22, username: 'root', password: 'Holding123456#', readyTimeout: 20000 });
+}).connect({ host, port, username, password, readyTimeout: 20000 });
 conn.on('error', err => console.error('Erro:', err.message));
