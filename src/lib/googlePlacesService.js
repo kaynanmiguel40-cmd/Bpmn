@@ -172,9 +172,11 @@ async function callTextSearch(query) {
 export async function enrichProspectWithGoogle(prospect) {
   if (!prospect) return null;
 
-  // Cache hit?
+  // Cache hit? Pode ser dado enriquecido OU sentinela de miss ({ miss: true })
   const cached = readCache(prospect.cnpj);
-  if (cached !== null) return cached;
+  if (cached !== null) {
+    return cached.miss ? null : cached;
+  }
 
   // Constroi query: nome + cidade. Se nome muito longo, trunca.
   const name = (prospect.companyName || '').slice(0, 60).trim();

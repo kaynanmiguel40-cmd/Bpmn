@@ -172,7 +172,7 @@ function extractAllPhones(c) {
 
 // Padrao brasileiro: celular tem 11 digitos com 9 inicial apos DDD (ou 9 digits sem DDD).
 // Apenas celulares podem ter WhatsApp — usado pra filtrar a lista resultante.
-function isMobilePhone(val) {
+export function isMobilePhone(val) {
   if (!val) return false;
   const clean = val.replace(/\D/g, '');
   const local = clean.length >= 12 && clean.startsWith('55') ? clean.slice(2) : clean;
