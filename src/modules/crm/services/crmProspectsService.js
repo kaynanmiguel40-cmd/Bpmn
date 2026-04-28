@@ -170,6 +170,17 @@ function extractAllPhones(c) {
     .filter(Boolean);
 }
 
+// Padrao brasileiro: celular tem 11 digitos com 9 inicial apos DDD (ou 9 digits sem DDD).
+// Apenas celulares podem ter WhatsApp — usado pra filtrar a lista resultante.
+function isMobilePhone(val) {
+  if (!val) return false;
+  const clean = val.replace(/\D/g, '');
+  const local = clean.length >= 12 && clean.startsWith('55') ? clean.slice(2) : clean;
+  if (local.length === 11 && local[2] === '9') return true;
+  if (local.length === 9 && local[0] === '9') return true;
+  return false;
+}
+
 function extractEmail(c) {
   // Casa dos Dados v5: contato_email[].email
   const em = c.contato_email?.[0];
@@ -226,11 +237,18 @@ function transformApiCompany(c, index, { isPartner = false, partnerCategory = nu
   }
   const categoryLabel = detectedCategory ? (PARTNER_CATEGORY_LABELS[detectedCategory] || detectedCategory) : '';
 
+  // Promove primeiro celular ao campo `phone` (se houver) — usuario quer
+  // priorizar contato via WhatsApp. Se nao houver celular, mantem o primeiro
+  // telefone disponivel (sera filtrado depois pelo callCasaDadosAPI).
+  const allPhonesList = extractAllPhones(c);
+  const firstMobile = allPhonesList.find(isMobilePhone);
+  const primaryPhone = firstMobile || allPhonesList[0] || extractPhone(c);
+
   return {
     id: `api_${c.cnpj}`,
     companyName,
     contactName: socio?.nome || socio?.nome_socio || '',
-    phone: extractPhone(c),
+    phone: primaryPhone,
     email: extractEmail(c),
     cnpj: formatCnpj(c.cnpj),
     segment: isPartner ? categoryLabel : guessSegmentFromCnae(cnaeCode),
@@ -272,7 +290,7 @@ function transformApiCompany(c, index, { isPartner = false, partnerCategory = nu
   };
 }
 
-async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = null } = {}) {
+async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = null, dddFilter = '' } = {}) {
   if (!CASA_DOS_DADOS_API_KEY) {
     console.warn('[Search] API key nao configurada');
     return null;
@@ -302,10 +320,41 @@ async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = nul
     }
 
     const json = await res.json();
-    const prospects = (json.cnpjs || []).map((c, i) =>
+    let prospects = (json.cnpjs || []).map((c, i) =>
       transformApiCompany(c, i, { isPartner, partnerCategory })
     );
 
+    // Filtro por DDD (client-side): mantem so prospects com algum telefone
+    // cujo DDD bata com o solicitado.
+    if (dddFilter) {
+      const ddd = dddFilter.replace(/\D/g, '');
+      const matchesDdd = (phone) => {
+        if (!phone) return false;
+        const clean = phone.replace(/\D/g, '');
+        const local = clean.length >= 12 && clean.startsWith('55') ? clean.slice(2) : clean;
+        return local.startsWith(ddd);
+      };
+      prospects = prospects.filter(p =>
+        matchesDdd(p.phone) || (p.phones || []).some(matchesDdd)
+      );
+    }
+
+    // Excluir CNPJs ja convertidos (existentes em crm_companies)
+    const cnpjs = prospects.map(p => p.cnpj).filter(Boolean);
+    if (cnpjs.length > 0) {
+      const { data: existing } = await supabase
+        .from('crm_companies')
+        .select('cnpj')
+        .in('cnpj', cnpjs)
+        .is('deleted_at', null);
+      if (existing && existing.length > 0) {
+        const existingSet = new Set(existing.map(c => c.cnpj));
+        prospects = prospects.filter(p => !existingSet.has(p.cnpj));
+      }
+    }
+
+    // Sem filtro de mobile aqui: a pagina decide via toggle "Apenas WhatsApp"
+    // e considera o telefone enriquecido pelo Google se disponivel.
     return { data: prospects, count: json.total || prospects.length, source: 'api' };
   } catch (err) {
     console.error('[Search] Fetch error:', err);
@@ -314,7 +363,7 @@ async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = nul
 }
 
 async function searchLeadsViaAPI(filters = {}) {
-  return callCasaDadosAPI(buildApiBody(filters));
+  return callCasaDadosAPI(buildApiBody(filters), { dddFilter: filters.ddd || '' });
 }
 
 function buildPartnerApiBody(filters) {
@@ -367,7 +416,7 @@ async function searchPartnersViaAPI(filters = {}) {
     : null;
 
   const body = buildPartnerApiBody({ ...filters, segment: categoryKey });
-  return callCasaDadosAPI(body, { isPartner: true, partnerCategory: categoryKey });
+  return callCasaDadosAPI(body, { isPartner: true, partnerCategory: categoryKey, dddFilter: filters.ddd || '' });
 }
 
 // ==================== FALLBACK: BUSCA NO CRM LOCAL ====================
@@ -683,6 +732,16 @@ export async function sendToPipeline(prospects, pipelineId, stageId) {
     let createdCompanyId = null;
 
     try {
+      // Dados enriquecidos pelo Google Places (se houver)
+      const enr = p.enriched && p.enriched !== 'loading' && p.enriched !== 'miss' ? p.enriched : null;
+      const googleSite      = enr?.website   || '';
+      const googleInstagram = enr?.instagram || '';
+      const googleFacebook  = enr?.facebook  || '';
+
+      // Telefone preferencial: celular do Google → celular CD → CD primario
+      const enrichedPhone = enr?.phone || '';
+      const bestPhone = enrichedPhone || p.phone || '';
+
       // 1. Verificar se empresa com mesmo CNPJ ja existe
       let companyId = null;
       if (p.cnpj) {
@@ -695,21 +754,36 @@ export async function sendToPipeline(prospects, pipelineId, stageId) {
         if (existing) companyId = existing.id;
       }
 
-      // Criar empresa se nao existe
+      // Criar empresa se nao existe (preferindo dados enriquecidos pelo Google)
       if (!companyId) {
         const company = await createCrmCompany({
           name: p.companyName,
           cnpj: p.cnpj || '',
           segment: p.segment || '',
           size: p.size || '',
-          phone: p.phone || '',
+          phone: bestPhone,
           email: p.email || '',
-          website: p.website || '',
+          website: googleSite || p.website || '',
           city: p.city || '',
           state: p.state || '',
         });
         companyId = company?.id;
         createdCompanyId = companyId;
+      }
+
+      // Notas do deal: registra origem + extras (Instagram, site enriquecido,
+      // status do negocio no Google). Usuario pode editar depois sem perder contexto.
+      const noteLines = [
+        '🎯 Origem: Geração automática via lista de prospecção',
+      ];
+      if (googleInstagram)   noteLines.push(`📱 Instagram: ${googleInstagram}`);
+      if (googleFacebook)    noteLines.push(`👥 Facebook: ${googleFacebook}`);
+      if (googleSite)        noteLines.push(`🌐 Site: ${googleSite}`);
+      if (enr?.businessStatus && enr.businessStatus !== 'OPERATIONAL') {
+        noteLines.push(`⚠️ Google: ${enr.businessStatus}`);
+      }
+      if (enr?.displayName && enr.displayName !== p.companyName) {
+        noteLines.push(`🏷️ Nome no Google: ${enr.displayName}`);
       }
 
       // 2. Criar deal direto, sem contato isolado.
@@ -723,8 +797,9 @@ export async function sendToPipeline(prospects, pipelineId, stageId) {
         contactId: null,
         companyId: companyId || null,
         contactName: p.contactName || '',
-        contactPhone: p.phone || '',
+        contactPhone: bestPhone,
         contactEmail: p.email || '',
+        notes: noteLines.join('\n'),
         status: 'open',
       });
       if (!deal?.id) throw new Error('Falha ao criar deal');

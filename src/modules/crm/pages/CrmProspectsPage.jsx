@@ -12,8 +12,10 @@ import {
   MapPin, Briefcase, Filter, DollarSign,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
   RotateCw, Phone, Smartphone, MessageCircle, Mail, User, Zap, List, Globe, Handshake, Users,
+  ExternalLink, Sparkles, Instagram, Hash,
 } from 'lucide-react';
 import { CITIES_BY_STATE } from '../data/brazilCities';
+import { getDddsByState } from '../data/brazilDdds';
 import { CrmBadge, CrmConfirmDialog, CrmModal } from '../components/ui';
 import ProspectingDashboard from '../components/po/ProspectingDashboard';
 import {
@@ -24,6 +26,7 @@ import {
   useCrmPipelines,
   useEnsurePartnersPipeline,
 } from '../hooks/useCrmQueries';
+import { enrichProspectWithGoogle } from '../../../lib/googlePlacesService';
 
 // ==================== CONSTANTES ====================
 
@@ -372,12 +375,15 @@ export function CrmProspectsPage() {
   const [size, setSize] = useState('');
   const [state, setState] = useState('');
   const [city, setCity] = useState('');
+  const [ddd, setDdd] = useState('');
+  const [filterMode, setFilterMode] = useState('city'); // 'city' | 'ddd'
   const [search, setSearch] = useState('');
   const [revenueRange, setRevenueRange] = useState('');
   const [clientRange, setClientRange] = useState('');
 
-  // Cidades disponiveis baseadas no estado selecionado
+  // Cidades / DDDs disponiveis baseados no estado selecionado
   const cityOptions = useMemo(() => getCitiesByState(state || null), [state]);
+  const dddOptions = useMemo(() => getDddsByState(state || null), [state]);
 
   // Controle de geracao
   const [generated, setGenerated] = useState(false);
@@ -396,6 +402,15 @@ export function CrmProspectsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [pipelineModalOpen, setPipelineModalOpen] = useState(false);
 
+  // Enriquecimento Google Places — Map<prospectId, enrichedData|'miss'|'loading'>
+  const [enrichments, setEnrichments] = useState(() => new Map());
+  const [enrichingAll, setEnrichingAll] = useState(false);
+
+  // Filtro display-only: mostrar apenas leads com celular (Casa dos Dados ou Google).
+  // Default ON — Google enriquecimento roda em background e os leads cujo
+  // numero passa a ser celular (do Google Meu Negocio) vao surgindo na lista.
+  const [whatsappOnly, setWhatsappOnly] = useState(true);
+
   const filters = generated ? {
     page,
     perPage,
@@ -403,7 +418,9 @@ export function CrmProspectsPage() {
     segment: appliedFilters.segment || undefined,
     size: appliedFilters.size || undefined,
     state: appliedFilters.state || undefined,
-    city: appliedFilters.city || undefined,
+    // Mutuamente exclusivos: cidade OU DDD (escolha do usuario via filterMode)
+    city: appliedFilters.filterMode === 'city' ? (appliedFilters.city || undefined) : undefined,
+    ddd:  appliedFilters.filterMode === 'ddd'  ? (appliedFilters.ddd  || undefined) : undefined,
     revenueRange: appliedFilters.revenueRange || undefined,
     clientRange: appliedFilters.clientRange || undefined,
     prospectType: isPartners ? 'partner' : undefined,
@@ -414,10 +431,45 @@ export function CrmProspectsPage() {
   const { data, isLoading, isFetching } = useCrmProspects(filters);
   const deleteMutation = useDeleteCrmProspect();
 
-  const prospects = generated ? (data?.data || []) : [];
-  const total = generated ? (data?.count || 0) : 0;
+  // Acumulamos prospects ao longo das pages — modelo "carregar mais" em vez de
+  // paginacao tradicional. Filtros (WhatsApp etc.) podem reduzir muito o
+  // visivel, e a gente quer sempre ter 15+ leads na tela sem o usuario clicar.
+  const [accumulated, setAccumulated] = useState([]);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const MAX_AUTO_PAGES = 3;
+  const TARGET_VISIBLE = 15;
 
-  const activeCount = [segment, size, state, city, revenueRange, clientRange].filter(Boolean).length;
+  // Reset do acumulado quando filtros aplicados mudam
+  useEffect(() => {
+    setAccumulated([]);
+    setAutoLoading(false);
+  }, [appliedFilters, isPartners]);
+
+  // Append (dedup por CNPJ) sempre que vier nova page
+  useEffect(() => {
+    if (!data?.data?.length) return;
+    setAccumulated(prev => {
+      const seen = new Set(prev.map(p => p.cnpj).filter(Boolean));
+      const fresh = data.data.filter(p => p.cnpj && !seen.has(p.cnpj));
+      return fresh.length > 0 ? [...prev, ...fresh] : prev;
+    });
+    setAutoLoading(false);
+  }, [data]);
+
+  const prospects = generated ? accumulated : [];
+  const total = generated ? (data?.count || 0) : 0;
+  const totalPages = Math.ceil(total / perPage);
+  const hasMore = page < totalPages;
+
+  const activeCount = [
+    segment,
+    size,
+    state,
+    filterMode === 'city' ? city : '',
+    filterMode === 'ddd'  ? ddd  : '',
+    revenueRange,
+    clientRange,
+  ].filter(Boolean).length;
 
   // Reset filters when switching mode
   const switchMode = (mode) => {
@@ -431,10 +483,72 @@ export function CrmProspectsPage() {
     setSelectedIds(new Set());
   };
 
-  useEffect(() => { setSelectedIds(new Set()); }, [data]);
+  // Reset selecao + enrichments apenas quando filtros mudam (nova busca);
+  // NAO em cada page (porque acumulamos prospects e enrichments entre pages)
+  useEffect(() => { setSelectedIds(new Set()); setEnrichments(new Map()); }, [appliedFilters, isPartners]);
+
+  // Auto-enriquecimento: a cada vez que `accumulated` cresce (lista nova ou
+  // page extra carregada), dispara Google em background. Cache de 30 dias por
+  // CNPJ no localStorage evita custo repetido para CNPJs ja vistos.
+  useEffect(() => {
+    if (!generated || accumulated.length === 0) return;
+    const t = setTimeout(() => { enrichAll(); }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accumulated.length]);
+
+  const enrichOne = useCallback(async (prospect) => {
+    if (!prospect?.id) return;
+    setEnrichments(prev => {
+      const next = new Map(prev);
+      next.set(prospect.id, 'loading');
+      return next;
+    });
+    const result = await enrichProspectWithGoogle(prospect);
+    setEnrichments(prev => {
+      const next = new Map(prev);
+      next.set(prospect.id, result || 'miss');
+      return next;
+    });
+  }, []);
+
+  const enrichAll = useCallback(async () => {
+    if (enrichingAll) return;
+    setEnrichingAll(true);
+    try {
+      // Concorrencia controlada: 5 paralelos (browser + Google ambos aguentam,
+      // mas mantemos baixo pra nao explodir quota nem rate limit)
+      const queue = prospects.filter(p => !enrichments.has(p.id));
+      const CONCURRENCY = 5;
+      for (let i = 0; i < queue.length; i += CONCURRENCY) {
+        const batch = queue.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(enrichOne));
+      }
+    } finally {
+      setEnrichingAll(false);
+    }
+  }, [prospects, enrichments, enrichOne, enrichingAll]);
+
+  const enrichedCount = [...enrichments.values()].filter(v => v && v !== 'loading' && v !== 'miss').length;
+
+  // Filtro display-only: leads cujo telefone efetivo (Google primeiro, depois Receita) seja celular.
+  // Considera tambem todos os telefones extras (`phones[]`) da Receita.
+  const visibleProspects = useMemo(() => {
+    if (!whatsappOnly) return prospects;
+    return prospects.filter(p => {
+      const enr = enrichments.get(p.id);
+      const enriched = enr && enr !== 'loading' && enr !== 'miss' ? enr : null;
+      if (enriched?.phone && detectPhoneType(enriched.phone) === 'mobile') return true;
+      if (detectPhoneType(p.phone) === 'mobile') return true;
+      if ((p.phones || []).some(t => detectPhoneType(t) === 'mobile')) return true;
+      return false;
+    });
+  }, [prospects, enrichments, whatsappOnly]);
+
+  const hiddenByFilter = prospects.length - visibleProspects.length;
 
   const handleGenerate = () => {
-    setAppliedFilters({ segment, size, state, city, search, revenueRange, clientRange });
+    setAppliedFilters({ segment, size, state, city, ddd, filterMode, search, revenueRange, clientRange });
     setPage(1);
     setGenerated(true);
     setSelectedIds(new Set());
@@ -445,6 +559,8 @@ export function CrmProspectsPage() {
     setSize('');
     setState('');
     setCity('');
+    setDdd('');
+    setFilterMode('city');
     setSearch('');
     setRevenueRange('');
     setClientRange('');
@@ -470,12 +586,13 @@ export function CrmProspectsPage() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === prospects.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(prospects.map(p => p.id)));
+    const allVisibleSelected = visibleProspects.length > 0 && visibleProspects.every(p => selectedIds.has(p.id));
+    if (allVisibleSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(visibleProspects.map(p => p.id)));
   };
 
-  const allSelected = prospects.length > 0 && selectedIds.size === prospects.length;
-  const someSelected = selectedIds.size > 0 && selectedIds.size < prospects.length;
+  const allSelected = visibleProspects.length > 0 && visibleProspects.every(p => selectedIds.has(p.id));
+  const someSelected = selectedIds.size > 0 && !allSelected;
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -483,7 +600,17 @@ export function CrmProspectsPage() {
     setDeleteTarget(null);
   };
 
-  const totalPages = Math.ceil(total / perPage);
+  // Auto-load-more: quando filtro WhatsApp deixa visivel < target, busca proxima
+  // page automaticamente ate atingir target ou cap de seguranca (3 pages = 90 leads).
+  useEffect(() => {
+    if (!generated || !whatsappOnly) return;
+    if (autoLoading || isFetching || enrichingAll) return;
+    if (visibleProspects.length >= TARGET_VISIBLE) return;
+    if (!hasMore) return;
+    if (page >= MAX_AUTO_PAGES) return;
+    setAutoLoading(true);
+    setPage(p => p + 1);
+  }, [visibleProspects.length, whatsappOnly, autoLoading, isFetching, enrichingAll, hasMore, page, generated]);
 
   const selectCls = "w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 focus:outline-none transition-all";
 
@@ -588,21 +715,59 @@ export function CrmProspectsPage() {
             </select>
           </div>
 
-          {/* Cidade (dependente do Estado) */}
+          {/* Refinar por: Cidade ou DDD (mutuamente exclusivos) */}
           <div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              <MapPin size={12} />
-              Cidade
-            </label>
-            <select
-              value={city}
-              onChange={e => setCity(e.target.value)}
-              className={selectCls}
-              disabled={!state}
-            >
-              <option value="">{state ? 'Todo o estado' : 'Selecione o estado primeiro'}</option>
-              {cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {filterMode === 'ddd' ? <Hash size={12} /> : <MapPin size={12} />}
+                {filterMode === 'ddd' ? 'DDD' : 'Cidade'}
+              </label>
+              <div className="flex rounded-md bg-slate-100 dark:bg-slate-800 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setFilterMode('city'); setDdd(''); }}
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                    filterMode === 'city'
+                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                  }`}
+                >
+                  Cidade
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setFilterMode('ddd'); setCity(''); }}
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                    filterMode === 'ddd'
+                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                  }`}
+                >
+                  DDD
+                </button>
+              </div>
+            </div>
+            {filterMode === 'city' ? (
+              <select
+                value={city}
+                onChange={e => setCity(e.target.value)}
+                className={selectCls}
+                disabled={!state}
+              >
+                <option value="">{state ? 'Todo o estado' : 'Selecione o estado primeiro'}</option>
+                {cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            ) : (
+              <select
+                value={ddd}
+                onChange={e => setDdd(e.target.value)}
+                className={selectCls}
+                disabled={!state}
+              >
+                <option value="">{state ? 'Todos os DDDs' : 'Selecione o estado primeiro'}</option>
+                {dddOptions.map(d => <option key={d} value={d}>({d})</option>)}
+              </select>
+            )}
           </div>
 
           {/* Capital Social — somente leads */}
@@ -619,6 +784,31 @@ export function CrmProspectsPage() {
           </div>
           )}
 
+          <hr className="border-slate-100 dark:border-slate-800" />
+
+          {/* Toggle: apenas com WhatsApp (display-only filter) */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setWhatsappOnly(v => !v)}
+              className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+            >
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                <MessageCircle size={12} className="text-[#25D366]" />
+                Apenas com WhatsApp
+              </span>
+              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                whatsappOnly ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+              }`}>
+                <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                  whatsappOnly ? 'translate-x-[14px]' : 'translate-x-[2px]'
+                }`} />
+              </span>
+            </button>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2 mt-1 leading-snug">
+              Esconde leads que só têm fixo. Após "Enriquecer com Google", muitos fixos viram celulares.
+            </p>
+          </div>
 
         </div>
 
@@ -690,11 +880,17 @@ export function CrmProspectsPage() {
               ) : (
                 <>
                   <span>
-                    {prospects.length} {isPartners ? 'parceiro' : 'lead'}{prospects.length !== 1 ? 's' : ''} baixado{prospects.length !== 1 ? 's' : ''}
+                    {visibleProspects.length} {isPartners ? 'parceiro' : 'lead'}{visibleProspects.length !== 1 ? 's' : ''}
+                    {whatsappOnly ? ' com WhatsApp' : ' baixado' + (visibleProspects.length !== 1 ? 's' : '')}
                   </span>
+                  {hiddenByFilter > 0 && whatsappOnly && (
+                    <span className="text-[11px] font-normal text-amber-600 dark:text-amber-400" title="Esses leads tem so fixo. Desmarque 'Apenas com WhatsApp' no sidebar pra ver, ou clique em 'Enriquecer com Google' pra tentar achar celular.">
+                      ({hiddenByFilter} fixo{hiddenByFilter > 1 ? 's' : ''} ocultos)
+                    </span>
+                  )}
                   {total > prospects.length && (
                     <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">
-                      de {total.toLocaleString('pt-BR')} candidatos na base
+                      · {total.toLocaleString('pt-BR')} na base
                     </span>
                   )}
                 </>
@@ -712,6 +908,21 @@ export function CrmProspectsPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {activeTab === 'list' && generated && prospects.length > 0 && (
+              <button
+                onClick={enrichAll}
+                disabled={enrichingAll || enrichedCount === prospects.length}
+                title="Busca telefone e site atualizados via Google Places (cache local 30 dias)"
+                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shadow-sm transition-all"
+              >
+                {enrichingAll ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {enrichingAll
+                  ? `Enriquecendo... (${enrichedCount}/${prospects.length})`
+                  : enrichedCount === prospects.length && prospects.length > 0
+                    ? 'Tudo enriquecido'
+                    : `Enriquecer com Google${enrichedCount > 0 ? ` (${enrichedCount}/${prospects.length})` : ''}`}
+              </button>
+            )}
             {activeTab === 'list' && selectedIds.size > 0 && (
               <button
                 onClick={() => setPipelineModalOpen(true)}
@@ -795,16 +1006,25 @@ export function CrmProspectsPage() {
                       ))}
                     </tr>
                   ))
-                ) : prospects.length === 0 ? (
+                ) : visibleProspects.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-4 py-16 text-center">
                       <Crosshair size={36} className="text-slate-200 dark:text-slate-700 mx-auto mb-3" />
-                      <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum {isPartners ? 'parceiro' : 'lead'} encontrado</p>
-                      <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Ajuste os filtros ao lado e tente novamente</p>
+                      {prospects.length === 0 ? (
+                        <>
+                          <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum {isPartners ? 'parceiro' : 'lead'} encontrado</p>
+                          <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Ajuste os filtros ao lado e tente novamente</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm text-slate-400 dark:text-slate-500">Todos os {prospects.length} resultados são fixo (sem WhatsApp)</p>
+                          <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Desmarque "Apenas com WhatsApp" no sidebar ou clique em "Enriquecer com Google" pra tentar achar celular</p>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ) : (
-                  prospects.map(p => {
+                  visibleProspects.map(p => {
                     const isSelected = selectedIds.has(p.id);
                     return (
                       <tr
@@ -864,8 +1084,35 @@ export function CrmProspectsPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
-                          {p.phone ? (() => {
-                            const type = detectPhoneType(p.phone);
+                          {(() => {
+                            const enr = enrichments.get(p.id);
+                            const isLoading = enr === 'loading';
+                            const isMiss = enr === 'miss';
+                            const enriched = enr && enr !== 'loading' && enr !== 'miss' ? enr : null;
+
+                            // Escolhe o melhor telefone: prefere celular do Google, senao
+                            // celular da Receita, senao qualquer um disponivel
+                            const googlePhone = enriched?.phone || '';
+                            const googleIsMobile = googlePhone && detectPhoneType(googlePhone) === 'mobile';
+                            const cdPhone = p.phone || '';
+                            const cdIsMobile = cdPhone && detectPhoneType(cdPhone) === 'mobile';
+
+                            const phoneToShow = googleIsMobile ? googlePhone
+                              : cdIsMobile ? cdPhone
+                              : googlePhone || cdPhone;
+                            const phoneSource = phoneToShow === googlePhone && googlePhone ? 'google' : 'receita';
+
+                            if (!phoneToShow) {
+                              return (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-slate-300 dark:text-slate-600">—</span>
+                                  {isLoading && <Loader2 size={11} className="animate-spin text-blue-500" />}
+                                  {isMiss && <span className="text-[9px] text-slate-400" title="Google nao encontrou esta empresa">no Google?</span>}
+                                </div>
+                              );
+                            }
+
+                            const type = detectPhoneType(phoneToShow);
                             const Icon = type === 'mobile' ? Smartphone : Phone;
                             const colorClass = type === 'mobile'
                               ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300'
@@ -877,20 +1124,21 @@ export function CrmProspectsPage() {
                               : type === 'landline'
                                 ? 'Fixo — sem WhatsApp'
                                 : undefined;
+
                             return (
                               <div>
                                 <div className="flex items-center gap-1.5 whitespace-nowrap">
                                   <a
-                                    href={`tel:${p.phone}`}
+                                    href={`tel:${phoneToShow}`}
                                     title={titleText}
                                     className={`flex items-center gap-1 text-xs ${colorClass}`}
                                   >
                                     <Icon size={11} className="shrink-0" />
-                                    {formatPhone(p.phone)}
+                                    {formatPhone(phoneToShow)}
                                   </a>
-                                  {type === 'mobile' && whatsappUrl(p.phone) && (
+                                  {type === 'mobile' && whatsappUrl(phoneToShow) && (
                                     <a
-                                      href={whatsappUrl(p.phone)}
+                                      href={whatsappUrl(phoneToShow)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       title="Abrir no WhatsApp"
@@ -900,6 +1148,15 @@ export function CrmProspectsPage() {
                                       <MessageCircle size={12} className="shrink-0" />
                                     </a>
                                   )}
+                                  {phoneSource === 'google' && (
+                                    <span
+                                      className="inline-flex items-center text-[8px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                                      title="Telefone via Google Places — provavelmente mais atualizado"
+                                    >
+                                      GOOGLE
+                                    </span>
+                                  )}
+                                  {isLoading && <Loader2 size={10} className="animate-spin text-blue-500" />}
                                 </div>
                                 {p.phones?.length > 1 && (
                                   <div
@@ -910,12 +1167,38 @@ export function CrmProspectsPage() {
                                       return `${formatPhone(t)} [${tag}]`;
                                     }).join('\n')}
                                   >
-                                    +{p.phones.length - 1}
+                                    +{p.phones.length - 1} {phoneSource === 'google' ? '(Receita)' : ''}
                                   </div>
+                                )}
+                                {enriched?.website && (
+                                  <a
+                                    href={enriched.website}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={enriched.website}
+                                    className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline mt-0.5 truncate max-w-[140px]"
+                                  >
+                                    <ExternalLink size={9} className="shrink-0" />
+                                    {enriched.website.replace(/^https?:\/\//, '').replace(/\/$/, '').slice(0, 24)}
+                                  </a>
+                                )}
+                                {enriched?.instagram && (
+                                  <a
+                                    href={enriched.instagram}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={enriched.instagram}
+                                    className="flex items-center gap-1 text-[10px] text-pink-600 dark:text-pink-400 hover:underline mt-0.5 truncate max-w-[140px]"
+                                  >
+                                    <Instagram size={9} className="shrink-0" />
+                                    {enriched.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\//, '@').replace(/[/?].*$/, '').slice(0, 24)}
+                                  </a>
                                 )}
                               </div>
                             );
-                          })() : <span className="text-slate-300 dark:text-slate-600">—</span>}
+                          })()}
                         </td>
                         <td className="px-3 py-2.5">
                           {p.email ? (
@@ -982,29 +1265,20 @@ export function CrmProspectsPage() {
           </div>
         )}
 
-        {/* Paginacao (somente aba Gerar Lista) */}
-        {activeTab === 'list' && generated && totalPages > 1 && (
+        {/* Carregar mais — modelo infinite-scroll-on-click */}
+        {activeTab === 'list' && generated && hasMore && (
           <div className="flex items-center justify-between px-5 py-2.5 border-t border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-900 shrink-0">
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              {((page - 1) * perPage) + 1}–{Math.min(page * perPage, total)} de {total}
+              {accumulated.length} carregados {whatsappOnly && hiddenByFilter > 0 && `(${visibleProspects.length} visíveis após filtro)`} de ~{total.toLocaleString('pt-BR')}
             </span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage(p => p - 1)}
-                disabled={page <= 1}
-                className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-xs text-slate-600 dark:text-slate-400 px-2">{page} / {totalPages}</span>
-              <button
-                onClick={() => setPage(p => p + 1)}
-                disabled={page >= totalPages}
-                className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={isFetching || autoLoading}
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isFetching || autoLoading ? <Loader2 size={12} className="animate-spin" /> : <ChevronDown size={12} />}
+              {isFetching || autoLoading ? 'Carregando...' : `Carregar mais ${perPage}`}
+            </button>
           </div>
         )}
         </>
@@ -1022,7 +1296,9 @@ export function CrmProspectsPage() {
         open={pipelineModalOpen}
         onClose={() => setPipelineModalOpen(false)}
         selectedCount={selectedIds.size}
-        selectedProspects={prospects.filter(p => selectedIds.has(p.id))}
+        selectedProspects={prospects
+          .filter(p => selectedIds.has(p.id))
+          .map(p => ({ ...p, enriched: enrichments.get(p.id) }))}
         onSuccess={() => setSelectedIds(new Set())}
         prospectMode={prospectMode}
       />

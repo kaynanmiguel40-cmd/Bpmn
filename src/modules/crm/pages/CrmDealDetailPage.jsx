@@ -7,7 +7,7 @@ import { useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Pencil, XCircle, Plus,
-  Mail, Phone, Building2, CalendarCheck, Target,
+  Mail, Phone, Smartphone, MessageCircle, Building2, CalendarCheck, Target,
   CheckSquare, Video, Coffee, MapPin, StickyNote,
   Clock, DollarSign, TrendingUp, GitBranch, User,
 } from 'lucide-react';
@@ -22,6 +22,31 @@ import { LostReasonModal } from '../components/LostReasonModal';
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+
+function formatPhone(val) {
+  if (!val) return '';
+  const clean = val.replace(/\D/g, '');
+  if (clean.length === 11) return clean.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
+  if (clean.length === 10) return clean.replace(/^(\d{2})(\d{4})(\d{4})$/, '($1) $2-$3');
+  return val;
+}
+
+function detectPhoneType(val) {
+  if (!val) return null;
+  const clean = val.replace(/\D/g, '');
+  const local = clean.length >= 12 && clean.startsWith('55') ? clean.slice(2) : clean;
+  if (local.length === 11 && local[2] === '9') return 'mobile';
+  if (local.length === 10) return 'landline';
+  return null;
+}
+
+function whatsappUrl(val) {
+  if (!val) return null;
+  const clean = val.replace(/\D/g, '');
+  if (clean.length < 10) return null;
+  const withCountry = clean.startsWith('55') && clean.length >= 12 ? clean : `55${clean}`;
+  return `https://wa.me/${withCountry}`;
+}
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '—';
@@ -237,28 +262,88 @@ export function CrmDealDetailPage() {
           {/* Separador */}
           <div className="border-t border-slate-200 dark:border-slate-700/50" />
 
-          {/* Contato */}
-          {deal.contact && (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Contato</div>
-              <div className="flex items-center gap-2.5 mb-2">
-                <CrmAvatar name={deal.contact.name} size="sm" color={deal.contact.avatarColor} />
-                <button onClick={() => navigate(`/crm/contacts/${deal.contact.id}`)} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
-                  {deal.contact.name}
-                </button>
+          {/* Contato — mostra dados do contato joineado OU dos campos denormalizados do deal */}
+          {(() => {
+            const ctName  = deal.contact?.name  || deal.contactName  || '';
+            const ctEmail = deal.contact?.email || deal.contactEmail || '';
+            const ctPhone = deal.contact?.phone || deal.contactPhone || '';
+            if (!ctName && !ctEmail && !ctPhone) return null;
+
+            const phoneType = detectPhoneType(ctPhone);
+            const PhoneIcon = phoneType === 'mobile' ? Smartphone : Phone;
+            const phoneTitle = phoneType === 'mobile'
+              ? 'Celular — pode ter WhatsApp'
+              : phoneType === 'landline'
+                ? 'Fixo — sem WhatsApp'
+                : '';
+
+            return (
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Contato</div>
+                {ctName && (
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <CrmAvatar name={ctName} size="sm" color={deal.contact?.avatarColor} />
+                    {deal.contact?.id ? (
+                      <button onClick={() => navigate(`/crm/contacts/${deal.contact.id}`)} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                        {ctName}
+                      </button>
+                    ) : (
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{ctName}</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Atalhos de contato */}
+                {(ctPhone || ctEmail) && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {ctPhone && (
+                      <a
+                        href={`tel:${ctPhone}`}
+                        title={`Ligar ${phoneTitle ? `· ${phoneTitle}` : ''}`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          phoneType === 'mobile'
+                            ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <PhoneIcon size={12} />
+                        {formatPhone(ctPhone)}
+                      </a>
+                    )}
+                    {ctPhone && phoneType === 'mobile' && whatsappUrl(ctPhone) && (
+                      <a
+                        href={whatsappUrl(ctPhone)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Abrir conversa no WhatsApp"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-[#25D366]/10 text-[#1faf52] hover:bg-[#25D366]/20 transition-colors"
+                      >
+                        <MessageCircle size={12} />
+                        WhatsApp
+                      </a>
+                    )}
+                    {ctEmail && (
+                      <a
+                        href={`mailto:${ctEmail}`}
+                        title={`Enviar e-mail · ${ctEmail}`}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                      >
+                        <Mail size={12} />
+                        E-mail
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Linhas auxiliares (texto puro, ja vai ter os botoes em cima) */}
+                {ctEmail && (
+                  <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 truncate" title={ctEmail}>
+                    {ctEmail}
+                  </div>
+                )}
               </div>
-              {deal.contact.email && (
-                <a href={`mailto:${deal.contact.email}`} className="flex items-center gap-2 text-xs text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 mb-1 transition-colors">
-                  <Mail size={12} /> {deal.contact.email}
-                </a>
-              )}
-              {deal.contact.phone && (
-                <a href={`tel:${deal.contact.phone}`} className="flex items-center gap-2 text-xs text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                  <Phone size={12} /> {deal.contact.phone}
-                </a>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {/* Empresa */}
           {deal.company && (
