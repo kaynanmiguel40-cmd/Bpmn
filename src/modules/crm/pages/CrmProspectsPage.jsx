@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { CITIES_BY_STATE } from '../data/brazilCities';
 import { getDddsByState } from '../data/brazilDdds';
+import { GOOGLE_SEGMENT_GROUPS } from '../data/googleSegments';
 import { CrmBadge, CrmConfirmDialog, CrmModal } from '../components/ui';
 import ProspectingDashboard from '../components/po/ProspectingDashboard';
 import {
@@ -27,6 +28,8 @@ import {
   useEnsurePartnersPipeline,
 } from '../hooks/useCrmQueries';
 import { enrichProspectWithGoogle } from '../../../lib/googlePlacesService';
+import { lookupCnpjByName } from '../services/crmProspectsService';
+import { getUsage, setCdBalance } from '../../../lib/usageTracker';
 
 // ==================== CONSTANTES ====================
 
@@ -370,6 +373,14 @@ export function CrmProspectsPage() {
   const [prospectMode, setProspectMode] = useState('leads');
   const isPartners = prospectMode === 'partners';
 
+  // Fonte de busca: Google Places (default — barato, ja verificado) vs Casa
+  // dos Dados (mais dados estruturais, mas custa por CNPJ retornado).
+  const [searchSource, setSearchSource] = useState('google');
+  const isGoogleSearch = searchSource === 'google';
+
+  // Token de paginacao do Google (substitui `page` quando em modo Google)
+  const [googlePageToken, setGooglePageToken] = useState('');
+
   // Filtros
   const [segment, setSegment] = useState('');
   const [size, setSize] = useState('');
@@ -406,27 +417,50 @@ export function CrmProspectsPage() {
   const [enrichments, setEnrichments] = useState(() => new Map());
   const [enrichingAll, setEnrichingAll] = useState(false);
 
+  // Enriquecimento Casa dos Dados em modo Google-first
+  // Map<prospectId, cdData|'miss'|'loading'>. Traz dono (sócio) + CNPJ + porte.
+  const [cdEnrichments, setCdEnrichments] = useState(() => new Map());
+
   // Filtro display-only: mostrar apenas leads com celular (Casa dos Dados ou Google).
   // Default ON — Google enriquecimento roda em background e os leads cujo
   // numero passa a ser celular (do Google Meu Negocio) vao surgindo na lista.
   const [whatsappOnly, setWhatsappOnly] = useState(true);
 
-  const filters = generated ? {
-    page,
-    perPage,
-    search: appliedFilters.search || undefined,
-    segment: appliedFilters.segment || undefined,
-    size: appliedFilters.size || undefined,
-    state: appliedFilters.state || undefined,
-    // Mutuamente exclusivos: cidade OU DDD (escolha do usuario via filterMode)
-    city: appliedFilters.filterMode === 'city' ? (appliedFilters.city || undefined) : undefined,
-    ddd:  appliedFilters.filterMode === 'ddd'  ? (appliedFilters.ddd  || undefined) : undefined,
-    revenueRange: appliedFilters.revenueRange || undefined,
-    clientRange: appliedFilters.clientRange || undefined,
-    prospectType: isPartners ? 'partner' : undefined,
-    sortBy: sortConfig.key === 'companyName' ? 'company_name' : sortConfig.key === 'contactName' ? 'contact_name' : sortConfig.key,
-    sortOrder: sortConfig.direction,
-  } : null;
+  // Tracker de uso de API (Google + Casa Dados) com auto-refresh
+  const [usage, setUsage] = useState(() => getUsage());
+  useEffect(() => {
+    const onUpdate = () => setUsage(getUsage());
+    window.addEventListener('usage-tracker-update', onUpdate);
+    return () => window.removeEventListener('usage-tracker-update', onUpdate);
+  }, []);
+
+  const filters = generated ? (
+    isGoogleSearch
+      ? {
+          // Modo Google-first: filtros simplificados, paginacao por pageToken
+          source: 'google',
+          segment: appliedFilters.segment || undefined,
+          city: appliedFilters.city || undefined,
+          state: appliedFilters.state || undefined,
+          pageToken: googlePageToken || undefined,
+        }
+      : {
+          page,
+          perPage,
+          search: appliedFilters.search || undefined,
+          segment: appliedFilters.segment || undefined,
+          size: appliedFilters.size || undefined,
+          state: appliedFilters.state || undefined,
+          // Mutuamente exclusivos: cidade OU DDD (escolha do usuario via filterMode)
+          city: appliedFilters.filterMode === 'city' ? (appliedFilters.city || undefined) : undefined,
+          ddd:  appliedFilters.filterMode === 'ddd'  ? (appliedFilters.ddd  || undefined) : undefined,
+          revenueRange: appliedFilters.revenueRange || undefined,
+          clientRange: appliedFilters.clientRange || undefined,
+          prospectType: isPartners ? 'partner' : undefined,
+          sortBy: sortConfig.key === 'companyName' ? 'company_name' : sortConfig.key === 'contactName' ? 'contact_name' : sortConfig.key,
+          sortOrder: sortConfig.direction,
+        }
+  ) : null;
 
   const { data, isLoading, isFetching } = useCrmProspects(filters);
   const deleteMutation = useDeleteCrmProspect();
@@ -439,18 +473,19 @@ export function CrmProspectsPage() {
   const MAX_AUTO_PAGES = 3;
   const TARGET_VISIBLE = 15;
 
-  // Reset do acumulado quando filtros aplicados mudam
+  // Reset do acumulado quando filtros aplicados ou fonte mudam
   useEffect(() => {
     setAccumulated([]);
     setAutoLoading(false);
-  }, [appliedFilters, isPartners]);
+    setGooglePageToken('');
+  }, [appliedFilters, isPartners, searchSource]);
 
-  // Append (dedup por CNPJ) sempre que vier nova page
+  // Append sempre que vier nova page. Dedup por CNPJ (CD) ou googlePlaceId (Google).
   useEffect(() => {
     if (!data?.data?.length) return;
     setAccumulated(prev => {
-      const seen = new Set(prev.map(p => p.cnpj).filter(Boolean));
-      const fresh = data.data.filter(p => p.cnpj && !seen.has(p.cnpj));
+      const seenIds = new Set(prev.map(p => p.id).filter(Boolean));
+      const fresh = data.data.filter(p => p.id && !seenIds.has(p.id));
       return fresh.length > 0 ? [...prev, ...fresh] : prev;
     });
     setAutoLoading(false);
@@ -459,7 +494,8 @@ export function CrmProspectsPage() {
   const prospects = generated ? accumulated : [];
   const total = generated ? (data?.count || 0) : 0;
   const totalPages = Math.ceil(total / perPage);
-  const hasMore = page < totalPages;
+  // Em modo Google: continua tendo mais se a ultima resposta veio com nextPageToken
+  const hasMore = isGoogleSearch ? !!data?.nextPageToken : page < totalPages;
 
   const activeCount = [
     segment,
@@ -485,17 +521,67 @@ export function CrmProspectsPage() {
 
   // Reset selecao + enrichments apenas quando filtros mudam (nova busca);
   // NAO em cada page (porque acumulamos prospects e enrichments entre pages)
-  useEffect(() => { setSelectedIds(new Set()); setEnrichments(new Map()); }, [appliedFilters, isPartners]);
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setEnrichments(new Map());
+    setCdEnrichments(new Map());
+  }, [appliedFilters, isPartners]);
 
   // Auto-enriquecimento: a cada vez que `accumulated` cresce (lista nova ou
   // page extra carregada), dispara Google em background. Cache de 30 dias por
   // CNPJ no localStorage evita custo repetido para CNPJs ja vistos.
   useEffect(() => {
     if (!generated || accumulated.length === 0) return;
+    if (isGoogleSearch) return; // em modo Google-first o lead ja vem com phone, sem enrichment
     const t = setTimeout(() => { enrichAll(); }, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accumulated.length]);
+  }, [accumulated.length, isGoogleSearch]);
+
+  // Auto-enriquecimento Casa dos Dados em modo Google-first
+  // Pra cada lead Google, busca CD por nome+UF e traz nome do socio + CNPJ + porte.
+  // Vendedor consegue ligar pedindo "falar com Sr. Joao" em vez de "responsavel".
+  useEffect(() => {
+    if (!generated || !isGoogleSearch || accumulated.length === 0) return;
+    let cancelled = false;
+
+    const run = async () => {
+      const queue = accumulated.filter(p => !cdEnrichments.has(p.id) && p.companyName);
+      if (queue.length === 0) return;
+
+      // Concorrencia 5 paralela — nao bombardeia CD nem trava UI
+      const CONC = 5;
+      for (let i = 0; i < queue.length; i += CONC) {
+        if (cancelled) return;
+        const batch = queue.slice(i, i + CONC);
+
+        // Marca como loading antes de disparar
+        setCdEnrichments(prev => {
+          const next = new Map(prev);
+          batch.forEach(p => next.set(p.id, 'loading'));
+          return next;
+        });
+
+        const results = await Promise.allSettled(
+          batch.map(p => lookupCnpjByName(p.companyName, p.state, p.city))
+        );
+
+        if (cancelled) return;
+        setCdEnrichments(prev => {
+          const next = new Map(prev);
+          batch.forEach((p, idx) => {
+            const r = results[idx];
+            next.set(p.id, r.status === 'fulfilled' && r.value ? r.value : 'miss');
+          });
+          return next;
+        });
+      }
+    };
+
+    const timer = setTimeout(run, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accumulated.length, isGoogleSearch]);
 
   const enrichOne = useCallback(async (prospect) => {
     if (!prospect?.id) return;
@@ -600,17 +686,28 @@ export function CrmProspectsPage() {
     setDeleteTarget(null);
   };
 
+  // Helper unificado pra avancar pagina (CD: page++; Google: substitui pageToken)
+  const loadNext = useCallback(() => {
+    if (isGoogleSearch) {
+      const token = data?.nextPageToken;
+      if (token) setGooglePageToken(token);
+    } else {
+      setPage(p => p + 1);
+    }
+  }, [isGoogleSearch, data]);
+
   // Auto-load-more: quando filtro WhatsApp deixa visivel < target, busca proxima
-  // page automaticamente ate atingir target ou cap de seguranca (3 pages = 90 leads).
+  // page automaticamente ate cap de seguranca. Em modo Google, hit rate ja eh
+  // alto entao auto-load nao costuma disparar.
   useEffect(() => {
     if (!generated || !whatsappOnly) return;
     if (autoLoading || isFetching || enrichingAll) return;
     if (visibleProspects.length >= TARGET_VISIBLE) return;
     if (!hasMore) return;
-    if (page >= MAX_AUTO_PAGES) return;
+    if (!isGoogleSearch && page >= MAX_AUTO_PAGES) return;
     setAutoLoading(true);
-    setPage(p => p + 1);
-  }, [visibleProspects.length, whatsappOnly, autoLoading, isFetching, enrichingAll, hasMore, page, generated]);
+    loadNext();
+  }, [visibleProspects.length, whatsappOnly, autoLoading, isFetching, enrichingAll, hasMore, page, generated, isGoogleSearch, loadNext]);
 
   const selectCls = "w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 focus:outline-none transition-all";
 
@@ -656,26 +753,65 @@ export function CrmProspectsPage() {
           </div>
         </div>
 
+        {/* Toggle Fonte: Google (default) / Casa dos Dados */}
+        <div className="px-4 pt-2 pb-1">
+          <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
+            <button
+              onClick={() => setSearchSource('google')}
+              title="Busca direta no Google Meu Negócio — barato, telefone verificado"
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
+                isGoogleSearch
+                  ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+              }`}
+            >
+              <Globe size={12} />
+              Google
+            </button>
+            <button
+              onClick={() => setSearchSource('cd')}
+              title="Casa dos Dados — base completa da Receita, paga por CNPJ"
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
+                !isGoogleSearch
+                  ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+              }`}
+            >
+              <Briefcase size={12} />
+              Casa Dados
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 px-1 leading-snug">
+            {isGoogleSearch
+              ? 'Telefone do Google Meu Negócio (atual). CNPJ resolvido só no envio.'
+              : 'Base Receita Federal completa. CNPJ + dados estruturais (porte, capital).'}
+          </p>
+        </div>
+
         {/* Filtros empilhados */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
-          {/* Busca */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              <Search size={12} />
-              Buscar
-            </label>
-            <input
-              type="text"
-              placeholder="Empresa, contato, telefone..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleGenerate(); }}
-              className={selectCls}
-            />
-          </div>
+          {/* Busca — somente CD */}
+          {!isGoogleSearch && (
+            <>
+              <div>
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                  <Search size={12} />
+                  Buscar
+                </label>
+                <input
+                  type="text"
+                  placeholder="Empresa, contato, telefone..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleGenerate(); }}
+                  className={selectCls}
+                />
+              </div>
 
-          <hr className="border-slate-100 dark:border-slate-800" />
+              <hr className="border-slate-100 dark:border-slate-800" />
+            </>
+          )}
 
           {/* Segmento / Categoria */}
           <div>
@@ -683,25 +819,40 @@ export function CrmProspectsPage() {
               {isPartners ? <Handshake size={12} /> : <Briefcase size={12} />}
               {isPartners ? 'Categoria' : 'Segmento'}
             </label>
-            <select value={segment} onChange={e => setSegment(e.target.value)} className={selectCls}>
-              <option value="">{isPartners ? 'Todas as categorias' : 'Todos os segmentos'}</option>
-              {(isPartners ? PARTNER_SEGMENT_OPTIONS : SEGMENT_OPTIONS).map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            {isGoogleSearch ? (
+              <select value={segment} onChange={e => setSegment(e.target.value)} className={selectCls} required>
+                <option value="">Selecione um segmento...</option>
+                {GOOGLE_SEGMENT_GROUPS.map(group => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.options.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            ) : (
+              <select value={segment} onChange={e => setSegment(e.target.value)} className={selectCls}>
+                <option value="">{isPartners ? 'Todas as categorias' : 'Todos os segmentos'}</option>
+                {(isPartners ? PARTNER_SEGMENT_OPTIONS : SEGMENT_OPTIONS).map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            )}
           </div>
 
-          {/* Porte */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              <Building2 size={12} />
-              Porte da Empresa
-            </label>
-            <select value={size} onChange={e => setSize(e.target.value)} className={selectCls}>
-              <option value="">Todos os portes</option>
-              {SIZE_OPTIONS.map(s => <option key={s} value={s}>{SIZE_MAP[s]}</option>)}
-            </select>
-          </div>
+          {/* Porte — somente CD */}
+          {!isGoogleSearch && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                <Building2 size={12} />
+                Porte da Empresa
+              </label>
+              <select value={size} onChange={e => setSize(e.target.value)} className={selectCls}>
+                <option value="">Todos os portes</option>
+                {SIZE_OPTIONS.map(s => <option key={s} value={s}>{SIZE_MAP[s]}</option>)}
+              </select>
+            </div>
+          )}
 
           {/* Estado (UF) */}
           <div>
@@ -715,39 +866,13 @@ export function CrmProspectsPage() {
             </select>
           </div>
 
-          {/* Refinar por: Cidade ou DDD (mutuamente exclusivos) */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {filterMode === 'ddd' ? <Hash size={12} /> : <MapPin size={12} />}
-                {filterMode === 'ddd' ? 'DDD' : 'Cidade'}
+          {/* Cidade (Google) ou Cidade/DDD toggle (CD) */}
+          {isGoogleSearch ? (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                <MapPin size={12} />
+                Cidade
               </label>
-              <div className="flex rounded-md bg-slate-100 dark:bg-slate-800 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => { setFilterMode('city'); setDdd(''); }}
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
-                    filterMode === 'city'
-                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
-                  }`}
-                >
-                  Cidade
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFilterMode('ddd'); setCity(''); }}
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
-                    filterMode === 'ddd'
-                      ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
-                  }`}
-                >
-                  DDD
-                </button>
-              </div>
-            </div>
-            {filterMode === 'city' ? (
               <select
                 value={city}
                 onChange={e => setCity(e.target.value)}
@@ -757,31 +882,75 @@ export function CrmProspectsPage() {
                 <option value="">{state ? 'Todo o estado' : 'Selecione o estado primeiro'}</option>
                 {cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-            ) : (
-              <select
-                value={ddd}
-                onChange={e => setDdd(e.target.value)}
-                className={selectCls}
-                disabled={!state}
-              >
-                <option value="">{state ? 'Todos os DDDs' : 'Selecione o estado primeiro'}</option>
-                {dddOptions.map(d => <option key={d} value={d}>({d})</option>)}
-              </select>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {filterMode === 'ddd' ? <Hash size={12} /> : <MapPin size={12} />}
+                  {filterMode === 'ddd' ? 'DDD' : 'Cidade'}
+                </label>
+                <div className="flex rounded-md bg-slate-100 dark:bg-slate-800 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => { setFilterMode('city'); setDdd(''); }}
+                    className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                      filterMode === 'city'
+                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                    }`}
+                  >
+                    Cidade
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setFilterMode('ddd'); setCity(''); }}
+                    className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                      filterMode === 'ddd'
+                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                    }`}
+                  >
+                    DDD
+                  </button>
+                </div>
+              </div>
+              {filterMode === 'city' ? (
+                <select
+                  value={city}
+                  onChange={e => setCity(e.target.value)}
+                  className={selectCls}
+                  disabled={!state}
+                >
+                  <option value="">{state ? 'Todo o estado' : 'Selecione o estado primeiro'}</option>
+                  {cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              ) : (
+                <select
+                  value={ddd}
+                  onChange={e => setDdd(e.target.value)}
+                  className={selectCls}
+                  disabled={!state}
+                >
+                  <option value="">{state ? 'Todos os DDDs' : 'Selecione o estado primeiro'}</option>
+                  {dddOptions.map(d => <option key={d} value={d}>({d})</option>)}
+                </select>
+              )}
+            </div>
+          )}
 
-          {/* Capital Social — somente leads */}
-          {!isPartners && (
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              <DollarSign size={12} />
-              Capital Social
-            </label>
-            <select value={revenueRange} onChange={e => setRevenueRange(e.target.value)} className={selectCls}>
-              <option value="">Todas as faixas</option>
-              {REVENUE_RANGES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
-            </select>
-          </div>
+          {/* Capital Social — somente CD + leads */}
+          {!isGoogleSearch && !isPartners && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                <DollarSign size={12} />
+                Capital Social
+              </label>
+              <select value={revenueRange} onChange={e => setRevenueRange(e.target.value)} className={selectCls}>
+                <option value="">Todas as faixas</option>
+                {REVENUE_RANGES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+              </select>
+            </div>
           )}
 
           <hr className="border-slate-100 dark:border-slate-800" />
@@ -870,6 +1039,59 @@ export function CrmProspectsPage() {
         ) : (
         <>
         {/* Header da area de resultados */}
+        {/* Barra de uso/custo de APIs (Google + Casa Dados) */}
+        <div className="flex items-center gap-3 px-5 py-1.5 text-[11px] border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 shrink-0">
+          <span
+            className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400"
+            title={`Mês ${usage.month}\nText Search (New) Pro Tier — cota free ~${usage.google.freeQuota.toLocaleString('pt-BR')} chamadas/mês\nUsadas: ${usage.google.calls}\nApós cota: R$ 0,16/chamada (~$0.032 USD)`}
+          >
+            <Globe size={11} className="text-blue-500" />
+            <span className="font-medium">Google:</span>
+            <span className="text-slate-700 dark:text-slate-200">{usage.google.calls} / {usage.google.freeQuota.toLocaleString('pt-BR')}</span>
+            <span className="text-slate-400">free</span>
+            {usage.google.billedCalls > 0 && (
+              <span className="text-amber-600 dark:text-amber-400">+ R$ {usage.google.costBrl.toFixed(2)}</span>
+            )}
+          </span>
+          <span className="text-slate-300 dark:text-slate-700">·</span>
+          <span
+            className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400"
+            title={`Casa dos Dados — R$0,006 por lookup\nTotal mês: ${usage.cd.total} (${usage.cd.searches} buscas, ${usage.cd.lookups} lookups individuais)\nCusto estimado: R$${usage.cd.costBrl.toFixed(2)}`}
+          >
+            <Briefcase size={11} className="text-amber-500" />
+            <span className="font-medium">Casa Dados:</span>
+            <span className="text-slate-700 dark:text-slate-200">R$ {usage.cd.costBrl.toFixed(2)}</span>
+            <span className="text-slate-400">· {usage.cd.balanceRemaining.toLocaleString('pt-BR')} de {usage.cd.balanceTotal.toLocaleString('pt-BR')} créditos</span>
+            <button
+              type="button"
+              onClick={() => {
+                const v = prompt('Saldo atual de créditos Casa dos Dados:', String(usage.cd.balanceTotal));
+                if (v !== null) {
+                  setCdBalance(v);
+                  setUsage(getUsage());
+                }
+              }}
+              className="ml-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              title="Ajustar saldo (após renovar plano ou comprar créditos)"
+            >
+              <Pencil size={9} />
+            </button>
+          </span>
+          {/* Barra de progresso pequena pra Casa Dados */}
+          <div className="flex-1 flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden" title={`Casa Dados: ${usage.cd.pctUsed.toFixed(1)}% usado`}>
+              <div
+                className={`h-full transition-all ${
+                  usage.cd.pctUsed > 90 ? 'bg-rose-500' :
+                  usage.cd.pctUsed > 70 ? 'bg-amber-500' :
+                  'bg-emerald-500'
+                }`}
+                style={{ width: `${usage.cd.pctUsed}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-900 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-baseline gap-2 flex-wrap">
@@ -1026,6 +1248,22 @@ export function CrmProspectsPage() {
                 ) : (
                   visibleProspects.map(p => {
                     const isSelected = selectedIds.has(p.id);
+                    // Em modo Google-first, mescla com dados CD enriquecidos (sócio, CNPJ, porte)
+                    const cdEnr = cdEnrichments.get(p.id);
+                    const cdLoading = cdEnr === 'loading';
+                    const cdData = cdEnr && cdEnr !== 'loading' && cdEnr !== 'miss' ? cdEnr : null;
+                    const m = {
+                      cnpj:             p.cnpj             || cdData?.cnpj             || '',
+                      contactName:      p.contactName      || cdData?.contactName      || '',
+                      position:         p.position         || cdData?.position         || '',
+                      size:             p.size             || cdData?.size             || '',
+                      naturezaJuridica: p.naturezaJuridica || cdData?.naturezaJuridica || '',
+                      dataAbertura:     p.dataAbertura     || cdData?.dataAbertura     || null,
+                      simplesNacional:  p.simplesNacional  || cdData?.simplesNacional  || false,
+                      socios:           p.socios?.length   ? p.socios   : (cdData?.socios   || []),
+                      atividadesSecundarias: p.atividadesSecundarias?.length ? p.atividadesSecundarias : (cdData?.atividadesSecundarias || []),
+                      cnaeDescricao:    p.cnaeDescricao    || cdData?.cnaeDescricao    || '',
+                    };
                     return (
                       <tr
                         key={p.id}
@@ -1039,46 +1277,49 @@ export function CrmProspectsPage() {
                         <td className="px-3 py-2.5">
                           <div className="font-medium text-slate-800 dark:text-slate-200" title={p.companyName}>{p.companyName}</div>
                           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1 flex-wrap">
-                            {p.cnpj && <span className="font-mono select-all">{p.cnpj}</span>}
-                            {p.naturezaJuridica && (
+                            {m.cnpj && <span className="font-mono select-all">{m.cnpj}</span>}
+                            {m.naturezaJuridica && (
                               <>
                                 <span className="opacity-50">·</span>
-                                <span title={p.naturezaJuridica}>{abbreviateNatureza(p.naturezaJuridica)}</span>
+                                <span title={m.naturezaJuridica}>{abbreviateNatureza(m.naturezaJuridica)}</span>
                               </>
                             )}
-                            {p.dataAbertura && tempoDesdeAbertura(p.dataAbertura) && (
+                            {m.dataAbertura && tempoDesdeAbertura(m.dataAbertura) && (
                               <>
                                 <span className="opacity-50">·</span>
-                                <span title={`Aberta em ${new Date(p.dataAbertura).toLocaleDateString('pt-BR')}`}>{tempoDesdeAbertura(p.dataAbertura)}</span>
+                                <span title={`Aberta em ${new Date(m.dataAbertura).toLocaleDateString('pt-BR')}`}>{tempoDesdeAbertura(m.dataAbertura)}</span>
                               </>
                             )}
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
                           {p.segment ? (
-                            <span title={p.cnaeDescricao || p.segment}>
+                            <span title={m.cnaeDescricao || p.segment}>
                               <CrmBadge variant="violet" size="sm">{p.segment}</CrmBadge>
                             </span>
                           ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
-                          {p.atividadesSecundarias?.length > 0 && (
+                          {m.atividadesSecundarias?.length > 0 && (
                             <div
                               className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
-                              title={p.atividadesSecundarias.map(a => `${a.code}${a.description ? ' — ' + a.description : ''}`).join('\n')}
+                              title={m.atividadesSecundarias.map(a => `${a.code}${a.description ? ' — ' + a.description : ''}`).join('\n')}
                             >
-                              +{p.atividadesSecundarias.length} CNAE{p.atividadesSecundarias.length > 1 ? 's' : ''}
+                              +{m.atividadesSecundarias.length} CNAE{m.atividadesSecundarias.length > 1 ? 's' : ''}
                             </div>
                           )}
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="min-w-0">
-                            <div className="text-slate-700 dark:text-slate-300 truncate max-w-[150px]" title={p.contactName}>{p.contactName || '—'}</div>
-                            {p.position && <span className="text-[11px] text-slate-400">{p.position}</span>}
-                            {p.socios?.length > 1 && (
+                            <div className="text-slate-700 dark:text-slate-300 truncate max-w-[150px] flex items-center gap-1" title={m.contactName}>
+                              <span className={m.contactName ? '' : 'text-slate-300 dark:text-slate-600'}>{m.contactName || '—'}</span>
+                              {cdLoading && <Loader2 size={10} className="animate-spin text-amber-500 shrink-0" />}
+                            </div>
+                            {m.position && <span className="text-[11px] text-slate-400">{m.position}</span>}
+                            {m.socios?.length > 1 && (
                               <div
                                 className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
-                                title={p.socios.map(s => `${s.name}${s.role ? ' (' + s.role + ')' : ''}${s.capitalPercent != null ? ' — ' + s.capitalPercent + '%' : ''}`).join('\n')}
+                                title={m.socios.map(s => `${s.name}${s.role ? ' (' + s.role + ')' : ''}${s.capitalPercent != null ? ' — ' + s.capitalPercent + '%' : ''}`).join('\n')}
                               >
-                                +{p.socios.length - 1} sócio{p.socios.length - 1 > 1 ? 's' : ''}
+                                +{m.socios.length - 1} sócio{m.socios.length - 1 > 1 ? 's' : ''}
                               </div>
                             )}
                           </div>
@@ -1219,10 +1460,10 @@ export function CrmProspectsPage() {
                           ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                         </td>
                         <td className="px-3 py-2.5">
-                          {SIZE_MAP[p.size] ? (
+                          {SIZE_MAP[m.size] ? (
                             <div className="flex items-center gap-1 flex-wrap">
-                              <span className="text-xs text-slate-600 dark:text-slate-300">{SIZE_MAP[p.size]}</span>
-                              {p.simplesNacional && (
+                              <span className="text-xs text-slate-600 dark:text-slate-300">{SIZE_MAP[m.size]}</span>
+                              {m.simplesNacional && (
                                 <span
                                   className="inline-flex items-center text-[9px] font-bold px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                                   title="Optante do Simples Nacional"
@@ -1269,15 +1510,16 @@ export function CrmProspectsPage() {
         {activeTab === 'list' && generated && hasMore && (
           <div className="flex items-center justify-between px-5 py-2.5 border-t border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-900 shrink-0">
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              {accumulated.length} carregados {whatsappOnly && hiddenByFilter > 0 && `(${visibleProspects.length} visíveis após filtro)`} de ~{total.toLocaleString('pt-BR')}
+              {accumulated.length} carregados {whatsappOnly && hiddenByFilter > 0 && `(${visibleProspects.length} visíveis após filtro)`}
+              {!isGoogleSearch && ` de ~${total.toLocaleString('pt-BR')}`}
             </span>
             <button
-              onClick={() => setPage(p => p + 1)}
+              onClick={loadNext}
               disabled={isFetching || autoLoading}
               className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isFetching || autoLoading ? <Loader2 size={12} className="animate-spin" /> : <ChevronDown size={12} />}
-              {isFetching || autoLoading ? 'Carregando...' : `Carregar mais ${perPage}`}
+              {isFetching || autoLoading ? 'Carregando...' : `Carregar mais ${isGoogleSearch ? 20 : perPage}`}
             </button>
           </div>
         )}

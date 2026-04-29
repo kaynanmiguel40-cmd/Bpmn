@@ -4,6 +4,8 @@ import { toast } from '../../../contexts/ToastContext';
 import { crmProspectSchema } from '../schemas/crmValidation';
 import { createCrmCompany } from './crmCompaniesService';
 import { createCrmDeal } from './crmDealsService';
+import { searchProspectsByGoogle, markGooglePlaceConverted } from '../../../lib/googlePlacesService';
+import { trackCdSearch, trackCdLookup } from '../../../lib/usageTracker';
 import { SEGMENT_TO_CNAE, CNAE_TO_SEGMENT, SIZE_TO_PORTE, PORTE_TO_SIZE, REVENUE_TO_CAPITAL, PARTNER_CATEGORY_TO_CNAE, CNAE_TO_PARTNER_CATEGORY, PARTNER_CATEGORY_LABELS } from '../data/cnaeMapping';
 
 // API Casa dos Dados — chave via env var (nunca hardcode!)
@@ -290,7 +292,209 @@ function transformApiCompany(c, index, { isPartner = false, partnerCategory = nu
   };
 }
 
-async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = null, dddFilter = '' } = {}) {
+// ─── Lookup CNPJ a partir de nome + UF (usado no fluxo Google-first) ─────────
+// Quando o lead foi gerado via Google Places (sem CNPJ), a gente busca CD na
+// hora do envio pra pipeline pra trazer dados estruturais.
+// Cache por (nome, uf) por 30 dias evita custo repetido na conversao.
+
+const CD_LOOKUP_PREFIX = 'cd_lookup_';
+const CD_LOOKUP_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function cdLookupCacheKey(name, uf) {
+  const norm = (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const k = `${norm}|${(uf || '').toUpperCase()}`;
+  try {
+    return CD_LOOKUP_PREFIX + btoa(unescape(encodeURIComponent(k))).replace(/[+/=]/g, '').slice(0, 80);
+  } catch {
+    return CD_LOOKUP_PREFIX + k;
+  }
+}
+
+function readCdLookupCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CD_LOOKUP_TTL_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function writeCdLookupCache(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })); } catch {}
+}
+
+/**
+ * Busca CD por razao_social/nome_fantasia + UF.
+ * Retorna o melhor match (objeto prospect-shaped) ou null se nao bateu.
+ */
+export async function lookupCnpjByName(name, uf, city = '') {
+  if (!name) return null;
+  if (!CASA_DOS_DADOS_API_KEY) return null;
+
+  const key = cdLookupCacheKey(name, uf);
+  const cached = readCdLookupCache(key);
+  if (cached !== null) return cached.miss ? null : cached;
+
+  // Trunca nome generico ("Padaria do Joao Ltda" → "Padaria do Joao")
+  const cleanName = name.replace(/\s+(ltda|me|epp|eireli|s\/?a|s\.a\.?)\s*$/i, '').trim().slice(0, 80);
+
+  try {
+    const body = {
+      situacao_cadastral: ['ATIVA'],
+      limite: 5,
+      pagina: 1,
+      mais_filtros: { somente_matriz: true },
+      busca_textual: [{
+        texto: [cleanName],
+        tipo_busca: 'radical',
+        razao_social: true,
+        nome_fantasia: true,
+      }],
+    };
+    if (uf) body.uf = [uf.toLowerCase()];
+    if (city) body.municipio = [city.toUpperCase()];
+
+    const res = await fetch(CASA_DOS_DADOS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': CASA_DOS_DADOS_API_KEY },
+      body: JSON.stringify(body),
+    });
+
+    trackCdLookup();
+
+    if (!res.ok) {
+      console.warn('[lookupCnpj] HTTP', res.status);
+      return null;
+    }
+
+    const json = await res.json();
+    const candidates = json.cnpjs || [];
+    if (candidates.length === 0) {
+      writeCdLookupCache(key, { miss: true });
+      return null;
+    }
+
+    // Pega primeiro match (CD ja ranqueia por relevancia).
+    // Idealmente cruzariamos por endereco mas nem todos retornam de forma confiavel.
+    const result = transformApiCompany(candidates[0], 0);
+    writeCdLookupCache(key, result);
+    return result;
+  } catch (err) {
+    console.warn('[lookupCnpj] erro:', err);
+    return null;
+  }
+}
+
+// ─── Cache localStorage da Casa dos Dados ─────────────────────────────────────
+// Mesma busca repetida em ate 7 dias → vem do cache, sem queimar credito.
+
+const CD_CACHE_PREFIX = 'cd_search_';
+const CD_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function cdCacheKey(filters, isPartner) {
+  // Normaliza pra produzir chave estavel: ordena propriedades e descarta vazios
+  const norm = {
+    isPartner: !!isPartner,
+    segment:      filters.segment      || '',
+    size:         filters.size         || '',
+    state:        filters.state        || '',
+    city:         filters.city         || '',
+    ddd:          filters.ddd          || '',
+    search:       filters.search       || '',
+    revenueRange: filters.revenueRange || '',
+    page:         filters.page         || 1,
+    perPage:      filters.perPage      || 30,
+  };
+  const str = JSON.stringify(norm, Object.keys(norm).sort());
+  // Encode pra chave compacta (hash leve via btoa)
+  try {
+    return CD_CACHE_PREFIX + btoa(unescape(encodeURIComponent(str))).replace(/[+/=]/g, '').slice(0, 80);
+  } catch {
+    return CD_CACHE_PREFIX + str;
+  }
+}
+
+function readCdCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CD_CACHE_TTL_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function writeCdCache(key, data) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
+  } catch {
+    // localStorage cheio — silencioso (cache opcional)
+  }
+}
+
+export function clearCasaDosDadosCache() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(CD_CACHE_PREFIX)) keys.push(k);
+  }
+  keys.forEach(k => localStorage.removeItem(k));
+  return keys.length;
+}
+
+// ─── Pos-processamento (fora do cache, sempre fresco) ─────────────────────────
+
+/**
+ * Filtra prospects cujo telefone (primario ou na lista) bata com o DDD desejado.
+ * Determinístico — pode rodar antes ou depois do cache, dah no mesmo.
+ */
+function applyDddFilter(prospects, dddFilter) {
+  if (!dddFilter) return prospects;
+  const ddd = dddFilter.replace(/\D/g, '');
+  const matchesDdd = (phone) => {
+    if (!phone) return false;
+    const clean = phone.replace(/\D/g, '');
+    const local = clean.length >= 12 && clean.startsWith('55') ? clean.slice(2) : clean;
+    return local.startsWith(ddd);
+  };
+  return prospects.filter(p =>
+    matchesDdd(p.phone) || (p.phones || []).some(matchesDdd)
+  );
+}
+
+/**
+ * Remove prospects cujo CNPJ ja existe em crm_companies (lead ja convertido).
+ * NAO eh cacheado — depende do estado atual do CRM. Roda apos cache hit.
+ */
+async function excludeConvertedCnpjs(prospects) {
+  const cnpjs = prospects.map(p => p.cnpj).filter(Boolean);
+  if (cnpjs.length === 0) return prospects;
+
+  const { data: existing } = await supabase
+    .from('crm_companies')
+    .select('cnpj')
+    .in('cnpj', cnpjs)
+    .is('deleted_at', null);
+  if (!existing || existing.length === 0) return prospects;
+
+  const existingSet = new Set(existing.map(c => c.cnpj));
+  return prospects.filter(p => !existingSet.has(p.cnpj));
+}
+
+// ─── API call (sem dedup, sem DDD — pos-processado fora) ──────────────────────
+
+async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = null } = {}) {
   if (!CASA_DOS_DADOS_API_KEY) {
     console.warn('[Search] API key nao configurada');
     return null;
@@ -306,6 +510,8 @@ async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = nul
       body: JSON.stringify(body),
     });
 
+    trackCdSearch();
+
     if (res.status === 401) {
       toast('API key da Casa dos Dados invalida.', 'error');
       return null;
@@ -320,41 +526,10 @@ async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = nul
     }
 
     const json = await res.json();
-    let prospects = (json.cnpjs || []).map((c, i) =>
+    const prospects = (json.cnpjs || []).map((c, i) =>
       transformApiCompany(c, i, { isPartner, partnerCategory })
     );
 
-    // Filtro por DDD (client-side): mantem so prospects com algum telefone
-    // cujo DDD bata com o solicitado.
-    if (dddFilter) {
-      const ddd = dddFilter.replace(/\D/g, '');
-      const matchesDdd = (phone) => {
-        if (!phone) return false;
-        const clean = phone.replace(/\D/g, '');
-        const local = clean.length >= 12 && clean.startsWith('55') ? clean.slice(2) : clean;
-        return local.startsWith(ddd);
-      };
-      prospects = prospects.filter(p =>
-        matchesDdd(p.phone) || (p.phones || []).some(matchesDdd)
-      );
-    }
-
-    // Excluir CNPJs ja convertidos (existentes em crm_companies)
-    const cnpjs = prospects.map(p => p.cnpj).filter(Boolean);
-    if (cnpjs.length > 0) {
-      const { data: existing } = await supabase
-        .from('crm_companies')
-        .select('cnpj')
-        .in('cnpj', cnpjs)
-        .is('deleted_at', null);
-      if (existing && existing.length > 0) {
-        const existingSet = new Set(existing.map(c => c.cnpj));
-        prospects = prospects.filter(p => !existingSet.has(p.cnpj));
-      }
-    }
-
-    // Sem filtro de mobile aqui: a pagina decide via toggle "Apenas WhatsApp"
-    // e considera o telefone enriquecido pelo Google se disponivel.
     return { data: prospects, count: json.total || prospects.length, source: 'api' };
   } catch (err) {
     console.error('[Search] Fetch error:', err);
@@ -362,8 +537,22 @@ async function callCasaDadosAPI(body, { isPartner = false, partnerCategory = nul
   }
 }
 
+// ─── Wrappers com cache + pos-processamento ───────────────────────────────────
+
 async function searchLeadsViaAPI(filters = {}) {
-  return callCasaDadosAPI(buildApiBody(filters), { dddFilter: filters.ddd || '' });
+  const key = cdCacheKey(filters, false);
+  let result = readCdCache(key);
+  if (!result) {
+    result = await callCasaDadosAPI(buildApiBody(filters));
+    if (result) writeCdCache(key, result);
+  }
+  if (!result) return null;
+
+  // Pos-processamento (DDD + dedup contra crm_companies). Nao cacheado pq
+  // dedup depende do estado atual do CRM e DDD ja eh chave do cache.
+  let data = applyDddFilter(result.data, filters.ddd);
+  data = await excludeConvertedCnpjs(data);
+  return { ...result, data };
 }
 
 function buildPartnerApiBody(filters) {
@@ -544,6 +733,25 @@ async function searchLocalCrmData(filters = {}) {
 
 export async function getCrmProspects(filters = {}) {
   const empty = { data: [], count: 0, source: 'api' };
+
+  // Modo Google-first: usa Places API direto (mais barato + ja verificado).
+  // Casa dos Dados eh consultada apenas no envio pra pipeline (lookup CNPJ).
+  if (filters.source === 'google') {
+    const result = await searchProspectsByGoogle(
+      { segment: filters.segment, city: filters.city, state: filters.state },
+      filters.pageToken || ''
+    );
+    if (!result) return empty;
+    // Surface erro pra UI exibir toast explicativo
+    if (result.error === 'quota_exceeded') {
+      toast('Cota diária do Google Places esgotada. Aumente o limite no Google Cloud Console ou tente amanhã.', 'error');
+    } else if (result.error === 'unauthorized') {
+      toast('Chave do Google Places inválida ou sem permissão pra Places API (New).', 'error');
+    } else if (result.error === 'http_error') {
+      toast(`Google Places retornou erro ${result.httpStatus}. Veja console.`, 'error');
+    }
+    return { data: result.data, count: result.data.length, nextPageToken: result.nextPageToken, source: 'google-first', error: result.error };
+  }
 
   if (filters.prospectType === 'partner') {
     const apiResult = await searchPartnersViaAPI(filters);
@@ -732,40 +940,66 @@ export async function sendToPipeline(prospects, pipelineId, stageId) {
     let createdCompanyId = null;
 
     try {
-      // Dados enriquecidos pelo Google Places (se houver)
-      const enr = p.enriched && p.enriched !== 'loading' && p.enriched !== 'miss' ? p.enriched : null;
-      const googleSite      = enr?.website   || '';
-      const googleInstagram = enr?.instagram || '';
-      const googleFacebook  = enr?.facebook  || '';
+      // Lead veio direto do Google Places (sem CNPJ na lista). Busca dados
+      // estruturais na Casa dos Dados sob demanda — primeiro CNPJ encontrado
+      // por razao_social/nome_fantasia + UF eh usado como fonte estrutural.
+      let cdData = null;
+      const fromGoogleFirst = typeof p.id === 'string' && p.id.startsWith('gpl_');
+      if (fromGoogleFirst && p.companyName) {
+        cdData = await lookupCnpjByName(p.companyName, p.state, p.city);
+      }
 
-      // Telefone preferencial: celular do Google → celular CD → CD primario
-      const enrichedPhone = enr?.phone || '';
+      // Mescla: dados estruturais do CD (CNPJ, porte, capital, sócios) +
+      // dados de contato/site/IG do Google. Phone do Google sobrepoe sempre
+      // (mais atualizado).
+      const merged = {
+        ...p,
+        cnpj:           p.cnpj             || cdData?.cnpj           || '',
+        contactName:    p.contactName      || cdData?.contactName    || '',
+        position:       p.position         || cdData?.position       || '',
+        size:           p.size             || cdData?.size           || '',
+        segment:        p.segment          || cdData?.segment        || '',
+        revenue:        p.revenue          ?? cdData?.revenue        ?? null,
+        socios:         p.socios?.length   ? p.socios       : (cdData?.socios || []),
+        naturezaJuridica: p.naturezaJuridica || cdData?.naturezaJuridica || '',
+        simplesNacional:  p.simplesNacional  || cdData?.simplesNacional  || false,
+        dataAbertura:     p.dataAbertura     || cdData?.dataAbertura     || null,
+      };
+
+      // Dados enriquecidos pelo Google Places no fluxo CD-first (se houver)
+      const enr = p.enriched && p.enriched !== 'loading' && p.enriched !== 'miss' ? p.enriched : null;
+      const googleSite      = merged.website   || enr?.website   || '';
+      const googleInstagram = merged.instagram || enr?.instagram || '';
+      const googleFacebook  = merged.facebook  || enr?.facebook  || '';
+
+      // Telefone preferencial: do Google (Google-first OU enrichment) → CD primario
+      const enrichedPhone = enr?.phone || merged.phone || '';
       const bestPhone = enrichedPhone || p.phone || '';
 
       // 1. Verificar se empresa com mesmo CNPJ ja existe
       let companyId = null;
-      if (p.cnpj) {
+      if (merged.cnpj) {
         const { data: existing } = await supabase
           .from('crm_companies')
           .select('id')
-          .eq('cnpj', p.cnpj)
+          .eq('cnpj', merged.cnpj)
           .is('deleted_at', null)
           .maybeSingle();
         if (existing) companyId = existing.id;
       }
 
-      // Criar empresa se nao existe (preferindo dados enriquecidos pelo Google)
+      // Criar empresa se nao existe (mesclando CD + Google)
       if (!companyId) {
         const company = await createCrmCompany({
-          name: p.companyName,
-          cnpj: p.cnpj || '',
-          segment: p.segment || '',
-          size: p.size || '',
+          name: merged.companyName,
+          cnpj: merged.cnpj || '',
+          segment: merged.segment || '',
+          size: merged.size || '',
           phone: bestPhone,
-          email: p.email || '',
-          website: googleSite || p.website || '',
-          city: p.city || '',
-          state: p.state || '',
+          email: merged.email || '',
+          website: googleSite || merged.website || '',
+          city: merged.city || '',
+          state: merged.state || '',
         });
         companyId = company?.id;
         createdCompanyId = companyId;
@@ -773,43 +1007,57 @@ export async function sendToPipeline(prospects, pipelineId, stageId) {
 
       // Notas do deal: registra origem + extras (Instagram, site enriquecido,
       // status do negocio no Google). Usuario pode editar depois sem perder contexto.
-      const noteLines = [
-        '🎯 Origem: Geração automática via lista de prospecção',
-      ];
+      const originLabel = fromGoogleFirst
+        ? '🎯 Origem: Lista via Google Meu Negócio'
+        : '🎯 Origem: Geração automática via lista de prospecção';
+      const noteLines = [originLabel];
+
       if (googleInstagram)   noteLines.push(`📱 Instagram: ${googleInstagram}`);
       if (googleFacebook)    noteLines.push(`👥 Facebook: ${googleFacebook}`);
       if (googleSite)        noteLines.push(`🌐 Site: ${googleSite}`);
-      if (enr?.businessStatus && enr.businessStatus !== 'OPERATIONAL') {
-        noteLines.push(`⚠️ Google: ${enr.businessStatus}`);
+      if (merged.businessStatus && merged.businessStatus !== 'OPERATIONAL') {
+        noteLines.push(`⚠️ Google: ${merged.businessStatus}`);
       }
-      if (enr?.displayName && enr.displayName !== p.companyName) {
-        noteLines.push(`🏷️ Nome no Google: ${enr.displayName}`);
+      if (merged.displayName && merged.displayName !== merged.companyName) {
+        noteLines.push(`🏷️ Nome no Google: ${merged.displayName}`);
+      }
+      if (fromGoogleFirst && !merged.cnpj) {
+        noteLines.push('⚠️ CNPJ não localizado na Receita — empresa criada sem dados estruturais');
       }
 
       // 2. Criar deal direto, sem contato isolado.
       // O telefone/email vem da Casa dos Dados (PJ, nao pessoal) — manter esses
       // dados no proprio Lead evita confundir o usuario achando que e telefone do socio.
+      // probability: 10 — leads de prospeccao fria comecam com chance baixa
+      // (default do schema seria 50, o que infla forecast).
       const deal = await createCrmDeal({
-        title: p.companyName,
+        title: merged.companyName,
         value: 0,
+        probability: 10,
         pipelineId,
         stageId,
         contactId: null,
         companyId: companyId || null,
-        contactName: p.contactName || '',
+        contactName: merged.contactName || '',
         contactPhone: bestPhone,
-        contactEmail: p.email || '',
+        contactEmail: merged.email || '',
         notes: noteLines.join('\n'),
         status: 'open',
       });
       if (!deal?.id) throw new Error('Falha ao criar deal');
 
-      // 3. Marcar prospect como convertido (apenas se for linha persistida)
+      // 3. Marcar como convertido pra nao reaparecer em buscas seguintes
       if (typeof p.id === 'string' && p.id.startsWith('crm_prs_')) {
+        // Prospect persistido em crm_prospects → status converted
         await supabase
           .from('crm_prospects')
           .update({ status: 'converted', updated_at: new Date().toISOString() })
           .eq('id', p.id);
+      }
+      if (fromGoogleFirst && p.googlePlaceId) {
+        // Lead vindo do Google-first → marca placeId em localStorage
+        // (sem CNPJ confiavel pra dedup via crm_companies)
+        markGooglePlaceConverted(p.googlePlaceId);
       }
 
       success++;
