@@ -12,7 +12,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-import { enrichProspectWithGoogle, clearGooglePlacesCache } from '../googlePlacesService';
+import {
+  enrichProspectWithGoogle,
+  clearGooglePlacesCache,
+  searchProspectsByGoogle,
+  clearGoogleSearchCache,
+  markGooglePlaceConverted,
+  getConvertedGooglePlaces,
+  clearConvertedGooglePlaces,
+  parseFormattedAddress,
+  cleanCompanyName,
+  placeToProspect,
+} from '../googlePlacesService';
 
 const buildProspect = (overrides = {}) => ({
   cnpj: '12.345.678/0001-90',
@@ -301,5 +312,367 @@ describe('clearGooglePlacesCache', () => {
 
   it('retorna 0 quando nao ha cache', () => {
     expect(clearGooglePlacesCache()).toBe(0);
+  });
+});
+
+// ============================================================================
+// Testes pros helpers privados expostos
+// ============================================================================
+
+describe('parseFormattedAddress', () => {
+  it('extrai cidade e UF de endereco padrao Google BR', () => {
+    expect(parseFormattedAddress('Rua X, 123 - Bairro, São Paulo - SP, 01000-000, Brazil'))
+      .toEqual({ city: 'São Paulo', state: 'SP' });
+  });
+
+  it('lida com formato sem CEP', () => {
+    expect(parseFormattedAddress('Rua Y, 99 - Centro, Belo Horizonte - MG, Brazil'))
+      .toEqual({ city: 'Belo Horizonte', state: 'MG' });
+  });
+
+  it('retorna vazio pra null/undefined/string vazia', () => {
+    expect(parseFormattedAddress(null)).toEqual({ city: '', state: '' });
+    expect(parseFormattedAddress(undefined)).toEqual({ city: '', state: '' });
+    expect(parseFormattedAddress('')).toEqual({ city: '', state: '' });
+  });
+
+  it('retorna vazio se nao bate com regex', () => {
+    expect(parseFormattedAddress('endereco aleatorio sem padrao')).toEqual({ city: '', state: '' });
+  });
+
+  it('lida com cidades compostas (varias palavras)', () => {
+    expect(parseFormattedAddress('Av. Z, 50 - Centro, Ribeirão Preto - SP, 14000-000'))
+      .toEqual({ city: 'Ribeirão Preto', state: 'SP' });
+  });
+});
+
+describe('cleanCompanyName', () => {
+  it('pega o nome antes do " - "', () => {
+    expect(cleanCompanyName('LPL Contabilidade - Escritorio em BH')).toBe('LPL Contabilidade');
+  });
+
+  it('pega o nome antes do " | "', () => {
+    expect(cleanCompanyName('Padaria Real | A Melhor da Cidade')).toBe('Padaria Real');
+  });
+
+  it('mantem nome original quando nao tem separador', () => {
+    expect(cleanCompanyName('Empresa XPTO Ltda')).toBe('Empresa XPTO Ltda');
+  });
+
+  it('preserva o original quando o split fica curto demais (<3 chars)', () => {
+    expect(cleanCompanyName('AB - Empresa Real')).toBe('AB - Empresa Real');
+  });
+
+  it('retorna vazio pra null/undefined', () => {
+    expect(cleanCompanyName(null)).toBe('');
+    expect(cleanCompanyName(undefined)).toBe('');
+    expect(cleanCompanyName('')).toBe('');
+  });
+});
+
+describe('placeToProspect', () => {
+  const buildPlace = (over = {}) => ({
+    id: 'ChIJxyz',
+    displayName: { text: 'Padaria Real - A Melhor', languageCode: 'pt' },
+    formattedAddress: 'Rua A, 1 - Centro, São Paulo - SP, 01000-000, Brazil',
+    nationalPhoneNumber: '(11) 99999-9999',
+    websiteUri: 'https://padariareal.com.br',
+    types: ['bakery', 'food_store', 'food', 'store', 'point_of_interest', 'establishment'],
+    businessStatus: 'OPERATIONAL',
+    ...over,
+  });
+
+  it('mapeia campos basicos', () => {
+    const p = placeToProspect(buildPlace());
+    expect(p.id).toBe('gpl_ChIJxyz');
+    expect(p.googlePlaceId).toBe('ChIJxyz');
+    expect(p.companyName).toBe('Padaria Real');
+    expect(p.displayName).toBe('Padaria Real - A Melhor');
+    expect(p.phone).toBe('(11) 99999-9999');
+    expect(p.city).toBe('São Paulo');
+    expect(p.state).toBe('SP');
+  });
+
+  it('separa Instagram em campo proprio', () => {
+    const p = placeToProspect(buildPlace({ websiteUri: 'https://instagram.com/padariareal' }));
+    expect(p.instagram).toBe('https://instagram.com/padariareal');
+    expect(p.website).toBe('');
+    expect(p.facebook).toBe('');
+  });
+
+  it('separa Facebook em campo proprio', () => {
+    const p = placeToProspect(buildPlace({ websiteUri: 'https://www.facebook.com/page/123' }));
+    expect(p.facebook).toContain('facebook.com');
+    expect(p.website).toBe('');
+    expect(p.instagram).toBe('');
+  });
+
+  it('mantem website real quando nao eh rede social', () => {
+    const p = placeToProspect(buildPlace({ websiteUri: 'https://example.com.br' }));
+    expect(p.website).toBe('https://example.com.br');
+    expect(p.instagram).toBe('');
+    expect(p.facebook).toBe('');
+  });
+
+  it('lida com place sem phone (campos opcionais)', () => {
+    const p = placeToProspect(buildPlace({ nationalPhoneNumber: undefined }));
+    expect(p.phone).toBe('');
+    expect(p.phones).toEqual([]);
+  });
+
+  it('infere segmento dos types (filtra genericos)', () => {
+    const p = placeToProspect(buildPlace({ types: ['bakery', 'food_store', 'establishment'] }));
+    expect(p.segment).toBe('bakery');
+  });
+
+  it('source = "Google Places"', () => {
+    expect(placeToProspect(buildPlace()).source).toBe('Google Places');
+  });
+
+  it('cnpj sempre vazio (sera resolvido no envio pra pipeline)', () => {
+    expect(placeToProspect(buildPlace()).cnpj).toBe('');
+  });
+
+  it('prospectType = "lead"', () => {
+    expect(placeToProspect(buildPlace()).prospectType).toBe('lead');
+  });
+});
+
+// ============================================================================
+// Testes pra searchProspectsByGoogle (Google-first)
+// ============================================================================
+
+describe('searchProspectsByGoogle', () => {
+  it('retorna null quando segment+city+state vazios', async () => {
+    expect(await searchProspectsByGoogle({})).toBeNull();
+    expect(await searchProspectsByGoogle({ segment: '' })).toBeNull();
+  });
+
+  it('aceita apenas state (busca generica)', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) });
+    const r = await searchProspectsByGoogle({ state: 'SP' });
+    expect(r).toBeTruthy();
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
+  it('faz POST com query montada (segment + city + state)', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) });
+    await searchProspectsByGoogle({ segment: 'Pizzaria', city: 'São Paulo', state: 'SP' });
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.textQuery).toContain('Pizzaria');
+    expect(body.textQuery).toContain('São Paulo');
+    expect(body.textQuery).toContain('SP');
+    expect(body.languageCode).toBe('pt-BR');
+    expect(body.regionCode).toBe('BR');
+    expect(body.maxResultCount).toBe(20);
+  });
+
+  it('passa pageToken quando fornecido', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) });
+    await searchProspectsByGoogle({ segment: 'Pizzaria' }, 'TOKEN_123');
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.pageToken).toBe('TOKEN_123');
+  });
+
+  it('mapeia places pra prospects', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        places: [
+          {
+            id: 'p1',
+            displayName: { text: 'Pizzaria A' },
+            formattedAddress: 'Rua A - São Paulo - SP, Brazil',
+            nationalPhoneNumber: '(11) 1111-1111',
+            businessStatus: 'OPERATIONAL',
+          },
+          {
+            id: 'p2',
+            displayName: { text: 'Pizzaria B' },
+            formattedAddress: 'Rua B - São Paulo - SP, Brazil',
+            nationalPhoneNumber: '(11) 2222-2222',
+            businessStatus: 'OPERATIONAL',
+          },
+        ],
+        nextPageToken: 'NEXT',
+      }),
+    });
+    const r = await searchProspectsByGoogle({ segment: 'Pizzaria', state: 'SP' });
+    expect(r.data).toHaveLength(2);
+    expect(r.data[0].id).toBe('gpl_p1');
+    expect(r.nextPageToken).toBe('NEXT');
+    expect(r.source).toBe('google-first');
+  });
+
+  it('filtra empresas CLOSED_PERMANENTLY', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        places: [
+          { id: 'p1', displayName: { text: 'Aberta' }, businessStatus: 'OPERATIONAL', formattedAddress: 'X' },
+          { id: 'p2', displayName: { text: 'Fechada' }, businessStatus: 'CLOSED_PERMANENTLY', formattedAddress: 'Y' },
+        ],
+      }),
+    });
+    const r = await searchProspectsByGoogle({ segment: 'Pizzaria' });
+    expect(r.data).toHaveLength(1);
+    expect(r.data[0].displayName).toBe('Aberta');
+  });
+
+  it('retorna error 429 quando quota excedida', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 429, text: async () => 'quota' });
+    const r = await searchProspectsByGoogle({ segment: 'Pizzaria' });
+    expect(r.error).toBe('quota_exceeded');
+    expect(r.httpStatus).toBe(429);
+    expect(r.data).toEqual([]);
+  });
+
+  it('retorna error unauthorized em 401', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 401, text: async () => 'denied' });
+    const r = await searchProspectsByGoogle({ segment: 'Pizzaria' });
+    expect(r.error).toBe('unauthorized');
+  });
+
+  it('retorna error unauthorized em 403', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 403, text: async () => 'forbidden' });
+    const r = await searchProspectsByGoogle({ segment: 'Pizzaria' });
+    expect(r.error).toBe('unauthorized');
+  });
+
+  it('retorna http_error genericos em 500', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'oops' });
+    const r = await searchProspectsByGoogle({ segment: 'Pizzaria' });
+    expect(r.error).toBe('http_error');
+  });
+
+  it('retorna null em fetch exception', async () => {
+    global.fetch.mockRejectedValueOnce(new Error('Network down'));
+    const r = await searchProspectsByGoogle({ segment: 'Pizzaria' });
+    expect(r).toBeNull();
+  });
+
+  it('cacheia resultado e reaproveita em chamada igual', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        places: [
+          { id: 'p1', displayName: { text: 'X' }, businessStatus: 'OPERATIONAL', formattedAddress: 'X' },
+        ],
+      }),
+    });
+    await searchProspectsByGoogle({ segment: 'Pizzaria', state: 'SP' });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    await searchProspectsByGoogle({ segment: 'Pizzaria', state: 'SP' });
+    expect(global.fetch).toHaveBeenCalledTimes(1); // cache hit
+  });
+
+  it('cache eh por (query + pageToken) — token diferente forca refetch', async () => {
+    global.fetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) });
+    await searchProspectsByGoogle({ segment: 'Pizzaria' }, '');
+    await searchProspectsByGoogle({ segment: 'Pizzaria' }, 'PAGE2_TOKEN');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ============================================================================
+// Testes de dedup por googlePlaceId (placeIds ja convertidos)
+// ============================================================================
+
+describe('dedup de Google placeIds convertidos', () => {
+  it('markGooglePlaceConverted adiciona ao set', () => {
+    markGooglePlaceConverted('p1');
+    markGooglePlaceConverted('p2');
+    const set = getConvertedGooglePlaces();
+    expect(set.has('p1')).toBe(true);
+    expect(set.has('p2')).toBe(true);
+    expect(set.size).toBe(2);
+  });
+
+  it('marcar mesmo id 2x nao duplica', () => {
+    markGooglePlaceConverted('p1');
+    markGooglePlaceConverted('p1');
+    expect(getConvertedGooglePlaces().size).toBe(1);
+  });
+
+  it('ignora id null/undefined/vazio', () => {
+    markGooglePlaceConverted(null);
+    markGooglePlaceConverted(undefined);
+    markGooglePlaceConverted('');
+    expect(getConvertedGooglePlaces().size).toBe(0);
+  });
+
+  it('clearConvertedGooglePlaces zera o set', () => {
+    markGooglePlaceConverted('p1');
+    markGooglePlaceConverted('p2');
+    clearConvertedGooglePlaces();
+    expect(getConvertedGooglePlaces().size).toBe(0);
+  });
+
+  it('searchProspectsByGoogle filtra placeIds convertidos do resultado', async () => {
+    markGooglePlaceConverted('p1');
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        places: [
+          { id: 'p1', displayName: { text: 'Ja convertido' }, businessStatus: 'OPERATIONAL', formattedAddress: 'X' },
+          { id: 'p2', displayName: { text: 'Novo' },           businessStatus: 'OPERATIONAL', formattedAddress: 'Y' },
+        ],
+      }),
+    });
+
+    const r = await searchProspectsByGoogle({ segment: 'Pizzaria' });
+    expect(r.data).toHaveLength(1);
+    expect(r.data[0].googlePlaceId).toBe('p2');
+  });
+
+  it('cache hit tambem aplica filtro de convertidos (estado atual)', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        places: [
+          { id: 'p1', displayName: { text: 'A' }, businessStatus: 'OPERATIONAL', formattedAddress: 'X' },
+          { id: 'p2', displayName: { text: 'B' }, businessStatus: 'OPERATIONAL', formattedAddress: 'Y' },
+        ],
+      }),
+    });
+
+    // Primeira busca: nada convertido ainda — pega 2
+    let r = await searchProspectsByGoogle({ segment: 'Pizzaria' });
+    expect(r.data).toHaveLength(2);
+
+    // Marca p1 como convertido
+    markGooglePlaceConverted('p1');
+
+    // Segunda busca (cache hit): filtra p1
+    r = await searchProspectsByGoogle({ segment: 'Pizzaria' });
+    expect(global.fetch).toHaveBeenCalledTimes(1); // foi cache
+    expect(r.data).toHaveLength(1);
+    expect(r.data[0].googlePlaceId).toBe('p2');
+  });
+});
+
+// ============================================================================
+// Testes pra clearGoogleSearchCache
+// ============================================================================
+
+describe('clearGoogleSearchCache', () => {
+  it('remove apenas chaves com prefixo gp_search_', () => {
+    localStorage.setItem('gp_search_abc', 'a');
+    localStorage.setItem('gp_search_def', 'b');
+    localStorage.setItem('outra_chave', 'mantem');
+    localStorage.setItem('gp_enrich_xyz', 'mantem'); // outro prefix
+
+    const removed = clearGoogleSearchCache();
+
+    expect(removed).toBe(2);
+    expect(localStorage.getItem('outra_chave')).toBe('mantem');
+    expect(localStorage.getItem('gp_enrich_xyz')).toBe('mantem');
+  });
+
+  it('retorna 0 quando nao ha cache', () => {
+    expect(clearGoogleSearchCache()).toBe(0);
   });
 });

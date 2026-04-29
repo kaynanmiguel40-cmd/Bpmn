@@ -16,7 +16,8 @@ import {
 } from 'lucide-react';
 import { CITIES_BY_STATE } from '../data/brazilCities';
 import { getDddsByState } from '../data/brazilDdds';
-import { GOOGLE_SEGMENT_GROUPS } from '../data/googleSegments';
+import { GOOGLE_SEGMENT_GROUPS, GOOGLE_PARTNER_SEGMENT_GROUPS } from '../data/googleSegments';
+import { tempoDesdeAbertura } from '../../../lib/dateRelative';
 import { CrmBadge, CrmConfirmDialog, CrmModal } from '../components/ui';
 import ProspectingDashboard from '../components/po/ProspectingDashboard';
 import {
@@ -110,20 +111,6 @@ function whatsappUrl(val) {
   if (clean.length < 10) return null;
   const withCountry = clean.startsWith('55') && clean.length >= 12 ? clean : `55${clean}`;
   return `https://wa.me/${withCountry}`;
-}
-
-function tempoDesdeAbertura(dataAbertura) {
-  if (!dataAbertura) return null;
-  const d = new Date(dataAbertura);
-  if (isNaN(d.getTime())) return null;
-  const diffMs = Date.now() - d.getTime();
-  const years = diffMs / (1000 * 60 * 60 * 24 * 365.25);
-  if (years >= 1) {
-    const y = Math.floor(years);
-    return `${y} ano${y > 1 ? 's' : ''}`;
-  }
-  const months = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44)));
-  return `${months} ${months === 1 ? 'mês' : 'meses'}`;
 }
 
 function abbreviateNatureza(natureza) {
@@ -753,41 +740,6 @@ export function CrmProspectsPage() {
           </div>
         </div>
 
-        {/* Toggle Fonte: Google (default) / Casa dos Dados */}
-        <div className="px-4 pt-2 pb-1">
-          <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
-            <button
-              onClick={() => setSearchSource('google')}
-              title="Busca direta no Google Meu Negócio — barato, telefone verificado"
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
-                isGoogleSearch
-                  ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
-              }`}
-            >
-              <Globe size={12} />
-              Google
-            </button>
-            <button
-              onClick={() => setSearchSource('cd')}
-              title="Casa dos Dados — base completa da Receita, paga por CNPJ"
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
-                !isGoogleSearch
-                  ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
-              }`}
-            >
-              <Briefcase size={12} />
-              Casa Dados
-            </button>
-          </div>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 px-1 leading-snug">
-            {isGoogleSearch
-              ? 'Telefone do Google Meu Negócio (atual). CNPJ resolvido só no envio.'
-              : 'Base Receita Federal completa. CNPJ + dados estruturais (porte, capital).'}
-          </p>
-        </div>
-
         {/* Filtros empilhados */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
@@ -821,8 +773,8 @@ export function CrmProspectsPage() {
             </label>
             {isGoogleSearch ? (
               <select value={segment} onChange={e => setSegment(e.target.value)} className={selectCls} required>
-                <option value="">Selecione um segmento...</option>
-                {GOOGLE_SEGMENT_GROUPS.map(group => (
+                <option value="">{isPartners ? 'Selecione uma categoria...' : 'Selecione um segmento...'}</option>
+                {(isPartners ? GOOGLE_PARTNER_SEGMENT_GROUPS : GOOGLE_SEGMENT_GROUPS).map(group => (
                   <optgroup key={group.label} label={group.label}>
                     {group.options.map(opt => (
                       <option key={opt} value={opt}>{opt}</option>
@@ -1278,15 +1230,9 @@ export function CrmProspectsPage() {
                           <div className="font-medium text-slate-800 dark:text-slate-200" title={p.companyName}>{p.companyName}</div>
                           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1 flex-wrap">
                             {m.cnpj && <span className="font-mono select-all">{m.cnpj}</span>}
-                            {m.naturezaJuridica && (
-                              <>
-                                <span className="opacity-50">·</span>
-                                <span title={m.naturezaJuridica}>{abbreviateNatureza(m.naturezaJuridica)}</span>
-                              </>
-                            )}
                             {m.dataAbertura && tempoDesdeAbertura(m.dataAbertura) && (
                               <>
-                                <span className="opacity-50">·</span>
+                                {m.cnpj && <span className="opacity-50">·</span>}
                                 <span title={`Aberta em ${new Date(m.dataAbertura).toLocaleDateString('pt-BR')}`}>{tempoDesdeAbertura(m.dataAbertura)}</span>
                               </>
                             )}

@@ -280,7 +280,7 @@ function writeGpSearchCache(key, data) {
 }
 
 // Pega cidade e UF de "Rua X, 123 - Bairro, Cidade - UF, CEP, Brazil"
-function parseFormattedAddress(addr) {
+export function parseFormattedAddress(addr) {
   if (!addr) return { city: '', state: '' };
   const m = addr.match(/,\s*([^,-]+?)\s*-\s*([A-Z]{2})\s*(?:,|$)/);
   if (m) return { city: m[1].trim(), state: m[2].trim() };
@@ -288,7 +288,7 @@ function parseFormattedAddress(addr) {
 }
 
 // Limpa nome verboso tipo "LPL Contabilidade - Escritorio de Contabilidade em BH"
-function cleanCompanyName(displayName) {
+export function cleanCompanyName(displayName) {
   if (!displayName) return '';
   // Pega antes do primeiro " - " ou " | " — geralmente nome real
   const split = displayName.split(/\s+[-|]\s+/);
@@ -296,7 +296,7 @@ function cleanCompanyName(displayName) {
   return first.length >= 3 ? first : displayName;
 }
 
-function placeToProspect(place) {
+export function placeToProspect(place) {
   const url = place.websiteUri || '';
   const isInstagram = /instagram\.com/i.test(url);
   const isFacebook  = /facebook\.com/i.test(url);

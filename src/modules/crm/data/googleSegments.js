@@ -109,3 +109,77 @@ export const GOOGLE_SEGMENT_GROUPS = [
 
 // Lista "flat" pra busca/lookup
 export const GOOGLE_SEGMENTS_FLAT = GOOGLE_SEGMENT_GROUPS.flatMap(g => g.options);
+
+// ─── Categorias de PARCEIROS pra SaaS B2B (foco financeiro) ──────────────────
+// Empresas que têm pequenas/médias empresas como clientes e podem indicar
+// software financeiro pra base delas: contadores, agências, advocacia
+// empresarial, consultorias, etc.
+
+export const GOOGLE_PARTNER_SEGMENT_GROUPS = [
+  {
+    label: 'Contábil & Tributário',
+    options: [
+      'Escritório de Contabilidade',
+      'Consultoria Tributária',
+      'Auditoria Contábil',
+      'Despachante',
+    ],
+  },
+  {
+    label: 'Consultorias',
+    options: [
+      'Consultoria Empresarial',
+      'Consultoria Financeira',
+      'Consultoria de Gestão',
+      'Mentoria Empresarial',
+    ],
+  },
+  {
+    label: 'Marketing & Publicidade',
+    options: [
+      'Agência de Marketing',
+      'Agência de Publicidade',
+      'Agência de Marketing Digital',
+      'Agência de Performance',
+      'Agência de Branding',
+    ],
+  },
+  {
+    label: 'Jurídico',
+    options: [
+      'Escritório de Advocacia Empresarial',
+      'Advocacia Tributária',
+      'Advocacia Trabalhista',
+    ],
+  },
+  {
+    label: 'Tecnologia & Sites',
+    options: [
+      'Software House',
+      'Agência de Sites',
+      'Empresa de TI',
+      'Desenvolvedor de Software',
+    ],
+  },
+  {
+    label: 'RH & Pessoas',
+    options: [
+      'Agência de RH',
+      'Consultoria de Recursos Humanos',
+      'Recolocação Profissional',
+      'Treinamento Empresarial',
+    ],
+  },
+  {
+    label: 'Negócios & Networking',
+    options: [
+      'Coworking',
+      'Incubadora de Empresas',
+      'Aceleradora de Startups',
+      'Associação Comercial',
+      'Câmara de Comércio',
+    ],
+  },
+];
+
+export const GOOGLE_PARTNER_SEGMENTS_FLAT = GOOGLE_PARTNER_SEGMENT_GROUPS.flatMap(g => g.options);
