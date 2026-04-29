@@ -11,6 +11,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'noreply@fyness.app'
+const REPLY_TO_EMAIL = Deno.env.get('REPLY_TO_EMAIL') // se setado, respostas caem aqui
+const UNSUBSCRIBE_EMAIL = Deno.env.get('UNSUBSCRIBE_EMAIL') || REPLY_TO_EMAIL || FROM_EMAIL
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,7 +26,7 @@ serve(async (req) => {
   }
 
   try {
-    const { to, subject, body, html } = await req.json()
+    const { to, subject, body, html, reply_to } = await req.json()
 
     if (!to || !subject) {
       return new Response(
@@ -53,6 +55,13 @@ serve(async (req) => {
         subject,
         text: body || '',
         html: html || undefined,
+        reply_to: reply_to || REPLY_TO_EMAIL || undefined,
+        // Headers RFC 2369 / RFC 8058: exigidos por Gmail/Yahoo desde 2024.
+        // Sem isso, Gmail empurra pra spam mesmo com SPF/DKIM/DMARC ok.
+        headers: {
+          'List-Unsubscribe': `<mailto:${UNSUBSCRIBE_EMAIL}?subject=unsubscribe>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
       }),
     })
 

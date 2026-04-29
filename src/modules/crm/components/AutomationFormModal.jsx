@@ -34,6 +34,7 @@ function emptyForm() {
     stageId: '',
     channel: 'whatsapp',
     messageType: 'text',
+    subject: '',
     messageContent: '',
     mediaUrl: '',
     segmentFilter: '',
@@ -66,6 +67,7 @@ export function AutomationFormModal({ open, onClose, automation }) {
         stageId:        automation.stageId        || '',
         channel:        automation.channel        || 'whatsapp',
         messageType:    automation.messageType    || 'text',
+        subject:        automation.subject        || '',
         messageContent: automation.messageContent || '',
         mediaUrl:       automation.mediaUrl       || '',
         segmentFilter:  automation.segmentFilter  || '',
@@ -92,6 +94,7 @@ export function AutomationFormModal({ open, onClose, automation }) {
       ...form,
       delayMinutes: Number(form.delayMinutes) || 0,
       segmentFilter: form.segmentFilter || null,
+      subject: form.channel === 'email' ? (form.subject?.trim() || null) : null,
       messageContent: form.messageType === 'text' ? form.messageContent : null,
       mediaUrl: form.messageType !== 'text' ? form.mediaUrl : null,
     };
@@ -220,11 +223,28 @@ export function AutomationFormModal({ open, onClose, automation }) {
             </p>
           )}
           {form.channel === 'email' && (
-            <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-              Requer integração com Resend / SendGrid para envio real.
+            <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+              Envio ativo via Resend (Edge Function send-email).
             </p>
           )}
         </div>
+
+        {/* Assunto — só para e-mail */}
+        {form.channel === 'email' && (
+          <div>
+            <label className={labelCls}>Assunto do e-mail</label>
+            <input
+              type="text"
+              value={form.subject}
+              onChange={e => set('subject', e.target.value)}
+              placeholder="Ex.: {nome}, vamos avançar com a sua proposta?"
+              className={inputCls}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">
+              Vazio → será usado o nome da automação como assunto.
+            </p>
+          </div>
+        )}
 
         {/* Tipo de mensagem */}
         <div>
@@ -259,7 +279,12 @@ export function AutomationFormModal({ open, onClose, automation }) {
               className={`${inputCls} resize-none`}
             />
             <p className="mt-1 text-[11px] text-slate-400">
-              Use <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">{'{nome}'}</code> para inserir o nome do contato.
+              Variáveis disponíveis:{' '}
+              <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">{'{nome}'}</code>{' '}
+              <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">{'{empresa}'}</code>{' '}
+              <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">{'{valor}'}</code>{' '}
+              <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">{'{etapa}'}</code>{' '}
+              <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">{'{vendedor}'}</code>
             </p>
           </div>
         ) : (

@@ -5,12 +5,6 @@
 
 import { supabase } from '../../../lib/supabase';
 
-// ─── ID helpers ──────────────────────────────────────────────────────────────
-
-function genId(prefix) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-}
-
 // ─── Transformers ─────────────────────────────────────────────────────────────
 
 function dbToAutomation(row) {
@@ -22,6 +16,7 @@ function dbToAutomation(row) {
     stageId:        row.stage_id,
     channel:        row.channel,
     messageType:    row.message_type,
+    subject:        row.subject || '',
     messageContent: row.message_content,
     mediaUrl:       row.media_url,
     segmentFilter:  row.segment_filter,
@@ -80,12 +75,12 @@ export async function createAutomation(payload) {
   const userId = session?.session?.user?.id;
 
   const row = {
-    id:              genId('crm_auto'),
     name:            payload.name,
     pipeline_id:     payload.pipelineId || null,
     stage_id:        payload.stageId    || null,
     channel:         payload.channel,
     message_type:    payload.messageType,
+    subject:         payload.subject        || null,
     message_content: payload.messageContent || null,
     media_url:       payload.mediaUrl       || null,
     segment_filter:  payload.segmentFilter  || null,
@@ -115,6 +110,7 @@ export async function updateAutomation(id, payload) {
   if (payload.stageId        !== undefined) updates.stage_id        = payload.stageId;
   if (payload.channel        !== undefined) updates.channel         = payload.channel;
   if (payload.messageType    !== undefined) updates.message_type    = payload.messageType;
+  if (payload.subject        !== undefined) updates.subject         = payload.subject;
   if (payload.messageContent !== undefined) updates.message_content = payload.messageContent;
   if (payload.mediaUrl       !== undefined) updates.media_url       = payload.mediaUrl;
   if (payload.segmentFilter  !== undefined) updates.segment_filter  = payload.segmentFilter;
@@ -194,7 +190,105 @@ export async function getAutomationLogStats(days = 7) {
   return stats;
 }
 
+// ─── Templating ───────────────────────────────────────────────────────────────
+
+/**
+ * Substitui variáveis no formato {chave} pelo valor correspondente.
+ * Variáveis suportadas: {nome}, {empresa}, {valor}, {etapa}, {vendedor}.
+ * Aceita acentos e maiúsculas indistintamente: {Nome}, {NOME}, {nome} → ok.
+ * Variáveis não conhecidas são preservadas (devolvidas como vieram).
+ */
+export function renderTemplate(text, deal) {
+  if (!text) return '';
+  const ctx = {
+    nome:     deal?.contact?.name || deal?.contactName || '',
+    empresa:  deal?.company?.name || '',
+    valor:    typeof deal?.value === 'number'
+                ? deal.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                : '',
+    etapa:    deal?.stage?.name   || '',
+    vendedor: deal?.owner?.name   || '',
+  };
+  return text.replace(/\{([^{}]+)\}/g, (match, key) => {
+    const norm = String(key).trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(ctx, norm) ? ctx[norm] : match;
+  });
+}
+
+// Texto plano → HTML simples (preserva quebras de linha).
+function textToHtml(text) {
+  if (!text) return '';
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.5;color:#1f2937;white-space:pre-wrap;">${escaped}</div>`;
+}
+
+// ─── Dispatchers por canal ────────────────────────────────────────────────────
+
+/**
+ * Envia e-mail via Edge Function `send-email` (Resend).
+ * Retorna { ok, error } — nunca lança.
+ */
+async function dispatchEmail({ to, subject, body }) {
+  if (!to) return { ok: false, error: 'Destinatário sem e-mail cadastrado' };
+  try {
+    const { data, error } = await supabase.functions.invoke('send-email', {
+      body: { to, subject, body, html: textToHtml(body) },
+    });
+    if (error) return { ok: false, error: error.message || String(error) };
+    if (!data?.success) return { ok: false, error: data?.error || 'Falha no provedor' };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || 'Erro inesperado no envio' };
+  }
+}
+
 // ─── Motor de disparo ─────────────────────────────────────────────────────────
+
+/**
+ * Carrega joins necessários para o templating quando o deal recebido
+ * não trouxe (ex.: vindo de update().select() plano em moveDealToStage).
+ * Mescla sem sobrescrever campos já presentes.
+ */
+async function enrichDealIfNeeded(deal) {
+  const needs = !deal.company || !deal.stage || !deal.owner || !deal.contact;
+  if (!needs || !deal.id) return deal;
+
+  const { data: row } = await supabase
+    .from('crm_deals')
+    .select(`
+      id, contact_name, contact_email, contact_phone, value, title, segment,
+      crm_contacts(id, name, email),
+      crm_companies(id, name, segment),
+      crm_pipeline_stages(id, name, color),
+      team_members(id, name, color)
+    `)
+    .eq('id', deal.id)
+    .single();
+
+  if (!row) return deal;
+
+  return {
+    ...deal,
+    contactName:  deal.contactName  ?? row.contact_name,
+    contactEmail: deal.contactEmail ?? row.contact_email,
+    contactPhone: deal.contactPhone ?? row.contact_phone,
+    contact: deal.contact || (row.crm_contacts ? {
+      id: row.crm_contacts.id, name: row.crm_contacts.name, email: row.crm_contacts.email,
+    } : null),
+    company: deal.company || (row.crm_companies ? {
+      id: row.crm_companies.id, name: row.crm_companies.name, segment: row.crm_companies.segment,
+    } : null),
+    stage: deal.stage || (row.crm_pipeline_stages ? {
+      id: row.crm_pipeline_stages.id, name: row.crm_pipeline_stages.name, color: row.crm_pipeline_stages.color,
+    } : null),
+    owner: deal.owner || (row.team_members ? {
+      id: row.team_members.id, name: row.team_members.name, color: row.team_members.color,
+    } : null),
+  };
+}
 
 /**
  * Chamado após moveDealToStage(). Fire-and-forget.
@@ -221,26 +315,44 @@ export async function triggerAutomationsForDeal(deal, stageId) {
 
   if (matched.length === 0) return;
 
-  // 3. Determinar destinatário
-  const recipient = deal.contactEmail || deal.contactPhone || deal.contactName || '';
+  // Enriquecer com joins (company/stage/owner) se vierem ausentes
+  deal = await enrichDealIfNeeded(deal);
 
-  // 4. Para cada automação matching: gravar log
   const stageName = deal.stage?.name || '';
-  const logs = matched.map(a => ({
-    id:               genId('crm_alog'),
-    automation_id:    a.id,
-    deal_id:          deal.id,
-    deal_title:       deal.title,
-    stage_name:       stageName,
-    channel:          a.channel,
-    recipient,
-    message_snapshot: a.message_content || a.media_url || '',
-    status:           'sent',
-    // TODO: integrar API real por canal:
-    //   email     → Resend / SendGrid via Supabase Edge Function
-    //   whatsapp  → Meta Business API / Z-API
-    //   sms       → Twilio
-    sent_at: new Date().toISOString(),
+
+  // 3. Para cada automação: renderizar, despachar e gravar log com status real
+  const logs = await Promise.all(matched.map(async (a) => {
+    const renderedSubject = a.subject ? renderTemplate(a.subject, deal) : a.name;
+    const renderedBody    = renderTemplate(a.message_content || '', deal);
+
+    let recipient = '';
+    let result = { ok: false, error: 'Canal não implementado' };
+
+    if (a.channel === 'email') {
+      recipient = deal.contactEmail || deal.contact?.email || '';
+      result = await dispatchEmail({
+        to:      recipient,
+        subject: renderedSubject,
+        body:    renderedBody,
+      });
+    } else {
+      // whatsapp / sms — pendente. Apenas registra.
+      recipient = deal.contactPhone || deal.contactName || '';
+      result = { ok: false, error: `Canal ${a.channel} ainda não integrado` };
+    }
+
+    return {
+      automation_id:    a.id,
+      deal_id:          deal.id,
+      deal_title:       deal.title,
+      stage_name:       stageName,
+      channel:          a.channel,
+      recipient,
+      message_snapshot: renderedBody || a.media_url || '',
+      status:           result.ok ? 'sent' : 'error',
+      error_message:    result.ok ? null : result.error,
+      sent_at:          new Date().toISOString(),
+    };
   }));
 
   const { error } = await supabase.from('crm_automation_logs').insert(logs);
