@@ -28,6 +28,7 @@ import {
   useCrmPipelines,
   useEnsurePartnersPipeline,
 } from '../hooks/useCrmQueries';
+import { useTeamMembers } from '../../../hooks/queries';
 import { enrichProspectWithGoogle } from '../../../lib/googlePlacesService';
 import { lookupCnpjByName } from '../services/crmProspectsService';
 import { getUsage, setCdBalance } from '../../../lib/usageTracker';
@@ -136,6 +137,12 @@ function SendToPipelineModal({ open, onClose, selectedCount, selectedProspects, 
 
   const [pipelineId, setPipelineId] = useState('');
   const [stageId, setStageId] = useState('');
+  const [ownerId, setOwnerId] = useState('');
+  const [valuePerLead, setValuePerLead] = useState('');
+  const [distributeRoundRobin, setDistributeRoundRobin] = useState(false);
+
+  const { data: teamMembers = [] } = useTeamMembers();
+  const activeMembers = teamMembers.filter(m => m.active !== false);
 
   const selectedPipeline = pipelines.find(p => p.id === pipelineId);
   const stages = selectedPipeline?.stages || [];
@@ -167,7 +174,29 @@ function SendToPipelineModal({ open, onClose, selectedCount, selectedProspects, 
 
   const handleConfirm = async () => {
     if (!pipelineId || !stageId) return;
-    await sendMutation.mutateAsync({ prospects: selectedProspects, pipelineId, stageId });
+
+    // Atribuicao: round-robin distribui entre todos os ativos, ou owner unico
+    const owners = distributeRoundRobin
+      ? activeMembers.map(m => m.id)
+      : (ownerId ? [ownerId] : [null]);
+
+    // Anota ownerId em cada prospect na ordem (round-robin) ou aplica unico a todos
+    const enriched = selectedProspects.map((p, i) => ({
+      ...p,
+      _ownerId: owners[i % owners.length],
+    }));
+
+    // Parse valor (aceita "1234,56" ou "1234.56")
+    const value = valuePerLead
+      ? parseFloat(String(valuePerLead).replace(/\./g, '').replace(',', '.')) || 0
+      : 0;
+
+    await sendMutation.mutateAsync({
+      prospects: enriched,
+      pipelineId,
+      stageId,
+      defaultValue: value,
+    });
     onSuccess?.();
     onClose();
   };
@@ -220,6 +249,60 @@ function SendToPipelineModal({ open, onClose, selectedCount, selectedProspects, 
             </select>
           </div>
         )}
+
+        {/* Vendedor responsável */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Vendedor responsável
+          </label>
+          {distributeRoundRobin ? (
+            <div className="text-xs text-slate-500 dark:text-slate-400 px-3 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600">
+              Distribuindo {selectedCount} {selectedCount > 1 ? 'leads' : 'lead'} em rodízio entre <strong>{activeMembers.length}</strong> vendedores ativos.
+            </div>
+          ) : (
+            <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:outline-none">
+              <option value="">— Sem vendedor (atribui depois) —</option>
+              {activeMembers.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          )}
+          {activeMembers.length > 1 && (
+            <label className="flex items-center gap-2 mt-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={distributeRoundRobin}
+                onChange={(e) => setDistributeRoundRobin(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-fyness-primary focus:ring-fyness-primary"
+              />
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                Distribuir em rodízio entre {activeMembers.length} vendedores ativos
+              </span>
+            </label>
+          )}
+        </div>
+
+        {/* Valor estimado por lead */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Valor estimado por lead <span className="text-xs text-slate-400">(opcional)</span>
+          </label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">R$</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={valuePerLead}
+              onChange={(e) => setValuePerLead(e.target.value.replace(/[^0-9.,]/g, ''))}
+              placeholder="0,00"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:outline-none"
+            />
+          </div>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+            Aplica em todos os leads selecionados. Vendedor edita individualmente depois se quiser.
+          </p>
+        </div>
       </div>
     </CrmModal>
   );
@@ -927,7 +1010,7 @@ export function CrmProspectsPage() {
               </span>
             </button>
             <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2 mt-1 leading-snug">
-              Esconde leads que só têm fixo. Após "Enriquecer com Google", muitos fixos viram celulares.
+              Esconde leads que só têm fixo cadastrado. Os celulares aparecem normalmente — busca Google traz telefone do Meu Negócio direto.
             </p>
           </div>
 
@@ -1058,7 +1141,7 @@ export function CrmProspectsPage() {
                     {whatsappOnly ? ' com WhatsApp' : ' baixado' + (visibleProspects.length !== 1 ? 's' : '')}
                   </span>
                   {hiddenByFilter > 0 && whatsappOnly && (
-                    <span className="text-[11px] font-normal text-amber-600 dark:text-amber-400" title="Esses leads tem so fixo. Desmarque 'Apenas com WhatsApp' no sidebar pra ver, ou clique em 'Enriquecer com Google' pra tentar achar celular.">
+                    <span className="text-[11px] font-normal text-amber-600 dark:text-amber-400" title="Esses leads tem so fixo cadastrado no Google Meu Negocio. Desmarque 'Apenas com WhatsApp' no sidebar pra ver.">
                       ({hiddenByFilter} fixo{hiddenByFilter > 1 ? 's' : ''} ocultos)
                     </span>
                   )}
@@ -1082,21 +1165,14 @@ export function CrmProspectsPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {activeTab === 'list' && generated && prospects.length > 0 && (
-              <button
-                onClick={enrichAll}
-                disabled={enrichingAll || enrichedCount === prospects.length}
-                title="Busca telefone e site atualizados via Google Places (cache local 30 dias)"
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shadow-sm transition-all"
-              >
-                {enrichingAll ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                {enrichingAll
-                  ? `Enriquecendo... (${enrichedCount}/${prospects.length})`
-                  : enrichedCount === prospects.length && prospects.length > 0
-                    ? 'Tudo enriquecido'
-                    : `Enriquecer com Google${enrichedCount > 0 ? ` (${enrichedCount}/${prospects.length})` : ''}`}
-              </button>
-            )}
+            {/*
+              O botao "Enriquecer com Google" foi removido pq ele era residuo
+              do modo CD-first antigo (quando Google enrichment era 1 chamada
+              extra POR LEAD pra trazer phone/site/IG). No fluxo Google-first
+              atual, esses dados ja vem na propria busca em uma unica chamada,
+              tornando esse botao redundante e caro (cobra novamente algo que
+              ja temos).
+            */}
             {activeTab === 'list' && selectedIds.size > 0 && (
               <button
                 onClick={() => setPipelineModalOpen(true)}
@@ -1192,7 +1268,7 @@ export function CrmProspectsPage() {
                       ) : (
                         <>
                           <p className="text-sm text-slate-400 dark:text-slate-500">Todos os {prospects.length} resultados são fixo (sem WhatsApp)</p>
-                          <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Desmarque "Apenas com WhatsApp" no sidebar ou clique em "Enriquecer com Google" pra tentar achar celular</p>
+                          <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Desmarque "Apenas com WhatsApp" no sidebar pra ver os fixos, ou ajuste filtros pra outra cidade/segmento.</p>
                         </>
                       )}
                     </td>
@@ -1204,6 +1280,9 @@ export function CrmProspectsPage() {
                     const cdEnr = cdEnrichments.get(p.id);
                     const cdLoading = cdEnr === 'loading';
                     const cdData = cdEnr && cdEnr !== 'loading' && cdEnr !== 'miss' ? cdEnr : null;
+                    // Enrichment Google-legacy (modo CD-first antigo). Em modo Google-first sempre nulo.
+                    const enr = enrichments.get(p.id);
+                    const enriched = enr && enr !== 'loading' && enr !== 'miss' ? enr : null;
                     const m = {
                       cnpj:             p.cnpj             || cdData?.cnpj             || '',
                       contactName:      p.contactName      || cdData?.contactName      || '',
@@ -1215,6 +1294,10 @@ export function CrmProspectsPage() {
                       socios:           p.socios?.length   ? p.socios   : (cdData?.socios   || []),
                       atividadesSecundarias: p.atividadesSecundarias?.length ? p.atividadesSecundarias : (cdData?.atividadesSecundarias || []),
                       cnaeDescricao:    p.cnaeDescricao    || cdData?.cnaeDescricao    || '',
+                      // Web stuff: prioriza Google-first (p.*), fallback pra enrichment legacy
+                      website:          p.website          || enriched?.website         || '',
+                      instagram:        p.instagram        || enriched?.instagram       || '',
+                      facebook:         p.facebook         || enriched?.facebook        || '',
                     };
                     return (
                       <tr
@@ -1357,30 +1440,30 @@ export function CrmProspectsPage() {
                                     +{p.phones.length - 1} {phoneSource === 'google' ? '(Receita)' : ''}
                                   </div>
                                 )}
-                                {enriched?.website && (
+                                {m.website && (
                                   <a
-                                    href={enriched.website}
+                                    href={m.website}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
-                                    title={enriched.website}
+                                    title={m.website}
                                     className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline mt-0.5 truncate max-w-[140px]"
                                   >
                                     <ExternalLink size={9} className="shrink-0" />
-                                    {enriched.website.replace(/^https?:\/\//, '').replace(/\/$/, '').slice(0, 24)}
+                                    {m.website.replace(/^https?:\/\//, '').replace(/\/$/, '').slice(0, 24)}
                                   </a>
                                 )}
-                                {enriched?.instagram && (
+                                {m.instagram && (
                                   <a
-                                    href={enriched.instagram}
+                                    href={m.instagram}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
-                                    title={enriched.instagram}
+                                    title={m.instagram}
                                     className="flex items-center gap-1 text-[10px] text-pink-600 dark:text-pink-400 hover:underline mt-0.5 truncate max-w-[140px]"
                                   >
                                     <Instagram size={9} className="shrink-0" />
-                                    {enriched.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\//, '@').replace(/[/?].*$/, '').slice(0, 24)}
+                                    {m.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\//, '@').replace(/[/?].*$/, '').slice(0, 24)}
                                   </a>
                                 )}
                               </div>

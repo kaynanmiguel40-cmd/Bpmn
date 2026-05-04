@@ -329,66 +329,145 @@ function writeCdLookupCache(key, data) {
   try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })); } catch {}
 }
 
+// Stop-words que nao agregam à busca (preposicoes, sufixos, termos genericos)
+const STOPWORDS_LOOKUP = new Set([
+  'de', 'da', 'do', 'das', 'dos', 'e', 'em', 'na', 'no', 'nas', 'nos',
+  'a', 'o', 'as', 'os', 'um', 'uma', 'uns', 'umas',
+  'ltda', 'me', 'epp', 'eireli', 'sa', 's/a', 's.a',
+  'escritorio', 'empresa',
+]);
+
+function tokenizeName(name) {
+  return (name || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length >= 3 && !STOPWORDS_LOOKUP.has(t));
+}
+
 /**
- * Busca CD por razao_social/nome_fantasia + UF.
+ * Reduz nome a palavras significativas: remove stopwords, mantém palavras
+ * mais distintivas no início. "Escritório LPL Contabilidade" → "LPL Contabilidade".
+ */
+function buildLookupVariants(name) {
+  const tokens = tokenizeName(name);
+  const variants = [];
+  if (tokens.length > 0) variants.push(tokens.join(' ').slice(0, 80));
+  if (tokens.length >= 2) variants.push(tokens.slice(0, 2).join(' '));
+  if (tokens.length >= 1 && tokens[0].length >= 3) variants.push(tokens[0]);
+  return [...new Set(variants)];
+}
+
+/**
+ * Score Jaccard de tokens entre nome original e candidato CD.
+ * Retorna 0..1 — quanto maior, mais similar.
+ */
+function scoreCandidate(candidate, originalTokens) {
+  if (originalTokens.length === 0) return 0;
+  const cdName = `${candidate.razao_social || ''} ${candidate.nome_fantasia || ''}`;
+  const cdTokens = new Set(tokenizeName(cdName));
+  const intersection = originalTokens.filter(t => cdTokens.has(t)).length;
+  return intersection / originalTokens.length;
+}
+
+/**
+ * Busca CD por razao_social/nome_fantasia + UF, com fallbacks de simplificacao
+ * de nome. Tenta variantes ate achar OU desistir cacheando 'miss'.
+ *
  * Retorna o melhor match (objeto prospect-shaped) ou null se nao bateu.
  */
 export async function lookupCnpjByName(name, uf, city = '') {
   if (!name) return null;
   if (!CASA_DOS_DADOS_API_KEY) return null;
 
+  // Cache global por (nome ORIGINAL, uf) — nao dependendo da variante usada
   const key = cdLookupCacheKey(name, uf);
   const cached = readCdLookupCache(key);
   if (cached !== null) return cached.miss ? null : cached;
 
-  // Trunca nome generico ("Padaria do Joao Ltda" → "Padaria do Joao")
-  const cleanName = name.replace(/\s+(ltda|me|epp|eireli|s\/?a|s\.a\.?)\s*$/i, '').trim().slice(0, 80);
-
-  try {
-    const body = {
-      situacao_cadastral: ['ATIVA'],
-      limite: 5,
-      pagina: 1,
-      mais_filtros: { somente_matriz: true },
-      busca_textual: [{
-        texto: [cleanName],
-        tipo_busca: 'radical',
-        razao_social: true,
-        nome_fantasia: true,
-      }],
-    };
-    if (uf) body.uf = [uf.toLowerCase()];
-    if (city) body.municipio = [city.toUpperCase()];
-
-    const res = await fetch(CASA_DOS_DADOS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'api-key': CASA_DOS_DADOS_API_KEY },
-      body: JSON.stringify(body),
-    });
-
-    trackCdLookup();
-
-    if (!res.ok) {
-      console.warn('[lookupCnpj] HTTP', res.status);
-      return null;
-    }
-
-    const json = await res.json();
-    const candidates = json.cnpjs || [];
-    if (candidates.length === 0) {
-      writeCdLookupCache(key, { miss: true });
-      return null;
-    }
-
-    // Pega primeiro match (CD ja ranqueia por relevancia).
-    // Idealmente cruzariamos por endereco mas nem todos retornam de forma confiavel.
-    const result = transformApiCompany(candidates[0], 0);
-    writeCdLookupCache(key, result);
-    return result;
-  } catch (err) {
-    console.warn('[lookupCnpj] erro:', err);
+  const variants = buildLookupVariants(name);
+  if (variants.length === 0) {
+    writeCdLookupCache(key, { miss: true });
     return null;
   }
+
+  const originalTokens = tokenizeName(name);
+  // Threshold mais permissivo — 30% dos tokens significativos. Pra empresas
+  // cuja razao social na Receita eh nome do dono ("JOSE SILVA LTDA") em vez
+  // do nome fantasia ("Padaria do Jose"), tokens raramente batem 50%+.
+  // O ranking ainda escolhe o mais similar; threshold so descarta lixo total.
+  const SCORE_MIN_FIRST = 0.3;
+  const SCORE_MIN_LAST  = 0.5; // ultimo recurso (variante curta tipo "lpl") exige mais
+
+  for (let i = 0; i < variants.length; i++) {
+    const variant = variants[i];
+    const isLastResort = i === variants.length - 1 && variant.split(' ').length === 1;
+    const threshold = isLastResort ? SCORE_MIN_LAST : SCORE_MIN_FIRST;
+
+    try {
+      const body = {
+        situacao_cadastral: ['ATIVA'],
+        limite: 20,
+        pagina: 1,
+        mais_filtros: { somente_matriz: true },
+        busca_textual: [{
+          texto: [variant],
+          tipo_busca: 'radical',
+          razao_social: true,
+          nome_fantasia: true,
+        }],
+      };
+      if (uf) body.uf = [uf.toLowerCase()];
+      // Sem filtro de cidade — Google's formattedAddress nem sempre usa o nome
+      // exato do municipio CD (ex: "Belo Horizonte" vs "BELO HORIZONTE"
+      // vs cidades vizinhas). Filtra DEPOIS pelo score.
+
+      const res = await fetch(CASA_DOS_DADOS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'api-key': CASA_DOS_DADOS_API_KEY },
+        body: JSON.stringify(body),
+      });
+
+      trackCdLookup();
+
+      if (!res.ok) {
+        console.warn('[lookupCnpj] HTTP', res.status, 'variant:', variant);
+        continue;
+      }
+
+      const json = await res.json();
+      const candidates = json.cnpjs || [];
+      if (candidates.length === 0) continue;
+
+      // Boost de score se cidade do CD bate com cidade do Google
+      const cityNorm = (city || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const scored = candidates
+        .map(c => {
+          let score = scoreCandidate(c, originalTokens);
+          if (cityNorm) {
+            const cdCity = (c.endereco?.municipio || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            if (cdCity && (cdCity === cityNorm || cdCity.includes(cityNorm) || cityNorm.includes(cdCity))) {
+              score += 0.3; // boost de 30% se cidade bate
+            }
+          }
+          return { c, score };
+        })
+        .sort((a, b) => b.score - a.score);
+
+      const best = scored[0];
+      if (!best || best.score < threshold) continue;
+
+      const result = transformApiCompany(best.c, 0);
+      writeCdLookupCache(key, result);
+      return result;
+    } catch (err) {
+      console.warn('[lookupCnpj] erro variant:', variant, err);
+    }
+  }
+
+  writeCdLookupCache(key, { miss: true });
+  return null;
 }
 
 // ─── Cache localStorage da Casa dos Dados ─────────────────────────────────────
@@ -926,11 +1005,13 @@ export async function softDeleteCrmProspect(id) {
  * ou de linhas reais persistidas em crm_prospects (id `crm_prs_*`).
  * Para cada um: cria empresa, contato e deal.
  */
-export async function sendToPipeline(prospects, pipelineId, stageId) {
+export async function sendToPipeline(prospects, pipelineId, stageId, opts = {}) {
   if (!prospects?.length) {
     toast('Nenhum prospect selecionado', 'error');
     return { success: 0, errors: 0 };
   }
+
+  const { defaultValue = 0 } = opts;
 
   let success = 0;
   let errors = 0;
@@ -1032,10 +1113,11 @@ export async function sendToPipeline(prospects, pipelineId, stageId) {
       // (default do schema seria 50, o que infla forecast).
       const deal = await createCrmDeal({
         title: merged.companyName,
-        value: 0,
+        value: defaultValue,
         probability: 10,
         pipelineId,
         stageId,
+        ownerId: p._ownerId || null,
         contactId: null,
         companyId: companyId || null,
         contactName: merged.contactName || '',
