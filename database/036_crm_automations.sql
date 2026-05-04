@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS crm_automations (
   name            TEXT NOT NULL,
   pipeline_id     UUID REFERENCES crm_pipelines(id) ON DELETE CASCADE,
   stage_id        UUID REFERENCES crm_pipeline_stages(id) ON DELETE CASCADE,
-  channel         TEXT NOT NULL CHECK (channel IN ('email', 'whatsapp', 'sms')),
+  channel         TEXT NOT NULL CHECK (channel IN ('email', 'whatsapp')),
   message_type    TEXT NOT NULL CHECK (message_type IN ('text', 'image', 'video', 'audio')),
   subject         TEXT,
   message_content TEXT,
@@ -28,6 +28,27 @@ CREATE TABLE IF NOT EXISTS crm_automations (
 
 -- Garante coluna `subject` mesmo se a tabela ja existia
 ALTER TABLE crm_automations ADD COLUMN IF NOT EXISTS subject TEXT;
+
+-- Remove canal SMS (nao suportado): apaga regras/logs antigos e recria CHECK.
+UPDATE crm_automations
+   SET deleted_at = NOW()
+ WHERE channel = 'sms' AND deleted_at IS NULL;
+
+DELETE FROM crm_automation_logs WHERE channel = 'sms';
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.constraint_column_usage
+    WHERE table_name = 'crm_automations' AND constraint_name = 'crm_automations_channel_check'
+  ) THEN
+    ALTER TABLE crm_automations DROP CONSTRAINT crm_automations_channel_check;
+  END IF;
+END $$;
+
+ALTER TABLE crm_automations
+  ADD CONSTRAINT crm_automations_channel_check
+  CHECK (channel IN ('email', 'whatsapp'));
 
 -- 2) Tabela de logs
 CREATE TABLE IF NOT EXISTS crm_automation_logs (

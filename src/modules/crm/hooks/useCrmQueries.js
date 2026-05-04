@@ -349,6 +349,9 @@ export function useDeleteCrmDeal() {
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       toast('Negocio excluido', 'success');
     },
+    onError: (err) => {
+      toast(`Erro ao excluir negocio: ${err.message}`, 'error');
+    },
   });
 }
 
@@ -976,7 +979,7 @@ export function useDeleteCrmProspect() {
 export function useSendToPipeline() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ prospects, pipelineId, stageId }) => sendToPipeline(prospects, pipelineId, stageId),
+    mutationFn: ({ prospects, pipelineId, stageId, defaultValue }) => sendToPipeline(prospects, pipelineId, stageId, { defaultValue }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.prospects });
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });

@@ -185,14 +185,15 @@ export async function updateCrmDeal(id, updates) {
 }
 
 export async function softDeleteCrmDeal(id) {
-  const { error } = await supabase
+  const { error, data } = await supabase
     .from('crm_deals')
     .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
 
-  if (error) {
-    toast(`Erro ao excluir negocio: ${error.message}`, 'error');
-    return false;
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) {
+    throw new Error('Nenhum negocio foi excluido — provavel bloqueio por RLS ou ID inexistente.');
   }
   return true;
 }

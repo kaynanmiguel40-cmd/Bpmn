@@ -251,7 +251,7 @@ export function CrmDealsPage() {
 
       <CrmConfirmDialog
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        onCancel={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title="Excluir negocio"
         message={`Tem certeza que deseja excluir "${deleteTarget?.title}"? Esta acao nao pode ser desfeita.`}

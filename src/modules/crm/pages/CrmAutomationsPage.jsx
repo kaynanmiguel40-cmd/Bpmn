@@ -6,7 +6,7 @@
 import { useState, useMemo, Fragment } from 'react';
 import {
   Zap, Plus, Pencil, Trash2, Power, PowerOff,
-  Mail, MessageSquare, Smartphone,
+  Mail, MessageSquare,
   Type, Image, Video, Mic,
   CheckCircle2, AlertCircle, Clock,
   ChevronDown, ChevronRight,
@@ -30,7 +30,6 @@ import {
 const CHANNEL_META = {
   email:    { label: 'E-mail',   Icon: Mail,           color: 'text-blue-500'  },
   whatsapp: { label: 'WhatsApp', Icon: MessageSquare,   color: 'text-green-500' },
-  sms:      { label: 'SMS',      Icon: Smartphone,      color: 'text-purple-500'},
 };
 
 const MSG_TYPE_META = {
@@ -266,13 +265,13 @@ function RulesTab({ onNew, onEdit }) {
 
       <CrmConfirmDialog
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        onCancel={() => setDeleteTarget(null)}
         onConfirm={async () => {
           await deleteMutation.mutateAsync(deleteTarget.id);
           setDeleteTarget(null);
         }}
         title="Excluir automação"
-        description={`Deseja remover a automação "${deleteTarget?.name}"? Esta ação não pode ser desfeita.`}
+        message={`Deseja remover a automação "${deleteTarget?.name}"? Esta ação não pode ser desfeita.`}
         loading={deleteMutation.isPending}
       />
     </div>
@@ -428,7 +427,6 @@ function LogsTab() {
           <option value="">Todos os canais</option>
           <option value="email">E-mail</option>
           <option value="whatsapp">WhatsApp</option>
-          <option value="sms">SMS</option>
         </select>
         <span className="text-xs text-slate-400 ml-auto">{total} registro(s)</span>
       </div>
