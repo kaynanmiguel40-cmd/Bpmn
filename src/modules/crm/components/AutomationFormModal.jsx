@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Mail, MessageSquare, Smartphone, Type, Image, Video, Mic, Zap } from 'lucide-react';
+import { Mail, MessageSquare, Type, Image, Video, Mic, Zap } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { useCrmPipelines } from '../hooks/useCrmQueries';
 import { useCreateAutomation, useUpdateAutomation } from '../hooks/useCrmQueries';
@@ -12,7 +12,6 @@ import { useCreateAutomation, useUpdateAutomation } from '../hooks/useCrmQueries
 const CHANNELS = [
   { id: 'email',     label: 'E-mail',    icon: Mail },
   { id: 'whatsapp',  label: 'WhatsApp',  icon: MessageSquare },
-  { id: 'sms',       label: 'SMS',       icon: Smartphone },
 ];
 
 const MESSAGE_TYPES = [
@@ -215,11 +214,6 @@ export function AutomationFormModal({ open, onClose, automation }) {
           {form.channel === 'whatsapp' && (
             <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
               Requer integração com Meta Business API ou Z-API para envio real.
-            </p>
-          )}
-          {form.channel === 'sms' && (
-            <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-              Requer integração com Twilio para envio real.
             </p>
           )}
           {form.channel === 'email' && (

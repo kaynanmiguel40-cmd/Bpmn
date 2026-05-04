@@ -336,7 +336,7 @@ export async function triggerAutomationsForDeal(deal, stageId) {
         body:    renderedBody,
       });
     } else {
-      // whatsapp / sms — pendente. Apenas registra.
+      // whatsapp — pendente. Apenas registra.
       recipient = deal.contactPhone || deal.contactName || '';
       result = { ok: false, error: `Canal ${a.channel} ainda não integrado` };
     }

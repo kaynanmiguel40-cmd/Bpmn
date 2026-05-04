@@ -280,7 +280,6 @@ function PreferenciasTab() {
           {[
             { name: 'WhatsApp', desc: 'Meta Business API ou Z-API', status: 'Não configurado' },
             { name: 'E-mail', desc: 'Resend / SendGrid via Supabase Edge Function', status: 'Não configurado' },
-            { name: 'SMS', desc: 'Twilio API', status: 'Não configurado' },
           ].map(integration => (
             <div
               key={integration.name}
