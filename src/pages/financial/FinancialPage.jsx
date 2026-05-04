@@ -16,6 +16,8 @@ import {
   createOSProject, updateOSProject, deleteOSProject,
   createOSOrder, updateOSOrder, deleteOSOrder, updateOSOrdersBatch,
   clearProjectFromOrders, clearSectorFromProjects,
+  toggleGroupAssignee, getGroupAssignees,
+  setGroupDueAt, setItemDueAt,
 } from '../../lib/osService';
 import { startTimer, closeOpenSession } from '../../lib/timeEntryService';
 import { toast } from '../../contexts/ToastContext';
@@ -37,6 +39,26 @@ import {
   SECTOR_COLORS, PROJECT_COLORS,
 } from '../../constants/colors';
 import { sortByDeadline } from '../../lib/orderSorting';
+
+/** Formata minutos como "1h30" / "2h" / "45min". */
+function formatHM(min) {
+  if (!min || min <= 0) return '0min';
+  const h = Math.floor(min / 60);
+  const r = min % 60;
+  if (h > 0 && r > 0) return `${h}h${String(r).padStart(2, '0')}`;
+  if (h > 0) return `${h}h`;
+  return `${r}min`;
+}
+
+/** Lista de nomes a renderizar como chips de "atribuidos".
+ *  Em team: usa participants[] (fonte unica de verdade).
+ *  Em solo/pool: cai no CSV legado de assignedTo. */
+function getOrderAssigneeNames(order) {
+  if (order?.mode === 'team' && Array.isArray(order.participants) && order.participants.length > 0) {
+    return order.participants.map(p => p?.name).filter(Boolean);
+  }
+  return (order?.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean);
+}
 
 /** Renderiza conteudo rich text (HTML do TipTap) ou texto puro (backward compatible). */
 function RichTextDisplay({ content, className = '' }) {
@@ -84,8 +106,13 @@ const EMPTY_PROJECT_FORM = {
 };
 
 import { formatDateTime as formatDate, formatDateSmart as formatDateShort, formatCurrency, formatCpf, formatSignatureDateTime } from '../../lib/formatters';
-import { STANDARD_MONTHLY_HOURS, WORK_END_HOUR, WORK_START_HOUR } from '../../constants/sla';
+import { STANDARD_MONTHLY_HOURS } from '../../constants/sla';
 import { FolderIcon, InboxIcon } from '../../components/icons/FinancialIcons';
+import OSSignaturesPanel from '../../components/os/OSSignaturesPanel';
+import { markDelivered } from '../../lib/osSignaturesService';
+import GroupAssigneeButton from '../../components/os/GroupAssigneeButton';
+import DueDateButton from '../../components/os/DueDateButton';
+import { joinOSOrder } from '../../lib/osService';
 
 const EMPTY_SECTOR_FORM = {
   label: '',
@@ -376,6 +403,17 @@ export default function FinancialPage() {
     setShowCreateForm(true);
   };
 
+  // Garante que o valor esta no formato YYYY-MM-DDTHH:mm aceito por <input datetime-local>
+  const coerceDatetimeLocal = (v) => {
+    if (!v) return '';
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v)) return v;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T08:00`;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  };
+
   const openEdit = (order) => {
     setEditingOrder(order);
     setForm({
@@ -390,8 +428,8 @@ export default function FinancialPage() {
       notes: order.notes || '',
       assignedTo: order.assignedTo || '',
       supervisor: order.supervisor || '',
-      estimatedStart: order.estimatedStart || '',
-      estimatedEnd: order.estimatedEnd || '',
+      estimatedStart: coerceDatetimeLocal(order.estimatedStart),
+      estimatedEnd: coerceDatetimeLocal(order.estimatedEnd),
       attachments: order.attachments || [],
       projectId: order.projectId || null,
       parentOrderId: order.parentOrderId || null,
@@ -442,9 +480,8 @@ export default function FinancialPage() {
   const handleSave = async (formOverride) => {
     const currentForm = formOverride || form;
     if (!currentForm.title.trim() || saving) return;
-    // Validacoes obrigatorias
+    // Validacoes obrigatorias (responsavel e opcional: sem ninguem -> O.S. vai pro pool)
     const missing = [];
-    if (!currentForm.assignedTo && !currentForm.assignee) missing.push('responsavel');
     if (!currentForm.estimatedStart) missing.push('data de inicio');
     if (!currentForm.estimatedEnd) missing.push('data de termino');
     if (missing.length > 0) {
@@ -506,8 +543,39 @@ export default function FinancialPage() {
   const handleConfirmOrder = async () => {
     if (!pendingOrder) return;
     const { id: _previewId, ...orderData } = pendingOrder;
-    const newOrder = await createOSOrder(orderData);
+
+    // Deriva participantes do form (campo "assignedTo" e CSV de nomes).
+    // O id em members[] e o UUID de auth.users (col team_members.auth_user_id),
+    // NAO o id local "member_<ts>" — colunas assigned_to/assignee_id sao UUID.
+    const memberNames = (orderData.assignedTo || '')
+      .split(',').map(s => s.trim()).filter(Boolean);
+    const members = memberNames
+      .map(n => teamMembers.find(m => namesMatch(m.name, n)))
+      .filter(Boolean)
+      .map(m => ({ id: m.authUserId || null, name: m.name }));
+
+    let mode = 'pool';
+    if (members.length === 1) mode = 'solo';
+    else if (members.length >= 2) mode = 'team';
+
+    const payload = {
+      ...orderData,
+      mode,
+      // participants[] e a fonte unica de verdade pra "quem trabalha aqui".
+      // A UI le participants quando mode==='team'; assignedTo fica null porque
+      // assigned_to e UUID (nao aceita CSV) e em team nao tem 1 dono unico.
+      participants: members,
+      ...(mode === 'team'
+        ? { assignedTo: null, assignee: null }
+        : mode === 'solo'
+          ? { assignedTo: members[0].id, assignee: members[0].name }
+          : { assignedTo: null, assignee: null }),
+    };
+
+    const newOrder = await createOSOrder(payload);
     if (newOrder) {
+      // Assinatura NAO acontece na criacao — cada participante precisa
+      // clicar "Pegar O.S." manualmente pra confirmar/assinar.
       queryClient.setQueryData(queryKeys.osOrders, prev => [...(prev || []), newOrder]);
       notifyOSCreated(newOrder, allMembers, profile.id);
     }
@@ -867,7 +935,9 @@ export default function FinancialPage() {
 
   // Tela 3: Documento O.S.
   if (viewingOrder) {
-    const projectName = projects.find(p => p.id === viewingOrder.projectId)?.name || null;
+    // Pega versao FRESCA da lista (react-query) — assim invalidate atualiza a tela
+    const freshOrder = orders.find(o => o.id === viewingOrder.id) || viewingOrder;
+    const projectName = projects.find(p => p.id === freshOrder.projectId)?.name || null;
     return (
       <>
         <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
@@ -875,10 +945,10 @@ export default function FinancialPage() {
           <span>/</span>
           <button onClick={() => setViewingOrder(null)} className="hover:text-fyness-primary transition-colors">{selectedProject?.name || 'Kanban'}</button>
           <span>/</span>
-          <span className="text-slate-800 dark:text-slate-100 font-medium">O.S. #{viewingOrder.number}</span>
+          <span className="text-slate-800 dark:text-slate-100 font-medium">O.S. #{freshOrder.number}</span>
         </div>
         <OSDocument
-          order={viewingOrder}
+          order={freshOrder}
           currentUser={currentUser}
           projectName={projectName}
           isManager={isManager}
@@ -1244,8 +1314,8 @@ export default function FinancialPage() {
                             <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400">{order.client || '-'}</td>
                             <td className="px-4 py-2.5">
                               <div className="flex flex-wrap gap-1">
-                                {(order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).length > 0 ? (
-                                  (order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                                {getOrderAssigneeNames(order).length > 0 ? (
+                                  getOrderAssigneeNames(order).map((name, i) => {
                                     const m2 = allMembers.find(tm => namesMatch(tm.name, name));
                                     return (
                                       <span key={i} className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
@@ -1961,8 +2031,8 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
         })()}
         <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
           <div className="flex flex-wrap gap-1">
-            {(order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).length > 0 ? (
-              (order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+            {getOrderAssigneeNames(order).length > 0 ? (
+              getOrderAssigneeNames(order).map((name, i) => {
                 const m = teamMembers.find(tm => namesMatch(tm.name, name));
                 return (
                   <span key={i} className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
@@ -2005,6 +2075,7 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
 // ==================== DOCUMENTO O.S. ====================
 
 function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplicate, onClaim, onRelease, onMoveForward, onMoveBack, onDelete, isManager, canEditOS, canDeleteOS, canViewCosts, profileName, profileCpf, profileId, teamMembers, allOrders = [], onViewOrder, onUpdateOrder }) {
+  const queryClient = useQueryClient();
   // Ref para manter checklist mais recente e evitar closures obsoletas
   const checklistRef = useRef(order.checklist || []);
   checklistRef.current = order.checklist || [];
@@ -2020,53 +2091,6 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
     });
     if (needsFix) onUpdateOrder(order.id, { checklist: cleaned });
   }, [order.id]);
-
-  // Auto-pause: pausa a O.S. automaticamente quando aberta fora do horario de trabalho
-  // (antes de 09h, depois de 18h, ou em fins de semana).
-  // Dispara apenas UMA vez por sessao: se o usuario retomar manualmente, respeita
-  // a decisao dele e nao pausa novamente — permitindo trabalhar fora do horario.
-  const autoPausedRef = useRef(false);
-  useEffect(() => {
-    // Se ja esta pausada (manual ou auto), marcar ref e nao tentar auto-pausar
-    if (order.pausedAt) {
-      autoPausedRef.current = true;
-      return;
-    }
-    // Se usuario retomou apos auto-pause, respeita decisao (nao pausa de novo)
-    if (autoPausedRef.current) return;
-
-    if (!onUpdateOrder || order.status !== 'in_progress') return;
-
-    const autoPause = async () => {
-      if (autoPausedRef.current) return;
-      const now = new Date();
-      const day = now.getDay();
-      const hour = now.getHours();
-      const isAfterHours = hour >= WORK_END_HOUR || hour < WORK_START_HOUR || day === 0 || day === 6;
-      if (!isAfterHours) return;
-
-      // Marca antes do await para evitar disparos duplicados durante a mutation
-      autoPausedRef.current = true;
-      const pauseTime = new Date(now);
-      if (hour >= WORK_END_HOUR) {
-        pauseTime.setHours(WORK_END_HOUR, 0, 0, 0);
-      }
-      // Calcula tempo trabalhado desde ultimo start/resume para acumular
-      const lastStart = order.resumedAt || order.actualStart;
-      const runningMs = lastStart ? Math.max(0, pauseTime - new Date(lastStart)) : 0;
-      const newAccumulated = (order.accumulatedMs || 0) + runningMs;
-      try {
-        await onUpdateOrder(order.id, { pausedAt: pauseTime.toISOString(), accumulatedMs: newAccumulated });
-        toast.info('O.S. pausada automaticamente — fora do horario de trabalho');
-      } catch {
-        // Se falhar, permite nova tentativa
-        autoPausedRef.current = false;
-      }
-    };
-    autoPause();
-    const interval = setInterval(autoPause, 60_000);
-    return () => clearInterval(interval);
-  }, [order.id, order.status, order.pausedAt, onUpdateOrder]);
 
   // Estado de colapso dos blocos de tarefas
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
@@ -2404,9 +2428,9 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Atribuido a</label>
-              {order.assignedTo ? (
+              {getOrderAssigneeNames(order).length > 0 ? (
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {(order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                  {getOrderAssigneeNames(order).map((name, i) => {
                     const m3 = teamMembers.find(tm => namesMatch(tm.name, name));
                     return (
                       <div key={i} className="flex items-center gap-1.5">
@@ -2669,6 +2693,44 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                 </span>
                               )}
                             </button>
+                            {/* Seletor de responsaveis + prazo da pasta. Funciona tanto em
+                                pasta nomeada quanto na pseudo-pasta "Tarefas" (__ungrouped__). */}
+                            {editingGroupKey !== groupKey && order.mode === 'team' && (order.participants || []).length > 0 && (() => {
+                              const cg = (order.checklistGroups || []).find(g => g.name === groupKey);
+                              const currentAssignees = getGroupAssignees(cg);
+                              return (
+                                <>
+                                  <GroupAssigneeButton
+                                    participants={order.participants || []}
+                                    currentAssignees={currentAssignees}
+                                    disabled={!canEditOS}
+                                    onToggle={async (member) => {
+                                      try {
+                                        await toggleGroupAssignee(order.id, groupKey, member);
+                                        queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+                                      } catch (err) {
+                                        console.error('[GROUP_ASSIGN] falhou:', err);
+                                        toast.error(`Erro ao atribuir: ${err?.message || err}`);
+                                      }
+                                    }}
+                                  />
+                                  <DueDateButton
+                                    dueAt={cg?.dueAt || null}
+                                    done={allGroupDone}
+                                    disabled={!canEditOS}
+                                    size="sm"
+                                    onChange={async (iso) => {
+                                      try {
+                                        await setGroupDueAt(order.id, groupKey, iso);
+                                        queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+                                      } catch (err) {
+                                        toast.error(`Erro ao salvar prazo: ${err?.message || err}`);
+                                      }
+                                    }}
+                                  />
+                                </>
+                              );
+                            })()}
                             {/* Input de renomear grupo (inline) */}
                             {editingGroupKey === groupKey && isGrouped && (
                               <input
@@ -2740,10 +2802,13 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                 {groupItems.map((item) => {
                                   const arrIdx = cl.findIndex(i => i.id === item.id);
                                   return (
-                                    <button
+                                    <div
                                       key={item.id}
+                                      role="button"
+                                      tabIndex={0}
                                       onClick={() => handleToggle(item)}
-                                      className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors text-left ${
+                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggle(item); } }}
+                                      className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors text-left cursor-pointer ${
                                         !item.done ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30' :
                                         'hover:bg-slate-50 dark:hover:bg-slate-700/50'
                                       }`}
@@ -2760,13 +2825,30 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                       </div>
                                       <span className="text-xs text-slate-400 dark:text-slate-500 font-mono w-5 shrink-0">{arrIdx + 1}.</span>
                                       <span className={`text-sm flex-1 ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : 'text-blue-700 dark:text-blue-300 font-medium'}`}>{item.text}</span>
+                                      {/* Prazo individual do item */}
+                                      <div onClick={(e) => e.stopPropagation()}>
+                                        <DueDateButton
+                                          dueAt={item.dueAt || null}
+                                          done={item.done}
+                                          disabled={!canEditOS}
+                                          size="xs"
+                                          onChange={async (iso) => {
+                                            try {
+                                              await setItemDueAt(order.id, item.id, iso);
+                                              queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+                                            } catch (err) {
+                                              toast.error(`Erro ao salvar prazo: ${err?.message || err}`);
+                                            }
+                                          }}
+                                        />
+                                      </div>
                                       {item.done && realDuration(item) > 0 && (
                                         <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(realDuration(item))}</span>
                                       )}
                                       {item.done && item.completedAt && (
                                         <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{fmtHour(item.completedAt)}</span>
                                       )}
-                                    </button>
+                                    </div>
                                   );
                                 })}
                               </div>
@@ -2913,6 +2995,47 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             );
           })()}
 
+          {/* Painel de assinaturas + entregas (so em team) */}
+          <OSSignaturesPanel
+            order={order}
+            currentUserId={profileId}
+            currentUserName={profileName || currentUser}
+            onPick={async (p) => {
+              try {
+                await joinOSOrder(order.id, { id: p.id || profileId, name: p.name });
+                queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+              } catch (err) {
+                toast.error(`Erro ao pegar O.S.: ${err?.message || err}`);
+              }
+            }}
+            onDeliver={async (p) => {
+              try {
+                await markDelivered({
+                  orderId: order.id,
+                  userId: p.id || profileId,
+                  userName: p.name || profileName || currentUser,
+                });
+              } catch (err) {
+                toast.error(`Erro ao entregar O.S.: ${err?.message || err}`);
+              }
+            }}
+            onAllDelivered={async () => {
+              try {
+                const updated = await updateOSOrder(order.id, {
+                  status: 'done',
+                  actualEnd: new Date().toISOString(),
+                });
+                if (updated) {
+                  queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+                  notifyOSCompleted(updated, allMembers, profileName || currentUser, profileId);
+                  toast.success('O.S. concluida! Todos entregaram.');
+                }
+              } catch (err) {
+                toast.error(`Erro ao concluir O.S.: ${err?.message || err}`);
+              }
+            }}
+          />
+
           {order.notes && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">
               <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Observacoes</label>
@@ -3031,7 +3154,8 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             )}
           </div>
 
-          {/* Assinaturas */}
+          {/* Assinaturas (apenas solo/pool — em team o OSSignaturesPanel ja cobre) */}
+          {order.mode !== 'team' && (
           <div className="p-8 pt-12 grid grid-cols-2 gap-16">
             <div>
               <div className="text-center">
@@ -3074,6 +3198,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
               )}
             </div>
           </div>
+          )}
 
           {/* Rodape */}
           <div className="bg-slate-50 dark:bg-slate-800/50 px-8 py-3 text-center border-t border-slate-200 dark:border-slate-700 rounded-b-xl">
@@ -3247,9 +3372,9 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
               <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Atribuido a</label>
-              {order.assignedTo ? (
+              {getOrderAssigneeNames(order).length > 0 ? (
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {(order.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                  {getOrderAssigneeNames(order).map((name, i) => {
                     const m3 = teamMembers.find(tm => namesMatch(tm.name, name));
                     return (
                       <div key={i} className="flex items-center gap-1.5">
@@ -3436,6 +3561,47 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
             );
           })()}
 
+          {/* Painel de assinaturas + entregas (so em team) */}
+          <OSSignaturesPanel
+            order={order}
+            currentUserId={profileId}
+            currentUserName={profileName || currentUser}
+            onPick={async (p) => {
+              try {
+                await joinOSOrder(order.id, { id: p.id || profileId, name: p.name });
+                queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+              } catch (err) {
+                toast.error(`Erro ao pegar O.S.: ${err?.message || err}`);
+              }
+            }}
+            onDeliver={async (p) => {
+              try {
+                await markDelivered({
+                  orderId: order.id,
+                  userId: p.id || profileId,
+                  userName: p.name || profileName || currentUser,
+                });
+              } catch (err) {
+                toast.error(`Erro ao entregar O.S.: ${err?.message || err}`);
+              }
+            }}
+            onAllDelivered={async () => {
+              try {
+                const updated = await updateOSOrder(order.id, {
+                  status: 'done',
+                  actualEnd: new Date().toISOString(),
+                });
+                if (updated) {
+                  queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+                  notifyOSCompleted(updated, allMembers, profileName || currentUser, profileId);
+                  toast.success('O.S. concluida! Todos entregaram.');
+                }
+              } catch (err) {
+                toast.error(`Erro ao concluir O.S.: ${err?.message || err}`);
+              }
+            }}
+          />
+
           {order.notes && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">
               <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Observacoes</label>
@@ -3476,7 +3642,8 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
             )}
           </div>
 
-          {/* Assinaturas */}
+          {/* Assinaturas (apenas solo/pool — em team o OSSignaturesPanel ja cobre) */}
+          {order.mode !== 'team' && (
           <div className="p-8 pt-12 grid grid-cols-2 gap-16">
             <div>
               <div className="text-center">
@@ -3507,6 +3674,7 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
               </div>
             </div>
           </div>
+          )}
 
           {/* Rodape */}
           <div className="bg-slate-50 dark:bg-slate-800/50 px-8 py-3 text-center border-t border-slate-200 dark:border-slate-700 rounded-b-xl">
@@ -4418,7 +4586,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
           </div>
           <div className="flex gap-3">
             <button onClick={safeClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm">Cancelar</button>
-            <button onClick={handleSaveClick} disabled={!form.title.trim() || !(form.assignedTo || form.assignee) || !form.estimatedStart || !form.estimatedEnd || saving} className={`px-4 py-2 ${isEmergency ? 'bg-red-600 hover:bg-red-700' : 'bg-fyness-primary hover:bg-fyness-secondary'} text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}>
+            <button onClick={handleSaveClick} disabled={!form.title.trim() || !form.estimatedStart || !form.estimatedEnd || saving} className={`px-4 py-2 ${isEmergency ? 'bg-red-600 hover:bg-red-700' : 'bg-fyness-primary hover:bg-fyness-secondary'} text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}>
               {saving && <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
               {saving ? 'Salvando...' : isEmergency ? 'Gerar Emergencial' : editing ? 'Salvar' : 'Gerar O.S.'}
             </button>

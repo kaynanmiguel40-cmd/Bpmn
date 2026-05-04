@@ -98,6 +98,8 @@ const checklistItem = z.object({
   id: z.union([z.string(), z.number()]).optional(),
   text: z.string().default(''),
   done: z.boolean().default(false),
+  dueAt: z.string().nullable().optional(),         // prazo proprio do item (opcional)
+  estimatedMinutes: z.number().min(0).optional(),  // duracao estimada (estrategico)
 }).passthrough();
 
 // Helper: string que aceita null (para campos que vem como null do form/DB)
@@ -135,6 +137,25 @@ export const osOrderSchema = z.object({
   emergencyNumber: z.number().nullable().optional(),
   eapTaskId: z.string().nullable().optional().default(null),
   wbsPath: z.string().nullable().optional().default(null),
+  // Modo team: participantes da O.S. e metadados por grupo do checklist
+  mode: z.enum(['pool', 'solo', 'team']).optional().default('pool'),
+  participants: z.array(z.object({
+    id: z.string().nullable().optional(),
+    name: z.string(),
+  }).passthrough()).optional().default([]),
+  checklistGroups: z.array(z.object({
+    name: z.string(),
+    // Modelo novo: multi-responsavel
+    assignees: z.array(z.object({
+      id: z.string().nullable().optional(),
+      name: z.string(),
+    }).passthrough()).optional().default([]),
+    // Campos legados — mantidos pra leitura/compatibilidade
+    assigneeId: z.string().nullable().optional(),
+    assigneeName: z.string().optional(),
+    dueAt: z.string().nullable().optional(),
+    estimatedMinutes: z.number().optional().default(0),
+  }).passthrough()).optional().default([]),
 }).passthrough();
 
 export const teamMemberSchema = z.object({

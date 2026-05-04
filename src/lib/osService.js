@@ -3,6 +3,7 @@ import { supabase } from './supabase';
 import { osOrderSchema, sectorSchema, osProjectSchema } from './validation';
 import { SLA_HOURS, DEFAULT_SLA_HOURS } from '../constants/sla';
 import { getOffline } from './offlineDB';
+import { ensureSignaturesForParticipants } from './osSignaturesService';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -31,6 +32,7 @@ export function dbToOrder(row) {
     checklist: Array.isArray(row.checklist) ? row.checklist : [],
     priority: row.priority || 'medium',
     status: row.status || 'available',
+    mode: row.mode || 'pool',
     category: row.category || 'internal',
     blockReason: row.block_reason || null,
     client: row.client || '',
@@ -45,6 +47,8 @@ export function dbToOrder(row) {
     estimatedEnd: toDatetimeLocalInput(row.estimated_end),
     actualStart: toDatetimeLocalInput(row.actual_start),
     actualEnd: toDatetimeLocalInput(row.actual_end),
+    weekStart: row.week_start || null,
+    weekEnd: row.week_end || null,
     pausedAt: row.paused_at || null,
     resumedAt: row.resumed_at || null,
     accumulatedMs: row.accumulated_ms || 0,
@@ -60,6 +64,8 @@ export function dbToOrder(row) {
     wbsPath: row.wbs_path || null,
     scheduledPauses: Array.isArray(row.scheduled_pauses) ? row.scheduled_pauses : [],
     dependsOn: Array.isArray(row.depends_on) ? row.depends_on : [],
+    participants: Array.isArray(row.participants) ? row.participants : [],
+    checklistGroups: Array.isArray(row.checklist_groups) ? row.checklist_groups : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -177,6 +183,7 @@ const orderService = createCRUDService({
     checklist: 'checklist',
     priority: 'priority',
     status: 'status',
+    mode: 'mode',
     category: 'category',
     blockReason: 'block_reason',
     client: 'client',
@@ -190,6 +197,8 @@ const orderService = createCRUDService({
     estimatedEnd: 'estimated_end',
     actualStart: 'actual_start',
     actualEnd: 'actual_end',
+    weekStart: 'week_start',
+    weekEnd: 'week_end',
     pausedAt: 'paused_at',
     resumedAt: 'resumed_at',
     accumulatedMs: 'accumulated_ms',
@@ -206,6 +215,8 @@ const orderService = createCRUDService({
     wbsPath: 'wbs_path',
     scheduledPauses: 'scheduled_pauses',
     dependsOn: 'depends_on',
+    participants: 'participants',
+    checklistGroups: 'checklist_groups',
   },
 });
 
@@ -278,4 +289,429 @@ export async function clearProjectFromOrders(projectId) {
 
 export async function clearSectorFromProjects(sectorId) {
   await projectService.bulkUpdate('sector_id', null, 'sector_id', sectorId);
+}
+
+// ==================== MODOS DA O.S. (pool/solo/team) ====================
+
+/**
+ * Status efetivo de uma O.S. considerando o modo:
+ * - solo/pool: status escrito direto na linha
+ * - team: derivado dos GRUPOS do checklist + assinaturas
+ *     todos itens de todos os grupos done + todos participantes assinaram -> done
+ *     pelo menos 1 item done (em qualquer grupo)                          -> in_progress
+ *     todos itens em todos os grupos = todo                               -> available
+ *
+ * @param {object} order - O.S. transformada (dbToOrder)
+ * @param {Array}  signatures - assinaturas (opcional; lista de { userId, userName })
+ */
+export function computeOSStatus(order, signatures = []) {
+  if (!order) return { status: 'available', awaitingSignatures: false };
+  if (order.mode !== 'team') {
+    return { status: order.status || 'available', awaitingSignatures: false };
+  }
+
+  const checklist = Array.isArray(order.checklist) ? order.checklist : [];
+  const groups = Array.isArray(order.checklistGroups) ? order.checklistGroups : [];
+  if (checklist.length === 0) {
+    return { status: 'available', awaitingSignatures: false };
+  }
+
+  const allDone  = checklist.every(i => i.done);
+  const anyDone  = checklist.some(i => i.done);
+
+  if (!allDone) {
+    return { status: anyDone ? 'in_progress' : 'available', awaitingSignatures: false };
+  }
+  // Todos os itens done. Checa assinaturas: 1 por participante distinto que tem grupo atribuido.
+  const requiredSigners = [...new Set(
+    groups.map(g => g.assigneeId).filter(Boolean)
+  )];
+  if (requiredSigners.length === 0) {
+    // Nenhum grupo atribuido — sem exigir assinatura, considera done.
+    return { status: 'done', awaitingSignatures: false };
+  }
+  const signedIds = new Set(signatures.map(s => s.userId || s.user_id).filter(Boolean));
+  const allSigned = requiredSigners.every(id => signedIds.has(id));
+  if (allSigned) return { status: 'done', awaitingSignatures: false };
+  return { status: 'in_progress', awaitingSignatures: true };
+}
+
+/**
+ * Sincroniza a lista de participantes de uma O.S.
+ *
+ * - Atualiza a coluna participants[] (autoridade unica de "quem trabalha aqui")
+ * - Atualiza mode -> 'team' se total >= 2; nao rebaixa automaticamente (sticky)
+ * - Nao toca em checklist_groups: a atribuicao por grupo e responsabilidade da UI
+ *
+ * @param {string} orderId
+ * @param {Array<{id: string|null, name: string}>} members
+ */
+export async function setOSParticipants(orderId, members) {
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const target = Array.isArray(members) ? members : [];
+
+  // Dedup por id (se houver) ou por name
+  const seen = new Set();
+  const dedup = [];
+  for (const m of target) {
+    const key = m.id || `name:${(m.name || '').toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedup.push({ id: m.id || null, name: m.name || '' });
+  }
+
+  const { data: orderRow } = await supabase
+    .from('os_orders')
+    .select('id, mode')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (!orderRow) throw new Error('O.S. nao encontrada');
+
+  let nextMode = orderRow.mode;
+  if (dedup.length >= 2) nextMode = 'team';
+  else if (dedup.length === 1 && orderRow.mode === 'pool') nextMode = 'solo';
+  // Sticky: team nunca volta pra solo/pool automaticamente
+
+  await orderService.update(orderId, {
+    participants: dedup,
+    ...(nextMode !== orderRow.mode ? { mode: nextMode } : {}),
+  });
+  return { mode: nextMode, participants: dedup };
+}
+
+/**
+ * Usuario "pega" uma O.S. para si. Funciona em qualquer modo:
+ *  - pool         : preenche assignee/assigned_to, marca solo, status -> in_progress
+ *  - solo (sua)   : status -> in_progress
+ *  - solo (outro) : adiciona o original + o novo em participants[], vira team
+ *  - team         : adiciona o novo em participants[]
+ *
+ * Nao mexe em checklist_groups. A atribuicao por grupo e na UI.
+ *
+ * @param {string} orderId
+ * @param {{id: string, name: string}} member
+ */
+export async function joinOSOrder(orderId, member) {
+  if (!orderId || !member?.id) throw new Error('orderId e member.id obrigatorios');
+
+  const { data: row } = await supabase
+    .from('os_orders')
+    .select('id, mode, status, assignee, assigned_to, participants')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (!row) throw new Error('O.S. nao encontrada');
+
+  const now = new Date().toISOString();
+  const currentParticipants = Array.isArray(row.participants) ? row.participants : [];
+
+  // Pegar = assinar: registra signature em qualquer cenario (idempotente)
+  await ensureSignaturesForParticipants(orderId, [{ id: member.id, name: member.name || '' }]);
+
+  // Caso 1: pool -> solo do novo membro
+  if (row.mode === 'pool' || (!row.assigned_to && !row.assignee && currentParticipants.length === 0)) {
+    return updateOSOrder(orderId, {
+      mode: 'solo',
+      assignee: member.name || '',
+      assignedTo: member.id,
+      participants: [{ id: member.id, name: member.name || '' }],
+      status: row.status === 'available' ? 'in_progress' : row.status,
+      actualStart: row.status === 'available' ? now : undefined,
+    });
+  }
+
+  // Caso 2: solo do proprio usuario -> claim
+  if (row.mode === 'solo' && row.assigned_to === member.id) {
+    return updateOSOrder(orderId, {
+      status: 'in_progress',
+      actualStart: now,
+    });
+  }
+
+  // Caso 3: solo de outro -> vira team
+  if (row.mode === 'solo') {
+    const original = { id: row.assigned_to, name: row.assignee || '' };
+    await setOSParticipants(orderId, [original, { id: member.id, name: member.name }]);
+    // Garante signature do original tambem (caso ainda nao tenha)
+    await ensureSignaturesForParticipants(orderId, [original]);
+    return updateOSOrder(orderId, {
+      mode: 'team',
+      // limpa atribuicao unica — agora cada grupo do checklist tem seu assignee
+      assignee: null,
+      assignedTo: null,
+    });
+  }
+
+  // Caso 4: team -> adiciona em participants
+  const next = [...currentParticipants, { id: member.id, name: member.name }];
+  await setOSParticipants(orderId, next);
+  return supabase.from('os_orders').select('*').eq('id', orderId).single()
+    .then(({ data }) => dbToOrder(data));
+}
+
+// ==================== HELPERS DE GRUPOS DO CHECKLIST ====================
+
+/**
+ * Lista os nomes unicos de grupos presentes no checklist da O.S.
+ */
+export function getChecklistGroupNames(order) {
+  if (!order?.checklist) return [];
+  const seen = new Set();
+  for (const item of order.checklist) {
+    seen.add(item.group || '');
+  }
+  return [...seen];
+}
+
+// Le estado FRESCO do banco antes de aplicar patch — evita race entre
+// seleções consecutivas que poderiam sobrescrever uma a outra (stale closure).
+async function readFreshGroups(orderId) {
+  const { data } = await supabase
+    .from('os_orders')
+    .select('checklist_groups, checklist')
+    .eq('id', orderId)
+    .single();
+  return {
+    groups: Array.isArray(data?.checklist_groups) ? data.checklist_groups : [],
+    checklist: Array.isArray(data?.checklist) ? data.checklist : [],
+  };
+}
+
+function upsertGroup(groups, groupName, patch) {
+  const next = [...groups];
+  const idx = next.findIndex(g => (g.name || '') === (groupName || ''));
+  if (idx >= 0) next[idx] = { ...next[idx], ...patch };
+  else next.push({ name: groupName, ...patch });
+  return next;
+}
+
+/**
+ * Le os responsaveis de um grupo, com fallback para o modelo legado
+ * (assigneeId/assigneeName -> array de 1 item). Sempre retorna array.
+ */
+export function getGroupAssignees(group) {
+  if (!group) return [];
+  if (Array.isArray(group.assignees) && group.assignees.length > 0) return group.assignees;
+  if (group.assigneeId || group.assigneeName) {
+    return [{ id: group.assigneeId || null, name: group.assigneeName || '' }];
+  }
+  return [];
+}
+
+/**
+ * Toggle de um responsavel num grupo. Se ja esta na lista, remove; senao,
+ * adiciona. Permite multiplos responsaveis por pasta E mesma pessoa em
+ * varias pastas.
+ *
+ * Le estado fresco do banco antes (atomico contra cliques rapidos).
+ *
+ * @param {string|{id:string}} orderOrId
+ * @param {string} groupName
+ * @param {{id: string|null, name: string}} member
+ */
+export async function toggleGroupAssignee(orderOrId, groupName, member) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  if (!member?.name) throw new Error('member.name obrigatorio');
+
+  const { groups } = await readFreshGroups(orderId);
+  const idx = groups.findIndex(g => (g.name || '') === (groupName || ''));
+  const current = idx >= 0 ? groups[idx] : null;
+  const currentAssignees = getGroupAssignees(current);
+
+  const isMatch = (a) =>
+    (member.id && a.id === member.id) ||
+    (!member.id && a.name === member.name);
+
+  const exists = currentAssignees.some(isMatch);
+  const nextAssignees = exists
+    ? currentAssignees.filter(a => !isMatch(a))
+    : [...currentAssignees, { id: member.id || null, name: member.name }];
+
+  // Limpa campos legados no upsert (assignees passa a ser fonte unica)
+  const patch = { assignees: nextAssignees, assigneeId: null, assigneeName: '' };
+  const next = upsertGroup(groups, groupName, patch);
+  console.log('[toggleGroupAssignee]', { groupName, member, exists, before: currentAssignees, after: nextAssignees });
+  return updateOSOrder(orderId, { checklistGroups: next });
+}
+
+/**
+ * Sobrescreve a lista de responsaveis de um grupo (substituicao total).
+ * Util pra "limpar todos" ou "definir de uma vez".
+ */
+export async function setGroupAssignees(orderOrId, groupName, members) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const { groups } = await readFreshGroups(orderId);
+  const arr = (Array.isArray(members) ? members : []).map(m => ({ id: m.id || null, name: m.name || '' }));
+  const patch = { assignees: arr, assigneeId: null, assigneeName: '' };
+  return updateOSOrder(orderId, { checklistGroups: upsertGroup(groups, groupName, patch) });
+}
+
+/**
+ * Mantida por compatibilidade: define UM responsavel (substituindo a lista)
+ * ou limpa (passando null). Equivalente a setGroupAssignees com 0 ou 1 item.
+ */
+export async function setGroupAssignee(orderOrId, groupName, assignee) {
+  return setGroupAssignees(orderOrId, groupName, assignee ? [assignee] : []);
+}
+
+export async function setGroupDueAt(orderOrId, groupName, dueAt) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const { groups } = await readFreshGroups(orderId);
+  return updateOSOrder(orderId, {
+    checklistGroups: upsertGroup(groups, groupName, { dueAt: dueAt || null }),
+  });
+}
+
+/**
+ * Atualiza o prazo de UM item do checklist (granularidade fina).
+ */
+export async function setItemDueAt(orderOrId, itemId, dueAt) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const { checklist } = await readFreshGroups(orderId);
+  const next = checklist.map(i =>
+    i.id === itemId ? { ...i, dueAt: dueAt || null } : i
+  );
+  return updateOSOrder(orderId, { checklist: next });
+}
+
+/**
+ * Atualiza duracao estimada (em minutos) de UM item.
+ *
+ * Valida regra de soma: a soma das duracoes dos itens da pasta nao pode
+ * passar do estimatedMinutes da pasta. Lanca erro se passar — chamador
+ * mostra toast.
+ */
+export async function setItemEstimatedMinutes(orderOrId, itemId, minutes) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const m = Math.max(0, parseInt(minutes, 10) || 0);
+
+  const { checklist, groups } = await readFreshGroups(orderId);
+  const target = checklist.find(i => i.id === itemId);
+  if (!target) throw new Error('Item nao encontrado');
+
+  const groupName = target.group || '';
+  const groupCfg = groups.find(g => (g.name || '') === groupName);
+  const groupBudget = groupCfg?.estimatedMinutes || 0;
+
+  if (groupBudget > 0) {
+    const others = checklist
+      .filter(i => (i.group || '') === groupName && i.id !== itemId)
+      .reduce((s, i) => s + (i.estimatedMinutes || 0), 0);
+    const proposed = others + m;
+    if (proposed > groupBudget) {
+      throw new Error(
+        `Soma das tarefas (${formatMin(proposed)}) excederia o total da pasta (${formatMin(groupBudget)}).`
+      );
+    }
+  }
+
+  const next = checklist.map(i =>
+    i.id === itemId ? { ...i, estimatedMinutes: m } : i
+  );
+  return updateOSOrder(orderId, { checklist: next });
+}
+
+function formatMin(min) {
+  if (!min || min <= 0) return '0min';
+  const h = Math.floor(min / 60);
+  const r = min % 60;
+  if (h > 0 && r > 0) return `${h}h${String(r).padStart(2, '0')}`;
+  if (h > 0) return `${h}h`;
+  return `${r}min`;
+}
+
+/**
+ * Atualiza estimatedMinutes da PASTA. Valida que a soma dos itens nao
+ * passa do novo total. Tambem valida que nao passa do total da O.S.
+ * (caso a O.S. tenha um total definido — usa estimated_minutes legado se houver).
+ */
+export async function setGroupEstimatedMinutesValidated(orderOrId, groupName, minutes) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const m = Math.max(0, parseInt(minutes, 10) || 0);
+
+  const { checklist, groups } = await readFreshGroups(orderId);
+  if (m > 0) {
+    const itemsTotal = checklist
+      .filter(i => (i.group || '') === (groupName || ''))
+      .reduce((s, i) => s + (i.estimatedMinutes || 0), 0);
+    if (itemsTotal > m) {
+      throw new Error(
+        `Tarefas ja somam ${formatMin(itemsTotal)}, maior que o novo total da pasta (${formatMin(m)}). Ajuste as tarefas primeiro.`
+      );
+    }
+  }
+  return updateOSOrder(orderId, {
+    checklistGroups: upsertGroup(groups, groupName, { estimatedMinutes: m }),
+  });
+}
+
+/**
+ * Soma duracoes estimadas dos itens de um grupo.
+ */
+export function sumGroupItemsMinutes(order, groupName) {
+  const checklist = Array.isArray(order?.checklist) ? order.checklist : [];
+  return checklist
+    .filter(i => (i.group || '') === (groupName || ''))
+    .reduce((s, i) => s + (i.estimatedMinutes || 0), 0);
+}
+
+/**
+ * Resolve o prazo efetivo de um item: preferencia item -> grupo -> O.S.
+ * Util pra colorir o badge mesmo quando o item nao tem prazo proprio.
+ */
+export function resolveItemDueAt(order, item) {
+  if (item?.dueAt) return item.dueAt;
+  const groupName = item?.group || '';
+  const group = (order?.checklistGroups || []).find(g => (g.name || '') === groupName);
+  if (group?.dueAt) return group.dueAt;
+  return order?.estimatedEnd || null;
+}
+
+export async function setGroupEstimatedMinutes(orderOrId, groupName, minutes) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const { groups } = await readFreshGroups(orderId);
+  return updateOSOrder(orderId, {
+    checklistGroups: upsertGroup(groups, groupName, { estimatedMinutes: minutes || 0 }),
+  });
+}
+
+/**
+ * Renomeia um grupo no checklist E nos checklist_groups[].
+ */
+export async function renameChecklistGroup(orderOrId, oldName, newName) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const { groups, checklist } = await readFreshGroups(orderId);
+  const newChecklist = checklist.map(i =>
+    (i.group || '') === (oldName || '') ? { ...i, group: newName } : i
+  );
+  const newGroups = groups.map(g =>
+    (g.name || '') === (oldName || '') ? { ...g, name: newName } : g
+  );
+  return updateOSOrder(orderId, { checklist: newChecklist, checklistGroups: newGroups });
+}
+
+export async function deleteChecklistGroup(orderOrId, groupName) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const { groups, checklist } = await readFreshGroups(orderId);
+  const newChecklist = checklist.filter(i => (i.group || '') !== (groupName || ''));
+  const newGroups = groups.filter(g => (g.name || '') !== (groupName || ''));
+  return updateOSOrder(orderId, { checklist: newChecklist, checklistGroups: newGroups });
+}
+
+/**
+ * Status derivado de 1 grupo: % de itens feitos.
+ */
+export function getGroupProgress(order, groupName) {
+  const items = (order?.checklist || []).filter(i => (i.group || '') === (groupName || ''));
+  const total = items.length;
+  const done  = items.filter(i => i.done).length;
+  return { total, done, ratio: total > 0 ? done / total : 0, allDone: total > 0 && done === total };
 }

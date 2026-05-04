@@ -7,11 +7,12 @@
  * - Concluido: finalizei
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useOSOrders, useOSProjects, useTeamMembers } from '../../hooks/queries';
-import { updateOSOrder } from '../../lib/osService';
+import { useOSOrders, useOSProjects, useTeamMembers, useOSBlocks } from '../../hooks/queries';
+import { updateOSOrder, joinOSOrder } from '../../lib/osService';
+import { setBlockStatus } from '../../lib/osBlocksService';
 import { namesMatch, isAssignedTo } from '../../lib/kpiUtils';
 import { useProfile } from '../../hooks/useProfile';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,54 +22,22 @@ import { formatDateShortMonth as formatDate, formatCurrency } from '../../lib/fo
 import { sortByDeadline, sortByActualEnd } from '../../lib/orderSorting';
 import { toast } from '../../contexts/ToastContext';
 
-function ElapsedTimer({ startTime, pausedAt, resumedAt, accumulatedMs }) {
-  const [elapsed, setElapsed] = useState('');
-
-  useEffect(() => {
-    if (!startTime) return;
-
-    const update = () => {
-      const accumulated = accumulatedMs || 0;
-      let diffMs;
-
-      if (pausedAt) {
-        // Pausado: mostra apenas o tempo acumulado (congelado)
-        diffMs = accumulated;
-      } else {
-        // Rodando: acumulado + tempo desde ultima retomada (ou start inicial)
-        const segmentStart = new Date(resumedAt || startTime);
-        const runningMs = Math.max(0, new Date() - segmentStart);
-        diffMs = accumulated + runningMs;
-      }
-      if (diffMs < 0) diffMs = 0;
-
-      const hours = Math.floor(diffMs / 3600000);
-      const mins = Math.floor((diffMs % 3600000) / 60000);
-      const secs = Math.floor((diffMs % 60000) / 1000);
-
-      if (hours > 0) {
-        setElapsed(`${hours}h ${String(mins).padStart(2, '0')}m`);
-      } else {
-        setElapsed(`${mins}m ${String(secs).padStart(2, '0')}s`);
-      }
-    };
-
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, [startTime, pausedAt, resumedAt, accumulatedMs]);
-
-  if (!startTime) return null;
-
-  return (
-    <div className="flex items-center gap-1.5 text-xs font-mono">
-      <span className={`w-1.5 h-1.5 rounded-full ${pausedAt ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}`} />
-      <span className={pausedAt ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}>
-        {elapsed}
-      </span>
-    </div>
-  );
+function formatMinutesPrev(min) {
+  if (!min || min <= 0) return null;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h > 0 && m > 0) return `${h}h${String(m).padStart(2, '0')}`;
+  if (h > 0) return `${h}h`;
+  return `${m}min`;
 }
+
+const BLOCK_STATUS_LABEL = { todo: 'A fazer', doing: 'Fazendo', done: 'Feito' };
+const BLOCK_STATUS_NEXT = { todo: 'doing', doing: 'done', done: 'todo' };
+const BLOCK_STATUS_STYLE = {
+  todo:  'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600',
+  doing: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700',
+  done:  'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700',
+};
 
 export function RoutinePage() {
   const navigate = useNavigate();
@@ -76,6 +45,7 @@ export function RoutinePage() {
   const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
   const { data: projects = [], isLoading: loadingProjects } = useOSProjects();
   const { data: teamMembers = [] } = useTeamMembers();
+  const { data: allBlocks = [] } = useOSBlocks();
   const { profile, isLoading: loadingProfile } = useProfile();
 
   const { isManager } = useAuth();
@@ -105,30 +75,107 @@ export function RoutinePage() {
 
   const userName = profile.name || '';
 
-  // Filtrar O.S. pelo membro selecionado
+  // Filtrar O.S. pelo membro selecionado.
+  // Visibilidade por modo:
+  //   pool  -> aparece pra todos (qualquer um pode pegar)
+  //   solo  -> aparece pro atribuido
+  //   team  -> aparece pra cada participante (lista em order.participants[]);
+  //            status do card = % feita dos GRUPOS atribuidos a ele
   const myOrders = useMemo(() => {
     let filterName = null;
+    let filterId = null;
     if (selectedMember === 'me') {
       if (!userName) return { todo: [], doing: [], done: [] };
       filterName = userName;
+      filterId = profile.id || null;
     } else if (selectedMember !== 'all') {
-      filterName = teamMembers.find(m => m.id === selectedMember)?.name || null;
+      const m = teamMembers.find(m => m.id === selectedMember);
+      filterName = m?.name || null;
+      filterId = m?.authUserId || null;
     }
 
-    const matchFn = (o) =>
-      filterName
-        ? (isAssignedTo(o.assignedTo, filterName) || namesMatch(o.assignee, filterName))
-        : true;
-
-    return {
-      todo:  orders.filter(o => matchFn(o) && o.status === 'available'),
-      doing: orders.filter(o => matchFn(o) && o.status === 'in_progress'),
-      done:  orders.filter(o => matchFn(o) && o.status === 'done'),
+    // Grupos atribuidos a ESTE usuario nesta O.S. (multi-responsavel + legado).
+    const myGroups = (o) => {
+      const groups = Array.isArray(o.checklistGroups) ? o.checklistGroups : [];
+      return groups.filter(g => {
+        // Modelo novo: array de assignees
+        const assignees = Array.isArray(g.assignees) ? g.assignees : [];
+        if (assignees.some(a =>
+          (filterId && a.id === filterId) ||
+          (filterName && namesMatch(a.name, filterName))
+        )) return true;
+        // Legado: assigneeId/assigneeName diretos
+        return (filterId && g.assigneeId === filterId) ||
+               (filterName && namesMatch(g.assigneeName, filterName));
+      });
     };
-  }, [orders, userName, selectedMember, teamMembers]);
+
+    // Status efetivo da O.S. pra ESTE usuario
+    const effectiveStatus = (o) => {
+      if (o.mode === 'team') {
+        const mine = myGroups(o);
+        if (mine.length === 0) return null; // nao tem grupo -> nao aparece
+        const checklist = Array.isArray(o.checklist) ? o.checklist : [];
+        const myItems = checklist.filter(i =>
+          mine.some(g => (g.name || '') === (i.group || ''))
+        );
+        if (myItems.length === 0) return 'available';
+        const done = myItems.filter(i => i.done).length;
+        if (done === myItems.length) return 'done';
+        if (done > 0) return 'in_progress';
+        return 'available';
+      }
+      return o.status || 'available';
+    };
+
+    const visibleToUser = (o) => {
+      if (!filterName) return true; // 'all'
+      if (o.mode === 'pool') return true;
+      if (o.mode === 'team') {
+        // Vejo a O.S. se: tenho grupo atribuido OU estou em participants[]
+        if (myGroups(o).length > 0) return true;
+        const participants = Array.isArray(o.participants) ? o.participants : [];
+        return participants.some(p =>
+          (filterId && p.id === filterId) ||
+          (filterName && namesMatch(p.name, filterName))
+        );
+      }
+      // solo
+      return isAssignedTo(o.assignedTo, filterName) || namesMatch(o.assignee, filterName);
+    };
+
+    const buckets = { todo: [], doing: [], done: [] };
+    for (const o of orders) {
+      if (!visibleToUser(o)) continue;
+      const eff = effectiveStatus(o);
+      if (eff === 'available')   buckets.todo.push(o);
+      if (eff === 'in_progress') buckets.doing.push(o);
+      if (eff === 'done')        buckets.done.push(o);
+    }
+    return buckets;
+  }, [orders, userName, selectedMember, teamMembers, profile.id]);
 
   // Modo somente-leitura: manager vendo outro colaborador
   const isReadOnly = selectedMember !== 'me';
+
+  // Agrupar blocos por O.S. (sort_order asc dentro de cada grupo)
+  const blocksByOrder = useMemo(() => {
+    const map = {};
+    for (const b of allBlocks) {
+      if (!map[b.orderId]) map[b.orderId] = [];
+      map[b.orderId].push(b);
+    }
+    for (const arr of Object.values(map)) {
+      arr.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    }
+    return map;
+  }, [allBlocks]);
+
+  const handleToggleBlock = useCallback(async (block) => {
+    const next = BLOCK_STATUS_NEXT[block.status] || 'todo';
+    await setBlockStatus(block.id, next);
+    queryClient.invalidateQueries({ queryKey: ['osBlocks'] });
+  }, [queryClient]);
 
   // Mapa de sequencia: ordenado por data de conclusao prevista
   const sequenceMap = useMemo(() => {
@@ -139,47 +186,61 @@ export function RoutinePage() {
   }, [myOrders]);
 
   const handleClaim = async (orderId) => {
-    const now = new Date().toISOString();
-    const order = orders.find(o => o.id === orderId);
-    // Inicializar startedAt da primeira tarefa nao-feita
-    let checklistUpdate = {};
-    if (order?.checklist?.length > 0) {
-      const firstUndone = order.checklist.findIndex(i => !i.done);
-      if (firstUndone >= 0) {
-        checklistUpdate = {
-          checklist: order.checklist.map((i, idx) =>
-            idx === firstUndone ? { ...i, startedAt: now } : i
-          ),
-        };
+    if (!profile.id) {
+      toast.error('Perfil nao carregado.');
+      return;
+    }
+    // joinOSOrder cobre os 4 cenarios: pool->solo, solo-self, solo-other->team, team
+    const updated = await joinOSOrder(orderId, { id: profile.id, name: userName });
+
+    // Inicializar startedAt da primeira tarefa nao-feita (so faz sentido em solo da gente)
+    if (updated && (updated.mode === 'solo' || !updated.mode)) {
+      const order = orders.find(o => o.id === orderId);
+      if (order?.checklist?.length > 0) {
+        const now = new Date().toISOString();
+        const firstUndone = order.checklist.findIndex(i => !i.done);
+        if (firstUndone >= 0) {
+          await updateOSOrder(orderId, {
+            checklist: order.checklist.map((i, idx) =>
+              idx === firstUndone ? { ...i, startedAt: now } : i
+            ),
+          });
+        }
       }
     }
-    const updated = await updateOSOrder(orderId, {
-      assignee: userName,
-      status: 'in_progress',
-      actualStart: now,
-      ...checklistUpdate,
-    });
-    if (updated) {
-      queryClient.invalidateQueries({ queryKey: ['osOrders'] });
-    }
+
+    queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+    queryClient.invalidateQueries({ queryKey: ['osBlocks'] });
   };
 
   const handleFinish = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
-    const now = new Date();
-
-    // Acumular tempo pendente do segmento aberto (se nao estava pausado) para que
-    // reopens futuros nao re-contem este intervalo.
-    let accumulatedMs = order?.accumulatedMs || 0;
-    if (order && !order.pausedAt && order.actualStart) {
-      const segmentStart = order.resumedAt || order.actualStart;
-      accumulatedMs += Math.max(0, now - new Date(segmentStart));
+    // Em team: marca todos os itens dos MEUS grupos como done.
+    // A O.S. so vai pra done quando todos os itens (de todos os grupos) estiverem
+    // done E todos os participantes assinarem (gating no documento).
+    if (order?.mode === 'team') {
+      const groups = Array.isArray(order.checklistGroups) ? order.checklistGroups : [];
+      const myGroupNames = groups
+        .filter(g =>
+          (profile.id && g.assigneeId === profile.id) ||
+          namesMatch(g.assigneeName, userName)
+        )
+        .map(g => g.name || '');
+      if (myGroupNames.length === 0) return;
+      const checklist = Array.isArray(order.checklist) ? order.checklist : [];
+      const now = new Date().toISOString();
+      const newChecklist = checklist.map(i =>
+        myGroupNames.includes(i.group || '') && !i.done
+          ? { ...i, done: true, completedAt: now }
+          : i
+      );
+      await updateOSOrder(orderId, { checklist: newChecklist });
+      queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+      return;
     }
-
     const updated = await updateOSOrder(orderId, {
       status: 'done',
-      actualEnd: now.toISOString(),
-      accumulatedMs,
+      actualEnd: new Date().toISOString(),
     });
     if (updated) {
       queryClient.invalidateQueries({ queryKey: ['osOrders'] });
@@ -188,13 +249,29 @@ export function RoutinePage() {
   };
 
   const handleReopen = async (orderId) => {
-    // Inicia novo segmento de trabalho — mantem accumulatedMs acumulado anteriormente
-    // e evita que o ElapsedTimer re-conte desde actualStart.
+    const order = orders.find(o => o.id === orderId);
+    if (order?.mode === 'team') {
+      const groups = Array.isArray(order.checklistGroups) ? order.checklistGroups : [];
+      const myGroupNames = groups
+        .filter(g =>
+          (profile.id && g.assigneeId === profile.id) ||
+          namesMatch(g.assigneeName, userName)
+        )
+        .map(g => g.name || '');
+      if (myGroupNames.length === 0) return;
+      const checklist = Array.isArray(order.checklist) ? order.checklist : [];
+      const newChecklist = checklist.map(i =>
+        myGroupNames.includes(i.group || '') && i.done
+          ? { ...i, done: false, completedAt: null }
+          : i
+      );
+      await updateOSOrder(orderId, { checklist: newChecklist });
+      queryClient.invalidateQueries({ queryKey: ['osOrders'] });
+      return;
+    }
     const updated = await updateOSOrder(orderId, {
       status: 'in_progress',
       actualEnd: '',
-      resumedAt: new Date().toISOString(),
-      pausedAt: null,
     });
     if (updated) {
       queryClient.invalidateQueries({ queryKey: ['osOrders'] });
@@ -598,12 +675,6 @@ export function RoutinePage() {
                                 <div className="flex items-center justify-between mb-1.5">
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-xs font-bold text-slate-400 dark:text-slate-500">O.S. #{order.number}</span>
-                                    {order.pausedAt && order.status === 'in_progress' && (
-                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
-                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-                                        Pausado
-                                      </span>
-                                    )}
                                   </div>
                                   <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${priority.color}`}>
                                     <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
@@ -721,13 +792,6 @@ export function RoutinePage() {
                         {/* Title */}
                         <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">{order.title}</h4>
 
-                        {/* Elapsed timer for in-progress orders */}
-                        {order.status === 'in_progress' && order.actualStart && (
-                          <div className="mb-1">
-                            <ElapsedTimer startTime={order.actualStart} pausedAt={order.pausedAt} resumedAt={order.resumedAt} accumulatedMs={order.accumulatedMs} />
-                          </div>
-                        )}
-
                         {/* Responsavel (visivel apenas para manager vendo outra pessoa/todos) */}
                         {isReadOnly && (order.assignee || order.assignedTo) && (
                           <p className="text-[11px] text-purple-500 font-medium mb-0.5">
@@ -755,6 +819,40 @@ export function RoutinePage() {
                             <span className="text-emerald-600">Fim: {formatDate(order.actualEnd)}</span>
                           )}
                         </div>
+
+                        {/* Blocos da O.S. */}
+                        {(blocksByOrder[order.id]?.length ?? 0) > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {blocksByOrder[order.id].map((blk) => {
+                              const prev = formatMinutesPrev(blk.estimatedMinutes);
+                              return (
+                                <div
+                                  key={blk.id}
+                                  className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-700"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate">{blk.title}</span>
+                                      {prev && <span className="text-[10px] text-slate-400 dark:text-slate-500">· {prev}</span>}
+                                    </div>
+                                    {blk.assigneeName && (
+                                      <span className="text-[10px] text-purple-500">{blk.assigneeName}</span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleBlock(blk); }}
+                                    disabled={isReadOnly}
+                                    title={isReadOnly ? '' : 'Clique para mudar status'}
+                                    className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${BLOCK_STATUS_STYLE[blk.status] || BLOCK_STATUS_STYLE.todo} ${isReadOnly ? 'cursor-default' : 'hover:opacity-80 cursor-pointer'}`}
+                                  >
+                                    {BLOCK_STATUS_LABEL[blk.status] || 'A fazer'}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
 
                         {/* Expenses Section (doing only — done has its own render) */}
                         {column.id === 'doing' && (
