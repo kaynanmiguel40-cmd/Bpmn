@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getOSOrders, getOSSectors, getOSProjects, createOSOrder, updateOSOrder, deleteOSOrder, createOSSector, updateOSSector, deleteOSSector, createOSProject, updateOSProject, deleteOSProject } from '../lib/osService';
+import { getAllBlocks, createBlock, updateBlock, deleteBlock } from '../lib/osBlocksService';
 import { getTeamMembers, createTeamMember, updateTeamMember, deleteTeamMember } from '../lib/teamService';
 import { getAgendaEvents, createAgendaEvent, updateAgendaEvent, deleteAgendaEvent } from '../lib/agendaService';
 import { getNotifications, markAsRead, markAllAsRead, deleteNotification, getUnreadCount } from '../lib/notificationService';
@@ -64,6 +65,7 @@ export const queryKeys = {
   contentPosts: ['contentPosts'],
   processOrders: ['processOrders'],
   googleCalendarStatus: ['googleCalendarStatus'],
+  osBlocks: ['osBlocks'],
 };
 
 // ==================== OS ORDERS ====================
@@ -105,6 +107,13 @@ export function useDeleteOSOrder() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.osOrders }),
   });
 }
+
+// ==================== OS BLOCKS ====================
+
+export const useOSBlocks = makeQueryHook(queryKeys.osBlocks, getAllBlocks, 30_000);
+export const useCreateOSBlock = makeMutationHook(createBlock, queryKeys.osBlocks);
+export const useUpdateOSBlock = makeUpdateHook(updateBlock, queryKeys.osBlocks);
+export const useDeleteOSBlock = makeMutationHook(deleteBlock, queryKeys.osBlocks);
 
 // ==================== OS SECTORS ====================
 
