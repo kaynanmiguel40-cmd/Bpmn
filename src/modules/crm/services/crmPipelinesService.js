@@ -148,6 +148,7 @@ export async function createCrmPipeline(data) {
     position: s.position,
     color: s.color || '#6366f1',
     is_win_stage: s.isWinStage || false,
+    triggers_meeting: s.triggersMeeting || false,
   }));
 
   const { error: stagesError } = await supabase.from('crm_pipeline_stages').insert(stageRows);
@@ -320,138 +321,97 @@ export async function cleanAllCrmTestData() {
   return true;
 }
 
-// ==================== SEED PIPELINES COMERCIAIS (BPMN V9) ====================
+// ==================== SEED PIPELINES COMERCIAIS FYNESS ====================
 
 /**
- * Limpa todos os dados de teste e cria os 6 pipelines de venda
- * mapeados das raias do BPMN Comercial V9.
+ * Limpa todos os dados de teste e cria as 4 pipelines do processo Inside Sales:
  *
- * 1. Educacao (Funil Invertido)
- * 2. Indicacao (Parceiros - 30% comissao)
- * 3. Producao de Conteudo (Instagram/ManyChat)
- * 4. Prospeccao Ativa (Cold Call)
- * 5. Google Ads (Landing Page)
- * 6. Meta Ads (Discovery)
+ *   1. IA Inbound   (default) -> lead que chegou ate nos (anuncio, SEO, site)
+ *   2. IA Outbound            -> lead da prospeccao ativa (Apollo, LinkedIn, GMN)
+ *   3. Vendedor               -> smart lead na mao do closer
+ *   4. Nurturing              -> nao convertidos, ciclos de reativacao 30/60/90d
+ *
+ * Handoff entre pipelines:
+ *   IA Inbound  --(Smart Lead Criado)--> Vendedor
+ *   IA Outbound --(Smart Lead Criado)--> Vendedor
+ *   Vendedor    --(perdeu / nao agora)-> Nurturing
+ *   Nurturing   --(reativou)----------> IA Inbound
  */
 export async function seedCommercialPipelines() {
   // Limpar dados de teste primeiro
   await cleanAllCrmTestData();
+
   const PIPELINES = [
     {
-      name: 'Educacao',
+      name: 'IA Inbound',
       isDefault: true,
       stages: [
-        { name: 'Lead Educacao',          position: 1, color: '#51cf66', isWinStage: false },
-        { name: 'D0 - Aula Secreta',     position: 2, color: '#40c057', isWinStage: false },
-        { name: 'D1 - Follow-up',        position: 3, color: '#37b24d', isWinStage: false },
-        { name: 'D3 - Demo Solucao',     position: 4, color: '#2f9e44', isWinStage: false },
-        { name: 'D7 - Escassez',         position: 5, color: '#f59e0b', isWinStage: false },
-        { name: 'Checkout Curso',        position: 6, color: '#f97316', isWinStage: false },
-        { name: 'Cliente Educacao',      position: 7, color: '#10b981', isWinStage: true },
+        { name: 'Lead Captado',                     position: 1, color: '#94a3b8', isWinStage: false },
+        { name: 'WhatsApp Qualificador',            position: 2, color: '#06b6d4', isWinStage: false },
+        { name: 'Cadencia D0',                      position: 3, color: '#0891b2', isWinStage: false },
+        { name: 'Cadencia D2',                      position: 4, color: '#0e7490', isWinStage: false },
+        { name: 'Cadencia D5',                      position: 5, color: '#155e75', isWinStage: false },
+        { name: 'Respondeu - Qualificando ICP',     position: 6, color: '#a78bfa', isWinStage: false },
+        { name: 'ICP OK - Demo Gravada Enviada',    position: 7, color: '#8b5cf6', isWinStage: false },
+        { name: 'Smart Lead Criado',                position: 8, color: '#10b981', isWinStage: true  },
       ],
     },
     {
-      name: 'Indicacao',
+      name: 'IA Outbound',
       isDefault: false,
       stages: [
-        { name: 'Indicado (Ativo/Passivo)', position: 1, color: '#ff6b6b', isWinStage: false },
-        { name: 'D0 - Audio Pessoal',       position: 2, color: '#f03e3e', isWinStage: false },
-        { name: 'D0 - Ligacao',             position: 3, color: '#e03131', isWinStage: false },
-        { name: 'D0 - Qualificacao',        position: 4, color: '#c92a2a', isWinStage: false },
-        { name: 'Demo Contextualizada',     position: 5, color: '#6366f1', isWinStage: false },
-        { name: 'D1 - Cobranca Amigo',      position: 6, color: '#f59e0b', isWinStage: false },
-        { name: 'D3 - Case Parceiro',       position: 7, color: '#f97316', isWinStage: false },
-        { name: 'D6 - Ultimato VIP',        position: 8, color: '#ef4444', isWinStage: false },
-        { name: 'D10 - Break-up',           position: 9, color: '#94a3b8', isWinStage: false },
-        { name: 'Fechamento',               position: 10, color: '#10b981', isWinStage: true },
+        { name: 'Lista Gerada',                     position: 1, color: '#94a3b8', isWinStage: false },
+        { name: 'Enriquecido',                      position: 2, color: '#fbbf24', isWinStage: false },
+        { name: 'Cadencia D0-D1',                   position: 3, color: '#f59e0b', isWinStage: false },
+        { name: 'Cadencia D2-D4',                   position: 4, color: '#d97706', isWinStage: false },
+        { name: 'Cadencia D5-D7',                   position: 5, color: '#b45309', isWinStage: false },
+        { name: 'Engajou - Qualificando ICP',       position: 6, color: '#a78bfa', isWinStage: false },
+        { name: 'ICP OK - Demo Gravada Enviada',    position: 7, color: '#8b5cf6', isWinStage: false },
+        { name: 'Smart Lead Criado',                position: 8, color: '#10b981', isWinStage: true  },
       ],
     },
     {
-      name: 'Producao de Conteudo',
+      name: 'Vendedor',
       isDefault: false,
       stages: [
-        { name: 'Comentou/DM',            position: 1, color: '#9775fa', isWinStage: false },
-        { name: 'ManyChat - Qualificacao', position: 2, color: '#845ef7', isWinStage: false },
-        { name: 'D0 - WhatsApp Socio',    position: 3, color: '#7950f2', isWinStage: false },
-        { name: 'D0 - Flash Demo',        position: 4, color: '#6366f1', isWinStage: false },
-        { name: 'D1 - Ligacao Closer',    position: 5, color: '#f59e0b', isWinStage: false },
-        { name: 'D3 - Bastidor Socio',    position: 6, color: '#f97316', isWinStage: false },
-        { name: 'D7 - Break-up',          position: 7, color: '#94a3b8', isWinStage: false },
-        { name: 'Fechamento',             position: 8, color: '#10b981', isWinStage: true },
+        { name: 'Smart Lead Recebido',  position: 1,  color: '#94a3b8', isWinStage: false },
+        { name: 'Tentativas 1-3',       position: 2,  color: '#60a5fa', isWinStage: false },
+        { name: 'Tentativas 4-6',       position: 3,  color: '#3b82f6', isWinStage: false },
+        { name: 'Tentativas 7-9',       position: 4,  color: '#2563eb', isWinStage: false },
+        { name: 'Break-up Enviado',     position: 5,  color: '#64748b', isWinStage: false },
+        { name: 'Conectou (AIDA)',      position: 6,  color: '#6366f1', isWinStage: false, triggersMeeting: true },
+        { name: 'Demo (SPIN)',          position: 7,  color: '#4f46e5', isWinStage: false },
+        { name: 'Proposta Enviada',     position: 8,  color: '#f59e0b', isWinStage: false },
+        { name: 'Trial 7 Dias',         position: 9,  color: '#f97316', isWinStage: false, triggersMeeting: true },
+        { name: 'Negociacao Final',     position: 10, color: '#ef4444', isWinStage: false },
+        { name: 'Cliente Ativo',        position: 11, color: '#10b981', isWinStage: true  },
       ],
     },
     {
-      name: 'Prospeccao Ativa',
+      name: 'Nurturing',
       isDefault: false,
       stages: [
-        { name: 'Lista Gerada',            position: 1, color: '#fa5252', isWinStage: false },
-        { name: 'D0 - Cold Call (3x)',     position: 2, color: '#e03131', isWinStage: false },
-        { name: 'Qualificacao',            position: 3, color: '#c92a2a', isWinStage: false },
-        { name: 'Demo Rapida',             position: 4, color: '#6366f1', isWinStage: false },
-        { name: 'D1 - WhatsApp + Ligacao', position: 5, color: '#f59e0b', isWinStage: false },
-        { name: 'D3 - Audio + Case',       position: 6, color: '#f97316', isWinStage: false },
-        { name: 'D7 - Escassez + Ligacao', position: 7, color: '#ef4444', isWinStage: false },
-        { name: 'D14 - Break-up',          position: 8, color: '#94a3b8', isWinStage: false },
-        { name: 'Fechamento',              position: 9, color: '#10b981', isWinStage: true },
-      ],
-    },
-    {
-      name: 'Google Ads',
-      isDefault: false,
-      stages: [
-        { name: 'Lead Landing Page',       position: 1, color: '#4dabf7', isWinStage: false },
-        { name: 'Self-Checkout',           position: 2, color: '#339af0', isWinStage: false },
-        { name: 'Speed-to-Lead (<5min)',   position: 3, color: '#228be6', isWinStage: false },
-        { name: 'D0 - Flash Demo',        position: 4, color: '#6366f1', isWinStage: false },
-        { name: 'Oferta Trial 7d',        position: 5, color: '#845ef7', isWinStage: false },
-        { name: 'D1 - Ligacao 2',         position: 6, color: '#f59e0b', isWinStage: false },
-        { name: 'D3 - Cobranca Social',   position: 7, color: '#f97316', isWinStage: false },
-        { name: 'D5 - Pressao',           position: 8, color: '#ef4444', isWinStage: false },
-        { name: 'D7 - Fechamento/Downsell', position: 9, color: '#e03131', isWinStage: false },
-        { name: 'Cliente Ativo',           position: 10, color: '#10b981', isWinStage: true },
-      ],
-    },
-    {
-      name: 'Meta Ads',
-      isDefault: false,
-      stages: [
-        { name: 'Lead Pagina Filtro',      position: 1, color: '#cc5de8', isWinStage: false },
-        { name: 'D0 - WhatsApp (<5min)',   position: 2, color: '#be4bdb', isWinStage: false },
-        { name: 'D0 - Demo Audio+Print',   position: 3, color: '#ae3ec9', isWinStage: false },
-        { name: 'D1 - Ligacao Reabordagem', position: 4, color: '#f59e0b', isWinStage: false },
-        { name: 'D3 - Case do Nicho',      position: 5, color: '#f97316', isWinStage: false },
-        { name: 'D7 - Ultimato',           position: 6, color: '#ef4444', isWinStage: false },
-        { name: 'D10 - Break-up',          position: 7, color: '#94a3b8', isWinStage: false },
-        { name: 'Fechamento',              position: 8, color: '#10b981', isWinStage: true },
+        { name: 'Em Nutricao',         position: 1, color: '#ec4899', isWinStage: false },
+        { name: 'Reativacao D30',      position: 2, color: '#f472b6', isWinStage: false },
+        { name: 'Reativacao D60',      position: 3, color: '#db2777', isWinStage: false },
+        { name: 'Reativacao D90',      position: 4, color: '#be185d', isWinStage: false },
+        { name: 'Reativou',            position: 5, color: '#10b981', isWinStage: true  },
+        { name: 'Descarte',            position: 6, color: '#94a3b8', isWinStage: false },
       ],
     },
   ];
 
   const created = [];
   for (const p of PIPELINES) {
-    // Verificar se ja existe
-    const { data: existing } = await supabase
-      .from('crm_pipelines')
-      .select('id')
-      .eq('name', p.name)
-      .maybeSingle();
-
-    if (existing) {
-      created.push({ name: p.name, id: existing.id, alreadyExisted: true });
-      continue;
-    }
-
     const pipeline = await createCrmPipeline(p);
     if (pipeline) {
       created.push({ name: p.name, id: pipeline.id, alreadyExisted: false });
     }
   }
 
-  const newCount = created.filter(c => !c.alreadyExisted).length;
-  if (newCount > 0) {
-    toast(`${newCount} pipeline${newCount > 1 ? 's' : ''} comercial${newCount > 1 ? 'is' : ''} criado${newCount > 1 ? 's' : ''}`, 'success');
+  if (created.length > 0) {
+    toast(`${created.length} pipelines criadas com sucesso`, 'success');
   }
-
   return created;
 }
 
