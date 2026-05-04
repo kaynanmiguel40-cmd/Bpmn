@@ -530,7 +530,6 @@ export async function toggleGroupAssignee(orderOrId, groupName, member) {
   // Limpa campos legados no upsert (assignees passa a ser fonte unica)
   const patch = { assignees: nextAssignees, assigneeId: null, assigneeName: '' };
   const next = upsertGroup(groups, groupName, patch);
-  console.log('[toggleGroupAssignee]', { groupName, member, exists, before: currentAssignees, after: nextAssignees });
   return updateOSOrder(orderId, { checklistGroups: next });
 }
 

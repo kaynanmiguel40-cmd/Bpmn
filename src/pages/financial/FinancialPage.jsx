@@ -3561,46 +3561,8 @@ function OSPreviewDocument({ order, projectName, profileName, profileCpf, teamMe
             );
           })()}
 
-          {/* Painel de assinaturas + entregas (so em team) */}
-          <OSSignaturesPanel
-            order={order}
-            currentUserId={profileId}
-            currentUserName={profileName || currentUser}
-            onPick={async (p) => {
-              try {
-                await joinOSOrder(order.id, { id: p.id || profileId, name: p.name });
-                queryClient.invalidateQueries({ queryKey: ['osOrders'] });
-              } catch (err) {
-                toast.error(`Erro ao pegar O.S.: ${err?.message || err}`);
-              }
-            }}
-            onDeliver={async (p) => {
-              try {
-                await markDelivered({
-                  orderId: order.id,
-                  userId: p.id || profileId,
-                  userName: p.name || profileName || currentUser,
-                });
-              } catch (err) {
-                toast.error(`Erro ao entregar O.S.: ${err?.message || err}`);
-              }
-            }}
-            onAllDelivered={async () => {
-              try {
-                const updated = await updateOSOrder(order.id, {
-                  status: 'done',
-                  actualEnd: new Date().toISOString(),
-                });
-                if (updated) {
-                  queryClient.invalidateQueries({ queryKey: ['osOrders'] });
-                  notifyOSCompleted(updated, allMembers, profileName || currentUser, profileId);
-                  toast.success('O.S. concluida! Todos entregaram.');
-                }
-              } catch (err) {
-                toast.error(`Erro ao concluir O.S.: ${err?.message || err}`);
-              }
-            }}
-          />
+          {/* No preview nao tem painel de assinaturas — a O.S. ainda nao foi
+              criada, ninguem pode "Pegar". Aparece apenas no documento real. */}
 
           {order.notes && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-amber-50/50 dark:bg-amber-900/10">
