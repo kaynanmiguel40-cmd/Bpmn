@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Target, Plus, Pencil, Trash2, Trophy, XCircle, Search, X } from 'lucide-react';
 import { CrmPageHeader, CrmDataTable, CrmBadge, CrmConfirmDialog } from '../components/ui';
 import { useCrmDeals, useDeleteCrmDeal, useMarkDealWon, useMarkDealLost } from '../hooks/useCrmQueries';
+import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import { DealFormModal } from '../components/DealFormModal';
 import { LostReasonModal } from '../components/LostReasonModal';
 
@@ -22,12 +23,14 @@ const formatCurrency = (val) =>
 export function CrmDealsPage() {
   const navigate = useNavigate();
 
-  // Filtros
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
+  // Filtros (persistidos em URL pra sobreviver troca de aba)
+  const [page, setPage] = useUrlInt('page', 1);
+  const [appliedSearch, setAppliedSearch] = useUrlState('q', '');
+  const [statusFilter, setStatusFilter] = useUrlState('status', '');
+  const [sortKey, setSortKey] = useUrlState('sort', 'created_at');
+  const [sortDir, setSortDir] = useUrlState('dir', 'desc');
+  const sortConfig = { key: sortKey, direction: sortDir };
+  const [search, setSearch] = useState(appliedSearch);
 
   const filters = {
     page,
@@ -69,12 +72,13 @@ export function CrmDealsPage() {
   };
 
   const handleSort = useCallback((key) => {
-    setSortConfig(prev =>
-      prev.key === key
-        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: 'asc' }
-    );
-  }, []);
+    if (key === sortKey) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }, [sortKey, sortDir, setSortKey, setSortDir]);
 
   const columns = [
     {

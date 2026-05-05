@@ -16,6 +16,7 @@ import {
 import { CrmPageHeader } from '../components/ui/CrmPageHeader';
 import { CrmConfirmDialog } from '../components/ui/CrmConfirmDialog';
 import { AutomationFormModal } from '../components/AutomationFormModal';
+import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import {
   useAutomations,
   useAutomationLogs,
@@ -84,7 +85,7 @@ function KpiCard({ label, value, sub, color = 'text-slate-800 dark:text-slate-10
 function RulesTab({ onNew, onEdit }) {
   const { data: pipelinesData } = useCrmPipelines();
   const pipelines = pipelinesData || [];
-  const [filterPipelineId, setFilterPipelineId] = useState('');
+  const [filterPipelineId, setFilterPipelineId] = useUrlState('pipeline', '');
   const [collapsedStages, setCollapsedStages] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -388,9 +389,9 @@ function MonitorTab() {
 // ─── Aba Logs ─────────────────────────────────────────────────────────────────
 
 function LogsTab() {
-  const [page, setPage]           = useState(1);
-  const [filterStatus, setStatus] = useState('');
-  const [filterChannel, setChannel] = useState('');
+  const [page, setPage]             = useUrlInt('page', 1);
+  const [filterStatus, setStatus]   = useUrlState('status', '');
+  const [filterChannel, setChannel] = useUrlState('channel', '');
   const [expandedId, setExpandedId] = useState(null);
 
   const { data: logsData, isLoading } = useAutomationLogs({
@@ -542,7 +543,7 @@ const TABS = [
 ];
 
 export function CrmAutomationsPage() {
-  const [activeTab, setActiveTab]   = useState('rules');
+  const [activeTab, setActiveTab]   = useUrlState('tab', 'rules');
   const [formOpen, setFormOpen]     = useState(false);
   const [editTarget, setEditTarget] = useState(null);
 

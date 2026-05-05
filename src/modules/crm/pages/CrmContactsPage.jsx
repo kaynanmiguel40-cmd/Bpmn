@@ -16,6 +16,7 @@ import {
   useCrmCompanies,
 } from '../hooks/useCrmQueries';
 import { exportContactsCSV } from '../services/crmContactsService';
+import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import { ContactFormModal } from '../components/ContactFormModal';
 
 const STATUS_OPTIONS = [
@@ -46,16 +47,24 @@ export function CrmContactsPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
-  // Filters
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [companyFilter, setCompanyFilter] = useState('');
-  const [tagFilter, setTagFilter] = useState('');
+  // Filters (persistidos em URL — search via debounce)
+  const [searchUrl, setSearchUrl] = useUrlState('q', '');
+  const [search, setSearch] = useState(searchUrl);
+  const [statusFilter, setStatusFilter] = useUrlState('status', '');
+  const [companyFilter, setCompanyFilter] = useUrlState('company', '');
+  const [tagFilter, setTagFilter] = useUrlState('tag', '');
   const [showFilters, setShowFilters] = useState(false);
 
-  // Pagination & sort
-  const [page, setPage] = useState(1);
-  const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+  // Pagination & sort (persistidos em URL)
+  const [page, setPage] = useUrlInt('page', 1);
+  const [sortKey, setSortKey] = useUrlState('sort', 'name');
+  const [sortDir, setSortDir] = useUrlState('dir', 'asc');
+  const sortConfig = { key: sortKey, direction: sortDir };
+  const setSortConfig = (next) => {
+    const v = typeof next === 'function' ? next(sortConfig) : next;
+    setSortKey(v.key);
+    setSortDir(v.direction);
+  };
 
   // Modals
   const [formOpen, setFormOpen] = useState(false);
@@ -63,6 +72,9 @@ export function CrmContactsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const debouncedSearch = useDebounce(search);
+
+  // Sincroniza debounce -> URL (sobrevive troca de aba)
+  useEffect(() => { setSearchUrl(debouncedSearch); }, [debouncedSearch, setSearchUrl]);
 
   const filters = {
     page,

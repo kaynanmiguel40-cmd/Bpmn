@@ -29,6 +29,7 @@ import {
   useEnsurePartnersPipeline,
 } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
+import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import { enrichProspectWithGoogle } from '../../../lib/googlePlacesService';
 import { lookupCnpjByName } from '../services/crmProspectsService';
 import { getUsage, setCdBalance } from '../../../lib/usageTracker';
@@ -437,15 +438,15 @@ function EditLeadModal({ open, onClose, prospect }) {
 
 export function CrmProspectsPage() {
   // Tabs
-  const [activeTab, setActiveTab] = useState('list');
+  const [activeTab, setActiveTab] = useUrlState('tab', 'list');
 
   // Modo prospeccao: leads ou parceiros
-  const [prospectMode, setProspectMode] = useState('leads');
+  const [prospectMode, setProspectMode] = useUrlState('mode', 'leads');
   const isPartners = prospectMode === 'partners';
 
   // Fonte de busca: Google Places (default — barato, ja verificado) vs Casa
   // dos Dados (mais dados estruturais, mas custa por CNPJ retornado).
-  const [searchSource, setSearchSource] = useState('google');
+  const [searchSource, setSearchSource] = useUrlState('src', 'google');
   const isGoogleSearch = searchSource === 'google';
 
   // Token de paginacao do Google (substitui `page` quando em modo Google)
@@ -470,10 +471,17 @@ export function CrmProspectsPage() {
   const [generated, setGenerated] = useState(false);
   const [appliedFilters, setAppliedFilters] = useState({});
 
-  // Paginacao & sort
-  const [page, setPage] = useState(1);
+  // Paginacao & sort (persistidos em URL)
+  const [page, setPage] = useUrlInt('page', 1);
   const perPage = 30;
-  const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
+  const [sortKey, setSortKey] = useUrlState('sort', 'created_at');
+  const [sortDir, setSortDir] = useUrlState('dir', 'desc');
+  const sortConfig = { key: sortKey, direction: sortDir };
+  const setSortConfig = (next) => {
+    const v = typeof next === 'function' ? next(sortConfig) : next;
+    setSortKey(v.key);
+    setSortDir(v.direction);
+  };
 
   // Selecao
   const [selectedIds, setSelectedIds] = useState(new Set());

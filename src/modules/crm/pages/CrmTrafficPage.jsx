@@ -29,6 +29,7 @@ import {
   useDeleteCrmTraffic, useCrmPipelines,
 } from '../hooks/useCrmQueries';
 import { TrafficFormModal } from '../components/TrafficFormModal';
+import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 
 // ==================== CONSTANTES ====================
 
@@ -186,10 +187,10 @@ function PieTooltip({ active, payload }) {
 // ==================== MAIN PAGE ====================
 
 export function CrmTrafficPage() {
-  const [period, setPeriod] = useState('month');
-  const [channelFilter, setChannelFilter] = useState('');
-  const [pipelineFilter, setPipelineFilter] = useState('');
-  const [page, setPage] = useState(1);
+  const [period, setPeriod] = useUrlState('period', 'month');
+  const [channelFilter, setChannelFilter] = useUrlState('channel', '');
+  const [pipelineFilter, setPipelineFilter] = useUrlState('pipeline', '');
+  const [page, setPage] = useUrlInt('page', 1);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editEntry, setEditEntry] = useState(null);

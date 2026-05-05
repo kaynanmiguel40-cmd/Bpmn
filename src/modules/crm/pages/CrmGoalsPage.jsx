@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { CrmPageHeader, CrmBadge, CrmConfirmDialog } from '../components/ui';
 import { useCrmGoals, useGoalsProgress, useDeleteCrmGoal } from '../hooks/useCrmQueries';
+import { useUrlState } from '../../../hooks/useUrlState';
 import { GoalFormModal } from '../components/GoalFormModal';
 
 // ==================== HELPERS ====================
@@ -216,9 +217,9 @@ function GoalsSkeleton() {
 // ==================== MAIN COMPONENT ====================
 
 export function CrmGoalsPage() {
-  const [statusTab, setStatusTab] = useState('active');
-  const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState('progress_desc');
+  const [statusTab, setStatusTab] = useUrlState('tab', 'active');
+  const [search, setSearch] = useUrlState('q', '');
+  const [sortBy, setSortBy] = useUrlState('sort', 'progress_desc');
   const debouncedSearch = useDebounce(search);
 
   const { data, isLoading } = useCrmGoals({ status: statusTab });

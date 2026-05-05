@@ -10,6 +10,7 @@ import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../com
 import { CrmModal } from '../components/ui/CrmModal';
 import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
+import { useUrlState } from '../../../hooks/useUrlState';
 import { supabase } from '../../../lib/supabase';
 import { DealFormModal } from '../components/DealFormModal';
 import { LostReasonModal } from '../components/LostReasonModal';
@@ -620,7 +621,7 @@ function SeedOrCreateEmpty({ onCreateManual }) {
 
 export function CrmPipelinePage() {
   const { data: pipelines, isLoading: loadingPipelines } = useCrmPipelines();
-  const [selectedPipelineId, setSelectedPipelineId] = useState(null);
+  const [selectedPipelineId, setSelectedPipelineId] = useUrlState('pipeline', '');
   const activePipelineId = selectedPipelineId || pipelines?.[0]?.id || null;
 
   const { data: pipelineData, isLoading: loadingDeals } = useCrmPipelineWithDeals(activePipelineId);
@@ -655,20 +656,21 @@ export function CrmPipelinePage() {
   const [meetingModalData, setMeetingModalData] = useState(null); // { dealId, dealTitle, dealCity }
   const draggingDealId = useRef(null);
 
-  // View mode (kanban ou lista)
-  const [viewMode, setViewMode] = useState(() => {
+  // View mode (kanban ou lista) — persiste em URL e tambem em localStorage
+  // pra retornar pra view preferida do usuario quando entra sem param.
+  const [viewMode, setViewMode] = useUrlState('view', (() => {
     try { return localStorage.getItem('crm-pipeline-view') || 'kanban'; } catch { return 'kanban'; }
-  });
+  })());
   const switchView = (mode) => {
     setViewMode(mode);
     try { localStorage.setItem('crm-pipeline-view', mode); } catch {}
   };
 
   // Filtros
-  const [searchQuery, setSearchQuery] = useState('');
-  const [valueFilter, setValueFilter] = useState('all');
-  const [probFilter, setProbFilter] = useState('all');
-  const [ownerFilter, setOwnerFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useUrlState('q', '');
+  const [valueFilter, setValueFilter] = useUrlState('v', 'all');
+  const [probFilter, setProbFilter]   = useUrlState('p', 'all');
+  const [ownerFilter, setOwnerFilter] = useUrlState('o', 'all');
 
   const hasFilters = searchQuery || valueFilter !== 'all' || probFilter !== 'all' || ownerFilter !== 'all';
 
@@ -803,7 +805,7 @@ export function CrmPipelinePage() {
                   setCreatePipelineOpen(true);
                   requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
                 } else {
-                  setSelectedPipelineId(e.target.value || null);
+                  setSelectedPipelineId(e.target.value || '');
                 }
               }}
               className="text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
@@ -941,7 +943,7 @@ export function CrmPipelinePage() {
           deletePipelineMutation.mutate(activePipelineId, {
             onSuccess: () => {
               setDeletePipelineConfirm(false);
-              setSelectedPipelineId(null);
+              setSelectedPipelineId('');
             },
           });
         }}

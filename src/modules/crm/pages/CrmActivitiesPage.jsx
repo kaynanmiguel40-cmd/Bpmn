@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { CrmPageHeader, CrmDataTable, CrmBadge, CrmConfirmDialog } from '../components/ui';
 import { useCrmActivities, useDeleteCrmActivity, useCompleteCrmActivity } from '../hooks/useCrmQueries';
+import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import { ActivityFormModal } from '../components/ActivityFormModal';
 
 const typeIcons = {
@@ -46,12 +47,19 @@ function useDebounce(value, delay = 300) {
 }
 
 export function CrmActivitiesPage() {
-  // Filtros
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'start_date', direction: 'desc' });
+  // Filtros (persistidos em URL)
+  const [page, setPage] = useUrlInt('page', 1);
+  const [search, setSearch] = useUrlState('q', '');
+  const [typeFilter, setTypeFilter] = useUrlState('type', '');
+  const [statusFilter, setStatusFilter] = useUrlState('status', '');
+  const [sortKey, setSortKey] = useUrlState('sort', 'start_date');
+  const [sortDir, setSortDir] = useUrlState('dir', 'desc');
+  const sortConfig = { key: sortKey, direction: sortDir };
+  const setSortConfig = (next) => {
+    const v = typeof next === 'function' ? next(sortConfig) : next;
+    setSortKey(v.key);
+    setSortDir(v.direction);
+  };
 
   const debouncedSearch = useDebounce(search);
 

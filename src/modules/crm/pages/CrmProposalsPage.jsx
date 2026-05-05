@@ -6,6 +6,7 @@ import { useState, useCallback } from 'react';
 import { FileText, Plus, Pencil, Trash2, Search, X, Send, Eye, Check, XCircle } from 'lucide-react';
 import { CrmPageHeader, CrmDataTable, CrmBadge, CrmConfirmDialog } from '../components/ui';
 import { useCrmProposals, useDeleteCrmProposal, useUpdateCrmProposalStatus } from '../hooks/useCrmQueries';
+import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import { ProposalFormModal } from '../components/ProposalFormModal';
 
 const statusMap = {
@@ -26,12 +27,19 @@ const formatDate = (dateStr) => {
 };
 
 export function CrmProposalsPage() {
-  // Filtros
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
+  // Filtros (persistidos em URL)
+  const [page, setPage] = useUrlInt('page', 1);
+  const [appliedSearch, setAppliedSearch] = useUrlState('q', '');
+  const [statusFilter, setStatusFilter] = useUrlState('status', '');
+  const [sortKey, setSortKey] = useUrlState('sort', 'created_at');
+  const [sortDir, setSortDir] = useUrlState('dir', 'desc');
+  const sortConfig = { key: sortKey, direction: sortDir };
+  const setSortConfig = (next) => {
+    const v = typeof next === 'function' ? next(sortConfig) : next;
+    setSortKey(v.key);
+    setSortDir(v.direction);
+  };
+  const [search, setSearch] = useState(appliedSearch);
 
   const filters = {
     page,

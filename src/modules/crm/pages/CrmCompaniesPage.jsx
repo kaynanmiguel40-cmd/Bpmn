@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { CrmPageHeader, CrmDataTable, CrmBadge, CrmConfirmDialog } from '../components/ui';
 import { useCrmCompanies, useDeleteCrmCompany } from '../hooks/useCrmQueries';
+import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import { CompanyFormModal } from '../components/CompanyFormModal';
 
 const SEGMENT_OPTIONS = [
@@ -39,14 +40,22 @@ function formatCnpj(val) {
 export function CrmCompaniesPage() {
   const navigate = useNavigate();
 
-  // Filters
-  const [search, setSearch] = useState('');
-  const [segmentFilter, setSegmentFilter] = useState('');
+  // Filters (persistidos em URL — search via debounce pra nao churn a URL)
+  const [searchUrl, setSearchUrl] = useUrlState('q', '');
+  const [search, setSearch] = useState(searchUrl);
+  const [segmentFilter, setSegmentFilter] = useUrlState('segment', '');
   const [showFilters, setShowFilters] = useState(false);
 
-  // Pagination & sort
-  const [page, setPage] = useState(1);
-  const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+  // Pagination & sort (persistidos em URL)
+  const [page, setPage] = useUrlInt('page', 1);
+  const [sortKey, setSortKey] = useUrlState('sort', 'name');
+  const [sortDir, setSortDir] = useUrlState('dir', 'asc');
+  const sortConfig = { key: sortKey, direction: sortDir };
+  const setSortConfig = (next) => {
+    const v = typeof next === 'function' ? next(sortConfig) : next;
+    setSortKey(v.key);
+    setSortDir(v.direction);
+  };
 
   // Modals
   const [formOpen, setFormOpen] = useState(false);
@@ -54,6 +63,9 @@ export function CrmCompaniesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const debouncedSearch = useDebounce(search);
+
+  // Sincroniza debounce -> URL (sobrevive troca de aba)
+  useEffect(() => { setSearchUrl(debouncedSearch); }, [debouncedSearch, setSearchUrl]);
 
   const filters = {
     page,
