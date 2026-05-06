@@ -400,6 +400,11 @@ export async function lookupCnpjByName(name, uf, city = '') {
   const SCORE_MIN_FIRST = 0.3;
   const SCORE_MIN_LAST  = 0.5; // ultimo recurso (variante curta tipo "lpl") exige mais
 
+  // Se TODAS as variantes derem erro HTTP/network, nao cacheia miss — assim
+  // o usuario pode tentar de novo (provavelmente foi falha transitoria de rede,
+  // nao ausencia real do CNPJ na base).
+  let hadTransportError = false;
+
   for (let i = 0; i < variants.length; i++) {
     const variant = variants[i];
     const isLastResort = i === variants.length - 1 && variant.split(' ').length === 1;
@@ -432,6 +437,7 @@ export async function lookupCnpjByName(name, uf, city = '') {
       trackCdLookup();
 
       if (!res.ok) {
+        hadTransportError = true;
         console.warn('[lookupCnpj] HTTP', res.status, 'variant:', variant);
         continue;
       }
@@ -462,11 +468,17 @@ export async function lookupCnpjByName(name, uf, city = '') {
       writeCdLookupCache(key, result);
       return result;
     } catch (err) {
+      hadTransportError = true;
       console.warn('[lookupCnpj] erro variant:', variant, err);
     }
   }
 
-  writeCdLookupCache(key, { miss: true });
+  // Cacheia miss APENAS se a busca foi bem-sucedida em todas as variantes
+  // (sem erro de rede/HTTP) e ainda assim nao achou nada. Caso contrario,
+  // permite retry na proxima chamada.
+  if (!hadTransportError) {
+    writeCdLookupCache(key, { miss: true });
+  }
   return null;
 }
 

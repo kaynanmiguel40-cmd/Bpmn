@@ -23,6 +23,7 @@ import {
   Megaphone,
   Crosshair,
   Zap,
+  Sun,
 } from 'lucide-react';
 import logoFyness from '../../../../assets/logo-fyness.png';
 
@@ -36,6 +37,7 @@ const PinIcon = ({ pinned }) => (
 
 const crmNavItems = [
   { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { to: '/crm/hoje', icon: Sun, label: 'Hoje' },
   { section: 'Vendas' },
   { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline' },
   { to: '/crm/proposals', icon: FileText, label: 'Propostas' },

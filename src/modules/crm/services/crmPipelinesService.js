@@ -66,7 +66,7 @@ export async function getCrmPipelineWithDeals(pipelineId) {
   // Buscar deals ABERTOS e PERDIDOS do pipeline com contato e empresa
   const { data: deals, error: dError } = await supabase
     .from('crm_deals')
-    .select('*, crm_contacts(id, name, avatar_color, company_id, city), crm_companies(id, name, city), team_members(id, name, color)')
+    .select('*, crm_contacts(id, name, avatar_color, company_id, city, phone), crm_companies(id, name, city, phone), team_members(id, name, color)')
     .eq('pipeline_id', pipelineId)
     .in('status', ['open', 'lost', 'won'])
     .is('deleted_at', null)
@@ -76,12 +76,33 @@ export async function getCrmPipelineWithDeals(pipelineId) {
     toast(`Erro ao buscar deals: ${dError.message}`, 'error');
   }
 
+  // Buscar historico de transicoes pra calcular `daysInStage` por deal.
+  // Pega a ultima transicao de cada deal — quando ele entrou no stage atual.
+  const dealIds = (deals || []).map(d => d.id);
+  const lastStageChangeMap = {};
+  if (dealIds.length > 0) {
+    const { data: history } = await supabase
+      .from('crm_deal_stage_history')
+      .select('deal_id, to_stage_id, created_at')
+      .in('deal_id', dealIds)
+      .order('created_at', { ascending: false });
+
+    // Para cada deal, primeira ocorrencia (mais recente, ja ordenado desc) eh a ultima transicao
+    (history || []).forEach(h => {
+      if (!lastStageChangeMap[h.deal_id]) {
+        lastStageChangeMap[h.deal_id] = h.created_at;
+      }
+    });
+  }
+
   const result = dbToPipeline(pipeline);
 
   // Agrupar deals por stage
   const dealsByStage = {};
   (deals || []).forEach(d => {
     if (!dealsByStage[d.stage_id]) dealsByStage[d.stage_id] = [];
+    // Fallback: deals antigos sem historico usam created_at do deal
+    const lastStageChangedAt = lastStageChangeMap[d.id] || d.created_at;
     dealsByStage[d.stage_id].push({
       id: d.id,
       title: d.title,
@@ -91,11 +112,15 @@ export async function getCrmPipelineWithDeals(pipelineId) {
       expectedCloseDate: d.expected_close_date,
       contactId: d.contact_id,
       companyId: d.company_id,
-      contact: d.crm_contacts ? { id: d.crm_contacts.id, name: d.crm_contacts.name, avatarColor: d.crm_contacts.avatar_color, city: d.crm_contacts.city } : null,
-      company: d.crm_companies ? { id: d.crm_companies.id, name: d.crm_companies.name, city: d.crm_companies.city } : null,
+      // contactPhone do deal (campo direto) cai pro phone do contact joineado
+      contactName: d.contact_name,
+      contactPhone: d.contact_phone,
+      contact: d.crm_contacts ? { id: d.crm_contacts.id, name: d.crm_contacts.name, avatarColor: d.crm_contacts.avatar_color, city: d.crm_contacts.city, phone: d.crm_contacts.phone } : null,
+      company: d.crm_companies ? { id: d.crm_companies.id, name: d.crm_companies.name, city: d.crm_companies.city, phone: d.crm_companies.phone } : null,
       ownerId: d.owner_id || null,
       owner: d.team_members ? { id: d.team_members.id, name: d.team_members.name, color: d.team_members.color } : null,
       createdAt: d.created_at,
+      lastStageChangedAt,
     });
   });
 

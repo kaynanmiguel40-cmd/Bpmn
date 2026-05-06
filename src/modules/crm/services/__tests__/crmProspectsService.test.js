@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
-// Mocks de dependencias antes do import do modulo testado
+// Mocks de dependencias (vi.mock eh hoisted automaticamente pro topo do arquivo)
 vi.mock('../../../../lib/supabase', () => ({
   supabase: {
     from: vi.fn(),
@@ -38,13 +38,24 @@ vi.mock('../../data/cnaeMapping', () => ({
   PARTNER_CATEGORY_LABELS: { Contabilidade: 'Contabilidade' },
 }));
 
-beforeEach(() => {
-  localStorage.clear();
-  vi.stubEnv('VITE_CASA_DOS_DADOS_API_KEY', 'TEST_CD_KEY');
-  global.fetch = vi.fn();
+let isMobilePhone, dbToProspect, lookupCnpjByName;
+
+beforeAll(async () => {
+  // CASA_DOS_DADOS_API_KEY eh capturado em const top-level no servico, entao
+  // precisa estar setado ANTES do primeiro import. Mutando import.meta.env
+  // direto antes do dynamic import garante que a env esta no lugar quando o
+  // modulo eh avaliado pela primeira vez.
+  import.meta.env.VITE_CASA_DOS_DADOS_API_KEY = 'TEST_CD_KEY';
+  const m = await import('../crmProspectsService');
+  isMobilePhone = m.isMobilePhone;
+  dbToProspect = m.dbToProspect;
+  lookupCnpjByName = m.lookupCnpjByName;
 });
 
-import { isMobilePhone, dbToProspect, lookupCnpjByName } from '../crmProspectsService';
+beforeEach(() => {
+  localStorage.clear();
+  global.fetch = vi.fn();
+});
 
 describe('isMobilePhone', () => {
   it('detecta celular 11 digitos com 9 inicial apos DDD (formatado)', () => {
@@ -156,31 +167,38 @@ describe('lookupCnpjByName', () => {
     expect(await lookupCnpjByName(null, 'SP')).toBeNull();
   });
 
-  it('faz POST para Casa Dados com busca_textual + UF', async () => {
+  it('faz POST para Casa Dados com busca_textual + UF (tokens em lowercase)', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ cnpjs: [{ cnpj: '12345678000190', razao_social: 'Empresa X' }] }),
+      json: async () => ({ cnpjs: [{ cnpj: '12345678000190', razao_social: 'Acme Solutions' }] }),
     });
-    await lookupCnpjByName('Empresa X', 'SP');
+    await lookupCnpjByName('Acme Solutions', 'SP');
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const body = JSON.parse(global.fetch.mock.calls[0][1].body);
     expect(body.uf).toEqual(['sp']);
-    expect(body.busca_textual[0].texto).toContain('Empresa X');
+    // tokenizeName forca lowercase — variante eh "acme solutions"
+    expect(body.busca_textual[0].texto).toContain('acme solutions');
     expect(body.situacao_cadastral).toContain('ATIVA');
   });
 
-  it('inclui municipio quando city fornecida', async () => {
+  it('NAO inclui filtro de municipio mesmo quando city eh fornecida', async () => {
+    // Comportamento intencional: cidade do Google (formattedAddress) nem sempre
+    // bate exato com municipio CD. Filtragem por cidade eh feita via score boost
+    // depois de receber resultados, nao no body da request.
     global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ cnpjs: [] }) });
-    await lookupCnpjByName('Empresa X', 'SP', 'São Paulo');
+    await lookupCnpjByName('Acme Solutions', 'SP', 'São Paulo');
+    expect(global.fetch).toHaveBeenCalled();
     const body = JSON.parse(global.fetch.mock.calls[0][1].body);
-    expect(body.municipio).toEqual(['SÃO PAULO']);
+    expect(body.municipio).toBeUndefined();
   });
 
-  it('limpa sufixos juridicos do nome (LTDA, ME, S.A.)', async () => {
+  it('limpa sufixos juridicos do nome (LTDA) e baixa pra lowercase', async () => {
+    // STOPWORDS_LOOKUP remove "ltda", "me", "epp", "eireli", "sa", "empresa" etc.
     global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ cnpjs: [] }) });
-    await lookupCnpjByName('Empresa Real LTDA', 'SP');
+    await lookupCnpjByName('Casa Real LTDA', 'SP');
+    expect(global.fetch).toHaveBeenCalled();
     const body = JSON.parse(global.fetch.mock.calls[0][1].body);
-    expect(body.busca_textual[0].texto[0]).toBe('Empresa Real');
+    expect(body.busca_textual[0].texto[0]).toBe('casa real');
   });
 
   it('retorna primeiro candidate transformado', async () => {
@@ -205,11 +223,11 @@ describe('lookupCnpjByName', () => {
   it('cacheia hit e nao refaz fetch', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ cnpjs: [{ cnpj: '12345678000190', razao_social: 'X' }] }),
+      json: async () => ({ cnpjs: [{ cnpj: '12345678000190', razao_social: 'Acme Solutions' }] }),
     });
-    await lookupCnpjByName('Empresa X', 'SP');
+    await lookupCnpjByName('Acme Solutions', 'SP');
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    await lookupCnpjByName('Empresa X', 'SP');
+    await lookupCnpjByName('Acme Solutions', 'SP');
     expect(global.fetch).toHaveBeenCalledTimes(1); // cache
   });
 
@@ -224,41 +242,49 @@ describe('lookupCnpjByName', () => {
   it('cache eh case-insensitive no nome', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ cnpjs: [{ cnpj: '12345678000190', razao_social: 'X' }] }),
+      json: async () => ({ cnpjs: [{ cnpj: '12345678000190', razao_social: 'Acme Solutions' }] }),
     });
-    await lookupCnpjByName('Empresa X', 'SP');
-    await lookupCnpjByName('EMPRESA X', 'SP');
-    await lookupCnpjByName('  empresa x  ', 'SP');
+    await lookupCnpjByName('Acme Solutions', 'SP');
+    await lookupCnpjByName('ACME SOLUTIONS', 'SP');
+    await lookupCnpjByName('  acme solutions  ', 'SP');
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('cache distingue por UF', async () => {
+    // Uso nome de 1 token ('acme') pra gerar 1 unica variante de busca,
+    // tornando a contagem de fetches deterministica (1 por chamada).
     global.fetch
       .mockResolvedValueOnce({ ok: true, json: async () => ({ cnpjs: [] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ cnpjs: [] }) });
-    await lookupCnpjByName('Empresa X', 'SP');
-    await lookupCnpjByName('Empresa X', 'MG');
+    await lookupCnpjByName('Acme', 'SP');
+    await lookupCnpjByName('Acme', 'MG');
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('retorna null em HTTP error sem cachear', async () => {
+  it('retorna null em HTTP error sem cachear (permite retry)', async () => {
+    // 1 token = 1 variante = 1 fetch por chamada (deterministico)
     global.fetch.mockResolvedValueOnce({ ok: false, status: 500 });
-    expect(await lookupCnpjByName('Empresa X', 'SP')).toBeNull();
-    // Pode tentar de novo (nao cacheou)
+    expect(await lookupCnpjByName('Acme', 'SP')).toBeNull();
+    // Pode tentar de novo (nao cacheou — bug fix: HTTP error nao deve cachear miss)
     global.fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ cnpjs: [{ cnpj: '12345678000190', razao_social: 'X' }] }),
+      json: async () => ({ cnpjs: [{ cnpj: '12345678000190', razao_social: 'Acme' }] }),
     });
-    const r = await lookupCnpjByName('Empresa X', 'SP');
+    const r = await lookupCnpjByName('Acme', 'SP');
     expect(r).toBeTruthy();
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('retorna null sem API key configurada', async () => {
-    vi.stubEnv('VITE_CASA_DOS_DADOS_API_KEY', '');
-    // Reimport precisaria, mas o teste pode validar caminho via API key vazia
-    // Aqui so validamos que a funcao lida com isso sem crashar
-    // (a verificacao esta no inicio da funcao)
+  it('retorna null em network error sem cachear (permite retry)', async () => {
+    global.fetch.mockRejectedValueOnce(new Error('network down'));
+    expect(await lookupCnpjByName('Beta', 'SP')).toBeNull();
+    // Network errors tambem nao cacheiam — usuario pode tentar quando voltar
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ cnpjs: [{ cnpj: '11111111000111', razao_social: 'Beta' }] }),
+    });
+    const r = await lookupCnpjByName('Beta', 'SP');
+    expect(r).toBeTruthy();
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 });
-

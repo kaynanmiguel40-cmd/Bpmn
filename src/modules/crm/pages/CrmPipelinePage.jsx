@@ -5,10 +5,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
 import { useUrlState } from '../../../hooks/useUrlState';
 import { supabase } from '../../../lib/supabase';
@@ -19,11 +19,49 @@ import { ScheduleMeetingModal } from '../components/ScheduleMeetingModal';
 const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 
+// Calcula dias desde a ultima transicao de stage (ou criacao se nao houver historico).
+// Retorna { days, label, color } — usado no card pra sinalizar deal "esfriando".
+function getStageHealth(deal) {
+  const ref = deal.lastStageChangedAt || deal.createdAt;
+  if (!ref) return null;
+  const diffMs = Date.now() - new Date(ref).getTime();
+  const days = Math.max(0, Math.floor(diffMs / 86400000));
+  // Status fechados (won/lost) nao precisam de saude — ja esta resolvido
+  if (deal.status !== 'open') return { days, label: null, color: null };
+  // Verde 0-2d, amarelo 3-6d, laranja 7-13d, vermelho 14d+
+  if (days <= 2) return { days, label: days === 0 ? 'hoje' : `${days}d`, color: 'emerald' };
+  if (days <= 6) return { days, label: `${days}d`, color: 'amber' };
+  if (days <= 13) return { days, label: `${days}d`, color: 'orange' };
+  return { days, label: `${days}d`, color: 'rose' };
+}
+
+// Limpa telefone deixando so digitos (com codigo de pais Brasil 55 prefixado)
+function getWhatsappLink(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  // Adiciona 55 se nao tiver codigo de pais
+  const withCountry = digits.startsWith('55') ? digits : `55${digits}`;
+  return `https://wa.me/${withCountry}`;
+}
+
 // ==================== DEAL CARD ====================
 
 function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
   const navigate = useNavigate();
   const isDragging = useRef(false);
+
+  // Telefone preferencial: contactPhone do deal -> contact.phone joineado -> company.phone
+  const phone = deal.contactPhone || deal.contact?.phone || deal.company?.phone || '';
+  const whatsappLink = getWhatsappLink(phone);
+
+  const health = getStageHealth(deal);
+  const healthClasses = {
+    emerald: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
+    amber:   'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+    orange:  'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400',
+    rose:    'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400',
+  };
 
   return (
     <div
@@ -99,17 +137,40 @@ function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
         </div>
       )}
 
-      {deal.probability != null && (
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-1 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${deal.probability}%` }} />
-          </div>
-          <span className="text-[10px] text-slate-400">{deal.probability}%</span>
-        </div>
-      )}
+      {/* Linha final: probabilidade + saude (dias na etapa) */}
+      <div className="flex items-center gap-2">
+        {deal.probability != null && (
+          <>
+            <div className="flex-1 h-1 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${deal.probability}%` }} />
+            </div>
+            <span className="text-[10px] text-slate-400">{deal.probability}%</span>
+          </>
+        )}
+        {health?.label && (
+          <span
+            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${healthClasses[health.color]}`}
+            title={`Nesta etapa ha ${health.days} dia${health.days === 1 ? '' : 's'}`}
+          >
+            {health.label}
+          </span>
+        )}
+      </div>
 
       {/* Acoes no hover */}
       <div className="absolute right-1.5 top-1.5 flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
+        {whatsappLink && (
+          <a
+            href={whatsappLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="p-1 rounded bg-white dark:bg-slate-800 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 shadow-sm border border-slate-200 dark:border-slate-700"
+            title="Abrir WhatsApp"
+          >
+            <MessageCircle size={11} />
+          </a>
+        )}
         {deal.status === 'open' && (
           <button
             onClick={(e) => { e.stopPropagation(); onMarkLost(deal.id); }}
@@ -183,9 +244,56 @@ function ConfettiCelebration({ show, onDone }) {
   );
 }
 
+// ==================== QUICK ADD INLINE ====================
+
+function QuickAddInline({ onCreate, onCancel, isPending }) {
+  const [title, setTitle] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const submit = () => {
+    const t = title.trim();
+    if (!t || isPending) return;
+    onCreate(t);
+  };
+
+  return (
+    <div className="rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 p-2 shadow-sm">
+      <input
+        ref={inputRef}
+        type="text"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); submit(); }
+          if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+        }}
+        onBlur={() => { if (!title.trim()) onCancel(); }}
+        placeholder="Titulo do negocio (Enter)"
+        disabled={isPending}
+        className="w-full text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none disabled:opacity-50"
+      />
+      <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-700">
+        <span className="text-[10px] text-slate-400">Enter pra salvar · Esc cancela</span>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!title.trim() || isPending}
+          className="text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 disabled:opacity-50"
+        >
+          {isPending ? 'Salvando...' : 'Adicionar'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ==================== STAGE COLUMN ====================
 
-function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onMarkLost, onDelete }) {
+function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete }) {
   const isDragOver = dragOverStageId === stage.id;
   const learnedStage = learned?.stages?.find(s => s.position === stage.position);
   const showConv = learnedStage && learnedStage.sampleSize >= 5;
@@ -197,6 +305,8 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
 
   const allCount = stage.deals?.length || 0;
   const isFiltered = filteredDeals.length !== allCount;
+
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
 
   return (
     <div className="w-72 shrink-0 flex flex-col h-full">
@@ -218,9 +328,18 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
             </span>
           )}
         </div>
-        <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full shrink-0">
-          {isFiltered ? `${filteredDeals.length} de ${allCount}` : allCount}
-        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setQuickAddOpen(true)}
+            title="Criar negocio rapido"
+            className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500 transition-colors"
+          >
+            <Plus size={13} />
+          </button>
+          <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+            {isFiltered ? `${filteredDeals.length} de ${allCount}` : allCount}
+          </span>
+        </div>
       </div>
 
       {/* Drop zone com scroll vertical */}
@@ -243,6 +362,17 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
             : 'bg-slate-100 dark:bg-slate-800/50'
         }`}
       >
+        {quickAddOpen && (
+          <QuickAddInline
+            isPending={quickAddPending}
+            onCreate={async (title) => {
+              await onQuickAdd(title, stage.id);
+              setQuickAddOpen(false);
+            }}
+            onCancel={() => setQuickAddOpen(false)}
+          />
+        )}
+
         {filteredDeals.map(deal => (
           <DealCard
             key={deal.id}
@@ -253,9 +383,9 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           />
         ))}
 
-        {allCount === 0 && !isDragOver && (
+        {allCount === 0 && !isDragOver && !quickAddOpen && (
           <button
-            onClick={() => onNewDeal(stage.id)}
+            onClick={() => setQuickAddOpen(true)}
             className="w-full h-20 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg flex items-center justify-center hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors group/add"
           >
             <span className="text-xs text-slate-400 dark:text-slate-500 group-hover/add:text-blue-500 transition-colors flex items-center gap-1">
@@ -630,6 +760,7 @@ export function CrmPipelinePage() {
   const lostMutation = useMarkDealLost();
   const deleteDealMutation = useDeleteCrmDeal();
   const deletePipelineMutation = useDeleteCrmPipeline();
+  const quickCreateMutation = useCreateCrmDeal();
   const { data: allMembers = [] } = useTeamMembers();
   const crmMembers = allMembers.filter(m => m.crmRole);
 
@@ -676,8 +807,18 @@ export function CrmPipelinePage() {
 
   const filterDeals = useCallback((deals) => {
     if (!deals) return [];
+    const q = searchQuery.toLowerCase();
     return deals.filter(d => {
-      if (searchQuery && !d.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (q) {
+        // Busca em titulo + nome do contato + nome da empresa
+        const haystack = [
+          d.title || '',
+          d.contact?.name || '',
+          d.contactName || '',
+          d.company?.name || '',
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
       if (valueFilter === 'low' && (d.value || 0) > 5000) return false;
       if (valueFilter === 'mid' && ((d.value || 0) < 5000 || (d.value || 0) > 50000)) return false;
       if (valueFilter === 'high' && (d.value || 0) < 50000) return false;
@@ -694,6 +835,21 @@ export function CrmPipelinePage() {
   const handleNewDeal = (stageId = null) => {
     setDefaultStageId(stageId);
     setFormOpen(true);
+  };
+
+  // Criacao rapida: so titulo + pipeline + stage. Vendedor edita o resto depois
+  // se quiser. probability=10 espelha o default usado em sendToPipeline.
+  const handleQuickAdd = async (title, stageId) => {
+    if (!activePipelineId || !stageId || !title.trim()) return;
+    await quickCreateMutation.mutateAsync({
+      title: title.trim(),
+      value: 0,
+      probability: 10,
+      pipelineId: activePipelineId,
+      stageId,
+      status: 'open',
+      ownerId: myMemberId || null,
+    });
   };
 
   const handleDrop = (dealId, newStageId) => {
@@ -889,6 +1045,8 @@ export function CrmPipelinePage() {
               filteredDeals={filterDeals(stage.deals)}
               dragOverStageId={dragOverStageId}
               onNewDeal={handleNewDeal}
+              onQuickAdd={handleQuickAdd}
+              quickAddPending={quickCreateMutation.isPending}
               onMarkLost={(dealId) => setLostModalDealId(dealId)}
               onDelete={(deal) => setDeleteDealTarget(deal)}
               onDragStart={(id) => { draggingDealId.current = id; }}
