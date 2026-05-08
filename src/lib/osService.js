@@ -4,23 +4,9 @@ import { osOrderSchema, sectorSchema, osProjectSchema } from './validation';
 import { SLA_HOURS, DEFAULT_SLA_HOURS } from '../constants/sla';
 import { getOffline } from './offlineDB';
 import { ensureSignaturesForParticipants } from './osSignaturesService';
+import { toDatetimeLocal } from './formatters';
 
 // ==================== TRANSFORMADORES ====================
-
-// Coage qualquer formato vindo do Postgres (DATE "YYYY-MM-DD" ou TIMESTAMPTZ ISO)
-// para o formato aceito por <input type="datetime-local">: "YYYY-MM-DDTHH:mm".
-// Usa UTC para manter consistencia: o usuario digita "08:00", o banco guarda
-// "08:00+00:00", ao ler mostra "08:00" de novo (sem deslocar por timezone).
-// Sem isso, a cada save a hora "recua" N horas e a data acaba sumindo.
-function toDatetimeLocalInput(value) {
-  if (!value) return '';
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T08:00`;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-}
 
 export function dbToOrder(row) {
   if (!row) return null;
@@ -43,10 +29,10 @@ export function dbToOrder(row) {
     assignedTo: row.assigned_to || null,
     supervisor: row.supervisor || null,
     sortOrder: row.sort_order ?? 0,
-    estimatedStart: toDatetimeLocalInput(row.estimated_start),
-    estimatedEnd: toDatetimeLocalInput(row.estimated_end),
-    actualStart: toDatetimeLocalInput(row.actual_start),
-    actualEnd: toDatetimeLocalInput(row.actual_end),
+    estimatedStart: toDatetimeLocal(row.estimated_start),
+    estimatedEnd: toDatetimeLocal(row.estimated_end),
+    actualStart: toDatetimeLocal(row.actual_start),
+    actualEnd: toDatetimeLocal(row.actual_end),
     weekStart: row.week_start || null,
     weekEnd: row.week_end || null,
     pausedAt: row.paused_at || null,

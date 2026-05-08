@@ -140,6 +140,25 @@ export function toInputDate(date) {
   return date.toISOString().split('T')[0];
 }
 
+/**
+ * Coage qualquer formato de data vindo do Postgres (DATE "YYYY-MM-DD" ou
+ * TIMESTAMPTZ ISO) para o formato aceito por <input type="datetime-local">:
+ * "YYYY-MM-DDTHH:mm". Usa UTC para manter consistencia: o usuario digita
+ * "08:00", o banco guarda "08:00+00:00", ao ler mostra "08:00" de novo
+ * (sem deslocar por timezone).
+ *
+ * Sem isso, a cada save a hora "recua" N horas e a data acaba sumindo.
+ */
+export function toDatetimeLocal(value) {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T08:00`;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
 /** Data extenso: "segunda-feira, 1 de marco" (para saudacoes/headers) */
 export function formatDateLong(date) {
   return date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });

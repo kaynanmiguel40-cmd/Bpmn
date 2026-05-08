@@ -105,7 +105,7 @@ const EMPTY_PROJECT_FORM = {
   projectType: 'execution',
 };
 
-import { formatDateTime as formatDate, formatDateSmart as formatDateShort, formatCurrency, formatCpf, formatSignatureDateTime } from '../../lib/formatters';
+import { formatDateTime as formatDate, formatDateSmart as formatDateShort, formatCurrency, formatCpf, formatSignatureDateTime, toDatetimeLocal } from '../../lib/formatters';
 import { STANDARD_MONTHLY_HOURS } from '../../constants/sla';
 import { FolderIcon, InboxIcon } from '../../components/icons/FinancialIcons';
 import OSSignaturesPanel from '../../components/os/OSSignaturesPanel';
@@ -403,17 +403,6 @@ export default function FinancialPage() {
     setShowCreateForm(true);
   };
 
-  // Garante que o valor esta no formato YYYY-MM-DDTHH:mm aceito por <input datetime-local>
-  const coerceDatetimeLocal = (v) => {
-    if (!v) return '';
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v)) return v;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T08:00`;
-    const d = new Date(v);
-    if (Number.isNaN(d.getTime())) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-  };
-
   const openEdit = (order) => {
     setEditingOrder(order);
     setForm({
@@ -428,8 +417,8 @@ export default function FinancialPage() {
       notes: order.notes || '',
       assignedTo: order.assignedTo || '',
       supervisor: order.supervisor || '',
-      estimatedStart: coerceDatetimeLocal(order.estimatedStart),
-      estimatedEnd: coerceDatetimeLocal(order.estimatedEnd),
+      estimatedStart: toDatetimeLocal(order.estimatedStart),
+      estimatedEnd: toDatetimeLocal(order.estimatedEnd),
       attachments: order.attachments || [],
       projectId: order.projectId || null,
       parentOrderId: order.parentOrderId || null,
