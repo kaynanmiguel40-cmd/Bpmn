@@ -93,6 +93,7 @@ describe('dbToBlock', () => {
       assigneeId: 'u_elias',
       assigneeName: 'Elias',
       estimatedMinutes: 90,
+      dueAt: null,
       status: 'doing',
       sortOrder: 2,
       createdAt: '2026-04-27T08:00:00Z',
@@ -230,6 +231,7 @@ describe('ensureBlocksForOrder', () => {
     setNextSupabaseResult({ data: [], error: null });
     await ensureBlocksForOrder({
       id: 'os_1',
+      mode: 'team',
       title: 'O.S. legada',
       assignee: 'Robert',
       assignedTo: 'u_robert',
@@ -245,13 +247,13 @@ describe('ensureBlocksForOrder', () => {
 
   it('mapeia status legado: in_progress -> doing', async () => {
     setNextSupabaseResult({ data: [], error: null });
-    await ensureBlocksForOrder({ id: 'os_1', title: 'X', status: 'in_progress' });
+    await ensureBlocksForOrder({ id: 'os_1', mode: 'team', title: 'X', status: 'in_progress' });
     expect(mockedFactoryService.create.mock.calls[0][0].status).toBe('doing');
   });
 
   it('mapeia status legado: done -> done', async () => {
     setNextSupabaseResult({ data: [], error: null });
-    await ensureBlocksForOrder({ id: 'os_1', title: 'X', status: 'done' });
+    await ensureBlocksForOrder({ id: 'os_1', mode: 'team', title: 'X', status: 'done' });
     expect(mockedFactoryService.create.mock.calls[0][0].status).toBe('done');
   });
 
@@ -259,7 +261,7 @@ describe('ensureBlocksForOrder', () => {
     for (const legacy of ['available', 'blocked', 'review', 'qualquer']) {
       vi.clearAllMocks();
       setNextSupabaseResult({ data: [], error: null });
-      await ensureBlocksForOrder({ id: 'os_1', title: 'X', status: legacy });
+      await ensureBlocksForOrder({ id: 'os_1', mode: 'team', title: 'X', status: legacy });
       expect(mockedFactoryService.create.mock.calls[0][0].status).toBe('todo');
     }
   });
@@ -268,6 +270,7 @@ describe('ensureBlocksForOrder', () => {
     setNextSupabaseResult({ data: [], error: null });
     await ensureBlocksForOrder({
       id: 'os_1',
+      mode: 'team',
       title: 'X',
       status: 'available',
       estimatedStart: '2026-04-27T08:00',
@@ -278,7 +281,7 @@ describe('ensureBlocksForOrder', () => {
 
   it('retorna 0 minutos se O.S. nao tem datas', async () => {
     setNextSupabaseResult({ data: [], error: null });
-    await ensureBlocksForOrder({ id: 'os_1', title: 'X', status: 'available' });
+    await ensureBlocksForOrder({ id: 'os_1', mode: 'team', title: 'X', status: 'available' });
     expect(mockedFactoryService.create.mock.calls[0][0].estimatedMinutes).toBe(0);
   });
 
@@ -286,6 +289,7 @@ describe('ensureBlocksForOrder', () => {
     setNextSupabaseResult({ data: [], error: null });
     await ensureBlocksForOrder({
       id: 'os_1',
+      mode: 'team',
       title: 'X',
       status: 'available',
       estimatedStart: '2026-04-27T10:00',
@@ -298,6 +302,7 @@ describe('ensureBlocksForOrder', () => {
     setNextSupabaseResult({ data: [], error: null });
     await ensureBlocksForOrder({
       id: 'os_1',
+      mode: 'team',
       title: 'X',
       status: 'available',
       estimatedStart: 'lixo',
@@ -313,7 +318,7 @@ describe('ensureBlocksForOrder', () => {
 
   it('usa "Bloco principal" como fallback quando O.S. nao tem titulo', async () => {
     setNextSupabaseResult({ data: [], error: null });
-    await ensureBlocksForOrder({ id: 'os_1', status: 'available' });
+    await ensureBlocksForOrder({ id: 'os_1', mode: 'team', status: 'available' });
     expect(mockedFactoryService.create.mock.calls[0][0].title).toBe('Bloco principal');
   });
 });

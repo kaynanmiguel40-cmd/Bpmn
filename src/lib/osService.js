@@ -153,11 +153,16 @@ const TIMESTAMP_FIELDS = [
 
 /** Converte string vazia em null nos campos timestamp (Postgres nao aceita '')
  *  e adiciona sufixo Z (UTC) em valores "YYYY-MM-DDTHH:mm" para garantir que
- *  o Postgres interprete como UTC e nao como timezone local. */
+ *  o Postgres interprete como UTC e nao como timezone local.
+ *
+ *  Importante: so toca em campos que ESTAO no objeto de entrada. Updates parciais
+ *  (ex: { checklist }) nao podem injetar `null` nos timestamps ausentes — isso
+ *  apagaria estimated_start/end no banco a cada toggle de tarefa. */
 function normalizeTimestamps(order) {
   if (!order || typeof order !== 'object') return order;
   const result = { ...order };
   for (const field of TIMESTAMP_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(order, field)) continue;
     const v = result[field];
     if (v === '' || v === undefined) {
       result[field] = null;

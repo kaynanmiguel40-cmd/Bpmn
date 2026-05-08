@@ -94,8 +94,8 @@ describe('getMemberHourlyRate', () => {
     expect(getMemberHourlyRate({ salaryMonth: 5280, hoursMonth: 176 })).toBe(30);
   });
 
-  it('deve retornar 0 se salário for 0', () => {
-    expect(getMemberHourlyRate({ salaryMonth: 0, hoursMonth: 176 })).toBe(0);
+  it('deve retornar null se salário for 0 (sem salario cadastrado)', () => {
+    expect(getMemberHourlyRate({ salaryMonth: 0, hoursMonth: 176 })).toBeNull();
   });
 
   it('deve usar default 176h quando hoursMonth é 0 (falsy)', () => {

@@ -73,6 +73,7 @@ describe('signOrder', () => {
       userId: 'u_kaynan',
       userName: 'Kaynan',
       signedAt: '2026-04-27T10:00:00Z',
+      deliveredAt: null,
     });
   });
 
@@ -158,7 +159,7 @@ describe('getSignaturesByOrder', () => {
     const sigs = await getSignaturesByOrder('os_1');
     expect(sigs).toHaveLength(2);
     expect(sigs[0]).toEqual({
-      id: 's1', orderId: 'os_1', userId: 'u1', userName: 'A', signedAt: '2026-04-27T08:00:00Z',
+      id: 's1', orderId: 'os_1', userId: 'u1', userName: 'A', signedAt: '2026-04-27T08:00:00Z', deliveredAt: null,
     });
   });
 
