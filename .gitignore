@@ -23,3 +23,15 @@ Thumbs.db
 *.log
 npm-debug.log*
 node_modules
+
+# Backups locais (nunca commitar)
+*.bak
+*.orig
+
+# Supabase CLI estado local
+supabase/.temp/
+
+# Claude Code
+.claude/scheduled_tasks.lock
+.claude/settings.json
+nul
