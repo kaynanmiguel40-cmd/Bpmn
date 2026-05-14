@@ -511,13 +511,15 @@ export function useMarkDealLost() {
     onMutate: async ({ dealId }) => {
       await qc.cancelQueries({ queryKey: ['crm', 'pipelineDeals'] });
       const snapshot = snapshotPipelineDeals(qc);
-      // Marcar como perdido no cache (sem remover)
+      // Otimismo: REMOVE o card do pipeline atual — markDealAsLost agora move
+      // o deal pra Nurturing automaticamente, entao ele nao deve aparecer mais
+      // na pipeline em que estava. O refetch traz a versao real depois.
       const allQueries = qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] });
       allQueries.forEach(([queryKey, oldData]) => {
         if (!oldData?.stages) return;
         const updatedStages = oldData.stages.map(stage => ({
           ...stage,
-          deals: stage.deals?.map(d => d.id === dealId ? { ...d, status: 'lost', probability: 0 } : d),
+          deals: stage.deals?.filter(d => d.id !== dealId),
         }));
         qc.setQueryData(queryKey, { ...oldData, stages: updatedStages });
       });
@@ -527,8 +529,14 @@ export function useMarkDealLost() {
       restorePipelineDealsSnapshot(qc, context?.snapshot);
       toast('Erro ao marcar negocio como perdido', 'error');
     },
-    onSuccess: () => {
-      toast('Negocio marcado como perdido', 'warning');
+    onSuccess: (data) => {
+      if (data?._movedTo === 'nurturing') {
+        toast('Perdido — lead movido pra Nurturing pra reativacao futura', 'info');
+      } else if (data?._movedTo === 'descarte') {
+        toast('Lead descartado de vez', 'warning');
+      } else {
+        toast('Negocio marcado como perdido', 'warning');
+      }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });

@@ -20,7 +20,7 @@ export async function getCrmDashboardKPIs() {
       allClosedRes,
       pendingActivitiesRes,
       closingSoonRes,
-      stagesRes,
+      defaultPipelineRes,
       recentActivitiesRes,
       wonLast12Res,
     ] = await Promise.all([
@@ -48,10 +48,13 @@ export async function getCrmDashboardKPIs() {
         .eq('status', 'open').lte('expected_close_date', in7Days).gte('expected_close_date', now.toISOString()).is('deleted_at', null)
         .order('expected_close_date'),
 
-      // Deals por stage (para grafico de funil)
-      supabase.from('crm_pipeline_stages')
-        .select('id, name, pipeline_id, crm_deals(id, value, status)')
-        .order('position'),
+      // Pipeline default (com stages ordenados) — fonte do funil
+      supabase.from('crm_pipelines')
+        .select('id, name, is_default, crm_pipeline_stages(id, name, position, is_win_stage, crm_deals(id, value, status))')
+        .order('is_default', { ascending: false })
+        .order('created_at')
+        .limit(1)
+        .maybeSingle(),
 
       // Ultimas 10 atividades
       supabase.from('crm_activities')
@@ -78,6 +81,7 @@ export async function getCrmDashboardKPIs() {
     const monthRevenue = wonThisMonth.reduce((sum, d) => sum + (d.value || 0), 0);
 
     const wonCount = allClosed.filter(d => d.status === 'won').length;
+    const lostCount = allClosed.filter(d => d.status === 'lost').length;
     const conversionRate = allClosed.length > 0 ? Math.round((wonCount / allClosed.length) * 100) : 0;
 
     // Revenue por mes
@@ -91,15 +95,32 @@ export async function getCrmDashboardKPIs() {
       revenueByMonth.push({ month: monthKey, value: monthValue });
     }
 
-    // Deals por stage
-    const dealsByStage = (stagesRes.data || []).map(stage => {
-      const stageDeals = (stage.crm_deals || []).filter(d => d.status === 'open');
+    // Funil do pipeline default (stages ordenados por position; conversao
+    // calculada em relacao ao primeiro stage). `value` = soma R$ dos deals
+    // open na etapa; `count` = quantidade.
+    const defaultPipeline = defaultPipelineRes.data || null;
+    const funnelPipelineName = defaultPipeline?.name || null;
+    const stagesOrdered = (defaultPipeline?.crm_pipeline_stages || [])
+      .slice()
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+
+    const funnel = stagesOrdered.map(stage => {
+      const openDealsInStage = (stage.crm_deals || []).filter(d => d.status === 'open');
       return {
         stageId: stage.id,
         stageName: stage.name,
-        count: stageDeals.length,
-        value: stageDeals.reduce((sum, d) => sum + (d.value || 0), 0),
+        count: openDealsInStage.length,
+        value: openDealsInStage.reduce((sum, d) => sum + (d.value || 0), 0),
+        isWinStage: !!stage.is_win_stage,
       };
+    });
+
+    // Conversao stage-a-stage (em relacao ao stage anterior).
+    const firstCount = funnel[0]?.count || 0;
+    funnel.forEach((stage, idx) => {
+      const prev = idx > 0 ? funnel[idx - 1].count : firstCount;
+      stage.conversion = prev > 0 ? Math.round((stage.count / prev) * 100) : 0;
+      stage.conversionFromTop = firstCount > 0 ? Math.round((stage.count / firstCount) * 100) : 0;
     });
 
     // Recent activities transform
@@ -129,12 +150,14 @@ export async function getCrmDashboardKPIs() {
       openDeals: openDeals.length,
       pipelineValue,
       monthRevenue,
+      monthLostLeads: lostCount,
       conversionRate,
       pendingActivities: pendingActivitiesRes.count || 0,
       dealsClosingSoon: closingSoonList.length,
       dealsClosingSoonList: closingSoonList,
       revenueByMonth,
-      dealsByStage,
+      funnel,
+      funnelPipelineName,
       recentActivities,
     };
   } catch (err) {
@@ -146,12 +169,14 @@ export async function getCrmDashboardKPIs() {
       openDeals: 0,
       pipelineValue: 0,
       monthRevenue: 0,
+      monthLostLeads: 0,
       conversionRate: 0,
       pendingActivities: 0,
       dealsClosingSoon: 0,
       dealsClosingSoonList: [],
       revenueByMonth: [],
-      dealsByStage: [],
+      funnel: [],
+      funnelPipelineName: null,
       recentActivities: [],
     };
   }

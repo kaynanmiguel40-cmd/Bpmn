@@ -65,6 +65,14 @@ function NavItem({ to, icon: Icon, label, isCollapsed, badge, onClick }) {
   );
 }
 
+// Icone de organograma (estrutura organizacional)
+const OrgChartIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+      d="M12 4v4m0 0H6a2 2 0 00-2 2v2m8-4h6a2 2 0 012 2v2M4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+  </svg>
+);
+
 // Icone de pin/fixar
 const PinIcon = ({ pinned }) => (
   <svg className="w-4 h-4" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
@@ -224,6 +232,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
           <NavItem to="/crm" icon={CrmIcon} label="CRM" isCollapsed={effectiveCollapsed} badge={newLeadsCount > 0 ? newLeadsCount : undefined} onClick={handleNavClick} />
           <NavItem to="/sales" icon={SalesIcon} label="Processos" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/reports" icon={ReportIcon} label="Relatorios" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
+          <NavItem to="/equipe/estrutura" icon={OrgChartIcon} label="Estrutura" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/settings" icon={SettingsIcon} label="Configuracoes" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
         </nav>
 

@@ -18,6 +18,7 @@ const RoutinePage = lazy(() => import('./pages/routine/RoutinePage'))
 const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage'))
 const FinancialPage = lazy(() => import('./pages/financial/FinancialPage'))
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'))
+const OrgStructurePage = lazy(() => import('./pages/team/OrgStructurePage'))
 const ReportPage = lazy(() => import('./pages/reports/ReportPage'))
 const EapPage = lazy(() => import('./pages/eap/EapPage'))
 const EapGanttPage = lazy(() => import('./pages/eap/EapGanttPage'))
@@ -131,6 +132,7 @@ function App() {
                 <Route path="/eap" element={<ErrorBoundary><EapPage /></ErrorBoundary>} />
                 <Route path="/eap/:projectId" element={<ErrorBoundary><EapGanttPage /></ErrorBoundary>} />
                 <Route path="/reports" element={<ErrorBoundary><ReportPage /></ErrorBoundary>} />
+                <Route path="/equipe/estrutura" element={<ErrorBoundary><OrgStructurePage /></ErrorBoundary>} />
                 <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
               </Route>
             </Route>

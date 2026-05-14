@@ -1,13 +1,60 @@
+import type { ZodObject, ZodRawShape, ZodTypeAny } from 'zod';
 import { supabase } from './supabaseClient';
 import { toast } from '../contexts/ToastContext';
 import { validateAndSanitize, validatePartial } from './validation';
-import { saveOffline, getOffline, putOffline, removeOffline, markPendingSync, getPendingSync, clearPendingSync } from './offlineDB';
+import {
+  saveOffline,
+  getOffline,
+  putOffline,
+  removeOffline,
+  markPendingSync,
+  getPendingSync,
+  clearPendingSync,
+  type OfflineRow,
+} from './offlineDB';
 
-/**
- * Converte um objeto camelCase para snake_case usando o mapeamento fornecido.
- */
-function toSnakeCase(obj, fieldMap) {
-  const result = {};
+// ==================== TIPOS ====================
+
+export interface CRUDServiceConfig<TDomain, TRow extends OfflineRow = OfflineRow> {
+  table: string;
+  localKey?: string;
+  idPrefix?: string;
+  transform?: (row: TRow) => TDomain;
+  fieldMap: Record<string, string>;
+  schema?: ZodTypeAny;
+  richFields?: string[];
+  orderBy?: string;
+  orderAsc?: boolean;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  count: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface CRUDService<TDomain> {
+  getAll(): Promise<TDomain[]>;
+  getPaginated(
+    page?: number,
+    pageSize?: number,
+    filters?: Record<string, unknown>,
+  ): Promise<PaginatedResult<TDomain>>;
+  getById(id: string): Promise<TDomain | null>;
+  create(item: Record<string, unknown>, extraRow?: Record<string, unknown>): Promise<TDomain | null>;
+  update(id: string, updates: Record<string, unknown>): Promise<TDomain | null>;
+  remove(id: string): Promise<boolean>;
+  bulkUpdate(field: string, value: unknown, filterField: string, filterValue: unknown): Promise<void>;
+  syncPending(): Promise<number>;
+}
+
+// ==================== HELPERS ====================
+
+/** Converte um objeto camelCase para snake_case usando o mapeamento fornecido. */
+function toSnakeCase(obj: Record<string, unknown>, fieldMap: Record<string, string>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
   for (const [camel, snake] of Object.entries(fieldMap)) {
     if (obj[camel] !== undefined) {
       result[snake] = obj[camel];
@@ -16,20 +63,20 @@ function toSnakeCase(obj, fieldMap) {
   return result;
 }
 
-function generateLocalId(_prefix) {
+function generateLocalId(_prefix?: string): string {
   return crypto.randomUUID();
 }
 
 // ==================== SYNC ONLINE/OFFLINE ====================
 
-const registeredServices = [];
+const registeredServices: Array<{ syncPending: () => Promise<number> }> = [];
 
-function registerForSync(service) {
+function registerForSync(service: { syncPending: () => Promise<number> }): void {
   registeredServices.push(service);
 }
 
 /** Tenta sync com retry e backoff exponencial */
-async function syncWithRetry(maxRetries = 3) {
+async function syncWithRetry(maxRetries = 3): Promise<number> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       let synced = 0;
@@ -41,8 +88,8 @@ async function syncWithRetry(maxRetries = 3) {
       }
       return synced;
     } catch (err) {
-      const delay = Math.min(1000 * 2 ** attempt, 30000); // 1s, 2s, 4s... max 30s
-      console.warn(`[Sync] Tentativa ${attempt + 1}/${maxRetries} falhou, retry em ${delay}ms:`, err?.message || err);
+      const delay = Math.min(1000 * 2 ** attempt, 30000);
+      console.warn(`[Sync] Tentativa ${attempt + 1}/${maxRetries} falhou, retry em ${delay}ms:`, (err as Error)?.message || err);
       if (attempt < maxRetries - 1) {
         await new Promise(r => setTimeout(r, delay));
       }
@@ -53,7 +100,6 @@ async function syncWithRetry(maxRetries = 3) {
   return 0;
 }
 
-// Detectar reconexão
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     console.log('[Sync] Conexao restaurada, sincronizando...');
@@ -67,10 +113,11 @@ if (typeof window !== 'undefined') {
  * Factory que cria operações CRUD com fallback automático para IndexedDB (via Dexie).
  * Inclui validação Zod, sanitização, e paginação.
  */
-export function createCRUDService(config) {
+export function createCRUDService<TDomain = unknown, TRow extends OfflineRow = OfflineRow>(
+  config: CRUDServiceConfig<TDomain, TRow>,
+): CRUDService<TDomain> {
   const {
     table,
-    localKey,
     idPrefix,
     transform,
     fieldMap,
@@ -80,8 +127,9 @@ export function createCRUDService(config) {
     orderAsc = true,
   } = config;
 
-  // ==================== GET ALL ====================
-  async function getAll() {
+  const apply = (row: TRow): TDomain => (transform ? transform(row) : (row as unknown as TDomain));
+
+  async function getAll(): Promise<TDomain[]> {
     const { data, error } = await supabase
       .from(table)
       .select('*')
@@ -90,20 +138,22 @@ export function createCRUDService(config) {
     if (error) {
       console.error(`[${table}] GET ALL erro:`, error.message, error.code, error.details, error.hint);
       toast(`Offline [${table}]: ${error.message}`, 'warning');
-      const local = await getOffline(table);
-      return transform ? local.map(r => transform(r) || r) : local;
+      const local = await getOffline<TRow>(table);
+      return local.map(apply);
     }
 
-    // Salvar no IndexedDB para acesso offline futuro (fire-and-forget — nao atrasa a UI)
-    saveOffline(table, data || []).catch(err =>
-      console.warn(`[${table}] saveOffline falhou:`, err?.message || err)
+    saveOffline(table, (data as TRow[]) || []).catch(err =>
+      console.warn(`[${table}] saveOffline falhou:`, (err as Error)?.message || err)
     );
 
-    return transform ? (data || []).map(transform) : (data || []);
+    return ((data as TRow[]) || []).map(apply);
   }
 
-  // ==================== GET PAGINATED ====================
-  async function getPaginated(page = 1, pageSize = 20, filters = {}) {
+  async function getPaginated(
+    page = 1,
+    pageSize = 20,
+    filters: Record<string, unknown> = {},
+  ): Promise<PaginatedResult<TDomain>> {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
@@ -113,7 +163,6 @@ export function createCRUDService(config) {
       .order(orderBy, { ascending: orderAsc })
       .range(from, to);
 
-    // Aplicar filtros dinamicos
     for (const [field, value] of Object.entries(filters)) {
       if (value !== undefined && value !== null && value !== '') {
         query = query.eq(field, value);
@@ -123,11 +172,11 @@ export function createCRUDService(config) {
     const { data, error, count } = await query;
 
     if (error) {
-      toast(`Modo offline — usando dados locais`, 'warning');
-      const local = await getOffline(table);
+      toast('Modo offline — usando dados locais', 'warning');
+      const local = await getOffline<TRow>(table);
       const sliced = local.slice(from, to + 1);
       return {
-        data: transform ? sliced.map(r => transform(r) || r) : sliced,
+        data: sliced.map(apply),
         count: local.length,
         page,
         pageSize,
@@ -136,7 +185,7 @@ export function createCRUDService(config) {
     }
 
     return {
-      data: transform ? (data || []).map(transform) : (data || []),
+      data: ((data as TRow[]) || []).map(apply),
       count: count || 0,
       page,
       pageSize,
@@ -144,8 +193,7 @@ export function createCRUDService(config) {
     };
   }
 
-  // ==================== GET BY ID ====================
-  async function getById(id) {
+  async function getById(id: string): Promise<TDomain | null> {
     const { data, error } = await supabase
       .from(table)
       .select('*')
@@ -153,30 +201,33 @@ export function createCRUDService(config) {
       .single();
 
     if (error) {
-      const local = await getOffline(table);
+      const local = await getOffline<TRow>(table);
       const item = local.find(r => r.id === id);
-      return item ? (transform ? transform(item) : item) : null;
+      return item ? apply(item) : null;
     }
-    return transform ? transform(data) : data;
+    return apply(data as TRow);
   }
 
-  // ==================== CREATE ====================
-  async function create(item, extraRow = {}) {
-    // Validar com schema Zod se disponivel
+  async function create(
+    item: Record<string, unknown>,
+    extraRow: Record<string, unknown> = {},
+  ): Promise<TDomain | null> {
+    let payload = item;
+
     if (schema) {
-      const validation = validateAndSanitize(schema, item, { richFields });
-      if (!validation.success) {
-        toast(validation.error, 'error');
+      const validation = validateAndSanitize(schema, payload, { richFields });
+      if (!validation.success || !validation.data) {
+        toast(validation.error || 'Dados invalidos', 'error');
         return null;
       }
-      item = validation.data;
+      payload = validation.data as Record<string, unknown>;
     }
 
     const now = new Date().toISOString();
-    const generatedId = extraRow.id || generateLocalId(idPrefix);
-    const snakeData = {
+    const generatedId = (extraRow.id as string | undefined) || generateLocalId(idPrefix);
+    const snakeData: Record<string, unknown> = {
       id: generatedId,
-      ...toSnakeCase(item, fieldMap),
+      ...toSnakeCase(payload, fieldMap),
       ...extraRow,
     };
 
@@ -189,32 +240,32 @@ export function createCRUDService(config) {
     if (error) {
       console.error(`[${table}] CREATE erro:`, error.message, error.code, error.details, error.hint);
       const localId = generateLocalId(idPrefix);
-      const newItem = { id: localId, ...snakeData, created_at: now, updated_at: now };
+      const newItem = { id: localId, ...snakeData, created_at: now, updated_at: now } as unknown as TRow;
       await putOffline(table, newItem);
       await markPendingSync(table, newItem.id, 'upsert');
       toast(`Salvo localmente: ${error.message || 'sem conexao'}`, 'warning');
-      return transform ? transform(newItem) : newItem;
+      return apply(newItem);
     }
-    // Sucesso: salvar no cache local para consistencia offline
-    if (data) await putOffline(table, data);
-    return transform ? transform(data) : data;
+
+    if (data) await putOffline(table, data as TRow);
+    return apply(data as TRow);
   }
 
-  // ==================== UPDATE ====================
-  async function update(id, updates) {
-    // Validar parcialmente com schema Zod se disponivel
-    if (schema) {
-      const validation = validatePartial(schema, updates, { richFields });
-      if (!validation.success) {
-        toast(validation.error, 'error');
+  async function update(id: string, updates: Record<string, unknown>): Promise<TDomain | null> {
+    let payload = updates;
+
+    if (schema && (schema as ZodObject<ZodRawShape>).partial) {
+      const validation = validatePartial(schema as ZodObject<ZodRawShape>, payload, { richFields });
+      if (!validation.success || !validation.data) {
+        toast(validation.error || 'Dados invalidos', 'error');
         return null;
       }
-      updates = validation.data;
+      payload = validation.data as Record<string, unknown>;
     }
 
-    const updateData = {
+    const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
-      ...toSnakeCase(updates, fieldMap),
+      ...toSnakeCase(payload, fieldMap),
     };
 
     const { data, error } = await supabase
@@ -226,59 +277,59 @@ export function createCRUDService(config) {
 
     if (error) {
       console.error(`[${table}] UPDATE erro:`, error.message, error.code, error.details, error.hint);
-      const local = await getOffline(table);
+      const local = await getOffline<TRow>(table);
       const item = local.find(r => r.id === id);
       if (item) {
-        const updated = { ...item, ...updateData };
+        const updated = { ...item, ...updateData } as TRow;
         await putOffline(table, updated);
         await markPendingSync(table, id, 'upsert');
-        return transform ? transform(updated) : updated;
+        return apply(updated);
       }
       return null;
     }
-    // Sucesso: atualizar cache local para consistencia offline
-    if (data) await putOffline(table, data);
-    return transform ? transform(data) : data;
+
+    if (data) await putOffline(table, data as TRow);
+    return apply(data as TRow);
   }
 
-  // ==================== DELETE ====================
-  async function remove(id) {
+  async function remove(id: string): Promise<boolean> {
     const { error } = await supabase
       .from(table)
       .delete()
       .eq('id', id);
 
     if (error) {
-      // Offline: marcar para sync quando voltar online
       await removeOffline(table, id);
       await markPendingSync(table, id, 'delete');
     } else {
-      // Sucesso: limpar do cache local tambem (evita registros fantasma)
       await removeOffline(table, id);
     }
     return !error;
   }
 
-  // ==================== BULK UPDATE ====================
-  async function bulkUpdate(field, value, filterField, filterValue) {
-    const updateData = { [field]: value, updated_at: new Date().toISOString() };
+  async function bulkUpdate(
+    field: string,
+    value: unknown,
+    filterField: string,
+    filterValue: unknown,
+  ): Promise<void> {
+    const updateData: Record<string, unknown> = { [field]: value, updated_at: new Date().toISOString() };
 
     const { error } = await supabase
       .from(table)
       .update(updateData)
-      .eq(filterField, filterValue);
+      .eq(filterField, filterValue as never);
 
     if (error) {
-      const local = await getOffline(table);
+      const local = await getOffline<TRow>(table);
       const updated = local.map(r =>
-        r[filterField] === filterValue ? { ...r, ...updateData } : r
-      );
+        (r as Record<string, unknown>)[filterField] === filterValue ? { ...r, ...updateData } : r
+      ) as TRow[];
       await saveOffline(table, updated);
     }
   }
 
-  // ==================== SYNC PENDING ====================
-  async function syncPending() {
+  async function syncPending(): Promise<number> {
     const pending = await getPendingSync();
     const tablePending = pending.filter(p => p.table_name === table);
     let synced = 0;
@@ -291,7 +342,7 @@ export function createCRUDService(config) {
         success = !error;
         if (error) console.warn(`[${table}] Sync delete falhou para ${entry.item_id}:`, error.message);
       } else {
-        const local = await getOffline(table);
+        const local = await getOffline<TRow>(table);
         const item = local.find(r => r.id === entry.item_id);
         if (item) {
           const { error } = await supabase.from(table).upsert([item], { onConflict: 'id' });
@@ -308,9 +359,17 @@ export function createCRUDService(config) {
     return synced;
   }
 
-  const service = { getAll, getPaginated, getById, create, update, remove, bulkUpdate, syncPending };
+  const service: CRUDService<TDomain> = {
+    getAll,
+    getPaginated,
+    getById,
+    create,
+    update,
+    remove,
+    bulkUpdate,
+    syncPending,
+  };
 
-  // Registrar para sync automático
   registerForSync(service);
 
   return service;

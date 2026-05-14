@@ -18,6 +18,8 @@ export function dbToMember(row) {
     email: row.email || '',
     authUserId: row.auth_user_id || null,
     crmRole: row.crm_role || null,
+    orgSectorId: row.org_sector_id || null,
+    managerId: row.manager_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -61,6 +63,8 @@ const memberService = createCRUDService({
     email: 'email',
     authUserId: 'auth_user_id',
     crmRole: 'crm_role',
+    orgSectorId: 'org_sector_id',
+    managerId: 'manager_id',
   },
 });
 

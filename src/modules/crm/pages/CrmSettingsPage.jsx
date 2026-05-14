@@ -5,12 +5,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  Users, Tag, Settings, Check, Plus, Save, X, AlertTriangle, Globe, Zap,
+  Users, Tag, Settings, Check, Plus, Save, X, AlertTriangle, Globe, Zap, XCircle,
 } from 'lucide-react';
 import { CrmPageHeader, CrmAvatar } from '../components/ui';
 import { useTeamMembers } from '../../../hooks/queries';
 import { updateTeamMember } from '../../../lib/teamService';
 import CrmAutomationsPage from './CrmAutomationsPage';
+import { useCrmPipelines } from '../hooks/useCrmQueries';
+import { getCrmWorkspaceSettings, saveCrmWorkspaceSettings } from '../lib/workspaceSettings';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -213,6 +215,140 @@ function SegmentosTab() {
   );
 }
 
+// ─── Roteamento de "Perdido" → Pipeline alvo ─────────────────────────────────
+
+function LostRoutingSection() {
+  const { data: pipelines = [] } = useCrmPipelines();
+
+  // Estado inicial vem do localStorage. `init` carrega 1x; o submit reescreve.
+  const [config, setConfig] = useState(() => getCrmWorkspaceSettings());
+  const [saved, setSaved] = useState(false);
+  const savedTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+  }, []);
+
+  // Pipeline selecionada -> usado pra popular os 2 selects de stage
+  const selectedPipeline = pipelines.find(p => p.id === config.lostTargetPipelineId);
+  const pipelineStages = selectedPipeline?.stages || [];
+
+  // Quando muda a pipeline alvo, limpa stages selecionadas (eram da pipeline anterior)
+  const handlePipelineChange = (pipelineId) => {
+    setConfig(prev => ({
+      ...prev,
+      lostTargetPipelineId: pipelineId || null,
+      lostTargetStageId: null,
+      discardStageId: null,
+    }));
+  };
+
+  const handleSave = () => {
+    saveCrmWorkspaceSettings({
+      lostTargetPipelineId: config.lostTargetPipelineId || null,
+      lostTargetStageId: config.lostTargetStageId || null,
+      discardStageId: config.discardStageId || null,
+    });
+    setSaved(true);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleReset = () => {
+    setConfig({ lostTargetPipelineId: null, lostTargetStageId: null, discardStageId: null });
+    saveCrmWorkspaceSettings({
+      lostTargetPipelineId: null,
+      lostTargetStageId: null,
+      discardStageId: null,
+    });
+    setSaved(true);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <SectionCard
+      icon={XCircle}
+      color="bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400"
+      title='Roteamento de "Perdido"'
+      subtitle="Quando um deal for marcado como perdido, ele vai automaticamente pra esta pipeline pra reativacao futura."
+    >
+      <div className="space-y-4">
+        <div>
+          <label className={labelCls}>Pipeline destino (Nutrição/Nurturing)</label>
+          <select
+            value={config.lostTargetPipelineId || ''}
+            onChange={e => handlePipelineChange(e.target.value)}
+            className={`${inputCls} max-w-md`}
+          >
+            <option value="">— Desativado (deal fica no lugar) —</option>
+            {pipelines.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Se vazio, fallback busca pipeline com nome &quot;Nurturing&quot; automaticamente.
+          </p>
+        </div>
+
+        {config.lostTargetPipelineId && (
+          <>
+            <div>
+              <label className={labelCls}>Stage de entrada (lead perdido cai aqui)</label>
+              <select
+                value={config.lostTargetStageId || ''}
+                onChange={e => setConfig(prev => ({ ...prev, lostTargetStageId: e.target.value || null }))}
+                className={`${inputCls} max-w-md`}
+              >
+                <option value="">— Selecione —</option>
+                {pipelineStages.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={labelCls}>Stage de descarte (deal ja na pipeline alvo vira perdido aqui)</label>
+              <select
+                value={config.discardStageId || ''}
+                onChange={e => setConfig(prev => ({ ...prev, discardStageId: e.target.value || null }))}
+                className={`${inputCls} max-w-md`}
+              >
+                <option value="">— Selecione —</option>
+                {pipelineStages.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Opcional — se vazio, deal ja na pipeline alvo so atualiza status pra &quot;perdido&quot; sem mudar de stage.
+              </p>
+            </div>
+          </>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSave}
+            className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg font-medium transition-all ${
+              saved
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+          >
+            {saved ? <><Check size={14} /> Salvo!</> : <><Save size={14} /> Salvar configuracao</>}
+          </button>
+          <button
+            onClick={handleReset}
+            className="text-xs text-slate-400 hover:text-rose-500 transition-colors"
+          >
+            Resetar (usa fallback &quot;Nurturing&quot;)
+          </button>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ─── Tab: Preferências ────────────────────────────────────────────────────────
 
 function PreferenciasTab() {
@@ -269,6 +405,8 @@ function PreferenciasTab() {
           </button>
         </div>
       </SectionCard>
+
+      <LostRoutingSection />
 
       <SectionCard
         icon={AlertTriangle}

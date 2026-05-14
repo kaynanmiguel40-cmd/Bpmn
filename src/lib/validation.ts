@@ -1,27 +1,25 @@
-import { z } from 'zod';
+import { z, type ZodTypeAny } from 'zod';
 import DOMPurify from 'dompurify';
 
 // ==================== SANITIZACAO ====================
 
-// DOMPurify 3.x precisa de window - inicializar corretamente
-let purify;
+type Purifier = { sanitize: (text: string, options?: object) => string } | null;
+
+let purify: Purifier;
 try {
   purify = typeof window !== 'undefined' && window.document
-    ? DOMPurify
-    : (DOMPurify.sanitize ? DOMPurify : null);
+    ? (DOMPurify as unknown as Purifier)
+    : ((DOMPurify as unknown as { sanitize?: unknown }).sanitize ? (DOMPurify as unknown as Purifier) : null);
 } catch {
   purify = null;
 }
 
-/**
- * Sanitiza texto para prevenir XSS.
- */
-export function sanitize(text) {
+/** Sanitiza texto para prevenir XSS. */
+export function sanitize(text: unknown): unknown {
   if (typeof text !== 'string') return text;
   if (purify && typeof purify.sanitize === 'function') {
     return purify.sanitize(text, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
   }
-  // Fallback: remover script/style com conteudo, depois demais tags
   return text
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -40,7 +38,7 @@ const RICH_TEXT_ATTRS = [
 ];
 
 /** Sanitiza HTML permitindo tags seguras de formatacao (para TipTap). */
-export function sanitizeRichText(text) {
+export function sanitizeRichText(text: unknown): unknown {
   if (typeof text !== 'string') return text;
   if (purify && typeof purify.sanitize === 'function') {
     return purify.sanitize(text, {
@@ -57,11 +55,11 @@ export function sanitizeRichText(text) {
  * Sanitiza todos os campos string de um objeto.
  * richFields: Set de nomes de campos que permitem HTML (TipTap).
  */
-function sanitizeObject(obj, richFields = null) {
+function sanitizeObject<T>(obj: T, richFields: Set<string> | null = null): T {
   if (!obj || typeof obj !== 'object') return obj;
 
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
     if (typeof value === 'string') {
       result[key] = (richFields && richFields.has(key)) ? sanitizeRichText(value) : sanitize(value);
     } else if (Array.isArray(value)) {
@@ -75,7 +73,7 @@ function sanitizeObject(obj, richFields = null) {
       result[key] = value;
     }
   }
-  return result;
+  return result as T;
 }
 
 // ==================== SCHEMAS ====================
@@ -98,11 +96,10 @@ const checklistItem = z.object({
   id: z.union([z.string(), z.number()]).optional(),
   text: z.string().default(''),
   done: z.boolean().default(false),
-  dueAt: z.string().nullable().optional(),         // prazo proprio do item (opcional)
-  estimatedMinutes: z.number().min(0).optional(),  // duracao estimada (estrategico)
+  dueAt: z.string().nullable().optional(),
+  estimatedMinutes: z.number().min(0).optional(),
 }).passthrough();
 
-// Helper: string que aceita null (para campos que vem como null do form/DB)
 const nullableStr = z.string().nullable().optional().default('');
 
 export const osOrderSchema = z.object({
@@ -137,7 +134,6 @@ export const osOrderSchema = z.object({
   emergencyNumber: z.number().nullable().optional(),
   eapTaskId: z.string().nullable().optional().default(null),
   wbsPath: z.string().nullable().optional().default(null),
-  // Modo team: participantes da O.S. e metadados por grupo do checklist
   mode: z.enum(['pool', 'solo', 'team']).optional().default('pool'),
   participants: z.array(z.object({
     id: z.string().nullable().optional(),
@@ -145,12 +141,10 @@ export const osOrderSchema = z.object({
   }).passthrough()).optional().default([]),
   checklistGroups: z.array(z.object({
     name: z.string(),
-    // Modelo novo: multi-responsavel
     assignees: z.array(z.object({
       id: z.string().nullable().optional(),
       name: z.string(),
     }).passthrough()).optional().default([]),
-    // Campos legados — mantidos pra leitura/compatibilidade
     assigneeId: z.string().nullable().optional(),
     assigneeName: z.string().optional(),
     dueAt: z.string().nullable().optional(),
@@ -169,6 +163,8 @@ export const teamMemberSchema = z.object({
   salaryMonth: z.number().min(0, 'Salario nao pode ser negativo').default(0),
   hoursMonth: z.number().min(1).default(176),
   crmRole: z.enum(['vendedor', 'pre_vendedor', 'gestor']).nullable().optional().default(null),
+  orgSectorId: z.string().nullable().optional().default(null),
+  managerId: z.string().nullable().optional().default(null),
 }).passthrough();
 
 export const agendaEventSchema = z.object({
@@ -272,7 +268,7 @@ export const contentPostSchema = z.object({
   recurrenceGroupId: z.string().nullable().optional().default(null),
 }).passthrough();
 
-// ==================== PROCESS ORDERS (Ordem de Processo) ====================
+// ==================== PROCESS ORDERS ====================
 
 const processOrderStepItem = z.object({
   id: z.union([z.string(), z.number()]).optional(),
@@ -319,24 +315,54 @@ export const processOrderSchema = z.object({
   notes: z.string().optional().default(''),
 }).passthrough();
 
+// ==================== TIPOS INFERIDOS ====================
+
+export type OSOrder = z.infer<typeof osOrderSchema>;
+export type TeamMember = z.infer<typeof teamMemberSchema>;
+export type AgendaEvent = z.infer<typeof agendaEventSchema>;
+export type Comment = z.infer<typeof commentSchema>;
+export type Sector = z.infer<typeof sectorSchema>;
+export type OSProject = z.infer<typeof osProjectSchema>;
+export type Client = z.infer<typeof clientSchema>;
+export type EAPFolder = z.infer<typeof eapFolderSchema>;
+export type EAPProject = z.infer<typeof eapProjectSchema>;
+export type EAPTask = z.infer<typeof eapTaskSchema>;
+export type ContentPost = z.infer<typeof contentPostSchema>;
+export type ProcessOrder = z.infer<typeof processOrderSchema>;
+
 // ==================== VALIDACAO DE TRANSICAO DE STATUS O.S. ====================
+
+export interface OrderForValidation {
+  status?: string | null;
+  estimatedStart?: string | null;
+  estimatedEnd?: string | null;
+  assignedTo?: string | null;
+  assignee?: string | null;
+  actualEnd?: string | null;
+  blockReason?: string | null;
+  checklist?: Array<{ done?: boolean }>;
+}
+
+export interface ValidationResult<T = unknown> {
+  ok?: boolean;
+  success?: boolean;
+  data?: T | null;
+  error?: string | null;
+}
 
 /**
  * Valida se uma O.S. tem os campos necessarios para mover para um novo status.
- * Retorna { ok: true } se pode mover, ou { ok: false, error: '...' } caso contrario.
- *
- * Regras:
- * - available -> in_progress: precisa estimatedStart, estimatedEnd, assignedTo
- * - in_progress -> done: precisa actualEnd E checklist 100% completo (se houver)
- * - qualquer -> blocked: precisa blockReason
  */
-export function validateStatusTransition(order, newStatus) {
+export function validateStatusTransition(
+  order: OrderForValidation | null | undefined,
+  newStatus: string
+): { ok: boolean; error?: string } {
   if (!order) return { ok: false, error: 'O.S. nao encontrada' };
   const current = order.status || 'available';
   if (current === newStatus) return { ok: true };
 
   if (newStatus === 'in_progress') {
-    const missing = [];
+    const missing: string[] = [];
     if (!order.estimatedStart) missing.push('data de inicio prevista');
     if (!order.estimatedEnd) missing.push('data de termino prevista');
     if (!order.assignedTo && !order.assignee) missing.push('responsavel');
@@ -349,9 +375,6 @@ export function validateStatusTransition(order, newStatus) {
   }
 
   if (newStatus === 'done') {
-    if (!order.actualEnd && current === 'in_progress') {
-      // actualEnd sera preenchido automaticamente na transicao, OK
-    }
     const cl = order.checklist || [];
     if (cl.length > 0) {
       const incomplete = cl.filter(i => !i.done).length;
@@ -375,23 +398,34 @@ export function validateStatusTransition(order, newStatus) {
 
 // ==================== VALIDACAO + SANITIZACAO ====================
 
-/**
- * Valida dados contra um schema Zod e sanitiza strings.
- * Retorna { success, data, error }.
- */
-export function validateAndSanitize(schema, data, options = {}) {
+export interface ValidateOptions {
+  richFields?: string[];
+}
+
+export interface ValidateOutcome<T> {
+  success: boolean;
+  data: T | null;
+  error: string | null;
+}
+
+/** Valida dados contra um schema Zod e sanitiza strings. */
+export function validateAndSanitize<S extends ZodTypeAny>(
+  schema: S,
+  data: unknown,
+  options: ValidateOptions = {}
+): ValidateOutcome<z.infer<S>> {
   try {
     const richFields = options.richFields ? new Set(options.richFields) : null;
     const sanitized = sanitizeObject(data, richFields);
-    // Validar contra schema
     const parsed = schema.parse(sanitized);
     return { success: true, data: parsed, error: null };
   } catch (err) {
     if (err instanceof z.ZodError) {
-      const messages = (err.issues || err.errors || []).map(e => e.message).join(', ');
+      const issues = (err as z.ZodError).issues || [];
+      const messages = issues.map(e => e.message).join(', ');
       return { success: false, data: null, error: messages };
     }
-    return { success: false, data: null, error: err.message };
+    return { success: false, data: null, error: (err as Error).message };
   }
 }
 
@@ -400,26 +434,30 @@ export function validateAndSanitize(schema, data, options = {}) {
  * So retorna os campos que estavam no input original — evita que
  * .default() do Zod injete valores e sobrescreva dados existentes.
  */
-export function validatePartial(schema, data, options = {}) {
+export function validatePartial<S extends z.ZodObject<z.ZodRawShape>>(
+  schema: S,
+  data: unknown,
+  options: ValidateOptions = {}
+): ValidateOutcome<Partial<z.infer<S>>> {
   try {
     const richFields = options.richFields ? new Set(options.richFields) : null;
-    const sanitized = sanitizeObject(data, richFields);
+    const sanitized = sanitizeObject(data, richFields) as Record<string, unknown>;
     const inputKeys = new Set(Object.keys(sanitized));
     const partialSchema = schema.partial();
-    const parsed = partialSchema.parse(sanitized);
-    // Filtrar: so manter campos que estavam no input original
-    const filtered = {};
+    const parsed = partialSchema.parse(sanitized) as Record<string, unknown>;
+    const filtered: Record<string, unknown> = {};
     for (const key of Object.keys(parsed)) {
       if (inputKeys.has(key)) {
         filtered[key] = parsed[key];
       }
     }
-    return { success: true, data: filtered, error: null };
+    return { success: true, data: filtered as Partial<z.infer<S>>, error: null };
   } catch (err) {
     if (err instanceof z.ZodError) {
-      const messages = (err.issues || err.errors || []).map(e => e.message).join(', ');
+      const issues = (err as z.ZodError).issues || [];
+      const messages = issues.map(e => e.message).join(', ');
       return { success: false, data: null, error: messages };
     }
-    return { success: false, data: null, error: err.message };
+    return { success: false, data: null, error: (err as Error).message };
   }
 }

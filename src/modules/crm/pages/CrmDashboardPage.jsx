@@ -10,13 +10,13 @@
  * - Timeline de atividades recentes
  */
 
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   AreaChart, Area, Cell,
+  FunnelChart, Funnel, LabelList,
 } from 'recharts';
 import {
-  Users,
   Handshake,
   DollarSign,
   TrendingUp,
@@ -30,14 +30,13 @@ import {
   Coffee,
   MapPin,
   ChevronRight,
-  Trophy,
   AlertTriangle,
   Zap,
   Globe,
   User,
 } from 'lucide-react';
 import { CrmPageHeader, CrmKpiCard, CrmAvatar, CrmBadge } from '../components/ui';
-import { useCrmDashboardKPIs, useSalesRanking, useCrmGoals, useGoalsProgress } from '../hooks/useCrmQueries';
+import { useCrmDashboardKPIs, useCrmGoals, useGoalsProgress } from '../hooks/useCrmQueries';
 import { useProfile } from '../../../hooks/useProfile';
 
 // ==================== HELPERS ====================
@@ -175,46 +174,17 @@ function StageTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const data = payload[0].payload;
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2">
+    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2 min-w-[180px]">
       <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{data.stageName}</p>
-      <p className="text-xs text-slate-500 dark:text-slate-400">{data.count} negocios</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{data.count} negocio{data.count !== 1 ? 's' : ''}</p>
       <p className="text-sm font-bold text-blue-600 dark:text-blue-400">{formatCurrency(data.value)}</p>
+      {typeof data.conversion === 'number' && (
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 pt-1 border-t border-slate-100 dark:border-slate-700">
+          {data.conversion}% vs etapa anterior · {data.conversionFromTop}% do topo
+        </p>
+      )}
     </div>
   );
-}
-
-// ==================== PERIOD HELPERS ====================
-
-const PERIOD_OPTIONS = [
-  { value: 'month', label: 'Mes Atual' },
-  { value: 'last_month', label: 'Mes Anterior' },
-  { value: 'quarter', label: 'Trimestre' },
-  { value: 'year', label: 'Ano' },
-];
-
-function getPeriodDates(period) {
-  const now = new Date();
-  let start, end;
-  switch (period) {
-    case 'last_month':
-      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-      break;
-    case 'quarter': {
-      const qMonth = Math.floor(now.getMonth() / 3) * 3;
-      start = new Date(now.getFullYear(), qMonth, 1);
-      end = now;
-      break;
-    }
-    case 'year':
-      start = new Date(now.getFullYear(), 0, 1);
-      end = now;
-      break;
-    default: // month
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = now;
-  }
-  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 // ==================== GOAL HEALTH ====================
@@ -240,28 +210,11 @@ function getGoalHealth(goal, currentProgress) {
   return { label: 'Meta Leve', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-50 dark:bg-blue-900/20', barColor: 'bg-blue-500', icon: Zap };
 }
 
-const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32']; // ouro, prata, bronze
-
-function RankingTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null;
-  const data = payload[0].payload;
-  return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2">
-      <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{data.name}</p>
-      <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrencyFull(data.totalValue)}</p>
-      <p className="text-xs text-slate-500 dark:text-slate-400">{data.dealsWon} negocio{data.dealsWon !== 1 ? 's' : ''} fechado{data.dealsWon !== 1 ? 's' : ''}</p>
-    </div>
-  );
-}
-
 // ==================== MAIN COMPONENT ====================
 
 export function CrmDashboardPage() {
   const { data: kpis, isLoading } = useCrmDashboardKPIs();
   const { profile } = useProfile();
-  const [rankingPeriod, setRankingPeriod] = useState('month');
-  const { start: rankStart, end: rankEnd } = useMemo(() => getPeriodDates(rankingPeriod), [rankingPeriod]);
-  const { data: ranking = [], isLoading: loadingRanking } = useSalesRanking(rankStart, rankEnd);
 
   // Metas ativas
   const { data: goalsData } = useCrmGoals({ status: 'active' });
@@ -276,13 +229,14 @@ export function CrmDashboardPage() {
     }));
   }, [kpis?.revenueByMonth]);
 
-  // Dados formatados para o BarChart horizontal
-  const stageChartData = useMemo(() => {
-    return (kpis?.dealsByStage || []).map((s, i) => ({
+  // Dados formatados para o FunnelChart (pipeline default, stages em ordem
+  // de posicao). Ja vem com conversion e conversionFromTop pre-calculados.
+  const funnelChartData = useMemo(() => {
+    return (kpis?.funnel || []).map((s, i) => ({
       ...s,
       fill: stageColors[i % stageColors.length],
     }));
-  }, [kpis?.dealsByStage]);
+  }, [kpis?.funnel]);
 
   // Data de hoje
   const todayStr = new Date().toLocaleDateString('pt-BR', {
@@ -308,14 +262,6 @@ export function CrmDashboardPage() {
 
       {/* KPI Cards — 3 colunas desktop, 2 tablet, 1 mobile */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <CrmKpiCard
-          title="Total de Contatos"
-          value={formatNumber(kpis?.totalContacts)}
-          subtitle="contatos ativos"
-          icon={Users}
-          color="sky"
-          loading={false}
-        />
         <CrmKpiCard
           title="Deals Abertos"
           value={formatNumber(kpis?.openDeals)}
@@ -349,11 +295,11 @@ export function CrmDashboardPage() {
           loading={false}
         />
         <CrmKpiCard
-          title="Atividades Pendentes"
-          value={formatNumber(kpis?.pendingActivities)}
-          subtitle="a realizar"
-          icon={Clock}
-          color="orange"
+          title="Leads Perdidos"
+          value={formatNumber(kpis?.monthLostLeads)}
+          subtitle="no mes atual"
+          icon={TrendingDown}
+          color="rose"
           loading={false}
         />
       </div>
@@ -426,40 +372,47 @@ export function CrmDashboardPage() {
       {/* Charts — 2 colunas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        {/* Negocios por Estagio — BarChart horizontal */}
+        {/* Funil de Vendas — pipeline default */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">
-            Negocios por Estagio
-          </h3>
-          {stageChartData.length === 0 ? (
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              Funil de Vendas
+            </h3>
+            {kpis?.funnelPipelineName && (
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                {kpis.funnelPipelineName}
+              </span>
+            )}
+          </div>
+          {funnelChartData.length === 0 ? (
             <div className="h-64 flex items-center justify-center">
               <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum dado de pipeline</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={Math.max(stageChartData.length * 48, 200)}>
-              <BarChart data={stageChartData} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(148,163,184,0.15)" />
-                <XAxis type="number" hide />
-                <YAxis
-                  type="category"
-                  dataKey="stageName"
-                  width={110}
-                  tick={{ fontSize: 12, fill: '#94a3b8' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip content={<StageTooltip />} cursor={{ fill: 'rgba(99,102,241,0.06)' }} />
-                <Bar
-                  dataKey="count"
-                  radius={[0, 6, 6, 0]}
-                  barSize={24}
-                  isAnimationActive={true}
-                >
-                  {stageChartData.map((entry, idx) => (
+            <ResponsiveContainer width="100%" height={Math.max(funnelChartData.length * 56, 280)}>
+              <FunnelChart>
+                <Tooltip content={<StageTooltip />} />
+                <Funnel dataKey="count" data={funnelChartData} isAnimationActive>
+                  <LabelList
+                    position="right"
+                    dataKey="stageName"
+                    fill="#64748b"
+                    stroke="none"
+                    fontSize={12}
+                  />
+                  <LabelList
+                    position="center"
+                    dataKey="count"
+                    fill="#fff"
+                    stroke="none"
+                    fontSize={13}
+                    fontWeight={700}
+                  />
+                  {funnelChartData.map((entry, idx) => (
                     <Cell key={idx} fill={entry.fill} />
                   ))}
-                </Bar>
-              </BarChart>
+                </Funnel>
+              </FunnelChart>
             </ResponsiveContainer>
           )}
         </div>
@@ -510,112 +463,6 @@ export function CrmDashboardPage() {
             </ResponsiveContainer>
           )}
         </div>
-      </div>
-
-      {/* Ranking de Vendedores */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-2">
-            <Trophy size={18} className="text-amber-500" />
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-              Ranking de Vendedores
-            </h3>
-          </div>
-          <select
-            value={rankingPeriod}
-            onChange={(e) => setRankingPeriod(e.target.value)}
-            className="text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-fyness-primary"
-          >
-            {PERIOD_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {loadingRanking ? (
-          <div className="animate-pulse space-y-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-7 h-7 bg-slate-200 dark:bg-slate-700 rounded-full" />
-                <div className="w-8 h-8 bg-slate-200 dark:bg-slate-700 rounded-full" />
-                <div className="flex-1 h-4 bg-slate-200 dark:bg-slate-700 rounded" />
-                <div className="w-24 h-4 bg-slate-200 dark:bg-slate-700 rounded" />
-              </div>
-            ))}
-          </div>
-        ) : ranking.length === 0 ? (
-          <div className="py-8 text-center">
-            <Trophy size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-            <p className="text-sm text-slate-400 dark:text-slate-500">Nenhuma venda no periodo</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Lista do ranking */}
-            <div className="space-y-1">
-              {ranking.map((seller, idx) => (
-                <div
-                  key={seller.name}
-                  className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                >
-                  {/* Posicao */}
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
-                    style={idx < 3 ? { background: medalColors[idx] + '22', color: medalColors[idx] } : {}}
-                  >
-                    {idx < 3 ? (
-                      <span className="text-sm">{['🥇', '🥈', '🥉'][idx]}</span>
-                    ) : (
-                      <span className="text-slate-500 dark:text-slate-400">{idx + 1}</span>
-                    )}
-                  </div>
-
-                  {/* Avatar */}
-                  <CrmAvatar name={seller.name} size="sm" color={seller.color} />
-
-                  {/* Nome + deals */}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-                      {seller.name}
-                    </div>
-                    <div className="text-xs text-slate-400 dark:text-slate-500">
-                      {seller.dealsWon} negocio{seller.dealsWon !== 1 ? 's' : ''} · ticket medio {formatCurrency(seller.avgTicket)}
-                    </div>
-                  </div>
-
-                  {/* Valor total */}
-                  <div className="text-right shrink-0">
-                    <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                      {formatCurrency(seller.totalValue)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Grafico de barras horizontais */}
-            <div className="flex items-center">
-              <ResponsiveContainer width="100%" height={Math.max(ranking.length * 48, 150)}>
-                <BarChart data={ranking} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(148,163,184,0.15)" />
-                  <XAxis type="number" hide />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={90}
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip content={<RankingTooltip />} cursor={{ fill: 'rgba(16,185,129,0.06)' }} />
-                  <Bar dataKey="totalValue" radius={[0, 6, 6, 0]} barSize={22}>
-                    {ranking.map((entry, idx) => (
-                      <Cell key={idx} fill={idx < 3 ? medalColors[idx] : '#6366f1'} fillOpacity={idx < 3 ? 0.85 : 0.6} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Bottom row — Deals vencendo + Atividades recentes */}
