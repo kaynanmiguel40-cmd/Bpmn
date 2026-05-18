@@ -136,8 +136,10 @@ DO $$ BEGIN
   CREATE POLICY "crm_calls_delete" ON public.crm_calls FOR DELETE USING (true);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
--- Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE public.crm_calls;
+-- Realtime (idempotente)
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.crm_calls;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 COMMENT ON TABLE public.crm_calls IS
   'Discador do CRM. Toda chamada feita por vendedor (V1=device, V2=voip). V3 popula colunas ai_*.';
