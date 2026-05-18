@@ -43,7 +43,7 @@ function useDebounce(value, delay = 300) {
   return debounced;
 }
 
-export function CrmContactsPage() {
+export function CrmContactsPage({ embedded = false } = {}) {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
@@ -234,74 +234,83 @@ export function CrmContactsPage() {
     },
   ];
 
+  const actions = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {/* Search */}
+      <div className="relative hidden sm:block">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
+          placeholder="Buscar contato..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9 pr-4 py-2 w-56 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:border-transparent focus:outline-none"
+        />
+      </div>
+
+      {/* Filter toggle */}
+      <button
+        onClick={() => setShowFilters(v => !v)}
+        className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-colors ${
+          hasActiveFilters
+            ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+            : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+        }`}
+      >
+        <Filter size={14} />
+        Filtros
+        {hasActiveFilters && (
+          <span className="w-1.5 h-1.5 rounded-full bg-fyness-primary dark:bg-blue-400" />
+        )}
+      </button>
+
+      {/* Import */}
+      <input ref={fileInputRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        title="Importar CSV"
+      >
+        <Upload size={14} />
+        <span className="hidden lg:inline">Importar</span>
+      </button>
+
+      {/* Export */}
+      <button
+        onClick={handleExport}
+        disabled={contacts.length === 0}
+        className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-40"
+        title="Exportar CSV"
+      >
+        <Download size={14} />
+        <span className="hidden lg:inline">Exportar</span>
+      </button>
+
+      {/* New contact */}
+      <button
+        onClick={handleNew}
+        className="flex items-center gap-2 px-4 py-2 bg-fyness-primary hover:bg-fyness-secondary text-white text-sm font-medium rounded-lg transition-colors"
+      >
+        <Plus size={16} />
+        Novo Contato
+      </button>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
-      <CrmPageHeader
-        title="Contatos"
-        subtitle={`${total} contato${total !== 1 ? 's' : ''}`}
-        actions={
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Search */}
-            <div className="relative hidden sm:block">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Buscar contato..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 pr-4 py-2 w-56 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:border-transparent focus:outline-none"
-              />
-            </div>
-
-            {/* Filter toggle */}
-            <button
-              onClick={() => setShowFilters(v => !v)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                hasActiveFilters
-                  ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                  : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
-            >
-              <Filter size={14} />
-              Filtros
-              {hasActiveFilters && (
-                <span className="w-1.5 h-1.5 rounded-full bg-fyness-primary dark:bg-blue-400" />
-              )}
-            </button>
-
-            {/* Import */}
-            <input ref={fileInputRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-              title="Importar CSV"
-            >
-              <Upload size={14} />
-              <span className="hidden lg:inline">Importar</span>
-            </button>
-
-            {/* Export */}
-            <button
-              onClick={handleExport}
-              disabled={contacts.length === 0}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-40"
-              title="Exportar CSV"
-            >
-              <Download size={14} />
-              <span className="hidden lg:inline">Exportar</span>
-            </button>
-
-            {/* New contact */}
-            <button
-              onClick={handleNew}
-              className="flex items-center gap-2 px-4 py-2 bg-fyness-primary hover:bg-fyness-secondary text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              <Plus size={16} />
-              Novo Contato
-            </button>
-          </div>
-        }
-      />
+      {!embedded ? (
+        <CrmPageHeader
+          title="Contatos"
+          subtitle={`${total} contato${total !== 1 ? 's' : ''}`}
+          actions={actions}
+        />
+      ) : (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <p className="text-xs text-slate-500 dark:text-slate-400">{total} contato{total !== 1 ? 's' : ''}</p>
+          {actions}
+        </div>
+      )}
 
       {/* Filter bar */}
       {showFilters && (

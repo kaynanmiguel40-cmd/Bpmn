@@ -63,14 +63,15 @@ export async function getCrmPipelineWithDeals(pipelineId) {
   }
   if (!pipeline) return null;
 
-  // Buscar deals ABERTOS e PERDIDOS do pipeline com contato e empresa
+  // Buscar deals ABERTOS e PERDIDOS do pipeline com contato e empresa.
+  // Ordem descendente: novos deals aparecem no topo de cada estagio.
   const { data: deals, error: dError } = await supabase
     .from('crm_deals')
     .select('*, crm_contacts(id, name, avatar_color, company_id, city, phone), crm_companies(id, name, city, phone), team_members(id, name, color)')
     .eq('pipeline_id', pipelineId)
     .in('status', ['open', 'lost', 'won'])
     .is('deleted_at', null)
-    .order('created_at');
+    .order('created_at', { ascending: false });
 
   if (dError) {
     toast(`Erro ao buscar deals: ${dError.message}`, 'error');
@@ -324,7 +325,7 @@ export async function deleteCrmStage(stageId) {
 
 /**
  * Remove TODOS os dados de teste do CRM:
- * - Soft-delete em deals, contacts, companies, activities, proposals
+ * - Soft-delete em deals, contacts, companies, activities
  * - Hard-delete em pipelines (CASCADE apaga stages e historico)
  * - Hard-delete em goals
  */
@@ -332,7 +333,7 @@ export async function cleanAllCrmTestData() {
   const now = new Date().toISOString();
 
   // Soft-delete em todas as tabelas com deleted_at
-  const softDeleteTables = ['crm_deals', 'crm_activities', 'crm_contacts', 'crm_companies', 'crm_proposals'];
+  const softDeleteTables = ['crm_deals', 'crm_activities', 'crm_contacts', 'crm_companies'];
   for (const table of softDeleteTables) {
     await supabase.from(table).update({ deleted_at: now }).is('deleted_at', null);
   }
@@ -379,6 +380,7 @@ export async function seedCommercialPipelines() {
         { name: 'Respondeu - Qualificando ICP',     position: 6, color: '#a78bfa', isWinStage: false },
         { name: 'ICP OK - Demo Gravada Enviada',    position: 7, color: '#8b5cf6', isWinStage: false },
         { name: 'Smart Lead Criado',                position: 8, color: '#10b981', isWinStage: true  },
+        { name: 'Excluida',                         position: 9, color: '#ef4444', isWinStage: false },
       ],
     },
     {
@@ -393,6 +395,7 @@ export async function seedCommercialPipelines() {
         { name: 'Engajou - Qualificando ICP',       position: 6, color: '#a78bfa', isWinStage: false },
         { name: 'ICP OK - Demo Gravada Enviada',    position: 7, color: '#8b5cf6', isWinStage: false },
         { name: 'Smart Lead Criado',                position: 8, color: '#10b981', isWinStage: true  },
+        { name: 'Excluida',                         position: 9, color: '#ef4444', isWinStage: false },
       ],
     },
     {
@@ -410,6 +413,7 @@ export async function seedCommercialPipelines() {
         { name: 'Trial 7 Dias',         position: 9,  color: '#f97316', isWinStage: false, triggersMeeting: true },
         { name: 'Negociacao Final',     position: 10, color: '#ef4444', isWinStage: false },
         { name: 'Cliente Ativo',        position: 11, color: '#10b981', isWinStage: true  },
+        { name: 'Excluida',             position: 12, color: '#ef4444', isWinStage: false },
       ],
     },
     {

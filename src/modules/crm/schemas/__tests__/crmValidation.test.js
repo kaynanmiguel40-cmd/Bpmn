@@ -6,8 +6,6 @@ import {
   crmPipelineStageSchema,
   crmDealSchema,
   crmActivitySchema,
-  crmProposalSchema,
-  crmProposalItemSchema,
   crmGoalSchema,
   crmTrafficSchema,
   crmProspectSchema,
@@ -221,58 +219,6 @@ describe('crmActivitySchema', () => {
     expect(
       crmActivitySchema.safeParse({ title: 'X', startDate: '2026-05-01', type: 'whatsapp' }).success
     ).toBe(false);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PROPOSAL
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('crmProposalSchema', () => {
-  it('aceita proposta basica', () => {
-    const r = crmProposalSchema.safeParse({ dealId: 'd1' });
-    expect(r.success).toBe(true);
-    expect(r.data.status).toBe('draft');
-    expect(r.data.totalValue).toBe(0);
-  });
-
-  it('rejeita sem dealId', () => {
-    expect(crmProposalSchema.safeParse({}).success).toBe(false);
-  });
-
-  it('aceita status valido', () => {
-    ['draft', 'sent', 'viewed', 'accepted', 'rejected'].forEach(s => {
-      expect(crmProposalSchema.safeParse({ dealId: 'd1', status: s }).success).toBe(true);
-    });
-  });
-
-  it('rejeita totalValue negativo', () => {
-    expect(crmProposalSchema.safeParse({ dealId: 'd1', totalValue: -1 }).success).toBe(false);
-  });
-});
-
-describe('crmProposalItemSchema', () => {
-  it('aceita item minimo', () => {
-    const r = crmProposalItemSchema.safeParse({ proposalId: 'p1', name: 'Item' });
-    expect(r.success).toBe(true);
-    expect(r.data.quantity).toBe(1);
-    expect(r.data.discountPercent).toBe(0);
-  });
-
-  it('rejeita discount > 100%', () => {
-    expect(
-      crmProposalItemSchema.safeParse({ proposalId: 'p1', name: 'X', discountPercent: 150 }).success
-    ).toBe(false);
-  });
-
-  it('aceita discount = 100%', () => {
-    expect(
-      crmProposalItemSchema.safeParse({ proposalId: 'p1', name: 'X', discountPercent: 100 }).success
-    ).toBe(true);
-  });
-
-  it('rejeita item sem name', () => {
-    expect(crmProposalItemSchema.safeParse({ proposalId: 'p1' }).success).toBe(false);
   });
 });
 

@@ -5,13 +5,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  Users, Tag, Settings, Check, Plus, Save, X, AlertTriangle, Globe, Zap, XCircle,
+  Users, Tag, Settings, Check, Plus, Save, X, AlertTriangle, Globe, Zap, XCircle, Kanban,
 } from 'lucide-react';
 import { CrmPageHeader, CrmAvatar } from '../components/ui';
 import { useTeamMembers } from '../../../hooks/queries';
 import { updateTeamMember } from '../../../lib/teamService';
 import CrmAutomationsPage from './CrmAutomationsPage';
-import { useCrmPipelines } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useSeedCommercialPipelines } from '../hooks/useCrmQueries';
 import { getCrmWorkspaceSettings, saveCrmWorkspaceSettings } from '../lib/workspaceSettings';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -349,6 +349,98 @@ function LostRoutingSection() {
   );
 }
 
+// ─── Restaurar pipelines comerciais (re-seed) ────────────────────────────────
+
+function RestoreCommercialPipelinesSection() {
+  const { data: pipelines = [] } = useCrmPipelines();
+  const seedMutation = useSeedCommercialPipelines();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const hasPipelines = pipelines.length > 0;
+
+  const handleConfirm = async () => {
+    try {
+      await seedMutation.mutateAsync();
+    } finally {
+      setConfirmOpen(false);
+    }
+  };
+
+  return (
+    <SectionCard
+      icon={Kanban}
+      color="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400"
+      title="Pipelines comerciais Fyness"
+      subtitle="Recria as 4 pipelines do Inside Sales (IA Inbound, IA Outbound, Vendedor, Nurturing) com todos os estagios padroes."
+    >
+      <div className="space-y-3">
+        {hasPipelines && (
+          <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+            <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Voce ja tem {pipelines.length} pipeline{pipelines.length !== 1 ? 's' : ''} cadastrada{pipelines.length !== 1 ? 's' : ''}.
+              Restaurar vai <strong>apagar TODOS os dados do CRM</strong> (deals, contatos, empresas, atividades, metas, prospects, trafego, chamadas) antes de criar as pipelines padrao.
+            </p>
+          </div>
+        )}
+
+        <button
+          onClick={() => setConfirmOpen(true)}
+          disabled={seedMutation.isPending}
+          className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+        >
+          {seedMutation.isPending
+            ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Restaurando...</>
+            : <><Kanban size={14} /> Restaurar pipelines Fyness</>}
+        </button>
+
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          Estagios criados: IA Inbound (8) + IA Outbound (8) + Vendedor (11) + Nurturing (6).
+        </p>
+      </div>
+
+      {confirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+          onClick={() => setConfirmOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-md p-6"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Restaurar pipelines?</h3>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+              {hasPipelines
+                ? 'Isso vai apagar TODOS os dados do CRM (deals, contatos, atividades, prospects, etc.) antes de recriar as 4 pipelines padrao. Acao IRREVERSIVEL.'
+                : 'Vai criar as 4 pipelines padrao Inside Sales. Como nao ha pipelines, nada sera apagado.'}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setConfirmOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirm}
+                disabled={seedMutation.isPending}
+                className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg"
+              >
+                Sim, restaurar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 // ─── Tab: Preferências ────────────────────────────────────────────────────────
 
 function PreferenciasTab() {
@@ -405,6 +497,8 @@ function PreferenciasTab() {
           </button>
         </div>
       </SectionCard>
+
+      <RestoreCommercialPipelinesSection />
 
       <LostRoutingSection />
 

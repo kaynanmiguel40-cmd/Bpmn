@@ -18,13 +18,15 @@ import { useCrmRealtime } from '../../hooks/useCrmRealtime';
 
 // Mapa de titulos CRM
 const crmRouteTitles = {
-  '/crm': 'Dashboard',
+  '/crm': 'Dashboard Diario',
   '/crm/pipeline': 'Pipeline',
   '/crm/deals': 'Negocios',
+  '/crm/cadastros': 'Cadastros',
   '/crm/contacts': 'Contatos',
   '/crm/companies': 'Empresas',
   '/crm/activities': 'Atividades',
-  '/crm/proposals': 'Propostas',
+  '/crm/discador': 'Discador',
+  '/crm/discador/historico': 'Historico',
   '/crm/reports': 'Relatorios',
   '/crm/forecast': 'Forecast',
   '/crm/goals': 'Metas',

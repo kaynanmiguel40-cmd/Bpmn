@@ -799,11 +799,34 @@ export function CrmPipelinePage() {
 
   // Filtros
   const [searchQuery, setSearchQuery] = useUrlState('q', '');
-  const [valueFilter, setValueFilter] = useUrlState('v', 'all');
   const [probFilter, setProbFilter]   = useUrlState('p', 'all');
   const [ownerFilter, setOwnerFilter] = useUrlState('o', 'all');
 
-  const hasFilters = searchQuery || valueFilter !== 'all' || probFilter !== 'all' || ownerFilter !== 'all';
+  // Persiste filtros entre navegacoes (URL e sempre fonte de verdade quando
+  // presente; quando ausente, restaura do localStorage). Salva sempre que muda.
+  const PIPELINE_FILTERS_KEY = 'crm-pipeline-filters';
+  useEffect(() => {
+    // Restaura ao montar SE a URL nao tem filtros ainda
+    const hasUrlFilters = searchQuery || probFilter !== 'all' || ownerFilter !== 'all';
+    if (hasUrlFilters) return;
+    try {
+      const raw = localStorage.getItem(PIPELINE_FILTERS_KEY);
+      if (!raw) return;
+      const f = JSON.parse(raw);
+      if (f.searchQuery) setSearchQuery(f.searchQuery);
+      if (f.probFilter && f.probFilter !== 'all') setProbFilter(f.probFilter);
+      if (f.ownerFilter && f.ownerFilter !== 'all') setOwnerFilter(f.ownerFilter);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PIPELINE_FILTERS_KEY, JSON.stringify({ searchQuery, probFilter, ownerFilter }));
+    } catch {}
+  }, [searchQuery, probFilter, ownerFilter]);
+
+  const hasFilters = searchQuery || probFilter !== 'all' || ownerFilter !== 'all';
 
   const filterDeals = useCallback((deals) => {
     if (!deals) return [];
@@ -819,9 +842,6 @@ export function CrmPipelinePage() {
         ].join(' ').toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-      if (valueFilter === 'low' && (d.value || 0) > 5000) return false;
-      if (valueFilter === 'mid' && ((d.value || 0) < 5000 || (d.value || 0) > 50000)) return false;
-      if (valueFilter === 'high' && (d.value || 0) < 50000) return false;
       if (probFilter === 'high' && (d.probability ?? 50) < 70) return false;
       if (probFilter === 'mid' && ((d.probability ?? 50) < 30 || (d.probability ?? 50) >= 70)) return false;
       if (probFilter === 'low' && (d.probability ?? 50) >= 30) return false;
@@ -830,7 +850,7 @@ export function CrmPipelinePage() {
       if (ownerFilter !== 'all' && ownerFilter !== '_mine' && ownerFilter !== '_none' && d.ownerId !== ownerFilter) return false;
       return true;
     });
-  }, [searchQuery, valueFilter, probFilter, ownerFilter, myMemberId]);
+  }, [searchQuery, probFilter, ownerFilter, myMemberId]);
 
   const handleNewDeal = (stageId = null) => {
     setDefaultStageId(stageId);
@@ -904,18 +924,6 @@ export function CrmPipelinePage() {
               )}
             </div>
 
-            {/* Filtro valor */}
-            <select
-              value={valueFilter}
-              onChange={(e) => setValueFilter(e.target.value)}
-              className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
-            >
-              <option value="all">Valor: Todos</option>
-              <option value="low">Ate R$5k</option>
-              <option value="mid">R$5k - R$50k</option>
-              <option value="high">Acima R$50k</option>
-            </select>
-
             {/* Filtro probabilidade */}
             <select
               value={probFilter}
@@ -945,7 +953,7 @@ export function CrmPipelinePage() {
             {/* Limpar filtros */}
             {hasFilters && (
               <button
-                onClick={() => { setSearchQuery(''); setValueFilter('all'); setProbFilter('all'); setOwnerFilter('all'); }}
+                onClick={() => { setSearchQuery(''); setProbFilter('all'); setOwnerFilter('all'); }}
                 className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-1.5 py-1.5"
                 title="Limpar filtros"
               >

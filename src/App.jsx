@@ -35,7 +35,6 @@ const CrmContactDetailPage = lazy(() => import('./modules/crm/pages/CrmContactDe
 const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage'))
 const CrmCompanyDetailPage = lazy(() => import('./modules/crm/pages/CrmCompanyDetailPage'))
 const CrmActivitiesPage = lazy(() => import('./modules/crm/pages/CrmActivitiesPage'))
-const CrmProposalsPage = lazy(() => import('./modules/crm/pages/CrmProposalsPage'))
 const CrmGoalsPage = lazy(() => import('./modules/crm/pages/CrmGoalsPage'))
 const CrmReportsPage = lazy(() => import('./modules/crm/pages/CrmReportsPage'))
 const CrmForecastPage = lazy(() => import('./modules/crm/pages/CrmForecastPage'))
@@ -43,6 +42,9 @@ const CrmTrafficPage = lazy(() => import('./modules/crm/pages/CrmTrafficPage'))
 const CrmProspectsPage = lazy(() => import('./modules/crm/pages/CrmProspectsPage'))
 const CrmSettingsPage = lazy(() => import('./modules/crm/pages/CrmSettingsPage'))
 const CrmAutomationsPage = lazy(() => import('./modules/crm/pages/CrmAutomationsPage'))
+const CrmDialerPage = lazy(() => import('./modules/crm/pages/CrmDialerPage'))
+const CrmCallHistoryPage = lazy(() => import('./modules/crm/pages/CrmCallHistoryPage'))
+const CrmCadastrosPage = lazy(() => import('./modules/crm/pages/CrmCadastrosPage'))
 
 function LoadingSpinner() {
   return (
@@ -103,12 +105,14 @@ function App() {
                 <Route path="pipeline/:pipelineId" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="deals" element={<ErrorBoundary><CrmDealsPage /></ErrorBoundary>} />
                 <Route path="deals/:dealId" element={<ErrorBoundary><CrmDealDetailPage /></ErrorBoundary>} />
+                <Route path="cadastros" element={<ErrorBoundary><CrmCadastrosPage /></ErrorBoundary>} />
                 <Route path="contacts" element={<ErrorBoundary><CrmContactsPage /></ErrorBoundary>} />
                 <Route path="contacts/:id" element={<ErrorBoundary><CrmContactDetailPage /></ErrorBoundary>} />
                 <Route path="companies" element={<ErrorBoundary><CrmCompaniesPage /></ErrorBoundary>} />
                 <Route path="companies/:id" element={<ErrorBoundary><CrmCompanyDetailPage /></ErrorBoundary>} />
                 <Route path="activities" element={<ErrorBoundary><CrmActivitiesPage /></ErrorBoundary>} />
-                <Route path="proposals" element={<ErrorBoundary><CrmProposalsPage /></ErrorBoundary>} />
+                <Route path="discador" element={<ErrorBoundary><CrmDialerPage /></ErrorBoundary>} />
+                <Route path="discador/historico" element={<ErrorBoundary><CrmCallHistoryPage /></ErrorBoundary>} />
                 <Route path="reports" element={<ErrorBoundary><CrmReportsPage /></ErrorBoundary>} />
                 <Route path="forecast" element={<ErrorBoundary><CrmForecastPage /></ErrorBoundary>} />
                 <Route path="goals" element={<ErrorBoundary><CrmGoalsPage /></ErrorBoundary>} />

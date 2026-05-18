@@ -4,19 +4,16 @@
  * Consolida em uma tela:
  *   - Atividades pendentes do vendedor logado (hoje + atrasadas)
  *   - Deals do vendedor vencendo nos proximos 7 dias
- *   - Propostas do vendedor em aberto (draft, sent, viewed)
- *
- * Substitui o ritual de "abre Atividades + Pipeline + Propostas" toda manha.
  */
 
 import { useMemo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckSquare, Clock, Phone, Mail, Video, Coffee, MapPin,
-  AlertTriangle, FileText, Handshake, ChevronRight, MessageCircle,
+  AlertTriangle, Handshake, ChevronRight, MessageCircle,
 } from 'lucide-react';
 import { CrmAvatar, CrmBadge } from '../components/ui';
-import { useCrmActivities, useCrmProposals, useCrmDeals, useCompleteCrmActivity } from '../hooks/useCrmQueries';
+import { useCrmActivities, useCrmDeals, useCompleteCrmActivity } from '../hooks/useCrmQueries';
 import { useProfile } from '../../../hooks/useProfile';
 import { supabase } from '../../../lib/supabase';
 
@@ -34,18 +31,6 @@ const activityTypeColors = {
   task: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',
   follow_up: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400',
   visit: 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400',
-};
-
-const proposalStatusLabel = {
-  draft: 'Rascunho',
-  sent: 'Enviada',
-  viewed: 'Visualizada',
-  accepted: 'Aceita',
-  rejected: 'Recusada',
-};
-const proposalStatusVariant = {
-  draft: 'default', sent: 'info', viewed: 'warning',
-  accepted: 'success', rejected: 'danger',
 };
 
 function isSameDay(a, b) {
@@ -84,8 +69,6 @@ export function CrmTodayPage() {
   const { data: activitiesData } = useCrmActivities({ completed: false, perPage: 100 });
   // Deals abertos
   const { data: dealsData } = useCrmDeals({ status: 'open', perPage: 200 });
-  // Propostas (draft/sent/viewed) — sem filtro de status na API, filtra cliente-side
-  const { data: proposalsData } = useCrmProposals({ perPage: 100 });
 
   const completeMutation = useCompleteCrmActivity();
 
@@ -127,15 +110,6 @@ export function CrmTodayPage() {
       .sort((a, b) => new Date(a.expectedCloseDate) - new Date(b.expectedCloseDate));
   }, [dealsData, authUid]);
 
-  // Minhas propostas em aberto
-  const myProposalsOpen = useMemo(() => {
-    if (!authUid) return [];
-    return (proposalsData?.data || [])
-      .filter(p => p.createdBy === authUid)
-      .filter(p => ['draft', 'sent', 'viewed'].includes(p.status))
-      .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
-  }, [proposalsData, authUid]);
-
   const totalPendentes = myActivities.overdue.length + myActivities.today.length;
 
   return (
@@ -149,7 +123,7 @@ export function CrmTodayPage() {
       </div>
 
       {/* KPIs do dia */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <SummaryCard
           label="Atividades pendentes"
           value={totalPendentes}
@@ -163,13 +137,6 @@ export function CrmTodayPage() {
           subtitle={myDealsClosing.length > 0 ? `${formatCurrency(myDealsClosing.reduce((s, d) => s + (d.value || 0), 0))} em pipeline` : 'nada agora'}
           icon={Handshake}
           color="emerald"
-        />
-        <SummaryCard
-          label="Propostas em aberto"
-          value={myProposalsOpen.length}
-          subtitle={myProposalsOpen.length > 0 ? `${formatCurrency(myProposalsOpen.reduce((s, p) => s + (p.totalValue || 0), 0))} aguardando` : 'nada agora'}
-          icon={FileText}
-          color="violet"
         />
       </div>
 
@@ -270,45 +237,6 @@ export function CrmTodayPage() {
                   </div>
                 );
               })}
-            </div>
-          )}
-        </Section>
-
-        {/* Propostas em aberto */}
-        <Section
-          title="Propostas em aberto"
-          icon={FileText}
-          iconColor="text-violet-500"
-          count={myProposalsOpen.length}
-          emptyMessage="Voce nao tem propostas em aberto"
-        >
-          {myProposalsOpen.length > 0 && (
-            <div className="space-y-1.5">
-              {myProposalsOpen.slice(0, 8).map(p => (
-                <div
-                  key={p.id}
-                  onClick={() => p.deal?.id && navigate(`/crm/deals/${p.deal.id}`)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center shrink-0">
-                    <FileText size={14} className="text-violet-600 dark:text-violet-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-                      {p.proposalNumber || `Proposta`} — {p.deal?.title || 'Sem deal'}
-                    </div>
-                    <div className="text-xs text-slate-400 truncate">
-                      {p.deal?.contact?.name || p.deal?.company?.name || '—'}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{formatCurrency(p.totalValue)}</div>
-                    <CrmBadge variant={proposalStatusVariant[p.status]} size="sm">
-                      {proposalStatusLabel[p.status]}
-                    </CrmBadge>
-                  </div>
-                </div>
-              ))}
             </div>
           )}
         </Section>

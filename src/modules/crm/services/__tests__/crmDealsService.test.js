@@ -37,6 +37,13 @@ function makeChain(finalResult) {
     in: vi.fn(() => chain),
     not: vi.fn(() => chain),
     order: vi.fn(() => chain),
+    ilike: vi.fn(() => chain),
+    gte: vi.fn(() => chain),
+    lte: vi.fn(() => chain),
+    lt: vi.fn(() => chain),
+    range: vi.fn(() => chain),
+    limit: vi.fn(() => chain),
+    or: vi.fn(() => chain),
     single: vi.fn().mockResolvedValue(finalResult),
     maybeSingle: vi.fn().mockResolvedValue(finalResult),
     then: (resolve) => resolve(finalResult),
@@ -163,22 +170,26 @@ describe('markDealAsLost', () => {
 
   // Configura a sequencia de mocks por chamada que markDealAsLost faz:
   //   1) SELECT crm_deals (current pipeline_id, stage_id)
-  //   2) SELECT crm_pipelines (Nurturing + stages)
-  //   3) UPDATE crm_deals (resultado final)
-  //   4) INSERT crm_deal_stage_history (transicao) — opcional
-  function setupMocks({ current, nurturing, updated }) {
+  //   2) SELECT crm_pipeline_stages (procura estagio "Excluida" na pipeline atual)
+  //   3) SELECT crm_pipelines (Nurturing + stages) — pulada se houve match em (2) ou config
+  //   4) UPDATE crm_deals (resultado final)
+  //   5) INSERT crm_deal_stage_history (transicao) — opcional
+  // Por default discardStage = null, fluxo cai pro caminho legado de Nurturing.
+  function setupMocks({ current, nurturing, updated, discardStage = null }) {
     const dealSelect = makeChain({ data: current, error: null });
+    const discardSelect = makeChain({ data: discardStage, error: null });
     const nurturingSelect = makeChain({ data: nurturing, error: null });
     const dealUpdate = makeChain({ data: updated, error: null });
     const historyInsert = makeChain({ data: null, error: null });
 
     supabase.from
       .mockImplementationOnce((t) => { dealSelect.captured.table = t; return dealSelect.chain; })
+      .mockImplementationOnce((t) => { discardSelect.captured.table = t; return discardSelect.chain; })
       .mockImplementationOnce((t) => { nurturingSelect.captured.table = t; return nurturingSelect.chain; })
       .mockImplementationOnce((t) => { dealUpdate.captured.table = t; return dealUpdate.chain; })
       .mockImplementationOnce((t) => { historyInsert.captured.table = t; return historyInsert.chain; });
 
-    return { dealSelect, nurturingSelect, dealUpdate, historyInsert };
+    return { dealSelect, discardSelect, nurturingSelect, dealUpdate, historyInsert };
   }
 
   it('move deal de outra pipeline pra Nurturing > Em Nutricao', async () => {
@@ -308,11 +319,13 @@ describe('markDealAsLost', () => {
 
   it('throw Error quando update falha', async () => {
     const dealSelect = makeChain({ data: { pipeline_id: 'p', stage_id: 's' }, error: null });
+    const discardSelect = makeChain({ data: null, error: null });
     const nurturingSelect = makeChain({ data: null, error: null });
     const dealUpdate = makeChain({ data: null, error: { message: 'permission denied' } });
 
     supabase.from
       .mockImplementationOnce(() => dealSelect.chain)
+      .mockImplementationOnce(() => discardSelect.chain)
       .mockImplementationOnce(() => nurturingSelect.chain)
       .mockImplementationOnce(() => dealUpdate.chain);
 
@@ -381,20 +394,22 @@ describe('markDealAsLost', () => {
   // Caminho de config explicita (workspaceSettings em localStorage)
   // ─────────────────────────────────────────────────────────────────────────
 
-  function setupMocksWithConfig({ current, updated, settings }) {
+  function setupMocksWithConfig({ current, updated, settings, discardStage = null }) {
     // Seta config antes do markDealAsLost rodar
     localStorage.setItem('crm-workspace-config', JSON.stringify(settings));
 
     const dealSelect = makeChain({ data: current, error: null });
+    const discardSelect = makeChain({ data: discardStage, error: null });
     const dealUpdate = makeChain({ data: updated, error: null });
     const historyInsert = makeChain({ data: null, error: null });
 
     supabase.from
       .mockImplementationOnce((t) => { dealSelect.captured.table = t; return dealSelect.chain; })
+      .mockImplementationOnce((t) => { discardSelect.captured.table = t; return discardSelect.chain; })
       .mockImplementationOnce((t) => { dealUpdate.captured.table = t; return dealUpdate.chain; })
       .mockImplementationOnce((t) => { historyInsert.captured.table = t; return historyInsert.chain; });
 
-    return { dealSelect, dealUpdate, historyInsert };
+    return { dealSelect, discardSelect, dealUpdate, historyInsert };
   }
 
   it('usa config do workspace quando lostTargetPipelineId esta setado (NAO consulta crm_pipelines)', async () => {
@@ -410,8 +425,9 @@ describe('markDealAsLost', () => {
 
     const result = await markDealAsLost('d1', 'preco');
 
-    // SO 3 chamadas a from(): NAO houve select de crm_pipelines (skip por causa da config)
-    expect(supabase.from).toHaveBeenCalledTimes(3);
+    // 4 chamadas a from(): deal SELECT, pipeline_stages (procura Excluida), deal UPDATE, history INSERT.
+    // NAO houve select de crm_pipelines (skip por causa da config explicita).
+    expect(supabase.from).toHaveBeenCalledTimes(4);
 
     const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
     expect(updatePayload.pipeline_id).toBe('custom_pipe');

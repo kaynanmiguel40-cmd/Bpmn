@@ -379,7 +379,47 @@ export async function markDealAsLost(dealId: string, reason = ''): Promise<CrmDe
   const settings = getCrmWorkspaceSettings();
   let targetPipelineId = cur?.pipeline_id ?? null;
   let targetStageId = cur?.stage_id ?? null;
-  let movedTo: 'nurturing' | 'descarte' | null = null;
+  let movedTo: 'nurturing' | 'descarte' | 'excluida' | null = null;
+
+  // Prioridade 1: se a propria pipeline tem estagio "Excluida", deal lost
+  // vai pra la (continua visivel no Kanban da pipeline original).
+  if (cur?.pipeline_id) {
+    const { data: discardStage } = await supabase
+      .from('crm_pipeline_stages')
+      .select('id, name')
+      .eq('pipeline_id', cur.pipeline_id)
+      .ilike('name', 'exclu%')
+      .maybeSingle();
+
+    if (discardStage && (discardStage as { id?: string }).id) {
+      const stageId = (discardStage as { id: string }).id;
+      const nowIso = new Date().toISOString();
+      const updatePayload: Record<string, unknown> = {
+        status: 'lost',
+        probability: 0,
+        lost_reason: reason,
+        closed_at: nowIso,
+        updated_at: nowIso,
+      };
+      if (stageId !== cur.stage_id) updatePayload.stage_id = stageId;
+
+      const { data: updated, error: updErr } = await supabase
+        .from('crm_deals')
+        .update(updatePayload)
+        .eq('id', dealId)
+        .select()
+        .single();
+      if (updErr) throw new Error(updErr.message);
+
+      if (stageId !== cur.stage_id && cur.pipeline_id) {
+        await recordStageTransition(dealId, cur.stage_id || null, stageId, cur.pipeline_id);
+      }
+      const dealRow = updated as unknown as CrmDealRow;
+      const result = dbToCrmDeal(dealRow) as (CrmDeal & { movedTo?: 'excluida' | null });
+      result.movedTo = 'excluida';
+      return result;
+    }
+  }
 
   let pipelineConfig: PipelineConfig | null = null;
 

@@ -68,8 +68,6 @@ class FynessOSDB extends Dexie {
       crm_pipeline_stages: 'id, pipeline_id, position',
       crm_deals: 'id, pipeline_id, stage_id, contact_id, company_id, status, created_by, deleted_at',
       crm_activities: 'id, contact_id, deal_id, type, completed, start_date, created_by, deleted_at',
-      crm_proposals: 'id, deal_id, status, created_by, deleted_at',
-      crm_proposal_items: 'id, proposal_id',
       crm_settings: 'id, user_id',
     });
   }

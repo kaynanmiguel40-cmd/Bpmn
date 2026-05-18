@@ -60,10 +60,10 @@ export function useCrmRealtime(options = {}) {
     { enabled }
   );
 
-  // Proposals — atualiza lista
+  // Calls — atualiza discador, historico e dashboard
   useRealtimeSubscription(
-    'crm_proposals',
-    [crmQueryKeys.proposals],
+    'crm_calls',
+    [crmQueryKeys.calls, ['crm', 'dialerQueue'], ['crm', 'recentCalls'], crmQueryKeys.dialerKPIs, crmQueryKeys.dashboard],
     { enabled }
   );
 }

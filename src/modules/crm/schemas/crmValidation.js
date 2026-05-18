@@ -76,6 +76,28 @@ export const crmDealSchema = z.object({
   ownerId: z.string().nullable().optional().default(null),
 }).passthrough();
 
+// ==================== CALL ====================
+
+export const crmCallSchema = z.object({
+  contactId: z.string().nullable().optional().default(null),
+  dealId: z.string().nullable().optional().default(null),
+  companyId: z.string().nullable().optional().default(null),
+  phoneDialed: z.string().min(1, 'Numero discado e obrigatorio'),
+  direction: z.enum(['outbound', 'inbound']).default('outbound'),
+  channel: z.enum(['device', 'voip']).default('device'),
+  provider: nullableStr,
+  providerCallId: nullableStr,
+  startedAt: z.string().nullable().optional().default(null),
+  endedAt: z.string().nullable().optional().default(null),
+  durationSeconds: z.number().int().min(0).nullable().optional().default(null),
+  outcome: z.enum([
+    'answered', 'no_answer', 'voicemail', 'busy', 'wrong_number',
+    'callback_scheduled', 'meeting_scheduled', 'not_interested', 'deal_advanced',
+  ]).nullable().optional(),
+  notes: z.string().optional().default(''),
+  followUpAt: z.string().nullable().optional().default(null),
+}).passthrough();
+
 // ==================== ACTIVITY ====================
 
 export const crmActivitySchema = z.object({
@@ -87,26 +109,6 @@ export const crmActivitySchema = z.object({
   startDate: z.string().min(1, 'Data de inicio e obrigatoria'),
   endDate: z.string().nullable().optional().default(null),
   completed: z.boolean().optional().default(false),
-}).passthrough();
-
-// ==================== PROPOSAL ====================
-
-export const crmProposalSchema = z.object({
-  dealId: z.string().min(1, 'Negocio e obrigatorio'),
-  status: z.enum(['draft', 'sent', 'viewed', 'accepted', 'rejected']).default('draft'),
-  notes: z.string().optional().default(''),
-  terms: z.string().optional().default(''),
-  totalValue: z.number().min(0).default(0),
-}).passthrough();
-
-export const crmProposalItemSchema = z.object({
-  proposalId: z.string().min(1, 'Proposta e obrigatoria'),
-  name: z.string().min(1, 'Nome do item e obrigatorio'),
-  description: z.string().optional().default(''),
-  quantity: z.number().min(0).default(1),
-  unitPrice: z.number().min(0).default(0),
-  discountPercent: z.number().min(0).max(100).default(0),
-  subtotal: z.number().min(0).default(0),
 }).passthrough();
 
 // ==================== GOAL ====================

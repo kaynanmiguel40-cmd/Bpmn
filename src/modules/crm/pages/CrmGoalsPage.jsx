@@ -218,6 +218,9 @@ function GoalsSkeleton() {
 
 export function CrmGoalsPage() {
   const [statusTab, setStatusTab] = useUrlState('tab', 'active');
+  const [typeTabRaw, setTypeTab] = useUrlState('tipo', 'individuais');
+  // Normaliza: URL ?tipo=foo invalido cai pra 'individuais' (evita tela em branco)
+  const typeTab = (typeTabRaw === 'individuais' || typeTabRaw === 'time') ? typeTabRaw : 'individuais';
   const [search, setSearch] = useUrlState('q', '');
   const [sortBy, setSortBy] = useUrlState('sort', 'progress_desc');
   const debouncedSearch = useDebounce(search);
@@ -350,6 +353,31 @@ export function CrmGoalsPage() {
         }
       />
 
+      {/* Sub-tabs de tipo: Individuais | Time Comercial */}
+      <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg w-fit">
+        {[
+          { value: 'individuais', label: 'Individuais', icon: User, count: individualGoals.length },
+          { value: 'time',        label: 'Time Comercial', icon: Globe, count: globalGoals.length },
+        ].map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.value}
+              onClick={() => setTypeTab(tab.value)}
+              className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                typeTab === tab.value
+                  ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              <Icon size={13} />
+              {tab.label}
+              <span className="text-[10px] text-slate-400">({tab.count})</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Tabs de status */}
       <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg w-fit">
         {STATUS_TABS.map(tab => (
@@ -367,8 +395,8 @@ export function CrmGoalsPage() {
         ))}
       </div>
 
-      {/* Meta Global */}
-      {globalGoals.length > 0 ? (
+      {/* Meta Global (Time Comercial) */}
+      {typeTab === 'time' && (globalGoals.length > 0 ? (
         globalGoals.map((goal) => {
           const current = getProgress(goal);
           const percent = goal.targetValue > 0 ? Math.min(100, Math.round((current / goal.targetValue) * 100)) : 0;
@@ -469,10 +497,10 @@ export function CrmGoalsPage() {
             </button>
           )}
         </div>
-      )}
+      ))}
 
       {/* Resumo consolidado das metas individuais */}
-      {summary && statusTab === 'active' && (
+      {typeTab === 'individuais' && summary && statusTab === 'active' && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
             <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Soma das Metas</div>
@@ -509,6 +537,7 @@ export function CrmGoalsPage() {
       )}
 
       {/* Metas Individuais */}
+      {typeTab === 'individuais' && (
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -649,6 +678,7 @@ export function CrmGoalsPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Modals */}
       <GoalFormModal

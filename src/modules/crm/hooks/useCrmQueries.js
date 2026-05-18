@@ -7,13 +7,13 @@ import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, 
 import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, reorderCrmStages, addCrmStage, deleteCrmStage, setWinStage, ensurePartnersPipeline, seedCommercialPipelines, cleanAllCrmTestData } from '../services/crmPipelinesService';
 import { getCrmDeals, getDealsByPipeline, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, getDealActivities, getDealStageHistory, getDealsWithMeetings, schedulePartnerMeeting } from '../services/crmDealsService';
 import { getCrmActivities, getActivitiesForCalendar, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity } from '../services/crmActivitiesService';
-import { getCrmProposals, getCrmProposalById, createCrmProposal, updateCrmProposal, softDeleteCrmProposal, updateCrmProposalStatus } from '../services/crmProposalsService';
-import { getCrmDashboardKPIs, getSalesRanking } from '../services/crmDashboardService';
+import { getCrmDashboardKPIs, getSalesRanking, getBonificacaoProgress } from '../services/crmDashboardService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, getProspectListNames, getProspectsAnalytics, createCrmProspect, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
 import { getCrmGoals, getCrmGoalById, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
 import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities, getSellersReport } from '../services/crmReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
+import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, updateCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
 
 // ==================== QUERY KEYS ====================
 
@@ -29,13 +29,12 @@ export const crmQueryKeys = {
   deal: (id) => ['crm', 'deal', id],
   activities: ['crm', 'activities'],
   calendarActivities: (start, end) => ['crm', 'calendarActivities', start, end],
-  proposals: ['crm', 'proposals'],
-  proposal: (id) => ['crm', 'proposal', id],
   goals: ['crm', 'goals'],
   goal: (id) => ['crm', 'goal', id],
   goalsProgress: ['crm', 'goalsProgress'],
   dashboard: ['crm', 'dashboard'],
   salesRanking: (start, end) => ['crm', 'salesRanking', start, end],
+  bonificacao: (start, end) => ['crm', 'bonificacao', start, end],
   salesReport: (start, end) => ['crm', 'salesReport', start, end],
   funnelReport: (id) => ['crm', 'funnelReport', id],
   forecastReport: ['crm', 'forecastReport'],
@@ -53,6 +52,10 @@ export const crmQueryKeys = {
   automations: ['crm', 'automations'],
   automationLogs: ['crm', 'automationLogs'],
   automationLogStats: (days) => ['crm', 'automationLogStats', days],
+  calls: ['crm', 'calls'],
+  dialerQueue: (filters) => ['crm', 'dialerQueue', filters],
+  recentCallsForContact: (id) => ['crm', 'recentCalls', id],
+  dialerKPIs: ['crm', 'dialerKPIs'],
 };
 
 // ==================== COMPANIES ====================
@@ -643,67 +646,77 @@ export function useCompleteCrmActivity() {
   });
 }
 
-// ==================== PROPOSALS ====================
+// ==================== CALLS / DISCADOR ====================
 
-export function useCrmProposals(filters = {}) {
+export function useCrmCalls(filters = {}) {
   return useQuery({
-    queryKey: [...crmQueryKeys.proposals, filters],
-    queryFn: () => getCrmProposals(filters),
+    queryKey: [...crmQueryKeys.calls, filters],
+    queryFn: () => getCrmCalls(filters),
     staleTime: 30_000,
   });
 }
 
-export function useCrmProposal(id) {
+export function useDialerQueue(filters = {}) {
   return useQuery({
-    queryKey: crmQueryKeys.proposal(id),
-    queryFn: () => getCrmProposalById(id),
-    enabled: !!id,
+    queryKey: crmQueryKeys.dialerQueue(filters),
+    queryFn: () => getDialerQueue(filters),
+    staleTime: 15_000,
+  });
+}
+
+export function useRecentCallsForContact(contactId, limit = 5) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.recentCallsForContact(contactId), limit],
+    queryFn: () => getRecentCallsForContact(contactId, limit),
+    enabled: !!contactId,
+    staleTime: 15_000,
+  });
+}
+
+export function useDialerKPIs() {
+  return useQuery({
+    queryKey: crmQueryKeys.dialerKPIs,
+    queryFn: getDialerKPIs,
     staleTime: 30_000,
   });
 }
 
-export function useCreateCrmProposal() {
+export function useCreateCrmCall() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: createCrmProposal,
+    mutationFn: createCrmCall,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: crmQueryKeys.proposals });
-      toast('Proposta criada com sucesso', 'success');
+      qc.invalidateQueries({ queryKey: crmQueryKeys.calls });
+      qc.invalidateQueries({ queryKey: ['crm', 'dialerQueue'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'recentCalls'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dialerKPIs });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      toast('Ligacao registrada', 'success');
     },
   });
 }
 
-export function useUpdateCrmProposal() {
+export function useUpdateCrmCall() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, updates }) => updateCrmProposal(id, updates),
-    onSuccess: (_, { id }) => {
-      qc.invalidateQueries({ queryKey: crmQueryKeys.proposals });
-      qc.invalidateQueries({ queryKey: crmQueryKeys.proposal(id) });
-      toast('Proposta atualizada', 'success');
-    },
-  });
-}
-
-export function useDeleteCrmProposal() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: softDeleteCrmProposal,
+    mutationFn: ({ id, updates }) => updateCrmCall(id, updates),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: crmQueryKeys.proposals });
-      toast('Proposta excluida', 'success');
+      qc.invalidateQueries({ queryKey: crmQueryKeys.calls });
+      qc.invalidateQueries({ queryKey: ['crm', 'recentCalls'] });
     },
   });
 }
 
-export function useUpdateCrmProposalStatus() {
+export function useDeleteCrmCall() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }) => updateCrmProposalStatus(id, status),
-    onSuccess: (_, { id }) => {
-      qc.invalidateQueries({ queryKey: crmQueryKeys.proposals });
-      qc.invalidateQueries({ queryKey: crmQueryKeys.proposal(id) });
-      toast('Status da proposta atualizado', 'success');
+    mutationFn: softDeleteCrmCall,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.calls });
+      qc.invalidateQueries({ queryKey: ['crm', 'recentCalls'] });
+      toast('Ligacao excluida', 'success');
     },
   });
 }
@@ -775,10 +788,10 @@ export function useDeleteCrmGoal() {
 
 // ==================== DASHBOARD ====================
 
-export function useCrmDashboardKPIs() {
+export function useCrmDashboardKPIs(range) {
   return useQuery({
-    queryKey: crmQueryKeys.dashboard,
-    queryFn: getCrmDashboardKPIs,
+    queryKey: [...crmQueryKeys.dashboard, range || null],
+    queryFn: () => getCrmDashboardKPIs(range),
     staleTime: 60_000,
   });
 }
@@ -788,6 +801,14 @@ export function useSalesRanking(startDate, endDate) {
     queryKey: crmQueryKeys.salesRanking(startDate, endDate),
     queryFn: () => getSalesRanking(startDate, endDate),
     enabled: !!startDate && !!endDate,
+    staleTime: 60_000,
+  });
+}
+
+export function useBonificacaoProgress(startDate, endDate) {
+  return useQuery({
+    queryKey: crmQueryKeys.bonificacao(startDate, endDate),
+    queryFn: () => getBonificacaoProgress(startDate, endDate),
     staleTime: 60_000,
   });
 }

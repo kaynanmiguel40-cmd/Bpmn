@@ -24,6 +24,7 @@ import {
   Crosshair,
   Zap,
   Sun,
+  PhoneCall,
 } from 'lucide-react';
 import logoFyness from '../../../../assets/logo-fyness.png';
 
@@ -36,19 +37,18 @@ const PinIcon = ({ pinned }) => (
 );
 
 const crmNavItems = [
-  { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { to: '/crm', icon: LayoutDashboard, label: 'Dashboard Diario', exact: true },
   { to: '/crm/hoje', icon: Sun, label: 'Hoje' },
   { section: 'Vendas' },
   { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline' },
-  { to: '/crm/proposals', icon: FileText, label: 'Propostas' },
+  { to: '/crm/discador', icon: PhoneCall, label: 'Discador' },
   { to: '/crm/activities', icon: CalendarCheck, label: 'Atividades' },
   { section: 'Prospecao' },
   { to: '/crm/prospects', icon: Crosshair, label: 'Gerador de Lista' },
   { to: '/crm/traffic', icon: Megaphone, label: 'Trafego Pago' },
   { to: '/crm/automations', icon: Zap, label: 'Automacoes' },
   { section: 'Cadastros' },
-  { to: '/crm/contacts', icon: Users, label: 'Contatos' },
-  { to: '/crm/companies', icon: Building2, label: 'Empresas' },
+  { to: '/crm/cadastros', icon: Users, label: 'Cadastros' },
   { section: 'Gestao' },
   { to: '/crm/goals', icon: Trophy, label: 'Metas' },
   { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },

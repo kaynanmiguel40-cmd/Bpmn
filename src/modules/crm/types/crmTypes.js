@@ -112,36 +112,6 @@
  */
 
 /**
- * @typedef {Object} CrmProposal
- * @property {string} id
- * @property {string|null} dealId
- * @property {number} proposalNumber
- * @property {'draft'|'sent'|'viewed'|'accepted'|'rejected'} status
- * @property {string|null} notes
- * @property {string|null} terms
- * @property {number} totalValue
- * @property {string|null} createdBy
- * @property {string} createdAt
- * @property {string} updatedAt
- * @property {string|null} deletedAt
- * @property {CrmProposalItem[]} [items] - Populado em getById
- * @property {CrmDeal|null} [deal] - Populado em getById
- */
-
-/**
- * @typedef {Object} CrmProposalItem
- * @property {string} id
- * @property {string} proposalId
- * @property {string} name
- * @property {string|null} description
- * @property {number} quantity
- * @property {number} unitPrice
- * @property {number} discountPercent
- * @property {number} subtotal
- * @property {string} createdAt
- */
-
-/**
  * @typedef {Object} CrmSettings
  * @property {string} id
  * @property {string} userId
