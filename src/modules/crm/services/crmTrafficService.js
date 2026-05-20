@@ -2,6 +2,7 @@ import { createCRUDService } from '../../../lib/serviceFactory';
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmTrafficSchema } from '../schemas/crmValidation';
+import { escapeIlike } from '../lib/searchFilters';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -66,7 +67,7 @@ export async function getTrafficEntries(filters = {}) {
     .select('*, crm_pipelines(id, name)', { count: 'exact' })
     .is('deleted_at', null);
 
-  if (search) query = query.ilike('channel', `%${search}%`);
+  if (search) query = query.ilike('channel', `%${escapeIlike(search)}%`);
   if (channel) query = query.eq('channel', channel);
   if (pipelineId) query = query.eq('pipeline_id', pipelineId);
   if (startDate) query = query.gte('period_start', startDate);

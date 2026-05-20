@@ -13,6 +13,7 @@ import { createCRUDService } from '../../../lib/serviceFactory';
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmCallSchema } from '../schemas/crmValidation';
+import { escapeIlike, escapeOrIlike } from '../lib/searchFilters';
 import { createCrmActivity } from './crmActivitiesService';
 
 // ==================== TRANSFORMADOR ====================
@@ -145,7 +146,8 @@ export async function getCrmCalls(filters = {}) {
     .is('deleted_at', null);
 
   if (search) {
-    query = query.or(`phone_dialed.ilike.%${search}%,notes.ilike.%${search}%`);
+    const s = escapeOrIlike(search);
+    query = query.or(`phone_dialed.ilike.%${s}%,notes.ilike.%${s}%`);
   }
   if (contactId)  query = query.eq('contact_id', contactId);
   if (dealId)     query = query.eq('deal_id', dealId);
@@ -290,7 +292,10 @@ async function getQueueFromContacts(filters) {
 
   if (status) query = query.eq('status', status);
   if (tag)    query = query.contains('tags', [tag]);
-  if (search) query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
+  if (search) {
+    const s = escapeOrIlike(search);
+    query = query.or(`name.ilike.%${s}%,phone.ilike.%${s}%`);
+  }
 
   query = query.order('updated_at', { ascending: false }).limit(limit);
 
@@ -336,7 +341,10 @@ async function getQueueFromStuckDeals(filters) {
     .eq('status', 'open')
     .lte('updated_at', cutoff.toISOString());
 
-  if (search) query = query.or(`title.ilike.%${search}%,contact_name.ilike.%${search}%,contact_phone.ilike.%${search}%`);
+  if (search) {
+    const s = escapeOrIlike(search);
+    query = query.or(`title.ilike.%${s}%,contact_name.ilike.%${s}%,contact_phone.ilike.%${s}%`);
+  }
 
   query = query.order('updated_at', { ascending: true }).limit(limit);
 
@@ -403,7 +411,7 @@ async function getQueueFromScheduledCalls(filters) {
     .gte('start_date', start.toISOString())
     .lte('start_date', end.toISOString());
 
-  if (search) query = query.ilike('title', `%${search}%`);
+  if (search) query = query.ilike('title', `%${escapeIlike(search)}%`);
 
   query = query.order('start_date', { ascending: true }).limit(limit);
 
@@ -459,7 +467,8 @@ async function getQueueFromProspects(filters) {
     .not('status', 'in', '(sent_to_pipeline,converted)');
 
   if (search) {
-    query = query.or(`company_name.ilike.%${search}%,contact_name.ilike.%${search}%,phone.ilike.%${search}%`);
+    const s = escapeOrIlike(search);
+    query = query.or(`company_name.ilike.%${s}%,contact_name.ilike.%${s}%,phone.ilike.%${s}%`);
   }
 
   query = query.order('created_at', { ascending: false }).limit(limit);
@@ -535,7 +544,7 @@ async function promoteProspectToContact(prospectId, userId) {
     const { data: existing } = await supabase
       .from('crm_companies')
       .select('id')
-      .ilike('name', prospect.company_name)
+      .ilike('name', escapeIlike(prospect.company_name))
       .is('deleted_at', null)
       .maybeSingle();
     if (existing?.id) {

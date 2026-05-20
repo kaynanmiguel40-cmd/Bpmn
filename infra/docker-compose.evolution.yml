@@ -1,0 +1,106 @@
+# Evolution API - WhatsApp Gateway pro Inbox do CRM Fyness
+#
+# Como subir no VPS:
+#   1. Copie esse arquivo + .env.evolution para o servidor
+#   2. Ajuste as variaveis em .env.evolution (AUTHENTICATION_API_KEY, DOMINIO, etc)
+#   3. docker compose -f docker-compose.evolution.yml --env-file .env.evolution up -d
+#   4. Acesse https://SEU_DOMINIO_EVOLUTION/manager pra criar a instancia e escanear o QR
+#
+# Documentacao: ver docs/whatsapp-evolution-setup.md
+#
+# NOTA: a Evolution API expoe uma porta unica (8080). Use um reverse proxy (Traefik,
+# Nginx, Caddy) na frente pra terminar HTTPS, OU rode atras do seu proxy ja existente.
+
+version: '3.8'
+
+services:
+  evolution-api:
+    container_name: evolution-api
+    image: atendai/evolution-api:v2.1.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"  # binda em localhost; expor via reverse-proxy
+    environment:
+      # --- Server ---
+      - SERVER_TYPE=http
+      - SERVER_PORT=8080
+      - SERVER_URL=${EVOLUTION_SERVER_URL}        # ex: https://evo.seudominio.com
+
+      # --- Auth ---
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}  # use uma string forte aleatoria
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+
+      # --- Database (Postgres) ---
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@evolution-postgres:5432/${POSTGRES_DB}?schema=public
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+
+      # --- Cache (Redis) ---
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://evolution-redis:6379/6
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_REDIS_SAVE_INSTANCES=true
+      - CACHE_LOCAL_ENABLED=false
+
+      # --- Webhook global (cada instancia pode sobrescrever) ---
+      - WEBHOOK_GLOBAL_URL=${EVOLUTION_WEBHOOK_URL}  # ex: https://SEU_PROJETO.supabase.co/functions/v1/evolution-webhook
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
+      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+      - WEBHOOK_EVENTS_MESSAGES_UPDATE=true
+      - WEBHOOK_EVENTS_SEND_MESSAGE=true
+      - WEBHOOK_EVENTS_CONNECTION_UPDATE=true
+      - WEBHOOK_EVENTS_QRCODE_UPDATED=true
+
+      # --- Logs ---
+      - LOG_LEVEL=ERROR,WARN,INFO
+      - LOG_COLOR=true
+      - LOG_BAILEYS=error
+
+      # --- Instance defaults ---
+      - DEL_INSTANCE=false
+      - QRCODE_LIMIT=30
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      - evolution-postgres
+      - evolution-redis
+    networks:
+      - evolution-net
+
+  evolution-postgres:
+    container_name: evolution-postgres
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+    networks:
+      - evolution-net
+
+  evolution-redis:
+    container_name: evolution-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - evolution_redis_data:/data
+    networks:
+      - evolution-net
+
+volumes:
+  evolution_instances:
+  evolution_postgres_data:
+  evolution_redis_data:
+
+networks:
+  evolution-net:
+    driver: bridge

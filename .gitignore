@@ -8,6 +8,7 @@ dist/
 .env
 .env.local
 .env.*.local
+infra/.env.evolution
 
 # OS files
 .DS_Store

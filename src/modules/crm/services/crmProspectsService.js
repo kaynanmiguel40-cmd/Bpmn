@@ -7,6 +7,7 @@ import { createCrmDeal } from './crmDealsService';
 import { searchProspectsByGoogle, markGooglePlaceConverted } from '../../../lib/googlePlacesService';
 import { trackCdSearch, trackCdLookup } from '../../../lib/usageTracker';
 import { SEGMENT_TO_CNAE, CNAE_TO_SEGMENT, SIZE_TO_PORTE, PORTE_TO_SIZE, REVENUE_TO_CAPITAL, PARTNER_CATEGORY_TO_CNAE, CNAE_TO_PARTNER_CATEGORY, PARTNER_CATEGORY_LABELS } from '../data/cnaeMapping';
+import { escapeOrIlike } from '../lib/searchFilters';
 
 // API Casa dos Dados — chave via env var (nunca hardcode!)
 const CASA_DOS_DADOS_API_KEY = import.meta.env.VITE_CASA_DOS_DADOS_API_KEY || '';
@@ -715,7 +716,8 @@ async function searchLocalCrmData(filters = {}) {
       contactsQuery = contactsQuery.eq('crm_companies.state', filters.state);
     }
     if (filters.search) {
-      contactsQuery = contactsQuery.or(`name.ilike.%${filters.search}%,email.ilike.%${filters.search}%,crm_companies.name.ilike.%${filters.search}%`);
+      const s = escapeOrIlike(filters.search);
+      contactsQuery = contactsQuery.or(`name.ilike.%${s}%,email.ilike.%${s}%,crm_companies.name.ilike.%${s}%`);
     }
 
     const { data: contacts, error: contactsErr } = await contactsQuery.limit(filters.perPage || 50);
@@ -731,7 +733,8 @@ async function searchLocalCrmData(filters = {}) {
     if (filters.size) companiesQuery = companiesQuery.eq('size', filters.size);
     if (filters.state) companiesQuery = companiesQuery.eq('state', filters.state);
     if (filters.search) {
-      companiesQuery = companiesQuery.or(`name.ilike.%${filters.search}%,cnpj.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
+      const s = escapeOrIlike(filters.search);
+      companiesQuery = companiesQuery.or(`name.ilike.%${s}%,cnpj.ilike.%${s}%,email.ilike.%${s}%`);
     }
 
     const { data: companies, error: companiesErr } = await companiesQuery.limit(filters.perPage || 50);

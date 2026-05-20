@@ -4,6 +4,7 @@ import { toast } from '../../../contexts/ToastContext';
 import { crmGoalSchema } from '../schemas/crmValidation';
 import { getTrafficKPIs } from './crmTrafficService';
 import { getSalesReport, getLearnedProbabilities } from './crmReportsService';
+import { escapeIlike } from '../lib/searchFilters';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -66,7 +67,7 @@ export async function getCrmGoals(filters = {}) {
     .select('*, team_members(id, name, color, auth_user_id)', { count: 'exact' })
     .is('deleted_at', null);
 
-  if (search) query = query.ilike('title', `%${search}%`);
+  if (search) query = query.ilike('title', `%${escapeIlike(search)}%`);
   if (type) query = query.eq('type', type);
   if (status) query = query.eq('status', status);
 

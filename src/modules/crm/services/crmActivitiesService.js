@@ -2,6 +2,7 @@ import { createCRUDService } from '../../../lib/serviceFactory';
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmActivitySchema } from '../schemas/crmValidation';
+import { escapeIlike } from '../lib/searchFilters';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -71,7 +72,7 @@ export async function getCrmActivities(filters = {}) {
     .is('deleted_at', null);
 
   if (search) {
-    query = query.ilike('title', `%${search}%`);
+    query = query.ilike('title', `%${escapeIlike(search)}%`);
   }
   if (type) {
     query = query.eq('type', type);

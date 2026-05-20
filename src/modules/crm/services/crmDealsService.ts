@@ -5,6 +5,7 @@ import { crmDealSchema } from '../schemas/crmValidation';
 import { triggerAutomationsForDeal } from './crmAutomationsService';
 import { createCrmActivity } from './crmActivitiesService';
 import { getCrmWorkspaceSettings } from '../lib/workspaceSettings';
+import { escapeIlike } from '../lib/searchFilters';
 
 // ==================== TIPOS ====================
 
@@ -191,7 +192,7 @@ export async function getCrmDeals(filters: CrmDealFilters = {}): Promise<{ data:
     .is('deleted_at', null);
 
   if (search) {
-    query = query.ilike('title', `%${search}%`);
+    query = query.ilike('title', `%${escapeIlike(search)}%`);
   }
   if (status) query = query.eq('status', status);
   if (pipelineId) query = query.eq('pipeline_id', pipelineId);
