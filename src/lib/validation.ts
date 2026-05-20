@@ -101,6 +101,9 @@ const checklistItem = z.object({
 }).passthrough();
 
 const nullableStr = z.string().nullable().optional().default('');
+// Para colunas timestamptz: nao pode defaultar '' (Postgres rejeita).
+// Mantemos undefined/null/string; toSnakeCase pula undefined e null vai como NULL.
+const nullableTimestamp = z.string().nullable().optional();
 
 export const osOrderSchema = z.object({
   title: z.string().min(1, 'Titulo e obrigatorio'),
@@ -117,13 +120,13 @@ export const osOrderSchema = z.object({
   assignee: nullableStr,
   assignedTo: nullableStr,
   supervisor: nullableStr,
-  estimatedStart: nullableStr,
-  estimatedEnd: nullableStr,
-  actualStart: nullableStr,
-  actualEnd: nullableStr,
-  resumedAt: nullableStr,
+  estimatedStart: nullableTimestamp,
+  estimatedEnd: nullableTimestamp,
+  actualStart: nullableTimestamp,
+  actualEnd: nullableTimestamp,
+  resumedAt: nullableTimestamp,
   accumulatedMs: z.number().nullable().optional().default(0),
-  slaDeadline: nullableStr,
+  slaDeadline: nullableTimestamp,
   leadTimeHours: z.number().nullable().optional(),
   expenses: z.array(expenseItem).default([]),
   checklist: z.array(checklistItem).default([]),
