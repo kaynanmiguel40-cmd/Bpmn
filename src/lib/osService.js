@@ -160,6 +160,19 @@ function normalizeTimestamps(order) {
   return result;
 }
 
+/** Mesmo que normalizeTimestamps, mas pra CREATE: campos timestamp ausentes
+ *  recebem `null` explicito (em vez de undefined). Necessario porque o schema
+ *  Zod usa `nullableStr.default('')`, que ao parsear injeta `''` em campos
+ *  undefined — e Postgres rejeita timestamptz='' com "invalid input syntax". */
+function normalizeTimestampsForCreate(order) {
+  const normalized = normalizeTimestamps(order || {});
+  const result = { ...normalized };
+  for (const field of TIMESTAMP_FIELDS) {
+    if (result[field] === undefined) result[field] = null;
+  }
+  return result;
+}
+
 const orderService = createCRUDService({
   table: 'os_orders',
   localKey: 'os_orders',
@@ -252,7 +265,7 @@ export function calcSLADeadline(priority) {
 export async function createOSOrder(order) {
   // Auto-calcular SLA se nao fornecido
   const slaDeadline = order.slaDeadline || calcSLADeadline(order.priority || 'medium');
-  const normalized = normalizeTimestamps(order);
+  const normalized = normalizeTimestampsForCreate(order);
 
   if (normalized.type === 'emergency') {
     const nextEmg = await getNextEmergencyNumber();
