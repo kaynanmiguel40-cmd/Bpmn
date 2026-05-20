@@ -285,6 +285,35 @@ describe('osOrderSchema - campos SaaS', () => {
   });
 });
 
+describe('osOrderSchema - timestamps (regressao: nao injetar "" em timestamptz)', () => {
+  // Postgres timestamptz rejeita ''. Zod nao pode aplicar default('') nesses campos.
+  const TIMESTAMP_FIELDS = [
+    'estimatedStart', 'estimatedEnd',
+    'actualStart', 'actualEnd',
+    'resumedAt', 'slaDeadline',
+  ];
+
+  it.each(TIMESTAMP_FIELDS)('nao injeta "" em %s quando ausente do input', (field) => {
+    const result = validateAndSanitize(osOrderSchema, { title: 'Nova O.S.' });
+    expect(result.success).toBe(true);
+    // Pode ser undefined (omitido) ou null — nunca string vazia.
+    expect(result.data[field]).not.toBe('');
+  });
+
+  it.each(TIMESTAMP_FIELDS)('preserva null em %s', (field) => {
+    const result = validateAndSanitize(osOrderSchema, { title: 'X', [field]: null });
+    expect(result.success).toBe(true);
+    expect(result.data[field]).toBeNull();
+  });
+
+  it.each(TIMESTAMP_FIELDS)('preserva valor ISO em %s', (field) => {
+    const iso = '2026-05-20T12:00:00Z';
+    const result = validateAndSanitize(osOrderSchema, { title: 'X', [field]: iso });
+    expect(result.success).toBe(true);
+    expect(result.data[field]).toBe(iso);
+  });
+});
+
 describe('validatePartial', () => {
   it('valida update parcial de ordem', () => {
     const result = validatePartial(osOrderSchema, {
