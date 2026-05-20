@@ -44,6 +44,8 @@ const CrmSettingsPage = lazy(() => import('./modules/crm/pages/CrmSettingsPage')
 const CrmAutomationsPage = lazy(() => import('./modules/crm/pages/CrmAutomationsPage'))
 const CrmDialerPage = lazy(() => import('./modules/crm/pages/CrmDialerPage'))
 const CrmCallHistoryPage = lazy(() => import('./modules/crm/pages/CrmCallHistoryPage'))
+const CrmInboxPage = lazy(() => import('./modules/crm/pages/CrmInboxPage'))
+const CrmWhatsAppSetupPage = lazy(() => import('./modules/crm/pages/CrmWhatsAppSetupPage'))
 const CrmCadastrosPage = lazy(() => import('./modules/crm/pages/CrmCadastrosPage'))
 
 function LoadingSpinner() {
@@ -113,6 +115,8 @@ function App() {
                 <Route path="activities" element={<ErrorBoundary><CrmActivitiesPage /></ErrorBoundary>} />
                 <Route path="discador" element={<ErrorBoundary><CrmDialerPage /></ErrorBoundary>} />
                 <Route path="discador/historico" element={<ErrorBoundary><CrmCallHistoryPage /></ErrorBoundary>} />
+                <Route path="inbox" element={<ErrorBoundary><CrmInboxPage /></ErrorBoundary>} />
+                <Route path="whatsapp" element={<ErrorBoundary><CrmWhatsAppSetupPage /></ErrorBoundary>} />
                 <Route path="reports" element={<ErrorBoundary><CrmReportsPage /></ErrorBoundary>} />
                 <Route path="forecast" element={<ErrorBoundary><CrmForecastPage /></ErrorBoundary>} />
                 <Route path="goals" element={<ErrorBoundary><CrmGoalsPage /></ErrorBoundary>} />

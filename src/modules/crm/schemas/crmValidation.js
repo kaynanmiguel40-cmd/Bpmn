@@ -178,3 +178,24 @@ export const crmSettingsSchema = z.object({
   companyLogoUrl: nullableStr,
   accentColor: z.string().optional().default('#6366f1'),
 }).passthrough();
+
+// ==================== WHATSAPP MESSAGE (send payload) ====================
+
+export const crmSendMessageSchema = z.object({
+  instanceName: z.string().optional(),
+  phone: z.string().min(8, 'Telefone invalido'),
+  content: z.string().optional(),
+  mediaUrl: z.string().url('URL invalida').optional(),
+  mediaType: z.enum(['image', 'audio', 'video', 'document']).optional(),
+  mediaCaption: nullableStr,
+  contactId: z.string().nullable().optional(),
+  prospectId: z.string().nullable().optional(),
+  dealId: z.string().nullable().optional(),
+  source: z.enum(['manual', 'automation', 'reply', 'broadcast']).default('manual'),
+}).refine(
+  (v) => !!(v.content || v.mediaUrl),
+  { message: 'Conteudo ou midia obrigatorio', path: ['content'] }
+).refine(
+  (v) => !!(v.contactId || v.prospectId),
+  { message: 'Vincular a contato ou prospect', path: ['contactId'] }
+);

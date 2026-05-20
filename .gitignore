@@ -35,4 +35,5 @@ supabase/.temp/
 # Claude Code
 .claude/scheduled_tasks.lock
 .claude/settings.json
+.claude/claude-council.local.md
 nul

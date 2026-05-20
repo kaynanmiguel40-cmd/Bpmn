@@ -66,6 +66,20 @@ export function useCrmRealtime(options = {}) {
     [crmQueryKeys.calls, ['crm', 'dialerQueue'], ['crm', 'recentCalls'], crmQueryKeys.dialerKPIs, crmQueryKeys.dashboard],
     { enabled }
   );
+
+  // Messages — atualiza inbox WhatsApp e conversa aberta
+  useRealtimeSubscription(
+    'crm_messages',
+    [crmQueryKeys.messages, ['crm', 'conversation'], ['crm', 'inbox']],
+    { enabled }
+  );
+
+  // WhatsApp instances — atualiza status/QR de conexão
+  useRealtimeSubscription(
+    'crm_whatsapp_instances',
+    [crmQueryKeys.whatsappInstances, ['crm', 'whatsappInstance']],
+    { enabled }
+  );
 }
 
 /**

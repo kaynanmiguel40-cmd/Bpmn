@@ -245,6 +245,47 @@ async function dispatchEmail({ to, subject, body }) {
   }
 }
 
+/**
+ * Normaliza telefone para o formato esperado pela Evolution API:
+ * apenas dígitos (sem '+', espaços, parênteses).
+ */
+function normalizePhone(raw) {
+  if (!raw) return '';
+  return String(raw).replace(/\D/g, '');
+}
+
+/**
+ * Envia WhatsApp via Edge Function `evolution-send`.
+ * Retorna { ok, error } — nunca lança.
+ *
+ * Requer: phone, content, contactId (ou prospectId — automation sempre
+ * disparada por deal, então usa contactId).
+ */
+async function dispatchWhatsApp({ phone, content, contactId, dealId, automationId }) {
+  if (!phone) return { ok: false, error: 'Destinatário sem telefone cadastrado' };
+  if (!contactId) return { ok: false, error: 'Deal sem contato vinculado (necessário pra logar a mensagem)' };
+  const normalized = normalizePhone(phone);
+  if (normalized.length < 10) return { ok: false, error: `Telefone inválido: ${phone}` };
+
+  try {
+    const { data, error } = await supabase.functions.invoke('evolution-send', {
+      body: {
+        phone:        normalized,
+        content,
+        contactId,
+        dealId,
+        automationId,
+        source:       'automation',
+      },
+    });
+    if (error) return { ok: false, error: error.message || String(error) };
+    if (data?.ok === false) return { ok: false, error: data?.error || 'Falha no envio WhatsApp' };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || 'Erro inesperado no envio WhatsApp' };
+  }
+}
+
 // ─── Motor de disparo ─────────────────────────────────────────────────────────
 
 /**
@@ -260,7 +301,7 @@ async function enrichDealIfNeeded(deal) {
     .from('crm_deals')
     .select(`
       id, contact_name, contact_email, contact_phone, value, title, segment,
-      crm_contacts(id, name, email),
+      crm_contacts(id, name, email, phone),
       crm_companies(id, name, segment),
       crm_pipeline_stages(id, name, color),
       team_members(id, name, color)
@@ -276,7 +317,7 @@ async function enrichDealIfNeeded(deal) {
     contactEmail: deal.contactEmail ?? row.contact_email,
     contactPhone: deal.contactPhone ?? row.contact_phone,
     contact: deal.contact || (row.crm_contacts ? {
-      id: row.crm_contacts.id, name: row.crm_contacts.name, email: row.crm_contacts.email,
+      id: row.crm_contacts.id, name: row.crm_contacts.name, email: row.crm_contacts.email, phone: row.crm_contacts.phone,
     } : null),
     company: deal.company || (row.crm_companies ? {
       id: row.crm_companies.id, name: row.crm_companies.name, segment: row.crm_companies.segment,
@@ -335,10 +376,18 @@ export async function triggerAutomationsForDeal(deal, stageId) {
         subject: renderedSubject,
         body:    renderedBody,
       });
+    } else if (a.channel === 'whatsapp') {
+      recipient = deal.contactPhone || deal.contact?.phone || '';
+      result = await dispatchWhatsApp({
+        phone:        recipient,
+        content:      renderedBody,
+        contactId:    deal.contactId || deal.contact?.id || null,
+        dealId:       deal.id,
+        automationId: a.id,
+      });
     } else {
-      // whatsapp — pendente. Apenas registra.
       recipient = deal.contactPhone || deal.contactName || '';
-      result = { ok: false, error: `Canal ${a.channel} ainda não integrado` };
+      result = { ok: false, error: `Canal ${a.channel} não suportado` };
     }
 
     return {

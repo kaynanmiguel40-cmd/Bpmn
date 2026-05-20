@@ -25,6 +25,7 @@ import {
   Zap,
   Sun,
   PhoneCall,
+  MessageCircle,
 } from 'lucide-react';
 import logoFyness from '../../../../assets/logo-fyness.png';
 
@@ -42,6 +43,7 @@ const crmNavItems = [
   { section: 'Vendas' },
   { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline' },
   { to: '/crm/discador', icon: PhoneCall, label: 'Discador' },
+  { to: '/crm/inbox', icon: MessageCircle, label: 'Inbox WhatsApp' },
   { to: '/crm/activities', icon: CalendarCheck, label: 'Atividades' },
   { section: 'Prospecao' },
   { to: '/crm/prospects', icon: Crosshair, label: 'Gerador de Lista' },

@@ -14,6 +14,8 @@ import { getCrmGoals, getCrmGoalById, createCrmGoal, updateCrmGoal, softDeleteCr
 import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities, getSellersReport } from '../services/crmReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, updateCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
+import { getCrmMessages, getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead, toggleCrmMessageStarred, markCrmMessageAsSpam, softDeleteCrmMessage } from '../services/crmMessagesService';
+import { listCrmWhatsAppInstances, getCrmWhatsAppInstanceByName, getDefaultCrmWhatsAppInstance, createCrmWhatsAppInstance, assignCrmWhatsAppInstance } from '../services/crmWhatsAppInstanceService';
 
 // ==================== QUERY KEYS ====================
 
@@ -56,6 +58,12 @@ export const crmQueryKeys = {
   dialerQueue: (filters) => ['crm', 'dialerQueue', filters],
   recentCallsForContact: (id) => ['crm', 'recentCalls', id],
   dialerKPIs: ['crm', 'dialerKPIs'],
+  // Inbox WhatsApp
+  messages: ['crm', 'messages'],
+  conversation: (params) => ['crm', 'conversation', params],
+  inbox: ['crm', 'inbox'],
+  whatsappInstances: ['crm', 'whatsappInstances'],
+  whatsappInstance: (name) => ['crm', 'whatsappInstance', name],
 };
 
 // ==================== COMPANIES ====================
@@ -1137,6 +1145,153 @@ export function useToggleAutomation() {
     onSuccess: (_, { active }) => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.automations });
       toast(active ? 'Automacao ativada' : 'Automacao pausada', 'success');
+    },
+  });
+}
+
+// ==================== INBOX WHATSAPP ====================
+
+/**
+ * Lista de conversas do Inbox (ultima mensagem agrupada por contato/prospect).
+ */
+export function useCrmInboxConversations(opts = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.inbox, opts],
+    queryFn: () => getInboxConversations(opts),
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * Mensagens de uma conversa especifica (contato OU prospect).
+ * Ordem ASC pra scroll natural do chat.
+ */
+export function useCrmConversation({ contactId, prospectId, limit = 100 } = {}) {
+  return useQuery({
+    queryKey: crmQueryKeys.conversation({ contactId, prospectId, limit }),
+    queryFn: () => getConversationMessages({ contactId, prospectId, limit }),
+    enabled: !!(contactId || prospectId),
+    staleTime: 10_000,
+  });
+}
+
+/**
+ * Listagem geral de mensagens (relatorios/historicos).
+ */
+export function useCrmMessages(filters = {}) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.messages, filters],
+    queryFn: () => getCrmMessages(filters),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Envia mensagem via Edge Function evolution-send.
+ * onSuccess invalida conversation+inbox.
+ */
+export function useSendCrmMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: sendCrmMessage,
+    onSuccess: (res, vars) => {
+      if (!res?.ok) return;
+      qc.invalidateQueries({ queryKey: crmQueryKeys.inbox });
+      qc.invalidateQueries({
+        queryKey: crmQueryKeys.conversation({
+          contactId:  vars.contactId,
+          prospectId: vars.prospectId,
+          limit:      100,
+        }),
+      });
+      // Realtime tambem deve disparar, mas invalidamos manualmente pra UX instantanea
+    },
+  });
+}
+
+export function useMarkCrmMessagesAsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: markCrmMessagesAsRead,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.inbox });
+    },
+  });
+}
+
+export function useToggleCrmMessageStarred() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageId, starred }) => toggleCrmMessageStarred(messageId, starred),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.messages });
+    },
+  });
+}
+
+export function useMarkCrmMessageAsSpam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: markCrmMessageAsSpam,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.messages });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.inbox });
+    },
+  });
+}
+
+export function useDeleteCrmMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: softDeleteCrmMessage,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.messages });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.inbox });
+    },
+  });
+}
+
+// ==================== WHATSAPP INSTANCES ====================
+
+export function useCrmWhatsAppInstances() {
+  return useQuery({
+    queryKey: crmQueryKeys.whatsappInstances,
+    queryFn: listCrmWhatsAppInstances,
+    staleTime: 10_000,
+  });
+}
+
+export function useCrmWhatsAppInstance(name) {
+  return useQuery({
+    queryKey: crmQueryKeys.whatsappInstance(name || 'default'),
+    queryFn: () => (name ? getCrmWhatsAppInstanceByName(name) : getDefaultCrmWhatsAppInstance()),
+    staleTime: 5_000,
+    refetchInterval: (q) => {
+      // Polling rapido quando esperando QR ou conectando
+      const status = q.state.data?.status;
+      if (status === 'qr_pending' || status === 'connecting') return 3_000;
+      return false;
+    },
+  });
+}
+
+export function useCreateCrmWhatsAppInstance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createCrmWhatsAppInstance,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.whatsappInstances });
+    },
+  });
+}
+
+export function useAssignCrmWhatsAppInstance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ instanceId, teamMemberId }) => assignCrmWhatsAppInstance(instanceId, teamMemberId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.whatsappInstances });
     },
   });
 }
