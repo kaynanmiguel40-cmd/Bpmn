@@ -1,14 +1,21 @@
 /**
  * Supabase Edge Function: evolution-send
  *
- * Envia mensagem WhatsApp via Evolution API e grava em crm_messages.
+ * Envia mensagem WhatsApp via WAHA (devlikeapro/waha) ou Evolution API.
+ * Detecta provider via env `EVOLUTION_PROVIDER` (default: 'waha').
+ *
+ * Workflow:
+ *   1. Resolve chatId real via check-exists (WhatsApp v2 migrou pra @lid).
+ *   2. Insere mensagem 'pending' no Supabase.
+ *   3. Dispara envio.
+ *   4. Atualiza status sent/failed com providerMessageId.
  *
  * Body JSON:
  *   {
- *     instanceName: string,        // ex: 'fyness-principal'
- *     phone: string,               // E.164 sem '+' (ex: '5511999999999')
- *     content?: string,            // texto (obrigatorio se nao houver mediaUrl)
- *     mediaUrl?: string,           // url publica da midia (obrigatorio se nao houver content)
+ *     instanceName: string,        // ex: 'default'
+ *     phone: string,               // E.164 sem '+' (ex: '5535992285099')
+ *     content?: string,
+ *     mediaUrl?: string,
  *     mediaType?: 'image' | 'audio' | 'video' | 'document',
  *     mediaCaption?: string,
  *     contactId?: string,
@@ -19,10 +26,10 @@
  *     createdBy?: string,
  *   }
  *
- * Envs (Supabase Secrets):
- *   EVOLUTION_URL=https://evo.seudominio.com
+ * Envs:
+ *   EVOLUTION_URL=https://evo.fyness.com.br
  *   EVOLUTION_API_KEY=...
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auto-injetadas pelo Supabase)
+ *   EVOLUTION_PROVIDER=waha (ou 'evolution')
  *
  * Deploy: supabase functions deploy evolution-send
  */
@@ -34,6 +41,7 @@ const SUPABASE_URL          = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const EVOLUTION_URL         = Deno.env.get('EVOLUTION_URL')!
 const EVOLUTION_API_KEY     = Deno.env.get('EVOLUTION_API_KEY')!
+const PROVIDER              = (Deno.env.get('EVOLUTION_PROVIDER') || 'waha').toLowerCase()
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,6 +70,102 @@ interface SendBody {
   createdBy?: string
 }
 
+// ============= WAHA: helpers =============
+
+async function wahaResolveChatId(session: string, phone: string): Promise<string> {
+  // Detecta se ja eh um lid: WhatsApp Linked ID (numero longo >= 13 digitos
+  // ou sem prefixo de pais valido). Nesses casos usa @lid direto.
+  // Phones BR validos: 12-13 digitos com prefixo 55.
+  const isLikelyLid = phone.length > 13 || !phone.startsWith('55')
+
+  if (isLikelyLid) {
+    return `${phone}@lid`
+  }
+
+  // Phone normal: tenta resolver via check-exists (pode retornar @lid se WhatsApp migrou esse numero)
+  try {
+    const r = await fetch(
+      `${EVOLUTION_URL}/api/contacts/check-exists?phone=${encodeURIComponent(phone)}&session=${encodeURIComponent(session)}`,
+      { headers: { 'X-Api-Key': EVOLUTION_API_KEY } },
+    )
+    if (!r.ok) return `${phone}@c.us`
+    const data = await r.json()
+    if (data?.numberExists && data?.chatId) return data.chatId
+    return `${phone}@c.us`
+  } catch {
+    return `${phone}@c.us`
+  }
+}
+
+async function wahaSendText(session: string, chatId: string, text: string) {
+  const r = await fetch(`${EVOLUTION_URL}/api/sendText`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Api-Key': EVOLUTION_API_KEY },
+    body: JSON.stringify({ session, chatId, text }),
+  })
+  const data = await r.json().catch(() => ({}))
+  return { ok: r.ok, status: r.status, data }
+}
+
+async function wahaSendMedia(
+  session: string,
+  chatId: string,
+  mediaType: string,
+  mediaUrl: string,
+  caption?: string,
+) {
+  // WAHA endpoints separados: /api/sendImage, /api/sendVideo, /api/sendVoice, /api/sendFile
+  const endpointMap: Record<string, string> = {
+    image:    '/api/sendImage',
+    video:    '/api/sendVideo',
+    audio:    '/api/sendVoice',
+    document: '/api/sendFile',
+  }
+  const path = endpointMap[mediaType] || '/api/sendFile'
+  const r = await fetch(`${EVOLUTION_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Api-Key': EVOLUTION_API_KEY },
+    body: JSON.stringify({
+      session,
+      chatId,
+      file: { url: mediaUrl },
+      caption: caption || undefined,
+    }),
+  })
+  const data = await r.json().catch(() => ({}))
+  return { ok: r.ok, status: r.status, data }
+}
+
+// ============= Evolution: helpers (legado) =============
+
+async function evolutionSend(
+  instanceName: string,
+  phone: string,
+  content: string | undefined,
+  mediaUrl: string | undefined,
+  mediaType: string | undefined,
+  mediaCaption: string | undefined,
+) {
+  const isMedia = !!mediaUrl
+  const endpoint = isMedia
+    ? `${EVOLUTION_URL}/message/sendMedia/${encodeURIComponent(instanceName)}`
+    : `${EVOLUTION_URL}/message/sendText/${encodeURIComponent(instanceName)}`
+
+  const payload = isMedia
+    ? { number: phone, mediatype: mediaType || 'image', caption: mediaCaption || content || '', media: mediaUrl }
+    : { number: phone, text: content }
+
+  const r = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+    body: JSON.stringify(payload),
+  })
+  const data = await r.json().catch(() => ({}))
+  return { ok: r.ok, status: r.status, data }
+}
+
+// ============= Handler principal =============
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -77,15 +181,9 @@ serve(async (req) => {
   }
 
   const { instanceName, phone, content, mediaUrl, mediaType, mediaCaption } = body
-  if (!instanceName || !phone) {
-    return json({ ok: false, error: 'instanceName e phone obrigatorios' }, 400)
-  }
-  if (!content && !mediaUrl) {
-    return json({ ok: false, error: 'content ou mediaUrl obrigatorios' }, 400)
-  }
-  if (!body.contactId && !body.prospectId) {
-    return json({ ok: false, error: 'contactId ou prospectId obrigatorio' }, 400)
-  }
+  if (!instanceName || !phone) return json({ ok: false, error: 'instanceName e phone obrigatorios' }, 400)
+  if (!content && !mediaUrl) return json({ ok: false, error: 'content ou mediaUrl obrigatorios' }, 400)
+  if (!body.contactId && !body.prospectId) return json({ ok: false, error: 'contactId ou prospectId obrigatorio' }, 400)
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -131,43 +229,36 @@ serve(async (req) => {
     return json({ ok: false, error: `Erro ao gravar mensagem: ${msgErr?.message}` }, 500)
   }
 
-  // 3) Chama Evolution API
-  const isMedia = !!mediaUrl
-  const endpoint = isMedia
-    ? `${EVOLUTION_URL}/message/sendMedia/${encodeURIComponent(instanceName)}`
-    : `${EVOLUTION_URL}/message/sendText/${encodeURIComponent(instanceName)}`
-
-  const payload = isMedia
-    ? {
-        number:    phone,
-        mediatype: mediaType || 'image',
-        mimetype:  undefined,
-        caption:   mediaCaption || content || '',
-        media:     mediaUrl,
-        fileName:  undefined,
-      }
-    : { number: phone, text: content }
-
-  let evolutionMessageId: string | null = null
+  // 3) Dispara envio
+  let providerMessageId: string | null = null
   let success = false
   let errorMessage: string | null = null
+  let chatId: string | null = null
 
   try {
-    const evoRes = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey:         EVOLUTION_API_KEY,
-      },
-      body: JSON.stringify(payload),
-    })
-    const evoData = await evoRes.json()
+    if (PROVIDER === 'waha') {
+      // WAHA: precisa resolver chatId (pode ser @lid)
+      chatId = await wahaResolveChatId(instanceName, phone)
+      const result = mediaUrl
+        ? await wahaSendMedia(instanceName, chatId, mediaType || 'image', mediaUrl, mediaCaption || content)
+        : await wahaSendText(instanceName, chatId, content || '')
 
-    if (!evoRes.ok) {
-      errorMessage = evoData?.message || `HTTP ${evoRes.status}`
+      if (!result.ok) {
+        errorMessage = result.data?.message || `HTTP ${result.status}`
+      } else {
+        // WAHA retorna o id no campo .id._serialized ou .id.id
+        providerMessageId = result.data?.id?._serialized || result.data?.id?.id || result.data?.messageId || null
+        success = true
+      }
     } else {
-      evolutionMessageId = evoData?.key?.id || evoData?.messageId || null
-      success = true
+      // Evolution API (legado)
+      const result = await evolutionSend(instanceName, phone, content, mediaUrl, mediaType, mediaCaption)
+      if (!result.ok) {
+        errorMessage = result.data?.message || `HTTP ${result.status}`
+      } else {
+        providerMessageId = result.data?.key?.id || result.data?.messageId || null
+        success = true
+      }
     }
   } catch (err) {
     errorMessage = (err as Error).message
@@ -178,18 +269,20 @@ serve(async (req) => {
     .from('crm_messages')
     .update({
       status:               success ? 'sent' : 'failed',
-      evolution_message_id: evolutionMessageId,
+      evolution_message_id: providerMessageId,
       error_message:        errorMessage,
     })
     .eq('id', msgRow.id)
 
   if (!success) {
-    return json({ ok: false, error: errorMessage, messageId: msgRow.id }, 502)
+    return json({ ok: false, error: errorMessage, messageId: msgRow.id, chatId }, 502)
   }
 
   return json({
     ok: true,
-    messageId: msgRow.id,
-    evolutionMessageId,
+    messageId:          msgRow.id,
+    evolutionMessageId: providerMessageId,
+    chatId,
+    provider:           PROVIDER,
   })
 })

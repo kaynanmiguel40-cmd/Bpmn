@@ -78,17 +78,21 @@ serve(async (req) => {
     }
   }
 
-  let payload: EvolutionPayload
+  let rawPayload: any
   try {
-    payload = await req.json()
+    rawPayload = await req.json()
   } catch {
     return json({ ok: false, error: 'JSON invalido' }, 400)
   }
 
+  // Normaliza payload: aceita formato Evolution {event, instance, data} OU WAHA {event, session, payload}
+  const payload: EvolutionPayload = normalizePayload(rawPayload)
+
   const event = (payload.event || '').toLowerCase().replace(/[\.]/g, '_')
   const instanceName = payload.instance || ''
   if (!event || !instanceName) {
-    return json({ ok: false, error: 'event e instance obrigatorios' }, 400)
+    // Ignora silenciosamente eventos sem instance (WAHA manda alguns sem)
+    return json({ ok: true, ignored: true, reason: 'sem event ou instance' })
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -110,10 +114,11 @@ serve(async (req) => {
     return json({ ok: true, message: 'instance auto-registered, ignored this event' })
   }
 
+  const debug: Record<string, unknown> = { event, instanceName, instanceId: instance.id }
   try {
     switch (event) {
       case 'messages_upsert':
-        await handleMessagesUpsert(supabase, instance.id, payload.data)
+        debug.handlerResult = await handleMessagesUpsert(supabase, instance.id, payload.data)
         break
       case 'messages_update':
         await handleMessagesUpdate(supabase, payload.data)
@@ -125,13 +130,13 @@ serve(async (req) => {
         await handleQrcodeUpdated(supabase, instance.id, payload.data)
         break
       default:
-        // Evento nao tratado, ignora silenciosamente (Evolution manda muitos eventos)
+        debug.handlerResult = `event "${event}" not handled`
         break
     }
-    return json({ ok: true })
+    return json({ ok: true, debug })
   } catch (err) {
     console.error('[evolution-webhook]', event, err)
-    return json({ ok: false, error: (err as Error).message }, 500)
+    return json({ ok: false, error: (err as Error).message, debug }, 500)
   }
 })
 
@@ -142,18 +147,19 @@ async function handleMessagesUpsert(
   instanceId: string,
   data: any,
 ) {
+  const debug: any[] = []
   // Evolution manda data.key, data.message, data.messageTimestamp, data.pushName, data.message etc.
   // Pode vir tambem como array em data.messages
   const messages = Array.isArray(data?.messages) ? data.messages : [data]
 
   for (const m of messages) {
-    if (!m?.key) continue
+    if (!m?.key) { debug.push({ skip: 'no_key', m }); continue }
 
     const evolutionMessageId = m.key.id
     const fromMe = !!m.key.fromMe
     const remoteJid = m.key.remoteJid as string
     const otherPhone = jidToPhone(remoteJid)
-    if (!otherPhone) continue
+    if (!otherPhone) { debug.push({ skip: 'no_otherPhone', remoteJid }); continue }
 
     // Dedup: ja existe?
     const { data: existing } = await supabase
@@ -209,23 +215,24 @@ async function handleMessagesUpsert(
     let contactId: string | null = null
     let prospectId: string | null = null
 
+    let prospectError: string | null = null
     if (direction === 'inbound') {
       contactId = await findContactByPhone(supabase, otherPhone)
       if (!contactId) {
-        prospectId = await findOrCreateProspectByPhone(
+        const r = await findOrCreateProspectByPhoneWithError(
           supabase,
           otherPhone,
           (m.pushName as string) || null,
         )
+        prospectId = r.id
+        prospectError = r.error
       }
     } else {
-      // Outbound eco: vincula a contato existente (deve existir, ja enviamos pra ele)
       contactId = await findContactByPhone(supabase, otherPhone)
     }
 
     if (!contactId && !prospectId) {
-      // Nao conseguiu vincular nem criar; pula
-      console.warn('[evolution-webhook] sem vinculo possivel para', otherPhone)
+      debug.push({ skip: 'no_link', direction, otherPhone, remoteJid, prospectError })
       continue
     }
 
@@ -233,7 +240,7 @@ async function handleMessagesUpsert(
       ? new Date(Number(m.messageTimestamp) * 1000).toISOString()
       : new Date().toISOString()
 
-    await supabase.from('crm_messages').insert({
+    const { error: insErr, data: insData } = await supabase.from('crm_messages').insert({
       instance_id:          instanceId,
       contact_id:           contactId,
       prospect_id:          prospectId,
@@ -249,8 +256,20 @@ async function handleMessagesUpsert(
       status:               direction === 'inbound' ? 'received' : 'sent',
       sent_at:              timestamp,
       source:               direction === 'inbound' ? 'reply' : 'manual',
+    }).select('id').single()
+
+    debug.push({
+      inserted: !insErr,
+      error:    insErr?.message,
+      msgId:    insData?.id,
+      direction,
+      contactId,
+      prospectId,
+      otherPhone,
+      content: content?.slice(0, 50),
     })
   }
+  return debug
 }
 
 async function handleMessagesUpdate(supabase: SupabaseClient, data: any) {
@@ -334,6 +353,124 @@ async function handleQrcodeUpdated(
     .eq('id', instanceId)
 }
 
+// ============= Normalizacao de payload (Evolution vs WAHA) =============
+
+/**
+ * Normaliza payload de diferentes providers pro formato interno
+ * (`{ event, instance, data }`).
+ *
+ * - Evolution API (atendai/evolution-api): { event, instance, data }
+ * - WAHA (devlikeapro/waha): { event, session, payload }
+ *
+ * WAHA tambem usa nomes de eventos diferentes:
+ *   - 'message' / 'message.any' (single)  -> 'messages.upsert'
+ *   - 'session.status' { status: ... }    -> 'connection.update'
+ *   - 'state.change'                      -> 'connection.update'
+ *   - 'message.ack' / 'message.reaction'  -> ignora por ora
+ */
+function normalizePayload(raw: any): EvolutionPayload {
+  if (!raw || typeof raw !== 'object') return { event: '', instance: '', data: null }
+
+  // Ja Evolution-shaped
+  if (raw.instance && raw.data !== undefined) return raw
+
+  // WAHA: usa `session` em vez de `instance` e `payload` em vez de `data`
+  if (raw.session) {
+    const wahaEvent: string = String(raw.event || '').toLowerCase()
+    const session = raw.session
+    const payload = raw.payload || raw.data || {}
+
+    // session.status / state.change -> connection.update
+    if (wahaEvent === 'session.status' || wahaEvent === 'state.change') {
+      const wahaStatus = String(payload.status || payload.state || '').toUpperCase()
+      let evoState = 'close'
+      if (wahaStatus === 'WORKING')        evoState = 'open'
+      else if (wahaStatus === 'STARTING')  evoState = 'connecting'
+      else if (wahaStatus === 'SCAN_QR_CODE') evoState = 'connecting'
+      else if (wahaStatus === 'FAILED')    evoState = 'close'
+      else if (wahaStatus === 'STOPPED')   evoState = 'close'
+
+      return {
+        event: 'connection.update',
+        instance: session,
+        data: { state: evoState, wuid: payload.me?.id || payload.id || null },
+      }
+    }
+
+    // message / message.any -> messages.upsert (mapeia payload WAHA -> shape Baileys)
+    if (wahaEvent === 'message' || wahaEvent === 'message.any') {
+      const fromMe = !!payload.fromMe
+      // Determina o JID do "outro lado" (inbound: from; outbound: to)
+      const wahaJid: string = fromMe ? (payload.to || payload.from || '') : (payload.from || payload.to || '')
+      // WhatsApp pode usar @lid (formato novo, privacidade) ou @c.us (legado).
+      // Normalizamos pra @s.whatsapp.net pra reusar o handler Baileys-style.
+      const remoteJid = wahaJid
+        .replace('@c.us', '@s.whatsapp.net')
+        .replace('@lid', '@s.whatsapp.net')
+
+      // Reconstrucao do shape Baileys que nosso handler entende
+      let message: any = {}
+      if (payload.body && (!payload.hasMedia || payload.type === 'chat')) {
+        message.conversation = payload.body
+      } else if (payload.hasMedia || payload._data?.mediaUrl || payload.media) {
+        const mediaUrl = payload.media?.url || payload._data?.mediaUrl || payload.mediaUrl || null
+        const mime = payload._data?.mimetype || payload.mimetype || ''
+        if (mime.startsWith('image/')) {
+          message.imageMessage = { url: mediaUrl, mimetype: mime, caption: payload.body || null }
+        } else if (mime.startsWith('video/')) {
+          message.videoMessage = { url: mediaUrl, mimetype: mime, caption: payload.body || null }
+        } else if (mime.startsWith('audio/')) {
+          message.audioMessage = { url: mediaUrl, mimetype: mime }
+        } else {
+          message.documentMessage = {
+            url: mediaUrl,
+            mimetype: mime,
+            fileName: payload._data?.filename || payload.filename || null,
+            caption: payload.body || null,
+          }
+        }
+      } else if (payload.body) {
+        message.conversation = payload.body
+      }
+
+      return {
+        event: 'messages.upsert',
+        instance: session,
+        data: {
+          key: { id: payload.id, fromMe, remoteJid },
+          message,
+          messageTimestamp: payload.timestamp,
+          pushName: payload._data?.notifyName || payload.notifyName || null,
+        },
+      }
+    }
+
+    // message.ack -> messages.update (status delivered/read)
+    if (wahaEvent === 'message.ack') {
+      const ack = payload.ack
+      let status = ''
+      if (ack === 2 || ack === 'DEVICE')   status = 'DELIVERED'
+      else if (ack === 3 || ack === 'READ') status = 'READ'
+      else if (ack === 4 || ack === 'PLAYED') status = 'PLAYED'
+      return {
+        event: 'messages.update',
+        instance: session,
+        data: { key: { id: payload.id }, status },
+      }
+    }
+
+    // Outros eventos WAHA: ignora (qr, group, etc — nao usamos)
+    return { event: wahaEvent.replace(/\./g, '_'), instance: session, data: payload }
+  }
+
+  // Fallback Evolution shape mesmo sem .data
+  return {
+    event: raw.event || '',
+    instance: raw.instance || '',
+    data: raw.data || raw,
+  }
+}
+
 // ============= Helpers de vinculacao =============
 
 async function findContactByPhone(
@@ -353,6 +490,46 @@ async function findContactByPhone(
     .limit(1)
     .maybeSingle()
   return data?.id || null
+}
+
+async function findOrCreateProspectByPhoneWithError(
+  supabase: SupabaseClient,
+  phone: string,
+  pushName: string | null,
+): Promise<{ id: string | null; error: string | null }> {
+  const r = await findOrCreateProspectByPhoneInternal(supabase, phone, pushName)
+  return r
+}
+
+async function findOrCreateProspectByPhoneInternal(
+  supabase: SupabaseClient,
+  phone: string,
+  pushName: string | null,
+): Promise<{ id: string | null; error: string | null }> {
+  const { data: existing, error: findErr } = await supabase
+    .from('crm_prospects')
+    .select('id')
+    .eq('phone', phone)
+    .is('deleted_at', null)
+    .limit(1)
+    .maybeSingle()
+  if (findErr) return { id: null, error: `find: ${findErr.message}` }
+  if (existing?.id) return { id: existing.id, error: null }
+
+  const name = pushName || `WhatsApp ${phone.slice(-4)}`
+  const { data: created, error: insErr } = await supabase
+    .from('crm_prospects')
+    .insert({
+      contact_name: name,
+      company_name: name, // company_name eh NOT NULL no schema; usa nome do contato como fallback
+      phone,
+      source:       'whatsapp_inbound',
+      status:       'new',
+    })
+    .select('id')
+    .single()
+  if (insErr) return { id: null, error: `insert: ${insErr.message}` }
+  return { id: created?.id || null, error: null }
 }
 
 async function findOrCreateProspectByPhone(

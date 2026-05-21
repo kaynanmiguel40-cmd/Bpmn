@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS public.crm_whatsapp_instances (
   instance_name   TEXT NOT NULL UNIQUE,
 
   -- Dono da instância (vendedor). Null = instância compartilhada / sistema.
-  team_member_id  UUID REFERENCES public.team_members(id) ON DELETE SET NULL,
+  team_member_id  TEXT REFERENCES public.team_members(id) ON DELETE SET NULL,
 
   -- Telefone conectado (preenchido apos escaneio do QR)
   phone_number    TEXT,
