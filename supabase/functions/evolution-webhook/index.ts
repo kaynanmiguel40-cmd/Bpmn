@@ -55,6 +55,62 @@ async function wahaGetContactName(session: string, chatId: string): Promise<stri
 }
 
 /**
+ * Espelha midia inbound do WAHA no Supabase Storage.
+ *
+ * WAHA serve midia via /api/files/{session}/{msgId}.ext, protegida por X-Api-Key.
+ * Como <img> nao pode passar header, e a URL eh relativa ao WAHA, baixamos a
+ * midia aqui (com a key) e re-hostamos no bucket 'crm-whatsapp-media'.
+ *
+ * Retorna URL publica do Storage ou null em erro.
+ */
+async function mirrorWahaMediaToStorage(
+  supabase: SupabaseClient,
+  rawUrl: string,
+  mediaType: string | null,
+  mime: string | null,
+): Promise<string | null> {
+  if (!rawUrl || !EVOLUTION_URL || !EVOLUTION_API_KEY) return null
+  // Constroi URL absoluta se for relativa (WAHA retorna paths tipo /api/files/...)
+  let absUrl = rawUrl
+  if (rawUrl.startsWith('/')) {
+    absUrl = `${EVOLUTION_URL}${rawUrl}`
+  } else if (rawUrl.includes('localhost') || rawUrl.includes('127.0.0.1')) {
+    // Substitui localhost pelo dominio do WAHA
+    try {
+      const u = new URL(rawUrl)
+      absUrl = `${EVOLUTION_URL}${u.pathname}${u.search}`
+    } catch { /* mantem rawUrl */ }
+  }
+
+  try {
+    const r = await fetch(absUrl, { headers: { 'X-Api-Key': EVOLUTION_API_KEY } })
+    if (!r.ok) return null
+    const blob = await r.blob()
+    const contentType = blob.type || mime || 'application/octet-stream'
+
+    // Determina extensao a partir do MIME
+    const extMap: Record<string, string> = {
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+      'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
+      'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/webm': 'webm',
+      'application/pdf': 'pdf',
+    }
+    const ext = extMap[contentType] || 'bin'
+    const path = `inbound/${crypto.randomUUID()}.${ext}`
+
+    const { error: upErr } = await supabase.storage
+      .from('crm-whatsapp-media')
+      .upload(path, blob, { contentType, upsert: false })
+    if (upErr) return null
+
+    const { data: pub } = supabase.storage.from('crm-whatsapp-media').getPublicUrl(path)
+    return pub.publicUrl
+  } catch {
+    return null
+  }
+}
+
+/**
  * Busca URL da foto de perfil via API do WAHA.
  * URL retornada eh do CDN do WhatsApp (pps.whatsapp.net) e expira em ~7 dias.
  */
@@ -300,6 +356,19 @@ async function handleMessagesUpsert(
     if (!content && !mediaUrl) {
       debug.push({ skip: 'empty_content', direction, evolutionMessageId })
       continue
+    }
+
+    // Espelha midia inbound no Storage. WAHA serve via /api/files/* protegido por
+    // X-Api-Key e <img> nao pode mandar header. Sem mirror, URL quebra no browser.
+    if (direction === 'inbound' && mediaUrl && (mediaUrl.startsWith('/') || mediaUrl.includes('localhost'))) {
+      const mirroredUrl = await mirrorWahaMediaToStorage(supabase, mediaUrl, mediaType, mediaMime)
+      if (mirroredUrl) {
+        mediaUrl = mirroredUrl
+      } else {
+        // Sem mirror, nao adianta gravar URL quebrada — pula mensagem
+        debug.push({ skip: 'media_mirror_failed', direction, evolutionMessageId, originalUrl: mediaUrl })
+        continue
+      }
     }
 
     const timestamp = m.messageTimestamp

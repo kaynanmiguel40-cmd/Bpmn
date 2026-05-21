@@ -34,6 +34,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip caching cross-origin (imagens WhatsApp, etc) — evita erros 206 Partial
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
   // Navigation — sempre rede (nao cachear HTML para evitar chunks antigos apos deploy)
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -49,10 +54,12 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
-        // Only cache successful responses
-        if (response.ok) {
+        // Cache so 200 OK (status 206 Partial Content nao eh suportado pelo Cache API)
+        if (response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, clone).catch(() => {/* swallow: alguns responses nao sao cacheaveis */});
+          });
         }
         return response;
       })

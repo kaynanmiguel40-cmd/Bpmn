@@ -71,7 +71,7 @@ export function MessageBubble({ message }) {
   return (
     <div className={`flex ${align} mb-1.5`}>
       <div className={`max-w-[75%] rounded-lg px-3 py-2 shadow-sm ${bubbleClasses}`}>
-        {message.mediaUrl && (
+        {message.mediaUrl && message.status !== 'failed' && (
           <MediaContent
             type={message.mediaType}
             url={message.mediaUrl}

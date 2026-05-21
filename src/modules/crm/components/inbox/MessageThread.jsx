@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Phone, ExternalLink, MessageSquare } from 'lucide-react';
 import { useCrmConversation, useMarkCrmMessagesAsRead } from '../../hooks/useCrmQueries';
 import { MessageBubble } from './MessageBubble';
@@ -62,12 +63,12 @@ function ThreadHeader({ conversation }) {
         </div>
       </div>
       {detailLink && (
-        <a
-          href={detailLink}
+        <Link
+          to={detailLink}
           className="text-xs text-fyness-primary hover:underline flex items-center gap-1"
         >
           Ver detalhes <ExternalLink size={12} />
-        </a>
+        </Link>
       )}
     </div>
   );
