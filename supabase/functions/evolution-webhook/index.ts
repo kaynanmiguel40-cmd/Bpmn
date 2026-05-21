@@ -31,6 +31,29 @@ import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-
 const SUPABASE_URL              = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const WEBHOOK_SECRET            = Deno.env.get('EVOLUTION_WEBHOOK_SECRET') || ''
+const EVOLUTION_URL             = Deno.env.get('EVOLUTION_URL') || ''
+const EVOLUTION_API_KEY         = Deno.env.get('EVOLUTION_API_KEY') || ''
+
+/**
+ * Busca pushname (nome do contato) via API do WAHA.
+ * Retorna null em qualquer erro / contato sem nome.
+ */
+async function wahaGetContactName(session: string, chatId: string): Promise<string | null> {
+  if (!EVOLUTION_URL || !EVOLUTION_API_KEY) return null
+  try {
+    const r = await fetch(
+      `${EVOLUTION_URL}/api/contacts?contactId=${encodeURIComponent(chatId)}&session=${encodeURIComponent(session)}`,
+      { headers: { 'X-Api-Key': EVOLUTION_API_KEY } },
+    )
+    if (!r.ok) return null
+    const data = await r.json()
+    // resposta pode ser objeto ou array
+    const c = Array.isArray(data) ? data[0] : data
+    return c?.pushname || c?.name || c?.shortName || null
+  } catch {
+    return null
+  }
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -118,7 +141,7 @@ serve(async (req) => {
   try {
     switch (event) {
       case 'messages_upsert':
-        debug.handlerResult = await handleMessagesUpsert(supabase, instance.id, payload.data)
+        debug.handlerResult = await handleMessagesUpsert(supabase, instance.id, payload.data, instanceName)
         break
       case 'messages_update':
         await handleMessagesUpdate(supabase, payload.data)
@@ -146,6 +169,7 @@ async function handleMessagesUpsert(
   supabase: SupabaseClient,
   instanceId: string,
   data: any,
+  instanceName: string = '',
 ) {
   const debug: any[] = []
   // Evolution manda data.key, data.message, data.messageTimestamp, data.pushName, data.message etc.
@@ -219,11 +243,15 @@ async function handleMessagesUpsert(
     if (direction === 'inbound') {
       contactId = await findContactByPhone(supabase, otherPhone)
       if (!contactId) {
-        const r = await findOrCreateProspectByPhoneWithError(
-          supabase,
-          otherPhone,
-          (m.pushName as string) || null,
-        )
+        // Tenta pegar nome real via API do WAHA se nao veio no payload
+        let pushName: string | null = (m.pushName as string) || null
+        if (!pushName) {
+          // remoteJid esta no formato '@s.whatsapp.net' apos normalizacao;
+          // reverte pra '@lid' que eh o que a API WAHA aceita pra contatos atuais
+          const chatId = remoteJid.replace('@s.whatsapp.net', '@lid')
+          pushName = await wahaGetContactName(instanceName, chatId)
+        }
+        const r = await findOrCreateProspectByPhoneWithError(supabase, otherPhone, pushName)
         prospectId = r.id
         prospectError = r.error
       }
@@ -233,6 +261,12 @@ async function handleMessagesUpsert(
 
     if (!contactId && !prospectId) {
       debug.push({ skip: 'no_link', direction, otherPhone, remoteJid, prospectError })
+      continue
+    }
+
+    // Pula mensagens sem conteudo nem midia (eventos meta como reaction, edit, ack que escapam)
+    if (!content && !mediaUrl) {
+      debug.push({ skip: 'empty_content', direction, evolutionMessageId })
       continue
     }
 
@@ -397,8 +431,14 @@ function normalizePayload(raw: any): EvolutionPayload {
       }
     }
 
-    // message / message.any -> messages.upsert (mapeia payload WAHA -> shape Baileys)
-    if (wahaEvent === 'message' || wahaEvent === 'message.any') {
+    // message.any eh duplicado de 'message' no WAHA (mesmo conteudo, ID ligeiramente
+    // diferente). Ignora pra evitar duplicacao no banco.
+    if (wahaEvent === 'message.any') {
+      return { event: 'ignored', instance: session, data: { reason: 'message.any duplicate' } }
+    }
+
+    // message -> messages.upsert (mapeia payload WAHA -> shape Baileys)
+    if (wahaEvent === 'message') {
       const fromMe = !!payload.fromMe
       // Determina o JID do "outro lado" (inbound: from; outbound: to)
       const wahaJid: string = fromMe ? (payload.to || payload.from || '') : (payload.from || payload.to || '')
@@ -528,7 +568,23 @@ async function findOrCreateProspectByPhoneInternal(
     })
     .select('id')
     .single()
-  if (insErr) return { id: null, error: `insert: ${insErr.message}` }
+
+  if (insErr) {
+    // Race condition: outro webhook simultaneo ja criou. Re-consulta.
+    // Codigo 23505 = unique_violation (partial index uq_crm_prospects_whatsapp_phone).
+    if ((insErr as any).code === '23505') {
+      const { data: retry } = await supabase
+        .from('crm_prospects')
+        .select('id')
+        .eq('phone', phone)
+        .eq('source', 'whatsapp_inbound')
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle()
+      if (retry?.id) return { id: retry.id, error: null }
+    }
+    return { id: null, error: `insert: ${insErr.message}` }
+  }
   return { id: created?.id || null, error: null }
 }
 
