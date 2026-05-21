@@ -43,6 +43,7 @@ export function dbToProspect(row) {
     } : null,
     prospectType: row.prospect_type || 'lead',
     partnerCategory: row.partner_category || null,
+    avatarUrl: row.avatar_url || null,
     listName: row.list_name || '',
     createdBy: row.created_by || null,
     createdAt: row.created_at,

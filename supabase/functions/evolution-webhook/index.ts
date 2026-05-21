@@ -47,9 +47,27 @@ async function wahaGetContactName(session: string, chatId: string): Promise<stri
     )
     if (!r.ok) return null
     const data = await r.json()
-    // resposta pode ser objeto ou array
     const c = Array.isArray(data) ? data[0] : data
     return c?.pushname || c?.name || c?.shortName || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Busca URL da foto de perfil via API do WAHA.
+ * URL retornada eh do CDN do WhatsApp (pps.whatsapp.net) e expira em ~7 dias.
+ */
+async function wahaGetProfilePicture(session: string, chatId: string): Promise<string | null> {
+  if (!EVOLUTION_URL || !EVOLUTION_API_KEY) return null
+  try {
+    const r = await fetch(
+      `${EVOLUTION_URL}/api/contacts/profile-picture?contactId=${encodeURIComponent(chatId)}&session=${encodeURIComponent(session)}`,
+      { headers: { 'X-Api-Key': EVOLUTION_API_KEY } },
+    )
+    if (!r.ok) return null
+    const data = await r.json()
+    return data?.profilePictureURL || data?.url || null
   } catch {
     return null
   }
@@ -243,17 +261,31 @@ async function handleMessagesUpsert(
     if (direction === 'inbound') {
       contactId = await findContactByPhone(supabase, otherPhone)
       if (!contactId) {
-        // Tenta pegar nome real via API do WAHA se nao veio no payload
+        const chatId = remoteJid.replace('@s.whatsapp.net', '@lid')
         let pushName: string | null = (m.pushName as string) || null
         if (!pushName) {
-          // remoteJid esta no formato '@s.whatsapp.net' apos normalizacao;
-          // reverte pra '@lid' que eh o que a API WAHA aceita pra contatos atuais
-          const chatId = remoteJid.replace('@s.whatsapp.net', '@lid')
           pushName = await wahaGetContactName(instanceName, chatId)
         }
-        const r = await findOrCreateProspectByPhoneWithError(supabase, otherPhone, pushName)
+        // Tenta buscar avatar. Se WAHA ainda nao sincronizou (timing), retorna null
+        // e o findOrCreate vai tentar atualizar na proxima mensagem.
+        const avatarUrl = await wahaGetProfilePicture(instanceName, chatId)
+        const r = await findOrCreateProspectByPhoneWithError(supabase, otherPhone, pushName, avatarUrl)
         prospectId = r.id
         prospectError = r.error
+
+        // Refresh: se o prospect ja existia mas sem avatar, e agora temos um, atualiza.
+        // (Trata caso onde primeira msg chegou mas WAHA nao tinha sincronizado a foto)
+        if (prospectId && !avatarUrl) {
+          // Re-tenta pegar foto (pode ter sincronizado entre o create e agora)
+          const retryAvatar = await wahaGetProfilePicture(instanceName, chatId)
+          if (retryAvatar) {
+            await supabase
+              .from('crm_prospects')
+              .update({ avatar_url: retryAvatar })
+              .eq('id', prospectId)
+              .is('avatar_url', null)
+          }
+        }
       }
     } else {
       contactId = await findContactByPhone(supabase, otherPhone)
@@ -536,8 +568,9 @@ async function findOrCreateProspectByPhoneWithError(
   supabase: SupabaseClient,
   phone: string,
   pushName: string | null,
+  avatarUrl: string | null = null,
 ): Promise<{ id: string | null; error: string | null }> {
-  const r = await findOrCreateProspectByPhoneInternal(supabase, phone, pushName)
+  const r = await findOrCreateProspectByPhoneInternal(supabase, phone, pushName, avatarUrl)
   return r
 }
 
@@ -545,24 +578,35 @@ async function findOrCreateProspectByPhoneInternal(
   supabase: SupabaseClient,
   phone: string,
   pushName: string | null,
+  avatarUrl: string | null = null,
 ): Promise<{ id: string | null; error: string | null }> {
   const { data: existing, error: findErr } = await supabase
     .from('crm_prospects')
-    .select('id')
+    .select('id, avatar_url')
     .eq('phone', phone)
     .is('deleted_at', null)
     .limit(1)
     .maybeSingle()
   if (findErr) return { id: null, error: `find: ${findErr.message}` }
-  if (existing?.id) return { id: existing.id, error: null }
+  if (existing?.id) {
+    // Atualiza avatar se chegou novo e o existente nao tinha (refresh URL expirada)
+    if (avatarUrl && !existing.avatar_url) {
+      await supabase
+        .from('crm_prospects')
+        .update({ avatar_url: avatarUrl })
+        .eq('id', existing.id)
+    }
+    return { id: existing.id, error: null }
+  }
 
   const name = pushName || `WhatsApp ${phone.slice(-4)}`
   const { data: created, error: insErr } = await supabase
     .from('crm_prospects')
     .insert({
       contact_name: name,
-      company_name: name, // company_name eh NOT NULL no schema; usa nome do contato como fallback
+      company_name: name,
       phone,
+      avatar_url:   avatarUrl,
       source:       'whatsapp_inbound',
       status:       'new',
     })

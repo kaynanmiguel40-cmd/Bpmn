@@ -126,8 +126,8 @@ export async function getInboxConversations({ limit = 100 } = {}) {
     .from('crm_messages')
     .select(`
       *,
-      crm_contacts(id, name, phone, avatar_color),
-      crm_prospects(id, contact_name, company_name, phone)
+      crm_contacts(id, name, phone, avatar_color, avatar_url),
+      crm_prospects(id, contact_name, company_name, phone, avatar_url)
     `)
     .is('deleted_at', null)
     .order('sent_at', { ascending: false })
@@ -166,6 +166,7 @@ export async function getInboxConversations({ limit = 100 } = {}) {
       contactId:    m.contact_id || null,
       prospectId:   m.prospect_id || null,
       avatarColor:  contact?.avatar_color || null,
+      avatarUrl:    contact?.avatar_url || prospect?.avatar_url || null,
       otherName,
       otherPhone,
       lastMessage:  m.content || (m.media_type ? `[${m.media_type}]` : ''),

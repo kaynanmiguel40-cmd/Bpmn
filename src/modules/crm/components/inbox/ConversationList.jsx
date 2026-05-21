@@ -36,8 +36,17 @@ function ConversationItem({ conv, active, onSelect }) {
           ? 'bg-fyness-primary/10 dark:bg-fyness-primary/20'
           : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}
     >
+      {conv.avatarUrl ? (
+        <img
+          src={conv.avatarUrl}
+          alt={conv.otherName}
+          referrerPolicy="no-referrer"
+          onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling.style.display = 'flex'; }}
+          className="w-10 h-10 rounded-full object-cover shrink-0 bg-slate-200 dark:bg-slate-800"
+        />
+      ) : null}
       <div
-        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0"
+        className={`w-10 h-10 rounded-full items-center justify-center text-white text-sm font-semibold shrink-0 ${conv.avatarUrl ? 'hidden' : 'flex'}`}
         style={{ backgroundColor: conv.avatarColor || '#6366f1' }}
       >
         {initials(conv.otherName)}

@@ -16,6 +16,7 @@ export function dbToCrmContact(row) {
     phone: row.phone || null,
     position: row.position || null,
     avatarColor: row.avatar_color || null,
+    avatarUrl: row.avatar_url || null,
     status: row.status || 'lead',
     companyId: row.company_id || null,
     company: row.crm_companies ? dbToCrmCompany(row.crm_companies) : null,

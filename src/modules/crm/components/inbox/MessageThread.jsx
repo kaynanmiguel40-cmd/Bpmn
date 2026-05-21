@@ -34,8 +34,17 @@ function ThreadHeader({ conversation }) {
   return (
     <div className="h-14 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-3 min-w-0">
+        {conversation.avatarUrl ? (
+          <img
+            src={conversation.avatarUrl}
+            alt={conversation.otherName}
+            referrerPolicy="no-referrer"
+            onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling.style.display = 'flex'; }}
+            className="w-9 h-9 rounded-full object-cover shrink-0 bg-slate-200 dark:bg-slate-800"
+          />
+        ) : null}
         <div
-          className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0"
+          className={`w-9 h-9 rounded-full items-center justify-center text-white text-sm font-semibold shrink-0 ${conversation.avatarUrl ? 'hidden' : 'flex'}`}
           style={{ backgroundColor: conversation.avatarColor || '#6366f1' }}
         >
           {conversation.otherName?.[0]?.toUpperCase() || '?'}
