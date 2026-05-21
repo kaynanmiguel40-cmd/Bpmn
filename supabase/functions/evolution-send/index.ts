@@ -151,9 +151,22 @@ async function evolutionSend(
     ? `${EVOLUTION_URL}/message/sendMedia/${encodeURIComponent(instanceName)}`
     : `${EVOLUTION_URL}/message/sendText/${encodeURIComponent(instanceName)}`
 
+  // Evolution v1.x usa payload aninhado em textMessage/mediaMessage.
   const payload = isMedia
-    ? { number: phone, mediatype: mediaType || 'image', caption: mediaCaption || content || '', media: mediaUrl }
-    : { number: phone, text: content }
+    ? {
+        number: phone,
+        options: { delay: 0, presence: 'composing' },
+        mediaMessage: {
+          mediatype: mediaType || 'image',
+          media:     mediaUrl,
+          caption:   mediaCaption || content || undefined,
+        },
+      }
+    : {
+        number: phone,
+        options: { delay: 0, presence: 'composing' },
+        textMessage: { text: content || '' },
+      }
 
   const r = await fetch(endpoint, {
     method: 'POST',
@@ -187,19 +200,36 @@ serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-  // 1) Resolve instance
-  const { data: instance, error: instErr } = await supabase
+  // 1) Resolve instance. Se a passada nao existe, fallback pra primeira
+  // 'connected' (resolve problema de cliente com .env stale)
+  let { data: instance } = await supabase
     .from('crm_whatsapp_instances')
-    .select('id, status, phone_number')
+    .select('id, status, phone_number, instance_name')
     .eq('instance_name', instanceName)
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (instErr) return json({ ok: false, error: `Erro ao buscar instance: ${instErr.message}` }, 500)
-  if (!instance) return json({ ok: false, error: `Instance '${instanceName}' nao registrada` }, 404)
+  if (!instance) {
+    const fallback = await supabase
+      .from('crm_whatsapp_instances')
+      .select('id, status, phone_number, instance_name')
+      .eq('status', 'connected')
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle()
+    if (fallback.data) {
+      instance = fallback.data
+      // Atualiza o instanceName usado nas chamadas pro provider
+      ;(body as SendBody).instanceName = instance.instance_name
+    }
+  }
+
+  if (!instance) return json({ ok: false, error: `Nenhuma instance conectada encontrada (tentou '${instanceName}')` }, 404)
   if (instance.status !== 'connected') {
     return json({ ok: false, error: `Instance esta '${instance.status}', precisa estar 'connected'` }, 409)
   }
+  // Re-atribui variavel local de instanceName caso fallback tenha mudado
+  const effectiveInstanceName = instance.instance_name || instanceName
 
   // 2) Insere mensagem em 'pending' antes do envio (rastreabilidade)
   const fromPhone = instance.phone_number || ''
@@ -238,10 +268,10 @@ serve(async (req) => {
   try {
     if (PROVIDER === 'waha') {
       // WAHA: precisa resolver chatId (pode ser @lid)
-      chatId = await wahaResolveChatId(instanceName, phone)
+      chatId = await wahaResolveChatId(effectiveInstanceName, phone)
       const result = mediaUrl
-        ? await wahaSendMedia(instanceName, chatId, mediaType || 'image', mediaUrl, mediaCaption || content)
-        : await wahaSendText(instanceName, chatId, content || '')
+        ? await wahaSendMedia(effectiveInstanceName, chatId, mediaType || 'image', mediaUrl, mediaCaption || content)
+        : await wahaSendText(effectiveInstanceName, chatId, content || '')
 
       if (!result.ok) {
         errorMessage = result.data?.message || `HTTP ${result.status}`
@@ -252,7 +282,7 @@ serve(async (req) => {
       }
     } else {
       // Evolution API (legado)
-      const result = await evolutionSend(instanceName, phone, content, mediaUrl, mediaType, mediaCaption)
+      const result = await evolutionSend(effectiveInstanceName, phone, content, mediaUrl, mediaType, mediaCaption)
       if (!result.ok) {
         errorMessage = result.data?.message || `HTTP ${result.status}`
       } else {
