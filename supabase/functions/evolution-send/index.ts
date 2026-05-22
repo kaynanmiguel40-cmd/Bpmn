@@ -151,10 +151,22 @@ async function evolutionSend(
     ? `${EVOLUTION_URL}/message/sendMedia/${encodeURIComponent(instanceName)}`
     : `${EVOLUTION_URL}/message/sendText/${encodeURIComponent(instanceName)}`
 
+  // Se phone parece lid (>13 digitos ou nao comeca com codigo pais conhecido)
+  // adiciona sufixo @lid pra que o Evolution use addressingMode='lid' e
+  // resolva via remoteJidAlt no Baileys novo (suporte adicionado no fork
+  // ativo evoapicloud/evolution-api).
+  const numericPhone = phone.replace(/\D/g, '')
+  const isLikelyLid = numericPhone.length > 13 || !numericPhone.startsWith('55')
+  const numberField = phone.includes('@')
+    ? phone
+    : isLikelyLid
+      ? `${numericPhone}@lid`
+      : numericPhone
+
   // Evolution v1.x usa payload aninhado em textMessage/mediaMessage.
   const payload = isMedia
     ? {
-        number: phone,
+        number: numberField,
         options: { delay: 0, presence: 'composing' },
         mediaMessage: {
           mediatype: mediaType || 'image',
@@ -163,7 +175,7 @@ async function evolutionSend(
         },
       }
     : {
-        number: phone,
+        number: numberField,
         options: { delay: 0, presence: 'composing' },
         textMessage: { text: content || '' },
       }
