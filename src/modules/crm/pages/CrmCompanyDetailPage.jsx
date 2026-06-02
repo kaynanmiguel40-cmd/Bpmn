@@ -102,7 +102,7 @@ export function CrmCompanyDetailPage() {
       {/* Info cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {company.phone && (
-          <a href={`tel:${company.phone}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 transition-colors group">
+          <a href={`tel:${company.phone}`} className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 transition-colors group">
             <Phone size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div>
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Telefone</div>
@@ -111,7 +111,7 @@ export function CrmCompanyDetailPage() {
           </a>
         )}
         {company.email && (
-          <a href={`mailto:${company.email}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 transition-colors group">
+          <a href={`mailto:${company.email}`} className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 transition-colors group">
             <Mail size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Email</div>
@@ -120,7 +120,7 @@ export function CrmCompanyDetailPage() {
           </a>
         )}
         {company.website && (
-          <a href={company.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 transition-colors group">
+          <a href={company.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 transition-colors group">
             <Globe size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Website</div>
@@ -129,7 +129,7 @@ export function CrmCompanyDetailPage() {
           </a>
         )}
         {(company.city || company.state) && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50">
+          <div className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl">
             <MapPin size={16} className="text-slate-400" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Localizacao</div>
@@ -142,7 +142,7 @@ export function CrmCompanyDetailPage() {
       </div>
 
       {/* Contatos da empresa */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+      <div className="crm-glass rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Users size={16} className="text-slate-400" />
@@ -177,7 +177,7 @@ export function CrmCompanyDetailPage() {
       </div>
 
       {/* Deals da empresa */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+      <div className="crm-glass rounded-2xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <Target size={16} className="text-slate-400" />
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">

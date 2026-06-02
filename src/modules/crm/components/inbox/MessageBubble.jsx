@@ -65,12 +65,12 @@ export function MessageBubble({ message }) {
   const isOut = message.direction === 'outbound';
   const align = isOut ? 'justify-end' : 'justify-start';
   const bubbleClasses = isOut
-    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-slate-800 dark:text-slate-100'
-    : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700';
+    ? 'bg-emerald-500/15 dark:bg-emerald-500/20 backdrop-blur-sm text-slate-800 dark:text-slate-100 rounded-br-md'
+    : 'bg-white/85 dark:bg-slate-800/70 backdrop-blur-sm text-slate-800 dark:text-slate-100 border border-white/60 dark:border-white/10 rounded-bl-md';
 
   return (
     <div className={`flex ${align} mb-1.5`}>
-      <div className={`max-w-[75%] rounded-lg px-3 py-2 shadow-sm ${bubbleClasses}`}>
+      <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${bubbleClasses}`}>
         {message.mediaUrl && message.status !== 'failed' && (
           <MediaContent
             type={message.mediaType}

@@ -20,7 +20,7 @@ function SkeletonRows({ columns, rows = 5 }) {
     <tr key={i} className="animate-pulse">
       {columns.map((col, ci) => (
         <td key={ci} className="px-4 py-3">
-          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4" />
+          <div className="h-4 bg-slate-200/70 dark:bg-slate-700/70 rounded w-3/4" />
         </td>
       ))}
     </tr>
@@ -43,11 +43,11 @@ export function CrmDataTable({
     : 1;
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+    <div className="crm-glass rounded-2xl overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/50">
+            <tr className="border-b border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/[0.03]">
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -66,7 +66,7 @@ export function CrmDataTable({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody className="divide-y divide-slate-200/60 dark:divide-white/5">
             {loading ? (
               <SkeletonRows columns={columns} />
             ) : data.length === 0 ? (
@@ -87,7 +87,7 @@ export function CrmDataTable({
                   onClick={() => onRowClick?.(row)}
                   className={`
                     group transition-colors
-                    ${onRowClick ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''}
+                    ${onRowClick ? 'cursor-pointer hover:bg-white/60 dark:hover:bg-white/5' : ''}
                   `}
                 >
                   {columns.map((col) => (
@@ -104,7 +104,7 @@ export function CrmDataTable({
 
       {/* Pagination */}
       {pagination && totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/30">
+        <div className="flex items-center justify-between px-4 py-3 border-t border-white/60 dark:border-white/10 bg-white/30 dark:bg-white/[0.02]">
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {((pagination.page - 1) * pagination.perPage) + 1}–{Math.min(pagination.page * pagination.perPage, pagination.total)} de {pagination.total}
           </span>

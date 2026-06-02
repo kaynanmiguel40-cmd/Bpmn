@@ -106,7 +106,7 @@ function ForecastSkeleton() {
     <div className="animate-pulse space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-          <div key={i} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+          <div key={i} className="crm-glass rounded-2xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="h-3 w-20 bg-slate-200 dark:bg-slate-700 rounded" />
               <div className="w-9 h-9 bg-slate-200 dark:bg-slate-700 rounded-lg" />
@@ -118,13 +118,13 @@ function ForecastSkeleton() {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {[1, 2].map(i => (
-          <div key={i} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+          <div key={i} className="crm-glass rounded-2xl p-5">
             <div className="h-4 w-44 bg-slate-200 dark:bg-slate-700 rounded mb-4" />
             <div className="h-72 bg-slate-100 dark:bg-slate-800 rounded-lg" />
           </div>
         ))}
       </div>
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+      <div className="crm-glass rounded-2xl p-5">
         <div className="h-4 w-56 bg-slate-200 dark:bg-slate-700 rounded mb-4" />
         <div className="h-72 bg-slate-100 dark:bg-slate-800 rounded-lg" />
       </div>
@@ -137,7 +137,7 @@ function ForecastSkeleton() {
 function RevenueVsForecastTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2">
+    <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg px-3 py-2">
       <p className="text-xs font-medium text-slate-700 dark:text-slate-200 mb-1">{label}</p>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2">
@@ -154,7 +154,7 @@ function StageDonutTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const d = payload[0];
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2">
+    <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg px-3 py-2">
       <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{d.name}</p>
       <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{formatCurrencyFull(d.value)}</p>
       <p className="text-xs text-slate-500 dark:text-slate-400">{d.payload.count} negocio{d.payload.count !== 1 ? 's' : ''}</p>
@@ -165,7 +165,7 @@ function StageDonutTooltip({ active, payload }) {
 function MonthlyBarTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2">
+    <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg px-3 py-2">
       <p className="text-xs font-medium text-slate-700 dark:text-slate-200 mb-1">{label}</p>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2">
@@ -185,7 +185,7 @@ function MonthSection({ monthData }) {
   const isNoDate = monthData.month === 'sem_data';
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+    <div className="crm-glass rounded-2xl overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
@@ -468,7 +468,7 @@ export function CrmForecastPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* C1 — ComposedChart: Receita Real vs Forecast */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">
             Receita Real vs Forecast
           </h3>
@@ -498,7 +498,7 @@ export function CrmForecastPage() {
         </div>
 
         {/* C2 — Donut: Valor por Estagio */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">
             Valor por Estagio do Pipeline
           </h3>
@@ -542,7 +542,7 @@ export function CrmForecastPage() {
 
       {/* D) BARCHART FULL-WIDTH — Mensal: Total vs Ponderado vs Real */}
       {monthlyBarData.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">
             Comparativo Mensal: Pipeline vs Forecast vs Receita
           </h3>
@@ -563,7 +563,7 @@ export function CrmForecastPage() {
 
       {/* E) BREAKDOWN POR ESTAGIO */}
       {stageBreakdown.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">
             Distribuicao por Estagio do Pipeline
           </h3>
@@ -606,7 +606,7 @@ export function CrmForecastPage() {
 
       {/* F) INTELIGENCIA DE CONVERSAO */}
       {learned?.stages?.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Brain size={18} className="text-violet-600 dark:text-violet-400" />

@@ -96,6 +96,44 @@ export async function getCrmPipelineWithDeals(pipelineId) {
     });
   }
 
+  // Cadencia: conta os toques de follow-up (call/email) por deal e descobre o
+  // proximo toque pendente. Alimenta o selo "Tentativa X/Y · proximo toque" no card.
+  const cadenceMap = {};
+  if (dealIds.length > 0) {
+    const { data: activities } = await supabase
+      .from('crm_activities')
+      .select('deal_id, start_date, completed')
+      .in('deal_id', dealIds)
+      .in('type', ['call', 'email'])
+      .is('deleted_at', null);
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const byDeal = {};
+    (activities || []).forEach(a => {
+      if (!a.deal_id) return;
+      (byDeal[a.deal_id] = byDeal[a.deal_id] || []).push(a);
+    });
+
+    Object.entries(byDeal).forEach(([dealId, list]) => {
+      const total = list.length;
+      const done = list.filter(a => a.completed).length;
+      // Proximo toque pendente = mais cedo entre os nao concluidos
+      const pending = list
+        .filter(a => !a.completed && a.start_date)
+        .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+      const next = pending[0] || null;
+      const nextDate = next ? next.start_date.slice(0, 10) : null;
+      cadenceMap[dealId] = {
+        total,
+        done,
+        attempt: Math.min(done + 1, total), // tentativa "atual" (proxima a fazer)
+        nextDate,
+        overdue: !!(nextDate && nextDate < todayStr),
+        finished: total > 0 && done >= total,
+      };
+    });
+  }
+
   const result = dbToPipeline(pipeline);
 
   // Agrupar deals por stage
@@ -122,6 +160,7 @@ export async function getCrmPipelineWithDeals(pipelineId) {
       owner: d.team_members ? { id: d.team_members.id, name: d.team_members.name, color: d.team_members.color } : null,
       createdAt: d.created_at,
       lastStageChangedAt,
+      cadence: cadenceMap[d.id] || null,
     });
   });
 
@@ -440,6 +479,82 @@ export async function seedCommercialPipelines() {
 
   if (created.length > 0) {
     toast(`${created.length} pipelines criadas com sucesso`, 'success');
+  }
+  return created;
+}
+
+// ==================== SEED EARLY STAGE (vendas + parceiros) ==================
+
+/**
+ * Tres pipelines pro estagio atual (na unha, poucos leads), todas com a mesma
+ * espinha (prospect -> cadencia -> conversa -> reuniao -> proposta -> fechado),
+ * pra reaproveitar o selo/botao de cadencia (que sao por NEGOCIO, nao por pipeline):
+ *
+ *   1. "Outbound Manual" (default) -> VENDAS frias: vender o Fyness pro cliente final.
+ *        A contatar -> Em cadencia -> Respondeu -> Reuniao/Demo -> Proposta -> Cliente
+ *
+ *   2. "Parceiros"               -> AQUISICAO DE PARCEIROS: contadores, financeiras,
+ *        advocacia, associacoes que indicam/endossam. (Nome "Parceiros" e exigido
+ *        pela integracao de Prospeccao modo parceiros -> enviar pra pipeline.)
+ *        Fluxo real do contador: mapeio -> cadencia pra conversar -> apresento a
+ *        parceria -> ele topa -> comeca a endossar/indicar clientes (que entram
+ *        QUENTES na pipeline de Vendas, ja em "Respondeu", nao em "A contatar").
+ *        Mapeado -> Em cadencia -> Respondeu -> Reuniao/Apresentacao -> Topou a parceria -> Parceiro ativo
+ *
+ *   3. "Leads de Parceiros"      -> clientes INDICADOS pelos parceiros (chegam quentes).
+ *        Indicado -> Em cadencia -> Respondeu -> Reuniao/Demo -> Proposta -> Cliente
+ *
+ * A cadencia NAO vira coluna em nenhuma: vive como atividades dentro de
+ * "Em cadencia" (ver createCadenceForDeal). Estagio = estado do lead, nao esforco.
+ * "Comecar limpo": apaga dados de teste + pipelines existentes antes de criar.
+ */
+export async function seedEarlyStagePipelines() {
+  await cleanAllCrmTestData();
+
+  const sales = await createCrmPipeline({
+    name: 'Outbound Manual',
+    isDefault: true,
+    stages: [
+      { name: 'A contatar',     position: 1, color: '#94a3b8', isWinStage: false },
+      { name: 'Em cadência',    position: 2, color: '#06b6d4', isWinStage: false },
+      { name: 'Respondeu',      position: 3, color: '#a78bfa', isWinStage: false },
+      { name: 'Reunião / Demo', position: 4, color: '#3b82f6', isWinStage: false, triggersMeeting: true },
+      { name: 'Proposta',       position: 5, color: '#f59e0b', isWinStage: false },
+      { name: 'Cliente',        position: 6, color: '#10b981', isWinStage: true  },
+    ],
+  });
+
+  const partners = await createCrmPipeline({
+    name: 'Parceiros',
+    isDefault: false,
+    stages: [
+      { name: 'Mapeado',               position: 1, color: '#94a3b8', isWinStage: false },
+      { name: 'Em cadência',           position: 2, color: '#06b6d4', isWinStage: false },
+      { name: 'Respondeu',             position: 3, color: '#a78bfa', isWinStage: false },
+      { name: 'Reunião / Apresentação',position: 4, color: '#3b82f6', isWinStage: false, triggersMeeting: true },
+      { name: 'Topou a parceria',      position: 5, color: '#f59e0b', isWinStage: false },
+      { name: 'Parceiro ativo',        position: 6, color: '#10b981', isWinStage: true  },
+    ],
+  });
+
+  // Clientes INDICADOS pelos parceiros — chegam quentes (sem fase fria). Pipeline
+  // separada pra medir o canal: quanto cada parceiro indica e quanto converte.
+  const partnerLeads = await createCrmPipeline({
+    name: 'Leads de Parceiros',
+    isDefault: false,
+    stages: [
+      { name: 'Indicado',       position: 1, color: '#94a3b8', isWinStage: false },
+      { name: 'Em cadência',    position: 2, color: '#06b6d4', isWinStage: false },
+      { name: 'Respondeu',      position: 3, color: '#a78bfa', isWinStage: false },
+      { name: 'Reunião / Demo', position: 4, color: '#3b82f6', isWinStage: false, triggersMeeting: true },
+      { name: 'Proposta',       position: 5, color: '#f59e0b', isWinStage: false },
+      { name: 'Cliente',        position: 6, color: '#10b981', isWinStage: true  },
+    ],
+  });
+
+  const created = [sales, partners, partnerLeads].filter(p => p?.id);
+  if (created.length > 0) {
+    toast(`${created.length} pipelines criadas (Vendas + Parceiros + Leads de Parceiros)`, 'success');
   }
   return created;
 }

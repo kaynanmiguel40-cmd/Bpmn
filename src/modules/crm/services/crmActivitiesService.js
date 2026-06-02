@@ -193,6 +193,51 @@ export async function createCrmActivity(data) {
   return activity;
 }
 
+// ==================== CADENCIA DE OUTBOUND ====================
+
+/**
+ * Cadencia padrao de follow-up pra lead frio. Cada toque eh uma atividade
+ * com data — eh isso que alimenta o selo "Tentativa X/Y · proximo toque" no card.
+ * dayOffset = dias a partir de hoje.
+ */
+export const CADENCE_TEMPLATE = [
+  { dayOffset: 0,  type: 'call',  title: 'Cadência · Tentativa 1 — Ligação' },
+  { dayOffset: 2,  type: 'call',  title: 'Cadência · Tentativa 2 — WhatsApp / Ligação' },
+  { dayOffset: 5,  type: 'call',  title: 'Cadência · Tentativa 3 — Ligação' },
+  { dayOffset: 7,  type: 'call',  title: 'Cadência · Tentativa 4 — Áudio / Mensagem' },
+  { dayOffset: 10, type: 'call',  title: 'Cadência · Tentativa 5 — Break-up ("vou encerrar por aqui")' },
+];
+
+/**
+ * Cria as atividades da cadencia pra um deal. Os toques ficam agendados as 09:00
+ * de hoje, +2, +5, +7 e +10 dias. Retorna quantas foram criadas.
+ */
+export async function createCadenceForDeal({ dealId, contactId = null }) {
+  if (!dealId) return 0;
+
+  let created = 0;
+  for (const step of CADENCE_TEMPLATE) {
+    const d = new Date();
+    d.setDate(d.getDate() + step.dayOffset);
+    d.setHours(9, 0, 0, 0);
+
+    const activity = await createCrmActivity({
+      title: step.title,
+      type: step.type,
+      dealId,
+      contactId,
+      startDate: d.toISOString(),
+      completed: false,
+    });
+    if (activity?.id) created++;
+  }
+
+  if (created > 0) {
+    toast(`Cadência iniciada — ${created} follow-ups agendados`, 'success');
+  }
+  return created;
+}
+
 export async function updateCrmActivity(id, updates) {
   const result = await activityService.update(id, updates);
 

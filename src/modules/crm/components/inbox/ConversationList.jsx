@@ -31,10 +31,10 @@ function ConversationItem({ conv, active, onSelect }) {
   return (
     <button
       onClick={() => onSelect(conv)}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 border-b border-slate-100 dark:border-slate-800 transition-colors text-left
+      className={`w-full flex items-center gap-3 px-3 py-2.5 border-b border-white/40 dark:border-white/5 transition-colors text-left
         ${active
-          ? 'bg-fyness-primary/10 dark:bg-fyness-primary/20'
-          : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}
+          ? 'bg-fyness-primary/10 dark:bg-blue-500/15 ring-1 ring-inset ring-fyness-primary/20'
+          : 'hover:bg-white/60 dark:hover:bg-white/5'}`}
     >
       {conv.avatarUrl ? (
         <img
@@ -103,8 +103,8 @@ export function ConversationList({ activeKey, onSelect }) {
   }, [conversations, search]);
 
   return (
-    <aside className="w-full max-w-sm flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-      <div className="p-3 border-b border-slate-200 dark:border-slate-700">
+    <aside className="w-full max-w-sm flex flex-col border-r border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/50 backdrop-blur-xl">
+      <div className="p-3 border-b border-white/60 dark:border-white/10">
         <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Conversas</h2>
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -113,7 +113,7 @@ export function ConversationList({ activeKey, onSelect }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar conversa..."
-            className="w-full pl-8 pr-3 py-1.5 text-sm rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+            className="w-full pl-8 pr-3 py-1.5 text-sm rounded-xl border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-800/60 backdrop-blur text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
           />
         </div>
       </div>

@@ -33,7 +33,7 @@ function ThreadHeader({ conversation }) {
     : null;
 
   return (
-    <div className="h-14 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 flex items-center justify-between shrink-0">
+    <div className="h-14 border-b border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/50 backdrop-blur-xl px-4 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-3 min-w-0">
         {conversation.avatarUrl ? (
           <img
@@ -117,11 +117,7 @@ export function MessageThread({ conversation, children }) {
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 20% 30%, rgba(99,102,241,0.05) 0%, transparent 40%)',
-        }}
+        className="flex-1 overflow-y-auto p-4 crm-mesh"
       >
         {isLoading ? (
           <div className="text-center text-sm text-slate-400 py-8">Carregando mensagens...</div>

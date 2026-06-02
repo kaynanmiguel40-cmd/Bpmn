@@ -23,7 +23,6 @@ import {
   Megaphone,
   Crosshair,
   Zap,
-  Sun,
   PhoneCall,
   MessageCircle,
 } from 'lucide-react';
@@ -38,8 +37,6 @@ const PinIcon = ({ pinned }) => (
 );
 
 const crmNavItems = [
-  { to: '/crm', icon: LayoutDashboard, label: 'Dashboard Diario', exact: true },
-  { to: '/crm/hoje', icon: Sun, label: 'Hoje' },
   { section: 'Vendas' },
   { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline' },
   { to: '/crm/discador', icon: PhoneCall, label: 'Discador' },
@@ -52,6 +49,7 @@ const crmNavItems = [
   { section: 'Cadastros' },
   { to: '/crm/cadastros', icon: Users, label: 'Cadastros' },
   { section: 'Gestao' },
+  { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { to: '/crm/goals', icon: Trophy, label: 'Metas' },
   { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },
   { to: '/crm/reports', icon: BarChart3, label: 'Relatorios' },
@@ -74,8 +72,8 @@ function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact }) {
       className={`
         flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors duration-150
         ${isActive
-          ? 'bg-fyness-primary/10 dark:bg-fyness-primary/20 text-fyness-primary dark:text-blue-400 font-medium'
-          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+          ? 'bg-fyness-primary/10 dark:bg-blue-500/15 text-fyness-primary dark:text-blue-300 font-semibold ring-1 ring-fyness-primary/20'
+          : 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-slate-100'
         }
         ${isCollapsed ? 'justify-center' : ''}
       `}
@@ -106,12 +104,12 @@ export function CrmSidebar() {
       onMouseEnter={() => { if (!isPinned) setIsCollapsed(false); }}
       onMouseLeave={() => { if (!isPinned) setIsCollapsed(true); }}
       className={`
-        flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700/60 transition-[width] duration-200 ease-out h-screen sticky top-0
+        flex flex-col bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border-r border-white/60 dark:border-white/10 transition-[width] duration-200 ease-out h-screen sticky top-0
         ${isCollapsed ? 'w-14' : 'w-48'}
       `}
     >
       {/* Logo Header */}
-      <div className="h-14 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-700/60">
+      <div className="h-14 flex items-center justify-between px-3 border-b border-white/60 dark:border-white/10">
         {isCollapsed ? (
           <img src={logoFyness} alt="Fyness" className="w-7 h-7 object-contain mx-auto" />
         ) : (
@@ -157,7 +155,7 @@ export function CrmSidebar() {
       <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto" role="navigation" aria-label="Menu CRM">
         {crmNavItems.map((item, idx) =>
           item.divider ? (
-            <div key={`div-${idx}`} className="my-2 border-t border-slate-200 dark:border-slate-700/60" />
+            <div key={`div-${idx}`} className="my-2 border-t border-white/60 dark:border-white/10" />
           ) : item.section ? (
             !isCollapsed && (
               <div key={`sec-${idx}`} className="pt-3 pb-1 px-2.5">

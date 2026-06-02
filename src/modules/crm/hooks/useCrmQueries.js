@@ -4,9 +4,9 @@ import { toast } from '../../../contexts/ToastContext';
 // Services
 import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany, softDeleteCrmCompany } from '../services/crmCompaniesService';
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
-import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, reorderCrmStages, addCrmStage, deleteCrmStage, setWinStage, ensurePartnersPipeline, seedCommercialPipelines, cleanAllCrmTestData } from '../services/crmPipelinesService';
+import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, reorderCrmStages, addCrmStage, deleteCrmStage, setWinStage, ensurePartnersPipeline, seedCommercialPipelines, seedEarlyStagePipelines, cleanAllCrmTestData } from '../services/crmPipelinesService';
 import { getCrmDeals, getDealsByPipeline, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, getDealActivities, getDealStageHistory, getDealsWithMeetings, schedulePartnerMeeting } from '../services/crmDealsService';
-import { getCrmActivities, getActivitiesForCalendar, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity } from '../services/crmActivitiesService';
+import { getCrmActivities, getActivitiesForCalendar, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal } from '../services/crmActivitiesService';
 import { getCrmDashboardKPIs, getSalesRanking, getBonificacaoProgress } from '../services/crmDashboardService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, getProspectListNames, getProspectsAnalytics, createCrmProspect, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
@@ -225,6 +225,29 @@ export function useSeedCommercialPipelines() {
     onSuccess: () => {
       // Invalida TODAS as queries do CRM pois limpamos tudo antes
       qc.invalidateQueries({ queryKey: ['crm'] });
+    },
+  });
+}
+
+export function useSeedEarlyStagePipelines() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: seedEarlyStagePipelines,
+    onSuccess: () => {
+      // Limpou tudo antes de criar — invalida o CRM inteiro
+      qc.invalidateQueries({ queryKey: ['crm'] });
+    },
+  });
+}
+
+export function useCreateCadence() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createCadenceForDeal,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
     },
   });
 }
@@ -796,10 +819,10 @@ export function useDeleteCrmGoal() {
 
 // ==================== DASHBOARD ====================
 
-export function useCrmDashboardKPIs(range) {
+export function useCrmDashboardKPIs(range, scope = 'sales') {
   return useQuery({
-    queryKey: [...crmQueryKeys.dashboard, range || null],
-    queryFn: () => getCrmDashboardKPIs(range),
+    queryKey: [...crmQueryKeys.dashboard, range || null, scope],
+    queryFn: () => getCrmDashboardKPIs(range, scope),
     staleTime: 60_000,
   });
 }

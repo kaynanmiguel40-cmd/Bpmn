@@ -72,12 +72,12 @@ export function CrmModal({ open, onClose, title, size = 'md', children, footer }
       onClick={(e) => { if (e.target === overlayRef.current) onClose?.(); }}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-md" />
 
       {/* Modal */}
-      <div className={`relative w-full ${sizeMap[size]} bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700/50 flex flex-col max-h-[90vh]`}>
+      <div className={`relative w-full ${sizeMap[size]} bg-white/90 dark:bg-slate-900/85 backdrop-blur-2xl rounded-2xl shadow-glass-lg border border-white/60 dark:border-white/10 flex flex-col max-h-[90vh] animate-scale-in`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700/50 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/60 dark:border-white/10 shrink-0">
           <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">{title}</h3>
           <button
             onClick={onClose}
@@ -95,7 +95,7 @@ export function CrmModal({ open, onClose, title, size = 'md', children, footer }
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/30 rounded-b-xl shrink-0">
+          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/60 dark:border-white/10 bg-white/30 dark:bg-white/[0.02] rounded-b-2xl shrink-0">
             {footer}
           </div>
         )}

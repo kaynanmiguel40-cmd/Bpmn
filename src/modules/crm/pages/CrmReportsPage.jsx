@@ -98,7 +98,7 @@ const DAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
 
 function KpiCard({ icon: Icon, iconClass, label, value, sub }) {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+    <div className="crm-glass rounded-2xl p-4">
       <div className="flex items-center gap-2 mb-2">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${iconClass}`}>
           <Icon size={16} />
@@ -118,13 +118,13 @@ function ReportSkeleton() {
     <div className="animate-pulse space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+          <div key={i} className="crm-glass rounded-2xl p-4">
             <div className="h-4 w-20 bg-slate-200 dark:bg-slate-700 rounded mb-3" />
             <div className="h-6 w-28 bg-slate-200 dark:bg-slate-700 rounded" />
           </div>
         ))}
       </div>
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-6">
+      <div className="crm-glass rounded-2xl p-6">
         <div className="h-5 w-40 bg-slate-200 dark:bg-slate-700 rounded mb-4" />
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
@@ -168,7 +168,7 @@ function SalesTab({ startDate, endDate }) {
 
       {/* Barra visual ganhos vs perdidos */}
       {(report.won.count + report.lost.count) > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Ganhos vs Perdidos</h4>
           <div className="flex h-6 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700">
             {report.won.count > 0 && (
@@ -193,7 +193,7 @@ function SalesTab({ startDate, endDate }) {
 
       {/* Deals ganhos */}
       {report.wonDeals && report.wonDeals.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
             Negocios Ganhos ({report.wonDeals.length})
           </h4>
@@ -215,7 +215,7 @@ function SalesTab({ startDate, endDate }) {
 
       {/* Perdidos por Motivo */}
       {report.lostReasons && report.lostReasons.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
             Perdidos por Motivo ({report.lost.count})
           </h4>
@@ -268,7 +268,7 @@ function SellersTab({ startDate, endDate }) {
   return (
     <div className="space-y-4">
       {/* Tabela comparativa */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+      <div className="crm-glass rounded-2xl overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/50">
           <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Desempenho por Vendedor</h4>
         </div>
@@ -324,7 +324,7 @@ function SellersTab({ startDate, endDate }) {
       </div>
 
       {/* Grafico de barras: receita por vendedor */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+      <div className="crm-glass rounded-2xl p-5">
         <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">Receita por Vendedor</h4>
         <div className="space-y-3">
           {report.sellers.map((seller) => {
@@ -385,7 +385,7 @@ function FunnelTab({ pipelineId }) {
       </div>
 
       {/* Funil visual */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+      <div className="crm-glass rounded-2xl p-5">
         <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">Funil de Conversao</h4>
         <div className="space-y-2">
           {(report.stages || []).map((stage, idx) => {
@@ -473,7 +473,7 @@ function ActivitiesTab({ startDate, endDate }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Por tipo */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">Por Tipo</h4>
           {typeEntries.length === 0 ? (
             <p className="text-xs text-slate-400">Nenhuma atividade registrada.</p>
@@ -517,7 +517,7 @@ function ActivitiesTab({ startDate, endDate }) {
         </div>
 
         {/* Por dia da semana */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">Por Dia da Semana</h4>
           <div className="flex items-end gap-2 h-32">
             {(report.byDayOfWeek || []).map((count, idx) => {
@@ -543,7 +543,7 @@ function ActivitiesTab({ startDate, endDate }) {
 
       {/* Por vendedor */}
       {report.byOwner && report.byOwner.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        <div className="crm-glass rounded-2xl overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/50">
             <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Atividades por Vendedor</h4>
           </div>

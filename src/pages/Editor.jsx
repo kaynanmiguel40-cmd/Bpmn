@@ -49,6 +49,7 @@ export default function Editor() {
   const [pdfOrientation, setPdfOrientation] = useState('auto');
   const [pdfScale, setPdfScale] = useState(2);
   const [showProcessOrder, setShowProcessOrder] = useState(false);
+  const [showCsDropdown, setShowCsDropdown] = useState(false);
 
   // Carregar todos os projetos para o painel de dependências
   useEffect(() => {
@@ -603,25 +604,63 @@ export default function Editor() {
               </svg>
               <span>RH</span>
             </button>
-            <button
-              onClick={async () => {
-                if (window.confirm('Isso vai substituir o diagrama atual pelo Template Pós-Venda Fyness. Deseja continuar?')) {
-                  const ok = await bpmnEditorRef.current?.loadPosVendaTemplate();
-                  if (ok) {
-                    setSuccessMessage('Template Pós-Venda carregado!');
-                    setShowSaveToast(true);
-                    setTimeout(() => { setShowSaveToast(false); setSuccessMessage(''); }, 3000);
-                  }
-                }
-              }}
-              className="flex items-center gap-2 px-3 py-2 border border-teal-300 bg-teal-50 rounded-lg text-teal-700 hover:bg-teal-100 transition-colors text-sm"
-              title="Aplicar Template Pós-Venda Fyness"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Pós-Venda</span>
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowCsDropdown(v => !v)}
+                className="flex items-center gap-2 px-3 py-2 border border-teal-300 bg-teal-50 rounded-lg text-teal-700 hover:bg-teal-100 transition-colors text-sm"
+                title="Templates Customer Success"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Templates CS</span>
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showCsDropdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowCsDropdown(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
+                    {[
+                      { key: 'agora', label: 'CS Agora (early ~5 clientes)', desc: 'Operação enxuta na unha · sem health score nem dunning' },
+                      { key: 'macro', label: 'CS Macro — Visão das 6 fases', desc: 'Norte futuro · escala 15-20+ clientes' },
+                      { key: 'fase1', label: '1. Implementação Guiada', desc: 'D0-D7 · TTV ≤48h' },
+                      { key: 'fase2', label: '2. Ativação', desc: 'D8-D30 · 3 sem ≥3 usos' },
+                      { key: 'fase3', label: '3. Hábito', desc: 'D31-D120 · Health ≥70 no M3' },
+                      { key: 'fase4', label: '4. Expansão', desc: 'M4-M11 · Starter→Pro' },
+                      { key: 'fase5', label: '5. Renovação Anual', desc: 'M10-M12 · mensal→anual' },
+                      { key: 'fase6', label: '6. Advocacy', desc: 'M12+ · indicação + case' },
+                    ].map(({ key, label, desc }) => (
+                      <button
+                        key={key}
+                        onClick={async () => {
+                          setShowCsDropdown(false);
+                          if (!window.confirm(`Isso vai substituir o diagrama atual pelo template "${label}". Continuar?`)) return;
+                          const ok = await bpmnEditorRef.current?.loadCsTemplateByKey(key);
+                          if (ok) {
+                            setSuccessMessage(`Template "${label}" carregado!`);
+                            setShowSaveToast(true);
+                            setTimeout(() => { setShowSaveToast(false); setSuccessMessage(''); }, 3000);
+                          } else {
+                            setErrorMessage(`Erro ao carregar template "${label}"`);
+                            setShowErrorToast(true);
+                            setTimeout(() => { setShowErrorToast(false); setErrorMessage(''); }, 4000);
+                          }
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-teal-50 transition-colors"
+                      >
+                        <div className="text-sm font-medium text-slate-800">{label}</div>
+                        <div className="text-xs text-slate-500">{desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <button
               onClick={() => setShowPdfModal(true)}
               disabled={isExportingPdf}

@@ -190,14 +190,14 @@ function GoalsSkeleton() {
   return (
     <div className="animate-pulse space-y-6">
       <div className="h-10 w-72 bg-slate-200 dark:bg-slate-700 rounded-lg" />
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-6">
+      <div className="crm-glass rounded-2xl p-6">
         <div className="h-5 w-48 bg-slate-200 dark:bg-slate-700 rounded mb-4" />
         <div className="h-4 w-full bg-slate-200 dark:bg-slate-700 rounded mb-2" />
         <div className="h-3 w-32 bg-slate-100 dark:bg-slate-800 rounded" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {[1, 2, 3].map(i => (
-          <div key={i} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+          <div key={i} className="crm-glass rounded-2xl p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-6 h-6 bg-slate-200 dark:bg-slate-700 rounded-full" />
               <div className="flex-1">
@@ -336,7 +336,7 @@ export function CrmGoalsPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar meta..."
-                className="pl-8 pr-7 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg w-44 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
+                className="pl-8 pr-7 py-1.5 text-sm bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg w-44 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
               />
               {search && (
                 <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -502,12 +502,12 @@ export function CrmGoalsPage() {
       {/* Resumo consolidado das metas individuais */}
       {typeTab === 'individuais' && summary && statusTab === 'active' && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+          <div className="crm-glass rounded-2xl p-4">
             <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Soma das Metas</div>
             <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(summary.totalTarget)}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400">{summary.count} meta{summary.count !== 1 ? 's' : ''}</div>
           </div>
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+          <div className="crm-glass rounded-2xl p-4">
             <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Progresso Total</div>
             <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(summary.totalCurrent)}</div>
             <div className="flex items-center gap-2 mt-1">
@@ -518,7 +518,7 @@ export function CrmGoalsPage() {
               <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{summary.totalPercent}%</span>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+          <div className="crm-glass rounded-2xl p-4">
             <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">No Ritmo</div>
             <div className="flex items-baseline gap-2">
               <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{summary.onTrack + summary.achieved}</span>
@@ -527,7 +527,7 @@ export function CrmGoalsPage() {
               )}
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+          <div className="crm-glass rounded-2xl p-4">
             <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Atrasadas</div>
             <span className={`text-lg font-bold ${summary.behind > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>
               {summary.behind}
@@ -552,7 +552,7 @@ export function CrmGoalsPage() {
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+                className="text-xs bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg px-2 py-1 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
               >
                 {SORT_OPTIONS.map(o => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -593,7 +593,7 @@ export function CrmGoalsPage() {
 
               return (
                 <div key={goal.id}
-                  className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5 hover:border-blue-300 dark:hover:border-blue-700/50 transition-colors group">
+                  className="crm-glass rounded-2xl p-5 hover:border-blue-300 dark:hover:border-blue-700/50 transition-colors group">
                   {/* Header */}
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3 min-w-0">

@@ -320,7 +320,7 @@ export function CrmDialerPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar nome ou telefone..."
-                className="pl-8 pr-7 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
+                className="pl-8 pr-7 py-1.5 text-sm bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
               />
               {search && (
                 <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -333,7 +333,7 @@ export function CrmDialerPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+                className="text-xs bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
               >
                 {STATUS_OPTIONS.map(o => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -341,7 +341,7 @@ export function CrmDialerPage() {
               </select>
             )}
 
-            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={excludeRecent}
@@ -354,14 +354,14 @@ export function CrmDialerPage() {
             <button
               onClick={() => setShowCheatsheet(v => !v)}
               title="Atalhos de teclado (?)"
-              className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
+              className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
             >
               <Keyboard size={14} /> Atalhos
             </button>
 
             <Link
               to="/crm/discador/historico"
-              className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
+              className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
             >
               <History size={14} /> Historico
             </Link>
@@ -498,7 +498,7 @@ function ActiveContactCard({ contact, position, total, isInCall, elapsed, env, o
   const showCopy = env && !env.isMobile;
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-6">
+    <div className="crm-glass rounded-2xl p-6">
       <div className="flex items-center justify-between mb-4">
         <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
           Contato {position} de {total}
@@ -621,7 +621,7 @@ function ActiveContactCard({ contact, position, total, isInCall, elapsed, env, o
 
 function RecentCallsPanel({ calls }) {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50">
+    <div className="crm-glass rounded-2xl">
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700/50 flex items-center gap-2">
         <History size={14} className="text-slate-400" />
         <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -661,7 +661,7 @@ function RecentCallsPanel({ calls }) {
 
 function QueueList({ queue, currentIndex, onSelect, disabled }) {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+    <div className="crm-glass rounded-2xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700/50 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Filter size={14} className="text-slate-400" />

@@ -1,5 +1,6 @@
 // Barrel export dos componentes UI do CRM
 export { CrmPageHeader } from './CrmPageHeader';
+export { CrmPanel } from './CrmPanel';
 export { CrmKpiCard } from './CrmKpiCard';
 export { CrmDataTable } from './CrmDataTable';
 export { CrmModal } from './CrmModal';

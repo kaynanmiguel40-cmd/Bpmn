@@ -8,7 +8,7 @@ import { toast } from '../../../contexts/ToastContext';
  *   NAO afeta: pipeline aberto, funil (sempre atuais) e revenue chart (12 meses trailing).
  * @returns {Promise<import('../types/crmTypes').CrmDashboardKPIs>}
  */
-export async function getCrmDashboardKPIs(range = {}) {
+export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
   try {
     const now = new Date();
     const periodStart = range.start || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -35,6 +35,36 @@ export async function getCrmDashboardKPIs(range = {}) {
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
     const endOfWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    // ===== Escopo de VENDAS =====================================================
+    // O dashboard e de vendas. Pipelines de AQUISICAO DE PARCEIROS ("Parceiros")
+    // e de NUTRICAO ("Nurturing") nao sao venda — entram como prospeccao/reativacao
+    // e poluiriam receita, conversao e "negociacoes ativas" se misturadas. Entao
+    // KPIs de venda contam SO as pipelines de venda (Outbound Manual, Leads de
+    // Parceiros, etc.). "Leads de Parceiros" (clientes indicados) E venda.
+    const { data: allPipelines = [] } = await supabase.from('crm_pipelines').select('id, name, is_default');
+    const isNurturing  = p => /nurturing|nutri/i.test(p.name || '');
+    const isPartnerAcq = p => /^\s*parceiros\s*$/i.test(p.name || ''); // exatamente "Parceiros", nao "Leads de Parceiros"
+    const nurturingIds      = (allPipelines || []).filter(isNurturing).map(p => p.id);
+    const partnerIds        = (allPipelines || []).filter(isPartnerAcq).map(p => p.id);
+    const salesPipelineIds  = (allPipelines || []).filter(p => !isNurturing(p) && !isPartnerAcq(p)).map(p => p.id);
+
+    // Escopo selecionado: 'sales' (default) | 'partners' | 'all'.
+    let targetIds;
+    if (scope === 'all') targetIds = (allPipelines || []).map(p => p.id);
+    else if (scope === 'partners') targetIds = partnerIds;
+    else targetIds = salesPipelineIds;
+    // Guard: escopo vazio -> id impossivel (queries retornam vazio em vez de tudo)
+    const scopedIds = targetIds.length ? targetIds : ['00000000-0000-0000-0000-000000000000'];
+
+    // Pipeline que alimenta o FUNIL (1 so): no escopo parceiros = "Parceiros";
+    // senao = pipeline default (Outbound Manual) ou a primeira de venda.
+    const funnelPipelineId = scope === 'partners'
+      ? (partnerIds[0] || null)
+      : ((allPipelines || []).find(p => p.is_default)?.id
+         || (allPipelines || []).find(p => salesPipelineIds.includes(p.id))?.id
+         || (allPipelines || [])[0]?.id
+         || null);
 
     // Executar todas as queries em paralelo
     const [
@@ -71,28 +101,28 @@ export async function getCrmDashboardKPIs(range = {}) {
       // Deals abertos (valor total + count + pipeline_id pra excluir nurturing) — pipeline atual, nao filtra periodo
       supabase.from('crm_deals').select('id, value, pipeline_id').eq('status', 'open').is('deleted_at', null),
 
-      // Deals ganhos no periodo selecionado
-      supabase.from('crm_deals').select('id, value').eq('status', 'won').gte('closed_at', periodStart).lte('closed_at', periodEnd).is('deleted_at', null),
+      // Deals ganhos no periodo selecionado (so vendas)
+      supabase.from('crm_deals').select('id, value').eq('status', 'won').in('pipeline_id', scopedIds).gte('closed_at', periodStart).lte('closed_at', periodEnd).is('deleted_at', null),
 
-      // Deals fechados (won + lost) no periodo — para taxa de conversao
-      supabase.from('crm_deals').select('id, status').in('status', ['won', 'lost']).gte('closed_at', periodStart).lte('closed_at', periodEnd).is('deleted_at', null),
+      // Deals fechados (won + lost) no periodo — para taxa de conversao (so vendas)
+      supabase.from('crm_deals').select('id, status').in('status', ['won', 'lost']).in('pipeline_id', scopedIds).gte('closed_at', periodStart).lte('closed_at', periodEnd).is('deleted_at', null),
 
       // Atividades pendentes
       supabase.from('crm_activities').select('id', { count: 'exact', head: true }).eq('completed', false).is('deleted_at', null),
 
-      // Deals fechando em 7 dias (com detalhes para o card)
+      // Deals fechando em 7 dias (com detalhes para o card) — so vendas
       supabase.from('crm_deals')
         .select('id, title, value, expected_close_date, crm_contacts(id, name, avatar_color), crm_companies(name)')
-        .eq('status', 'open').lte('expected_close_date', in7Days).gte('expected_close_date', now.toISOString()).is('deleted_at', null)
+        .eq('status', 'open').in('pipeline_id', scopedIds).lte('expected_close_date', in7Days).gte('expected_close_date', now.toISOString()).is('deleted_at', null)
         .order('expected_close_date'),
 
-      // Pipeline default (com stages ordenados) — fonte do funil
-      supabase.from('crm_pipelines')
-        .select('id, name, is_default, crm_pipeline_stages(id, name, position, is_win_stage, crm_deals(id, value, status))')
-        .order('is_default', { ascending: false })
-        .order('created_at')
-        .limit(1)
-        .maybeSingle(),
+      // Pipeline do funil (segue o escopo: parceiros -> "Parceiros"; senao -> default)
+      funnelPipelineId
+        ? supabase.from('crm_pipelines')
+            .select('id, name, is_default, crm_pipeline_stages(id, name, position, is_win_stage, crm_deals(id, value, status))')
+            .eq('id', funnelPipelineId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
 
       // Atividades vencidas: nao concluidas e com start_date no passado
       supabase.from('crm_activities')
@@ -103,36 +133,40 @@ export async function getCrmDashboardKPIs(range = {}) {
         .order('start_date', { ascending: true })
         .limit(20),
 
-      // Deals com expected_close_date estourado mas ainda abertos
+      // Deals com expected_close_date estourado mas ainda abertos — so vendas
       supabase.from('crm_deals')
         .select('id, title, value, expected_close_date, crm_contacts(id, name, avatar_color), crm_companies(name)')
         .eq('status', 'open')
+        .in('pipeline_id', scopedIds)
         .lt('expected_close_date', todayIso)
         .is('deleted_at', null)
         .order('expected_close_date', { ascending: true })
         .limit(20),
 
-      // Deals "frios": abertos mas sem update ha >= STALE_DEAL_DAYS dias
+      // Deals "frios": abertos mas sem update ha >= STALE_DEAL_DAYS dias — so vendas
       supabase.from('crm_deals')
         .select('id, title, value, updated_at, crm_contacts(id, name, avatar_color), crm_companies(name), crm_pipeline_stages(id, name)')
         .eq('status', 'open')
+        .in('pipeline_id', scopedIds)
         .lt('updated_at', staleThreshold)
         .is('deleted_at', null)
         .order('updated_at', { ascending: true })
         .limit(20),
 
-      // Revenue ultimos 12 meses (deals ganhos)
+      // Revenue ultimos 12 meses (deals ganhos) — so vendas
       supabase.from('crm_deals')
         .select('value, closed_at')
         .eq('status', 'won')
+        .in('pipeline_id', scopedIds)
         .gte('closed_at', new Date(now.getFullYear() - 1, now.getMonth(), 1).toISOString())
         .is('deleted_at', null),
 
-      // Deals fechados (won+lost) no PERIODO ANTERIOR — para trends.
+      // Deals fechados (won+lost) no PERIODO ANTERIOR — para trends (so vendas).
       // 1 query so: value + status nos dois estados.
       supabase.from('crm_deals')
         .select('id, value, status')
         .in('status', ['won', 'lost'])
+        .in('pipeline_id', scopedIds)
         .gte('closed_at', previousStart)
         .lte('closed_at', previousEnd)
         .is('deleted_at', null),
@@ -146,22 +180,21 @@ export async function getCrmDashboardKPIs(range = {}) {
         .neq('status', 'cancelled')
         .is('deleted_at', null),
 
-      // Total acumulado de leads perdidos (sem filtro de periodo) — KPI absoluto.
-      supabase.from('crm_deals').select('id', { count: 'exact', head: true }).eq('status', 'lost').is('deleted_at', null),
+      // Total acumulado de leads perdidos (sem filtro de periodo) — KPI absoluto (so vendas).
+      supabase.from('crm_deals').select('id', { count: 'exact', head: true }).eq('status', 'lost').in('pipeline_id', scopedIds).is('deleted_at', null),
 
-      // Negociacoes quentes: deals abertos fechando em <= 30 dias.
+      // Negociacoes quentes: deals abertos fechando em <= 30 dias (so vendas).
       supabase.from('crm_deals')
         .select('id, value')
         .eq('status', 'open')
+        .in('pipeline_id', scopedIds)
         .not('expected_close_date', 'is', null)
         .lte('expected_close_date', hotDealThreshold)
         .is('deleted_at', null),
 
-      // Pipelines de nutricao (nome contem "Nurturing", case-insensitive) —
-      // pra excluir do "Valor Negociacoes Ativas" e contabilizar separado.
-      supabase.from('crm_pipelines')
-        .select('id')
-        .ilike('name', '%nurturing%'),
+      // (placeholder mantido p/ nao alterar a ordem do destructure) — nurturing
+      // agora vem de `nurturingIds` calculado acima.
+      Promise.resolve({ data: [] }),
 
       // Reunioes agendadas pra hoje (type=meeting OR call, nao concluidas)
       supabase.from('crm_activities')
@@ -188,10 +221,11 @@ export async function getCrmDashboardKPIs(range = {}) {
     const allClosed = allClosedRes.data || [];
     const wonLast12 = wonLast12Res.data || [];
     const hotDeals = hotDealsRes.data || [];
-    const nurturingPipelineIds = new Set((nurturingPipelineRes.data || []).map(p => p.id));
+    const nurturingPipelineIds = new Set(nurturingIds);
+    const scopedSet = new Set(targetIds);
 
-    // Particiona open deals: ativos (nao-nurturing) vs nutricao
-    const activeOpenDeals = openDeals.filter(d => !nurturingPipelineIds.has(d.pipeline_id));
+    // Particiona open deals pelo ESCOPO selecionado (vendas / parceiros / geral).
+    const activeOpenDeals = openDeals.filter(d => scopedSet.has(d.pipeline_id));
     const nurturingDeals = openDeals.filter(d => nurturingPipelineIds.has(d.pipeline_id));
 
     const activeDealsValue = activeOpenDeals.reduce((sum, d) => sum + (d.value || 0), 0);
@@ -402,7 +436,9 @@ export async function getCrmDashboardKPIs(range = {}) {
 
     return {
       totalContacts: contactsRes.count || 0,
-      totalLeads: leadsRes.count || 0,
+      // "Leads" = negocios de venda em aberto (o funil real). Antes lia a tabela
+      // crm_contacts (status=lead), que fica vazia quando se trabalha so em deals.
+      totalLeads: activeOpenDeals.length,
       totalCompanies: companiesRes.count || 0,
       openDeals: openDeals.length,
       activeOpenDeals: activeOpenDeals.length,

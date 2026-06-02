@@ -5,16 +5,17 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle, Repeat, Upload } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
 import { useUrlState } from '../../../hooks/useUrlState';
 import { supabase } from '../../../lib/supabase';
 import { DealFormModal } from '../components/DealFormModal';
 import { LostReasonModal } from '../components/LostReasonModal';
 import { ScheduleMeetingModal } from '../components/ScheduleMeetingModal';
+import { ImportLeadsModal } from '../components/ImportLeadsModal';
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
@@ -35,6 +36,28 @@ function getStageHealth(deal) {
   return { days, label: `${days}d`, color: 'rose' };
 }
 
+// Monta o selo de cadencia do card a partir de deal.cadence (calculado no service).
+// Retorna { text, color } ou null se nao ha cadencia.
+function getCadenceBadge(cadence) {
+  if (!cadence || !cadence.total) return null;
+  if (cadence.finished) {
+    return { text: '✓ cadência concluída', color: 'slate' };
+  }
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let when = '';
+  let color = 'cyan';
+  if (cadence.nextDate) {
+    if (cadence.nextDate < todayStr) { when = 'atrasado'; color = 'rose'; }
+    else if (cadence.nextDate === todayStr) { when = 'hoje'; color = 'amber'; }
+    else {
+      const [y, m, d] = cadence.nextDate.split('-');
+      when = `${d}/${m}`;
+    }
+  }
+  const text = `Tentativa ${cadence.attempt}/${cadence.total}${when ? ` · ${when}` : ''}`;
+  return { text, color };
+}
+
 // Limpa telefone deixando so digitos (com codigo de pais Brasil 55 prefixado)
 function getWhatsappLink(phone) {
   if (!phone) return null;
@@ -50,6 +73,7 @@ function getWhatsappLink(phone) {
 function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
   const navigate = useNavigate();
   const isDragging = useRef(false);
+  const cadenceMutation = useCreateCadence();
 
   // Telefone preferencial: contactPhone do deal -> contact.phone joineado -> company.phone
   const phone = deal.contactPhone || deal.contact?.phone || deal.company?.phone || '';
@@ -61,6 +85,22 @@ function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
     amber:   'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
     orange:  'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400',
     rose:    'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400',
+  };
+
+  const cadenceBadge = getCadenceBadge(deal.cadence);
+  const cadenceClasses = {
+    cyan:  'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400',
+    amber: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+    rose:  'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400',
+    slate: 'bg-slate-100 dark:bg-slate-700/40 text-slate-500 dark:text-slate-400',
+  };
+  // So oferece "iniciar cadencia" em deal aberto que ainda nao tem follow-ups
+  const canStartCadence = deal.status === 'open' && (!deal.cadence || !deal.cadence.total);
+
+  const handleStartCadence = (e) => {
+    e.stopPropagation();
+    if (cadenceMutation.isPending) return;
+    cadenceMutation.mutate({ dealId: deal.id, contactId: deal.contactId || deal.contact?.id || null });
   };
 
   return (
@@ -78,12 +118,12 @@ function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
       onClick={() => {
         if (!isDragging.current) navigate(`/crm/deals/${deal.id}`);
       }}
-      className={`rounded-lg border px-3 py-2.5 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow group relative ${
+      className={`rounded-xl border px-3 py-2.5 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-glass hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 group relative ${
         deal.status === 'won'
-          ? 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/50'
+          ? 'bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-300/60 dark:border-emerald-700/40'
           : deal.status === 'lost'
-            ? 'bg-rose-50/50 dark:bg-rose-900/10 border-rose-200 dark:border-rose-800/50'
-            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+            ? 'bg-rose-50/70 dark:bg-rose-900/20 border-rose-300/60 dark:border-rose-700/40'
+            : 'bg-white/90 dark:bg-slate-800/80 border-slate-200/70 dark:border-white/10'
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
@@ -141,8 +181,8 @@ function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
       <div className="flex items-center gap-2">
         {deal.probability != null && (
           <>
-            <div className="flex-1 h-1 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${deal.probability}%` }} />
+            <div className="flex-1 h-1.5 bg-slate-200/70 dark:bg-slate-700/70 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-500 to-sky-400 rounded-full transition-all duration-500" style={{ width: `${deal.probability}%` }} />
             </div>
             <span className="text-[10px] text-slate-400">{deal.probability}%</span>
           </>
@@ -157,6 +197,16 @@ function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
         )}
       </div>
 
+      {/* Selo de cadencia: tentativa atual + proximo toque (alimentado por atividades) */}
+      {cadenceBadge && (
+        <div className="mt-1.5">
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${cadenceClasses[cadenceBadge.color]}`}>
+            <Repeat size={10} />
+            {cadenceBadge.text}
+          </span>
+        </div>
+      )}
+
       {/* Acoes no hover */}
       <div className="absolute right-1.5 top-1.5 flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
         {whatsappLink && (
@@ -170,6 +220,16 @@ function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
           >
             <MessageCircle size={11} />
           </a>
+        )}
+        {canStartCadence && (
+          <button
+            onClick={handleStartCadence}
+            disabled={cadenceMutation.isPending}
+            className="p-1 rounded bg-white dark:bg-slate-800 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 shadow-sm border border-slate-200 dark:border-slate-700 disabled:opacity-50"
+            title="Iniciar cadência (cria os 5 follow-ups: D0, D2, D5, D7, D10)"
+          >
+            <Repeat size={11} />
+          </button>
         )}
         {deal.status === 'open' && (
           <button
@@ -309,9 +369,9 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
   return (
-    <div className="w-72 shrink-0 flex flex-col h-full">
+    <div className="w-72 shrink-0 flex flex-col h-full crm-glass rounded-2xl overflow-hidden">
       {/* Valor total da coluna (destacado em cima) */}
-      <div className="px-3 pt-1 pb-1.5 text-center">
+      <div className="px-3 pt-3 pb-1.5 text-center">
         <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">
           {stage.totalValue > 0 ? formatCurrency(stage.totalValue) : 'R$ 0'}
         </div>
@@ -356,10 +416,10 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           if (dealId) onDrop.execute(dealId, stage.id);
           onDrop.setDragOver(null);
         }}
-        className={`flex-1 overflow-y-auto rounded-xl p-2 space-y-2 transition-colors ${
+        className={`flex-1 overflow-y-auto p-2 space-y-2 transition-colors ${
           isDragOver
-            ? 'bg-blue-50 dark:bg-blue-900/20 ring-1 ring-inset ring-blue-200 dark:ring-blue-800'
-            : 'bg-slate-100 dark:bg-slate-800/50'
+            ? 'bg-fyness-primary/5 ring-2 ring-inset ring-fyness-primary/30'
+            : ''
         }`}
       >
         {quickAddOpen && (
@@ -454,7 +514,7 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
     if (pipeline?.id) onCreated(pipeline.id);
   };
 
-  const inputCls = 'px-2.5 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40';
+  const inputCls = 'px-2.5 py-1.5 text-sm bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40';
 
   return (
     <CrmModal
@@ -626,18 +686,18 @@ function PipelineListView({ pipelineData, filterDeals, onMarkLost, onDelete }) {
 
   if (rows.length === 0) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 py-16 text-center text-sm text-slate-400">
+      <div className="crm-glass rounded-2xl py-16 text-center text-sm text-slate-400">
         Nenhum negocio com os filtros atuais.
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+    <div className="crm-glass rounded-2xl overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+            <tr className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/[0.03]">
               <th className="text-left px-4 py-2.5">Negocio</th>
               <th className="text-left px-4 py-2.5">Etapa</th>
               <th className="text-right px-4 py-2.5">Valor</th>
@@ -782,6 +842,7 @@ export function CrmPipelinePage() {
   const [createPipelineOpen, setCreatePipelineOpen] = useState(false);
   const [deletePipelineConfirm, setDeletePipelineConfirm] = useState(false);
   const [lostModalDealId, setLostModalDealId] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [deleteDealTarget, setDeleteDealTarget] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [meetingModalData, setMeetingModalData] = useState(null); // { dealId, dealTitle, dealCity }
@@ -915,7 +976,7 @@ export function CrmPipelinePage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar..."
-                className="pl-8 pr-7 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg w-36 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
+                className="pl-8 pr-7 py-1.5 text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg w-36 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -928,7 +989,7 @@ export function CrmPipelinePage() {
             <select
               value={probFilter}
               onChange={(e) => setProbFilter(e.target.value)}
-              className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+              className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
             >
               <option value="all">Prob: Todas</option>
               <option value="high">Alta (70%+)</option>
@@ -940,7 +1001,7 @@ export function CrmPipelinePage() {
             <select
               value={ownerFilter}
               onChange={(e) => setOwnerFilter(e.target.value)}
-              className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+              className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
             >
               <option value="all">Vendedor: Todos</option>
               {myMemberId && <option value="_mine">Meus Leads</option>}
@@ -972,7 +1033,7 @@ export function CrmPipelinePage() {
                   setSelectedPipelineId(e.target.value || '');
                 }
               }}
-              className="text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+              className="text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
             >
               {(pipelines || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               <option disabled>──────────</option>
@@ -991,6 +1052,15 @@ export function CrmPipelinePage() {
             )}
 
             <button
+              onClick={() => setImportOpen(true)}
+              disabled={!pipelineData}
+              className="flex items-center gap-2 px-3 py-2 bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm text-slate-700 dark:text-slate-300 text-sm font-medium rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+              title="Importar lista (ligação fria / WhatsApp) pro pipeline"
+            >
+              <Upload size={16} /> Importar
+            </button>
+
+            <button
               onClick={() => handleNewDeal()}
               className="flex items-center gap-2 px-4 py-2 bg-fyness-primary hover:bg-fyness-secondary text-white text-sm font-medium rounded-lg transition-colors"
             >
@@ -1001,7 +1071,7 @@ export function CrmPipelinePage() {
       />
 
       {/* Toggle de visualizacao */}
-      <div className="flex items-center gap-1 mb-3 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 w-fit">
+      <div className="flex items-center gap-1 mb-3 crm-glass rounded-xl p-1 w-fit">
         <button
           onClick={() => switchView('kanban')}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
@@ -1034,9 +1104,9 @@ export function CrmPipelinePage() {
           onDelete={(deal) => setDeleteDealTarget(deal)}
         />
       ) : isLoading ? (
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="flex gap-3 overflow-x-auto pb-4">
           {[1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="w-72 shrink-0 bg-slate-100 dark:bg-slate-800 rounded-xl h-96 animate-pulse" />
+            <div key={i} className="w-72 shrink-0 crm-glass rounded-2xl h-96 animate-pulse" />
           ))}
         </div>
       ) : !pipelines || pipelines.length === 0 ? (
@@ -1044,7 +1114,7 @@ export function CrmPipelinePage() {
           onCreateManual={() => setCreatePipelineOpen(true)}
         />
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-210px)]">
+        <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-210px)] crm-stagger">
           {(pipelineData?.stages || []).map(stage => (
             <StageColumn
               key={stage.id}
@@ -1092,6 +1162,12 @@ export function CrmPipelinePage() {
         dealId={meetingModalData?.dealId}
         dealTitle={meetingModalData?.dealTitle}
         dealCity={meetingModalData?.dealCity}
+      />
+
+      <ImportLeadsModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        pipeline={pipelineData}
       />
 
       <ConfettiCelebration show={showConfetti} onDone={() => setShowConfetti(false)} />

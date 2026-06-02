@@ -1,87 +1,49 @@
 /**
- * Template BPMN 2.0 — INSIDE SALES FYNESS (v3 — 4 Pools)
- * Metodologia: Vivendo de SaaS (Gus Domingues + Leticia Medeiros)
- * Adaptado para a operacao comercial do Fyness (SaaS Financeiro com Assistente Financeiro no WhatsApp + Educacao Financeira + Comunidade de Empresarios)
- * O assistente processa lancamentos via WhatsApp (foto, audio, texto), da recomendacoes financeiras e substitui funcionario do financeiro.
+ * Template BPMN 2.0 — INSIDE SALES FYNESS (v4 — SDR + CLOSER)
+ * Metodologia: Vivendo de SaaS (Gus Domingues + Leticia Medeiros) adaptada
+ * para o publico real do Fyness (PME R$10k+/mes: padaria, salao, restaurante,
+ * oficina, loja) — decisao emocional, dono que controla tudo no caderninho.
  *
  * ═══════════════════════════════════════════════════════════════════════
- * FUNDAMENTOS DA METODOLOGIA "VIVENDO DE SAAS"
+ * MODELO v4 — ESTEIRA DE VENDAS ESPECIALIZADA (Predictable Revenue)
  * ═══════════════════════════════════════════════════════════════════════
+ * Quem MARCA reuniao e quem FECHA sao funcoes separadas.
  *
- * PRINCIPIO CENTRAL: Venda consultiva + Educacao como moeda de negociacao.
- * O vendedor SaaS nao empurra produto — ele educa o prospect, entrega valor
- * antes de pedir dinheiro e constroi relacionamento de confianca.
+ * Pool 1: IA INBOUND   → SO TRIAGEM. Responde na hora (speed to lead),
+ *                        coleta contato, confirma que e lead real e
+ *                        entrega pro SDR humano. NAO qualifica a fundo,
+ *                        NAO vende, NAO agenda.
+ * Pool 2: SDR HUMANO   → Conecta, qualifica ICP e MARCA A REUNIAO.
+ *                        Cobre inbound (lead da IA) e outbound (prospeccao
+ *                        ativa via Google Meu Negocio). A IA outbound esta
+ *                        em STANDBY (entra no futuro). Handoff = reuniao
+ *                        agendada na agenda do Closer.
+ * Pool 3: CLOSER       → Pega a reuniao agendada, faz demo ao vivo
+ *                        (Retomada + SPIN + Demo), proposta, negocia e
+ *                        FECHA. Contrato assinado com carencia de pagamento.
+ * Pool 4: NURTURING    → Reativacao e conteudo para nao convertidos.
  *
- * MODELO 4 POOLS (v3 — Inbound e Outbound separados):
- * Pool 1: SDR Robo INBOUND  → Speed to Lead, qualificacao rapida
- * Pool 2: SDR Robo OUTBOUND → Aquecimento personalizado 7 dias (Google Meu Negocio)
- * Pool 3: Vendedor           → Conexao + Venda Consultiva completa (AIDA + SPIN + Demo + Fechamento)
- * Pool 4: Nurturing          → Educacao continua para leads nao convertidos
- *
- * VANTAGENS DO MODELO v3:
- * - Inbound e Outbound com cadencias completamente diferentes
- * - Outbound usa dados publicos (Google Meu Negocio) + aquecimento 7 dias
- * - Inbound prioriza Speed to Lead (resposta em 5 min)
- * - Vendedor recebe leads mornos de AMBOS os fluxos
- * - Nurturing centralizado recebe nao-convertidos de TODOS os pools
- *
- * EPISODIOS DE REFERENCIA:
- * - Ep. 1: Estrutura de time SDR + metricas
- * - Ep. 2: Cadencia transacional (5 ligacoes, 3 WhatsApp, 1 email break-off)
- * - Ep. 3: Ligacao de prospeccao com AIDA (Atencao, Interesse, Desejo, Acao)
- * - Ep. 4: Gatekeepers e tecnicas de passagem
- * - Ep. 5: Reuniao de venda consultiva (SPIN Selling)
- * - Ep. 6: Proposta, negociacao e fechamento
- *
- * METRICAS-CHAVE:
- * - Taxa de resposta robo inbound: >40%
- * - Taxa de engajamento outbound: >15%
- * - Taxa de qualificacao ICP: >40% dos que respondem
- * - Taxa de conexao vendedor: >50%
- * - Taxa de demo agendada: >40% das conexoes
- * - Taxa de fechamento: >25%
- * - Taxa de conversao trial→pago: >25%
- * - Ciclo medio de venda: 5-12 dias
- *
- * PRECOS FYNESS:
- * - Mensal: R$197/mes (cartao recorrente)
- * - Semestral: R$997 (cartao ou boleto) = R$166/mes
- * - Anual Cartao: R$137/mes (12x = R$1.644)
- * - Anual PIX: R$1.497 a vista (sem taxa = melhor preco)
- * - Trial: 7 dias gratis, sem cartao
+ * OFERTA ATUAL (2026-05):
+ * - Mensal: R$97/mes (cartao recorrente)
+ * - Anual: R$67/mes (12x = R$804, Fyness antecipa via processador)
+ * - SEM TRIAL — ninguem valoriza.
+ * - Entrada por CONTRATO ASSINADO com CARENCIA DE PAGAMENTO de ate 15 dias
+ *   (assina hoje, primeira cobranca em ate 15 dias).
  *
  * PRODUTO FYNESS:
- * - SaaS financeiro com Assistente Financeiro no WhatsApp: manda foto do comprovante, audio ou texto e o assistente lanca tudo automatico
- * - Lancamentos automaticos via WhatsApp (nao precisa abrir sistema)
- * - Recomendacoes financeiras inteligentes (assistenteavisa quando cortar custo, quando tem conta vencendo)
- * - Substitui funcionario do financeiro (economia de R$2-3k/mes)
- * - Fluxo de caixa, contas a pagar/receber, DRE, conciliacao bancaria — tudo atualizado em tempo real
- * - Plataforma de Educacao Financeira: cursos, aulas ao vivo, materiais
- * - Comunidade exclusiva de empresarios: networking, mentoria, experiencias compartilhadas
+ * - SaaS financeiro com Assistente Financeiro no WhatsApp: manda foto do
+ *   comprovante, audio ou texto e o assistente lanca tudo automatico.
+ * - Recomendacoes financeiras (avisa conta vencendo, onde cortar custo).
+ * - Substitui funcionario do financeiro (economia R$2-3k/mes) ou acaba com
+ *   a planilha/caderninho pra quem faz sozinho.
+ * - Fluxo de caixa, DRE, contas a pagar/receber em tempo real.
+ * - Plataforma de Educacao Financeira + Comunidade de Empresarios.
  *
- * PITCHES PRINCIPAIS:
- * - Pitch 1 "Manda o financeiro embora": pra quem tem funcionario fazendo financeiro (economia R$2-3k/mes)
- * - Pitch 2 "Para de perder horas com planilha": pra dono que faz sozinho (economia de tempo + controle melhor)
+ * PITCHES:
+ * - Pitch 1 "Manda o financeiro embora": pra quem tem funcionario no financeiro.
+ * - Pitch 2 "Para de perder horas com planilha": pra dono que faz sozinho.
  *
- * EDUCACAO COMO MOEDA:
- * - Educacao financeira NAO e bonus — e parte integral da oferta
- * - Comunidade de empresarios como diferencial competitivo unico
- * - Conteudos educativos semanais sobre gestao financeira
- * - Suporte consultivo (nao so tecnico)
- *
- * LAYOUT DOS POOLS:
- * - Pool 1 (Inbound GREEN):   x=160, y=60,   w=2600, h=350  | elements y: 80-390
- * - Pool 2 (Outbound ORANGE): x=160, y=480,  w=2600, h=350  | elements y: 500-810
- * - Pool 3 (Vendedor BLUE):   x=160, y=900,  w=4200, h=850  | elements y: 920-1730
- * - Pool 4 (Nurturing PURPLE):x=160, y=1820, w=2600, h=320  | elements y: 1840-2120
- * - Annotations: below Pool 4, y>=2200
- *
- * PORTAIS (Link Events substituem Message Flows):
- * → VENDEDOR = Lead qualificado vai pro Pool Vendedor
- * → NURTURING = Lead nao convertido vai pro Pool Nurturing
- * → SDR INBOUND = Lead reativado volta pro Pool Inbound
- *
- * Criado: Marco 2026 | Equipe Fyness | v3 — Modelo 4 Pools (Inbound/Outbound separados)
+ * Criado: Maio 2026 | Equipe Fyness | v4 — Modelo SDR + Closer
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -93,1774 +55,1061 @@ export const COMERCIAL_INSIDE_SALES_XML = `<?xml version="1.0" encoding="UTF-8"?
  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
  xmlns:bioc="http://bpmn.io/schema/bpmn/biocolor/1.0"
  id="Definitions_InsideSales"
- targetNamespace="http://fyness.com/bpmn/inside-sales-v3">
+ targetNamespace="http://fyness.com/bpmn/inside-sales-v4">
 
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <!-- COLLABORATION: 4 POOLS + PORTAIS (Link Events)                -->
+ <!-- COLLABORATION: 4 POOLS (IA Inbound, SDR Humano, Closer, Nurt)   -->
  <!-- ═══════════════════════════════════════════════════════════════ -->
  <bpmn2:collaboration id="Collaboration_InsideSales">
 
-   <!-- POOL 1: SDR ROBO INBOUND (GREEN) -->
-   <bpmn2:participant id="Pool_Inbound" name="SDR ROBO INBOUND — Qualificacao Rapida (Speed to Lead)" processRef="Process_Inbound" />
+   <bpmn2:participant id="Pool_IaInbound" name="IA INBOUND — Triagem Rapida (Speed to Lead, 24/7)" processRef="Process_IaInbound" />
+   <bpmn2:participant id="Pool_Sdr" name="SDR HUMANO — Conecta, Qualifica e MARCA A REUNIAO (Inbound + Outbound)" processRef="Process_Sdr" />
+   <bpmn2:participant id="Pool_Closer" name="CLOSER — Demo ao Vivo (SPIN), Proposta e FECHAMENTO" processRef="Process_Closer" />
+   <bpmn2:participant id="Pool_Nurt" name="NURTURING e EDUCACAO — Reativacao e Conteudo Continuo" processRef="Process_Nurt" />
 
-   <!-- POOL 2: SDR ROBO OUTBOUND (ORANGE) -->
-   <bpmn2:participant id="Pool_Outbound" name="SDR ROBO OUTBOUND — Aquecimento Personalizado (7 dias)" processRef="Process_Outbound" />
+   <bpmn2:textAnnotation id="Annotation_Precos">
+     <bpmn2:text>OFERTA E FECHAMENTO (2026):
 
-   <!-- POOL 3: VENDEDOR (BLUE) -->
-   <bpmn2:participant id="Pool_Vendedor" name="VENDEDOR — Conexao + Venda Consultiva (AIDA + SPIN + Demo + Fechamento)" processRef="Process_Vendedor" />
+PLANOS:
+- MENSAL: R$97/mes (cartao recorrente)
+- ANUAL: R$67/mes (12x = R$804, Fyness antecipa)
 
-   <!-- POOL 4: NURTURING (PURPLE) -->
-   <bpmn2:participant id="Pool_Nurturing" name="NURTURING e EDUCACAO — Reativacao e Conteudo Continuo" processRef="Process_Nurturing" />
+SEM TRIAL — ninguem valoriza.
 
-   <!-- TEXT ANNOTATIONS -->
-   <bpmn2:textAnnotation id="Annotation_Portais">
-     <bpmn2:text>PORTAIS DE NAVEGACAO ENTRE POOLS:
+ENTRADA:
+Contrato assinado com CARENCIA DE PAGAMENTO de ate 15 dias.
+"Assina hoje, comeca a pagar em ate 15 dias." Tira o atrito
+sem dar o produto de graca.
 
-→ VENDEDOR = Lead qualificado vai pro Pool Vendedor
-→ NURTURING = Lead nao convertido vai pro Pool Nurturing
-→ SDR INBOUND = Lead reativado volta pro Pool Inbound
+ESCADA DE PRECO:
+1. Anual R$67/mes (12x) — ancorar SEMPRE aqui (melhor preco)
+2. Mensal R$97/mes — opcao B
 
-Os portais substituem as linhas tracejadas.
-Siga o nome do portal pra encontrar o destino.</bpmn2:text>
+REGRAS DE OURO:
+1. NUNCA abrir preco antes da demo
+2. SEMPRE ancorar no anual (R$67/mes = R$2,20/dia)
+3. Mensal como "opcao B"
+4. Carencia de pagamento = quebra a objecao "preciso pensar/caro"
+5. Desconto so com algo em troca (e aprovacao do gestor)
+
+TODOS incluem: Assistente no WhatsApp + SaaS financeiro completo
++ Educacao Financeira + Comunidade de Empresarios.</bpmn2:text>
    </bpmn2:textAnnotation>
 
    <bpmn2:textAnnotation id="Annotation_ICP">
-     <bpmn2:text>ICP CHECKLIST (3 de 4 = qualificado):
+     <bpmn2:text>ICP CHECKLIST (3 de 4 = qualificado p/ reuniao):
 
-1. SEGMENTO: Ja vem da Landing Page (preencheu form)
-   Nao precisa perguntar — o CRM ja tem essa info.
-
-2. FATURAMENTO: Minimo R$10k/mes
-   Abaixo disso R$197/mes pesa demais no orcamento.
-
+1. SEGMENTO atendido (PME de servico/comercio/alimentacao)
+2. FATURAMENTO minimo R$10k/mes
+   (abaixo disso o ticket pesa e o churn e alto)
 3. DOR FINANCEIRA (latente OU ativa):
-   Ativa = "Estou perdendo dinheiro e sei disso"
-   Latente = "Nao sei meu lucro real mas acho que ta ok"
-   QUALQUER UMA das dores abaixo qualifica:
    - Nao sabe o lucro real no fim do mes
    - Mistura conta PF com PJ
    - Controla na cabeca, caderno ou planilha bagunçada
-   - Nao sabe quanto entra e sai por dia
-   - Ja tentou sistema e desistiu (trauma de ERP)
-   - Funcionario mexe no dinheiro sem controle
-   - Nao faz DRE / nao sabe o que e DRE
-   - Paga conta atrasada por falta de organizacao
    - Paga funcionario so pra fazer financeiro (R$2-3k/mes)
    - Gasta horas por semana em planilha/caderno
-
-4. DECISOR ACESSIVEL: Dono, socio ou gerente
-   com autonomia pra decidir a compra.
+   - Paga conta atrasada por falta de organizacao
+4. DECISOR ACESSIVEL: dono, socio ou gerente com autonomia
 
 DESQUALIFICADORES:
-- Faturamento abaixo de R$5k/mes (nao sustenta)
-- Ja usa ERP robusto e esta satisfeito (SAP, TOTVS)
+- Faturamento abaixo de R$5k/mes
+- Ja usa ERP robusto e satisfeito (SAP, TOTVS)
 - Empresa em recuperacao judicial
-- Nao tem nenhuma dor financeira identificada</bpmn2:text>
+- Nenhuma dor financeira identificada</bpmn2:text>
    </bpmn2:textAnnotation>
 
-<bpmn2:textAnnotation id="Annotation_SPIN">
-     <bpmn2:text>FRAMEWORK SPIN AGRESSIVO (Descoberta na Demo):
-S - SITUACAO (entender pra fazer DOER depois):
-    "Como voce controla o financeiro hoje?"
-    "Quem faz?" / "Quanto tempo gasta por semana?"
-    "Quanto paga pro funcionario que cuida disso?" (se tem)
-P - PROBLEMA (perguntas que INCOMODAM):
-    "Voce sabe seu lucro REAL no fim do mes?"
-    "Ja aconteceu de chegar no final do mes e NAO ter dinheiro pra pagar as contas?"
-    "Quanto voce paga pro funcionario que faz isso?" (se tem)
-    "Se eu te perguntar seu lucro real AGORA, voce sabe responder?"
-I - IMPLICACAO (AMPLIFICAR — fazer DOER):
-    "Se voce ta perdendo 5-15% do faturamento sem saber, em 1 ano isso da quanto?"
-    "O que acontece se voce continuar mais 6 meses sem saber pra onde vai o dinheiro?"
-    "Se paga R$2-3k/mes de funcionario, sao R$30k/ano. E se um assistente no WhatsApp fizesse por R$137/mes?"
+   <bpmn2:textAnnotation id="Annotation_SPIN">
+     <bpmn2:text>SPIN NA DEMO (Closer) — fazer DOER:
+
+S - SITUACAO (entender pra doer depois):
+    "Como voce controla o financeiro hoje? Quem faz?"
+    "Quanto tempo gasta por semana? Quanto paga pra quem faz?"
+P - PROBLEMA (perguntas que incomodam):
+    "Voce sabe seu lucro REAL do mes passado? O numero EXATO?"
+    "Ja chegou no fim do mes sem dinheiro pra pagar conta?"
+I - IMPLICACAO (amplificar a dor):
+    "Se perde 5-15% do faturamento sem saber, em 1 ano da quanto?"
+    "Paga R$2-3k/mes de funcionario? Sao R$30k/ano so de financeiro."
     "Seu concorrente ja sabe o lucro dele em tempo real. E voce?"
 N - NECESSIDADE (lead verbaliza a solucao):
-    "Se voce pudesse ver AGORA, no celular, quanto lucrou hoje, quanto tem a pagar essa semana,
-    e receber um alerta quando um custo ta acima do normal — quanto isso valeria pra voce?"
-    "Se pudesse mandar foto do comprovante e acabar com planilha PRA SEMPRE — faria sentido?"</bpmn2:text>
+    "Se voce visse no celular, agora, quanto lucrou e o que tem
+    a pagar — e recebesse alerta de custo alto — quanto valeria?"
+    "Se mandasse foto do comprovante e acabasse com a planilha
+    pra sempre — faria sentido?"
+
+DICA: anotar os numeros de perda. Sao usados na proposta.</bpmn2:text>
    </bpmn2:textAnnotation>
 
-   <bpmn2:textAnnotation id="Annotation_Precos">
-     <bpmn2:text>PRECOS, DIFERENCIAL E CONDICOES DE FECHAMENTO:
+   <bpmn2:textAnnotation id="Annotation_Portais">
+     <bpmn2:text>PORTAIS (Link entre pools):
 
-═══════════════════════════════════════════
-PLANOS FYNESS:
-═══════════════════════════════════════════
-MENSAL: R$197/mes (cartao recorrente)
-SEMESTRAL: R$997 cartao ou boleto (R$166/mes)
-ANUAL CARTAO: R$137/mes (12x = R$1.644)
-ANUAL PIX: R$1.497 a vista (sem taxa = menor preco)
-TRIAL: 7 dias GRATIS, sem cartao
+IA INBOUND  → entrega lead triado pro SDR HUMANO
+SDR HUMANO  → reuniao agendada vai pro CLOSER
+TODOS       → nao convertido vai pro NURTURING
+NURTURING   → reativado volta pro SDR HUMANO
 
-═══════════════════════════════════════════
-O QUE INCLUI (diferencial unico Fyness):
-═══════════════════════════════════════════
-1. assistenteno WhatsApp (manda foto, audio, texto — assistenteprocessa automatico)
-2. Lancamentos automaticos (nao precisa abrir sistema, faz pelo WhatsApp)
-3. Recomendacoes financeiras inteligentes (assistenteavisa quando cortar custo, conta vencendo)
-4. SaaS Financeiro completo (fluxo caixa, DRE, contas — tudo atualizado em tempo real)
-5. Plataforma de Educacao Financeira (cursos, aulas ao vivo)
-6. Comunidade Exclusiva de Empresarios (networking, mentoria)
+A IA SO faz triagem. Quem qualifica e marca e o SDR.
+Quem fecha e o Closer. A IA outbound esta em STANDBY.</bpmn2:text>
+   </bpmn2:textAnnotation>
 
-ECONOMIA: Substitui funcionario financeiro (R$2-3k/mes).
-Tao simples que o dono faz sozinho pelo WhatsApp (sem treinamento).
+   <bpmn2:textAnnotation id="Annotation_PlaybookSdr">
+     <bpmn2:text>PLAYBOOK SDR — GERAR REUNIAO (meta: 2 reunioes/dia)
+METRICA UNICA: reuniao marcada/dia (NAO mensagem enviada).
 
-ANCORAGEM: "Voce paga R$2-3k/mes pra alguem fazer o financeiro.
-O Fyness custa R$137/mes no anual. Voce economiza R$2k e tem controle melhor."
+ROTINA DIARIA:
+08h-09h30   Quentes: indicacao + quem respondeu + Meta
+09h30-12h   Cold WhatsApp: 40 msg/dia (20 por chip, 2 chips)
+14h-17h     Follow-up + confirma reunioes de amanha + CRM
 
-═══════════════════════════════════════════
-FLUXO DE NEGOCIACAO (escada de preco):
-═══════════════════════════════════════════
-1. Anual PIX a vista (R$1.497) — MELHOR (sem taxa!)
-   → nao tem pix?
-2. Anual cartao (12x R$137 = R$1.644)
-   → cartao nao passou?
-3. Semestral R$997 (cartao ou boleto)
-   → nao tem R$997?
-4. Anual boleto 3x (R$548/parcela) — so lead top
-   → nao quer compromisso longo?
-5. Mensal R$197/mes (cartao recorrente)
-   → "preciso pensar"?
-6. Trial 7 dias gratis → converter depois
+ORDEM DOS CANAIS (do quente pro frio):
+1. Indicacao (SEMPRE primeiro — converte 15-25x mais)
+2. Quem ja respondeu / qualificados do Meta
+3. Cold WhatsApp (40/dia, 2 chips aquecidos — sem ban)
+4. Cold email (entra em ~3 sem, motor de volume sem teto)
 
-═══════════════════════════════════════════
-PARCELAMENTO (excecao, nao regra):
-═══════════════════════════════════════════
-ANUAL PIX: R$1.497 a vista — SEM TAXA, melhor preco
-ANUAL CARTAO: ate 12x (R$137) — Fyness recebe antecipado
-ANUAL BOLETO: ate 3x (R$548) — so com aprovacao gestor
-SEMESTRAL: R$997 cartao, boleto ou pix
-MENSAL: R$197 cartao recorrente (sem parcelamento)
+HANDOFF: reuniao marcada cai na agenda do Closer (Kaynan).
+SDR confirma 1h antes (mata no-show). Kaynan SO fecha.
 
-═══════════════════════════════════════════
-DESCONTOS (com aprovacao gestor):
-═══════════════════════════════════════════
-5%: fecha na primeira reuniao
-10% MAXIMO: indicado por cliente ativo
-NUNCA dar desconto sem pedir algo em troca
-
-═══════════════════════════════════════════
-REGRAS DE OURO:
-═══════════════════════════════════════════
-1. NUNCA abrir preco antes da demo
-2. SEMPRE ancorar no anual primeiro (R$137/mes)
-3. Mostrar mensal como "opcao B" (R$197/mes)
-4. Semestral = cartada pra cartao que nao passa
-5. Parcelamento boleto = ultima cartada
-6. Desconto absurdo = nao e cliente Fyness
-7. Trial = alternativa pra "preciso pensar"</bpmn2:text>
+META MES 1: 13 vendas (~17 reunioes). 20 e o destino (mes 2-3,
+com a base e a indicacao crescendo). MEDIR sempre: msg -> resposta
+-> reuniao -> venda, pra pilotar pelo dado e nao pelo chute.</bpmn2:text>
    </bpmn2:textAnnotation>
 
  </bpmn2:collaboration>
 
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <!-- POOL 1: PROCESS SDR ROBO INBOUND (GREEN)                      -->
- <!-- y=60..410 | elements y: 80-390                                 -->
+ <!-- POOL 1: IA INBOUND (GREEN) — SO TRIAGEM                         -->
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <bpmn2:process id="Process_Inbound" isExecutable="false">
+ <bpmn2:process id="Process_IaInbound" isExecutable="false">
 
-   <bpmn2:startEvent id="Start_Inbound" name="Lead Inbound entra no CRM">
-     <bpmn2:documentation>Lead chegou via Marketing (anuncio, SEO), Trial no site, ou Indicacao de cliente.
-Fontes: Meta Ads, Google Ads, organico, indicacao, trial signup.
-REGRA: Speed to Lead — responder em ate 5 MINUTOS.</bpmn2:documentation>
-     <bpmn2:outgoing>Flow_In_01</bpmn2:outgoing>
+   <bpmn2:startEvent id="Start_In" name="Lead Inbound entra (site / anuncio / indicacao)">
+     <bpmn2:documentation>Lead chega via Marketing (Meta Ads, Google Ads, organico), site ou indicacao.
+REGRA: Speed to Lead — a IA responde em ate 5 minutos, 24/7.
+A IA NAO qualifica a fundo, NAO vende e NAO agenda. Ela so faz a TRIAGEM:
+responde na hora, coleta contato, confirma que e um lead real e entrega pro SDR humano.</bpmn2:documentation>
+     <bpmn2:outgoing>Flow_In_1</bpmn2:outgoing>
    </bpmn2:startEvent>
 
-   <bpmn2:task id="Task_In_WhatsQualificador" name="Robo envia WhatsApp qualificador">
-     <bpmn2:documentation>SCRIPT DO ROBO (enviar em ate 5 minutos — PAIN FIRST):
-"[Nome], me responde uma coisa: voce sabe EXATAMENTE quanto lucrou no ultimo mes? Nao por cima — o numero real, com todas as contas pagas.
+   <bpmn2:task id="Task_In_Responde" name="IA responde na hora + coleta contato">
+     <bpmn2:documentation>SCRIPT DA IA (enviar em ate 5 minutos):
+"Oi [Nome]! Aqui e o assistente do Fyness. Vi que voce quer organizar o financeiro do seu negocio.
+Pra um especialista te chamar no melhor horario, me confirma rapidinho: seu nome, seu WhatsApp e qual o tipo do seu negocio?"
 
-Se a resposta for 'nao sei' ou 'mais ou menos', voce ta perdendo dinheiro todo mes sem perceber. E isso e mais comum do que voce imagina.
-
-O Fyness resolve isso: voce manda o comprovante no WhatsApp, o assistente financeiro lanca tudo automatico. Fluxo de caixa, DRE, contas — tudo no seu celular. Alem disso voce recebe acesso a nossa plataforma de educacao financeira e entra na comunidade de empresarios que faturam de R$10k a R$500k/mes.
-
-Me conta: como voce controla o financeiro hoje?"
-
-LOGICA DE PITCH (baseado na resposta):
-- Se TEM FUNCIONARIO fazendo financeiro → usar Pitch 1 "Manda o financeiro embora"
-  "Voce ta pagando R$2-3k/mes pra alguem fazer o que o assistente do Fyness faz MELHOR pelo WhatsApp. Lancamentos, contas a pagar, fluxo de caixa, DRE — tudo automatico. O assistente nao erra, nao falta, nao pede aumento. Voce economiza o salario E tem controle melhor. Cada dia que voce paga esse funcionario e dinheiro jogado fora."
-- Se FAZ SOZINHO → usar Pitch 2 "Para de perder horas com planilha"
-  "Quantas horas por semana voce PERDE fazendo financeiro na mao? Cada hora que voce gasta em planilha e uma hora que voce NAO ta vendendo, NAO ta atendendo cliente, NAO ta crescendo. Com o Fyness voce manda foto do comprovante no WhatsApp e o assistente lanca tudo automatico. Acabou planilha. Acabou dor de cabeca. E alem do sistema, voce ganha educacao financeira de verdade e entra numa comunidade de empresarios."
+OBJETIVO (so triagem):
+- Responder em ate 5 min (speed to lead)
+- Coletar: nome, WhatsApp, segmento
+- Confirmar que e um lead real (negocio de verdade, quer resolver financeiro)
 
 REGRAS:
-- Enviar em ATE 5 MINUTOS (Speed to Lead)
-- Tom DIRETO e incisivo — bater na dor PRIMEIRO
-- NAO mandar link, preco ou proposta
-- Objetivo: fazer o lead SENTIR que ta perdendo dinheiro + coletar info para qualificacao ICP
-- Se lead responder parcialmente, perguntar o que falta
-- NAO perguntar segmento (ja veio da Landing Page)
-- NAO perguntar numero de funcionarios (nao e criterio ICP)
-- NAO explicar "somos um SaaS financeiro" — o lead ja sabe (veio do anuncio)</bpmn2:documentation>
-     <bpmn2:incoming>Flow_In_01</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_In_02</bpmn2:outgoing>
+- Tom humano e direto
+- NAO mandar preco, NAO fazer demo, NAO qualificar ICP a fundo (isso e o SDR)
+- NAO tentar agendar (quem marca e o SDR humano)
+- Se o lead ja vier quente, so confirmar dados e avisar que o especialista chama</bpmn2:documentation>
+     <bpmn2:incoming>Flow_In_1</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_In_2</bpmn2:outgoing>
    </bpmn2:task>
 
    <bpmn2:exclusiveGateway id="Gw_In_Respondeu" name="Respondeu?">
-     <bpmn2:incoming>Flow_In_02</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_In_03_Sim</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_In_04_Nao</bpmn2:outgoing>
+     <bpmn2:incoming>Flow_In_2</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_In_3_Sim</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_In_4_Nao</bpmn2:outgoing>
    </bpmn2:exclusiveGateway>
 
-   <bpmn2:task id="Task_In_CadenciaAuto" name="Cadencia automatica (D0, D2, D5)">
-     <bpmn2:documentation>CADENCIA DE FOLLOW-UP AUTOMATICO (nao respondeu — cada mensagem bate em DOR DIFERENTE):
-
-D0 (4h depois): "Voce sabia que 8 em cada 10 empresarios de [segmento] NAO sabem o lucro real do negocio? E por isso que a maioria fecha as portas em 5 anos. O Fyness existe pra mudar isso — voce manda o comprovante no WhatsApp e o assistente financeiro lanca tudo automatico. Lucro real, em tempo real, no seu celular."
-
-D2: "[Nome], enquanto voce luta com planilha ou controla de cabeca, seu concorrente ta vendo o lucro dele em tempo real pelo WhatsApp. O assistente do Fyness faz todo o financeiro automatico — e alem disso voce recebe educacao financeira e entra numa comunidade de empresarios. Quer ver como funciona em 2 minutos? [link demo]"
-
-D5: "[Nome], ultima mensagem. Cada dia sem controle financeiro e dinheiro saindo pelo ralo — e voce nem percebe. Quando quiser parar de perder dinheiro e ter o financeiro no automatico, e so responder aqui."
-
-REGRA: Se respondeu em qualquer momento, SAI da cadencia e vai para qualificacao ICP.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_In_04_Nao</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_In_05</bpmn2:outgoing>
+   <bpmn2:task id="Task_In_FollowUp" name="Follow-up automatico (2 toques)">
+     <bpmn2:documentation>Lead nao respondeu. Cadencia leve automatica:
+D0 (+4h): "Oi [Nome], ainda quer organizar o financeiro do negocio? Um especialista pode te ligar rapidinho — so me confirma seu WhatsApp."
+D1: "[Nome], ultima tentativa por aqui. Quando quiser parar de controlar o financeiro no escuro, e so responder."
+Se nao responder em nenhum toque, segue pra Nurturing.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_In_4_Nao</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_In_5</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:exclusiveGateway id="Gw_In_RespondeuCadencia" name="Respondeu na cadencia?">
-     <bpmn2:incoming>Flow_In_05</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_In_06_Sim</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_In_07_Nao</bpmn2:outgoing>
+   <bpmn2:exclusiveGateway id="Gw_In_RespFollow" name="Respondeu agora?">
+     <bpmn2:incoming>Flow_In_5</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_In_6_Sim</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_In_7_Nao</bpmn2:outgoing>
    </bpmn2:exclusiveGateway>
 
-   <bpmn2:endEvent id="End_Inbound_Nurturing_NaoResp" name="→ NURTURING (Nao Respondeu)">
-     <bpmn2:incoming>Flow_In_07_Nao</bpmn2:incoming>
+   <bpmn2:endEvent id="End_In_NurtNaoResp" name="→ NURTURING (nao respondeu)">
+     <bpmn2:incoming>Flow_In_7_Nao</bpmn2:incoming>
    </bpmn2:endEvent>
 
-   <bpmn2:exclusiveGateway id="Gw_In_ICP" name="Tem Perfil ICP?">
-     <bpmn2:documentation>CHECKLIST ICP (marcar 3 de 4 para qualificar):
-[ ] Segmento (ja veio da Landing Page — CRM tem)
-[ ] Faturamento minimo R$10k/mes
-[ ] Dor financeira identificada (latente ou ativa)
-[ ] Decisor acessivel (dono, socio, gerente)
-
-3 de 4 = TEM PERFIL → criar Smart Lead
-Menos de 3 = SEM PERFIL → tag + comunidade gratuita</bpmn2:documentation>
-     <bpmn2:incoming>Flow_In_03_Sim</bpmn2:incoming>
-     <bpmn2:incoming>Flow_In_06_Sim</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_In_08_TemPerfil</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_In_09_SemPerfil</bpmn2:outgoing>
+   <bpmn2:exclusiveGateway id="Gw_In_Real" name="E lead real?">
+     <bpmn2:documentation>Confirmar que e um negocio real com decisor acessivel.
+Filtrar spam, concorrente e curioso sem negocio.
+Nao e qualificacao ICP (isso e o SDR) — e so checagem basica de que vale acionar um humano.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_In_3_Sim</bpmn2:incoming>
+     <bpmn2:incoming>Flow_In_6_Sim</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_In_8_Sim</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_In_9_Nao</bpmn2:outgoing>
    </bpmn2:exclusiveGateway>
 
-   <bpmn2:task id="Task_In_TagSemPerfil" name="Tag + Convite comunidade gratuita">
-     <bpmn2:documentation>Lead nao tem perfil ICP mas demonstrou interesse.
-ACOES:
-1. Adicionar tag "sem_perfil_icp" no CRM
-2. Enviar convite para comunidade gratuita de empresarios
-3. Mensagem: "[Nome], nesse momento o Fyness e mais indicado pra empresas maiores. Mas independente disso, voce PRECISA saber seu lucro real — senao ta perdendo dinheiro todo mes. Entra na nossa comunidade GRATUITA de empresarios — tem conteudo sobre gestao financeira que vai te ajudar a parar de perder dinheiro. Quando seu negocio crescer, a gente conversa sobre o Fyness."
-4. Mover para pool Nurturing</bpmn2:documentation>
-     <bpmn2:incoming>Flow_In_09_SemPerfil</bpmn2:incoming>
+   <bpmn2:endEvent id="End_In_Descarte" name="→ NURTURING (nao qualificado p/ contato)">
+     <bpmn2:incoming>Flow_In_9_Nao</bpmn2:incoming>
+   </bpmn2:endEvent>
+
+   <bpmn2:task id="Task_In_Entrega" name="Registra no CRM + entrega lead triado">
+     <bpmn2:documentation>Registrar no CRM: nome, WhatsApp, segmento e fonte do lead (anuncio, organico, indicacao).
+Marcar como LEAD TRIADO e entregar pro SDR humano.
+Notificar o SDR imediatamente (CRM + WhatsApp interno) — o lead esta morno, agir rapido.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_In_8_Sim</bpmn2:incoming>
      <bpmn2:outgoing>Flow_In_10</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:endEvent id="End_Inbound_Nurturing_SemPerfil" name="→ NURTURING (Sem Perfil)">
+   <bpmn2:endEvent id="End_In_SDR" name="→ SDR HUMANO (lead triado)">
      <bpmn2:incoming>Flow_In_10</bpmn2:incoming>
    </bpmn2:endEvent>
 
-   <bpmn2:sendTask id="Task_In_DemoGravada" name="Enviar Demo Gravada por Segmento">
-     <bpmn2:documentation>DEMO GRAVADA — GERAR DESEJO ANTES DO VENDEDOR (PAIN FIRST)
-
-Lead qualificado! Antes de passar pro vendedor,
-manda uma demo gravada personalizada por segmento.
-
-SCRIPT DO ROBO (bater na dor antes de mandar o link):
-"[Nome], gravei um video de 2 minutos mostrando o que acontece quando voce para de controlar financeiro na mao e deixa o assistente do Fyness fazer isso por voce. O resultado ASSUSTA — empresarios descobrem que perdiam milhares por mes sem saber. Da uma olhada: [link demo]
-
-Se fizer sentido, nosso especialista te liga pra mostrar ao vivo como isso funcionaria pro SEU negocio."
-
-REGRAS DA DEMO GRAVADA:
-- CURTA: 2-3 minutos MAXIMO (ninguem assiste mais que isso)
-- POR SEGMENTO: restaurante, loja, servicos, etc.
-- COMECAR COM DOR: "Voce sabe quanto ta perdendo por mes sem controle financeiro?"
-- WOW FACTOR: Mostrar o assistente processando um comprovante via WhatsApp em tempo real
-- FOCO NA DOR + assistente + diferenciais:
-  → "Olha: mandou foto do comprovante no WhatsApp, o assistente ja lancou automatico"
-  → "O assistente te avisa quando tem conta vencendo e recomenda onde cortar custo"
-  → "Aqui voce ve seu lucro real em 1 clique — tudo atualizado pelo assistente"
-  → "Alem do sistema, voce recebe educacao financeira e entra na comunidade de empresarios"
-  → NAO: "Esse e o modulo de DRE com filtro por periodo"
-- TERMINA COM CTA: "Quanto dinheiro voce ta perdendo por mes sem isso?"
-- HOSPEDADA: YouTube nao-listado ou pagina propria
-
-DEMOS POR SEGMENTO (gravar 1 por segmento principal):
-- Restaurante/Alimentacao
-- Loja/Comercio
-- Prestador de Servico
-- Salao/Barbearia/Estetica
-- Oficina/Auto
-- Generico (pra segmentos sem demo especifica)
-
-OBJETIVO: Lead ja chega na call com o vendedor
-SENTINDO que ta perdendo dinheiro e QUERENDO resolver.
-Vendedor nao perde tempo explicando o basico.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_In_08_TemPerfil</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_In_DemoToSmart</bpmn2:outgoing>
-   </bpmn2:sendTask>
-
-   <bpmn2:task id="Task_In_CriarSmartLead" name="Criar Smart Lead + Handoff para Vendedor">
-     <bpmn2:documentation>Lead qualificado + ja viu a demo gravada! Criar Smart Lead e passar pro Vendedor.
-SCRIPT DO ROBO (pain + anticipacao):
-"[Nome], pelo que voce me contou, voce ta deixando dinheiro na mesa TODO mes sem perceber. Vou te passar pro [Nome Vendedor], ele e especialista em montar o financeiro de empresas de [segmento]. Ele vai te mostrar EXATAMENTE quanto voce ta perdendo e como resolver isso em 30 dias. Qual melhor horario pra te ligar?"
-
-REGISTRAR NO CRM:
-- Nome do decisor
-- Melhor horario para contato
-- Canal preferido (WhatsApp/telefone)
-- Segmento do negocio
-- Principal dor financeira relatada
-- Nivel de urgencia (1-5)
-- Fonte do lead (marketing, trial, indicacao)
-- Se assistiu a demo gravada (sim/nao)
-- Estimativa de quanto o lead ta perdendo por mes (pra vendedor usar)
-
-HANDOFF: Notificar vendedor imediatamente via CRM + WhatsApp interno.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_In_DemoToSmart</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_In_11</bpmn2:outgoing>
-   </bpmn2:task>
-
-   <bpmn2:endEvent id="End_Inbound_SmartLead" name="→ VENDEDOR (Smart Lead Inbound)">
-     <bpmn2:incoming>Flow_In_11</bpmn2:incoming>
-   </bpmn2:endEvent>
-
-   <!-- SEQUENCE FLOWS -->
-   <bpmn2:sequenceFlow id="Flow_In_01" sourceRef="Start_Inbound" targetRef="Task_In_WhatsQualificador" />
-   <bpmn2:sequenceFlow id="Flow_In_02" sourceRef="Task_In_WhatsQualificador" targetRef="Gw_In_Respondeu" />
-   <bpmn2:sequenceFlow id="Flow_In_03_Sim" name="Sim" sourceRef="Gw_In_Respondeu" targetRef="Gw_In_ICP" />
-   <bpmn2:sequenceFlow id="Flow_In_04_Nao" name="Nao" sourceRef="Gw_In_Respondeu" targetRef="Task_In_CadenciaAuto" />
-   <bpmn2:sequenceFlow id="Flow_In_05" sourceRef="Task_In_CadenciaAuto" targetRef="Gw_In_RespondeuCadencia" />
-   <bpmn2:sequenceFlow id="Flow_In_06_Sim" name="Sim" sourceRef="Gw_In_RespondeuCadencia" targetRef="Gw_In_ICP" />
-   <bpmn2:sequenceFlow id="Flow_In_07_Nao" name="Nao" sourceRef="Gw_In_RespondeuCadencia" targetRef="End_Inbound_Nurturing_NaoResp" />
-   <bpmn2:sequenceFlow id="Flow_In_08_TemPerfil" name="Tem Perfil" sourceRef="Gw_In_ICP" targetRef="Task_In_DemoGravada" />
-   <bpmn2:sequenceFlow id="Flow_In_09_SemPerfil" name="Sem Perfil" sourceRef="Gw_In_ICP" targetRef="Task_In_TagSemPerfil" />
-   <bpmn2:sequenceFlow id="Flow_In_10" sourceRef="Task_In_TagSemPerfil" targetRef="End_Inbound_Nurturing_SemPerfil" />
-   <bpmn2:sequenceFlow id="Flow_In_DemoToSmart" sourceRef="Task_In_DemoGravada" targetRef="Task_In_CriarSmartLead" />
-   <bpmn2:sequenceFlow id="Flow_In_11" sourceRef="Task_In_CriarSmartLead" targetRef="End_Inbound_SmartLead" />
+   <bpmn2:sequenceFlow id="Flow_In_1" sourceRef="Start_In" targetRef="Task_In_Responde" />
+   <bpmn2:sequenceFlow id="Flow_In_2" sourceRef="Task_In_Responde" targetRef="Gw_In_Respondeu" />
+   <bpmn2:sequenceFlow id="Flow_In_3_Sim" name="Sim" sourceRef="Gw_In_Respondeu" targetRef="Gw_In_Real" />
+   <bpmn2:sequenceFlow id="Flow_In_4_Nao" name="Nao" sourceRef="Gw_In_Respondeu" targetRef="Task_In_FollowUp" />
+   <bpmn2:sequenceFlow id="Flow_In_5" sourceRef="Task_In_FollowUp" targetRef="Gw_In_RespFollow" />
+   <bpmn2:sequenceFlow id="Flow_In_6_Sim" name="Sim" sourceRef="Gw_In_RespFollow" targetRef="Gw_In_Real" />
+   <bpmn2:sequenceFlow id="Flow_In_7_Nao" name="Nao" sourceRef="Gw_In_RespFollow" targetRef="End_In_NurtNaoResp" />
+   <bpmn2:sequenceFlow id="Flow_In_8_Sim" name="Sim" sourceRef="Gw_In_Real" targetRef="Task_In_Entrega" />
+   <bpmn2:sequenceFlow id="Flow_In_9_Nao" name="Nao" sourceRef="Gw_In_Real" targetRef="End_In_Descarte" />
+   <bpmn2:sequenceFlow id="Flow_In_10" sourceRef="Task_In_Entrega" targetRef="End_In_SDR" />
 
  </bpmn2:process>
 
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <!-- POOL 2: PROCESS SDR ROBO OUTBOUND (ORANGE)                    -->
- <!-- y=480..830 | elements y: 500-810                               -->
+ <!-- POOL 2: SDR HUMANO (BLUE) — marca reuniao (inbound + outbound)  -->
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <bpmn2:process id="Process_Outbound" isExecutable="false">
+ <bpmn2:process id="Process_Sdr" isExecutable="false">
 
-   <bpmn2:startEvent id="Start_Outbound" name="Lead Outbound entra na lista">
-     <bpmn2:documentation>Lead capturado via prospeccao ativa.
-FONTES DE DADOS:
-- Google Meu Negocio: busca por segmento + cidade (ex: "restaurante Sao Paulo")
-- CNAE: consulta por codigo de atividade economica
-- LinkedIn: perfis de empresarios e decisores
-- Apollo.io: enriquecimento de dados B2B
-
-PROCESSO DE CAPTURA:
-1. Buscar empresas por segmento+cidade no Google Meu Negocio
-2. Coletar: nome empresa, telefone publico, endereco, avaliacao
-3. Enriquecer com nome do dono (Instagram, LinkedIn, site da empresa)
-4. Usar WhatsApp DA EMPRESA (numero publico do Google)
-IMPORTANTE: WhatsApp da empresa, NAO pessoal do dono.</bpmn2:documentation>
-     <bpmn2:outgoing>Flow_Out_01</bpmn2:outgoing>
+   <bpmn2:startEvent id="Start_Sdr_In" name="Recebe lead triado da IA (inbound)">
+     <bpmn2:documentation>Lead morno entregue pela IA: ja demonstrou interesse e teve contato confirmado.
+META DO SDR: conectar, qualificar ICP e MARCAR A REUNIAO com o Closer.</bpmn2:documentation>
+     <bpmn2:outgoing>Flow_Sdr_1</bpmn2:outgoing>
    </bpmn2:startEvent>
 
-   <bpmn2:task id="Task_Out_Enriquecer" name="Enriquecer Lead (nome, segmento, cidade, WhatsApp)">
-     <bpmn2:documentation>ENRIQUECIMENTO DO LEAD OUTBOUND:
-Automacao puxa dados do Google Meu Negocio e enriquece:
-1. Nome do decisor (dono/socio) — buscar no Instagram, LinkedIn, site
-2. Segmento exato da empresa
-3. Cidade e regiao
-4. WhatsApp da empresa (numero publico do Google)
-5. Numero de avaliacoes Google (proxy de tamanho)
-6. Instagram da empresa (se existir)
-
-IMPORTANTE:
-- Usar WhatsApp DA EMPRESA, NAO o pessoal
-- Validar que numero e ativo (status online ou foto perfil)
-- Se nao encontrar nome do dono, usar "Responsavel" como fallback
-- Priorizar empresas com 4+ estrelas no Google (negocio saudavel)</bpmn2:documentation>
-     <bpmn2:incoming>Flow_Out_01</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_Out_02</bpmn2:outgoing>
+   <bpmn2:task id="Task_Sdr_InContato" name="Contato rapido (lead morno)">
+     <bpmn2:documentation>Lead veio do anuncio/site — ir direto, sem explicar "somos um SaaS".
+SCRIPT (WhatsApp + ligacao):
+"Oi [Nome], aqui e o [SDR] do Fyness. Vi que voce quer organizar o financeiro do seu [segmento]. Te chamei pra entender rapidinho como ta hoje e, se fizer sentido, marcar uma demonstracao de 20 min com nosso especialista. Pode falar 2 minutinhos?"
+Objetivo: abrir a conversa e levar pra qualificacao + agendamento.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_1</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_2</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:task id="Task_Out_Cadencia7Dias" name="Cadencia Outbound Personalizada (7 dias)">
-     <bpmn2:documentation>CADENCIA DE AQUECIMENTO OUTBOUND (7 dias — AGGRESSIVE PAIN):
+   <bpmn2:startEvent id="Start_Sdr_Out" name="Inicia prospeccao ativa (outbound)">
+     <bpmn2:documentation>Prospeccao ativa, hoje 100% humana.
+A IA OUTBOUND esta em STANDBY — entra no futuro pra automatizar a cadencia de aquecimento.
+Por enquanto, o proprio SDR prospecta, aborda e qualifica.</bpmn2:documentation>
+     <bpmn2:outgoing>Flow_Sdr_3</bpmn2:outgoing>
+   </bpmn2:startEvent>
 
-D0 - PRIMEIRO CONTATO (direto na dor):
-"Prazer [Nome]! Sou o [Vendedor] do Fyness. Vou ser direto: a maioria dos donos de [segmento] em [cidade] trabalha 12h por dia e no final do mes nao sabe se teve lucro. Se voce e um deles, eu consigo resolver isso em 30 dias. Se nao e, desculpa o incomodo! Me conta: voce sabe EXATAMENTE quanto lucrou no mes passado?"
+   <bpmn2:task id="Task_Sdr_Prospecta" name="Prospecta (Google Meu Negocio) + enriquece + valida email">
+     <bpmn2:documentation>Buscar empresas por segmento + cidade no Google Meu Negocio.
+Coletar: nome da empresa, WhatsApp publico, endereco, avaliacoes, site, Instagram.
 
-D2 - CASE + DOR:
-"[Nome], um dono de [segmento] em [cidade vizinha] descobriu que perdia R$3k/mes em custos que nem sabia que existiam. Em 30 dias com o Fyness, zerou esse vazamento. O segredo? O assistente financeiro no WhatsApp — manda foto do comprovante e ele lanca tudo automatico. Gravei um video de 2min mostrando como funciona: [link demo]"
+ENRIQUECER (ordem de prioridade):
+1. CNPJ (Casa dos Dados) -> nome do SOCIO/decisor (transforma "Restaurante do Ze" em "Oi Joao"), CNAE, porte
+2. Email do decisor/empresa -> VALIDAR num verificador (MillionVerifier/ZeroBounce). Email morto = bounce = queima a entrega da cadencia.
+3. Instagram (atividade, tamanho)
 
-D4 - COMUNIDADE COMO ISCA:
-"[Nome], alem do sistema, a gente tem uma comunidade de empresarios do [segmento] que trocam experiencia sobre financeiro, precificacao, lucro real. E gratuita. Ja tem gente de [cidade] la. Se voce quer parar de controlar financeiro no escuro, entra: [link]. Sem compromisso nenhum."
-
-D6 - ULTIMA TENTATIVA (urgencia):
-"[Nome], ultima mensagem! Vou te ligar amanha — 2 minutinhos. Quero te mostrar quanto dinheiro voce ta deixando escapar todo mes sem perceber. Se nao fizer sentido, nunca mais te incomodo. Cada dia sem controle financeiro e dinheiro saindo pelo ralo."
-
-REGRAS:
-- WhatsApp da EMPRESA (numero publico do Google)
-- Tom DIRETO — bater na dor imediatamente, sem enrolacao
-- Se respondeu em QUALQUER momento, SAI da cadencia
-- Personalizar com segmento e cidade do lead
-- NAO explicar "somos um SaaS financeiro" — ir direto na dor
-- Nunca mandar preco ou link de pagamento na cadencia</bpmn2:documentation>
-     <bpmn2:incoming>Flow_Out_02</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_Out_03</bpmn2:outgoing>
+Priorizar 4+ estrelas. WhatsApp DA EMPRESA (numero publico), nao o pessoal.
+O email validado alimenta a cadencia de cold email (peneira barata ANTES de gastar WhatsApp).</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_3</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_4</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:exclusiveGateway id="Gw_Out_Engajou" name="Lead Engajou?">
-     <bpmn2:documentation>CRITERIOS DE ENGAJAMENTO:
-- Respondeu qualquer mensagem da cadencia
-- Entrou na comunidade gratuita
-- Interagiu com conteudo enviado
-- Clicou em link compartilhado
-Qualquer um desses = ENGAJOU.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_Out_03</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_Out_04_Sim</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_Out_05_Nao</bpmn2:outgoing>
+   <bpmn2:serviceTask id="Task_Sdr_ColdEmail" name="[ROBO] Cadencia de Cold Email (peneira / termometro)">
+     <bpmn2:documentation>PENEIRA BARATA: dispara cold email em volume pra qualificar o lead frio SEM gastar WhatsApp (evita ban). Quem CLICA esquenta sozinho.
+
+FERRAMENTA: Smartlead/Instantly (NAO o Resend — Resend e so transacional/opt-in; cold queima a conta e a entrega).
+
+INFRA (pre-requisito):
+- Dominio SECUNDARIO (ex: useFyness.com), nunca o principal
+- 2-3 inboxes (Google Workspace/M365) + SPF/DKIM/DMARC
+- WARMUP 2-3 semanas ANTES de disparar
+- Volume baixo: 30-50 emails por inbox/dia
+
+SEQUENCIA (2-4 emails, texto puro 1:1, 1 CTA rastreavel pro WhatsApp):
+E1 (D0) - dor + curiosidade. Assunto curto, nao "vendedor":
+"[Nome], vi o [Empresa] aqui em [cidade]. Pergunta rapida: voce sabe seu lucro REAL do mes passado? A maioria dos donos de [segmento] nao sabe — e perde dinheiro sem ver. Olha isso: [link rastreavel]"
+E2 (D3) - case curto + mesmo link.
+E3 (D6) - prova social / comunidade + link.
+E4 (D10) - break-off ("ultima vez que te escrevo").
+
+REGRA DE OURO: o email NUNCA fecha e NUNCA liga. Ele so MEDE intencao.
+Medir CLIQUE (nao abertura — abertura e furada hoje). Clicou = quente.
+Webhook de clique (Smartlead) -> CRM marca temperatura -> notifica SDR.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_4</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_Cold</bpmn2:outgoing>
+   </bpmn2:serviceTask>
+
+   <bpmn2:exclusiveGateway id="Gw_Sdr_Engajou" name="Esquentou? (clicou/engajou)">
+     <bpmn2:documentation>ALGORITMO DE TEMPERATURA (lead scoring por engajamento):
+Pontuar sinais — clicou no link do email (sinal forte), respondeu, visitou a landing, assistiu o teaser.
+Passou do limite = QUENTE -> SDR aborda no WhatsApp.
+Nao engajou apos a cadencia = FRIO -> Nurturing (nao gasta WhatsApp, evita ban).
+
+ATENCAO: so confie no "nao clicou" se a ENTREGA for boa (email caindo na caixa, nao no spam).
+Entrega ruim = dado mentiroso = lead bom descartado como frio.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_Cold</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_EngSim</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_Sdr_EngNao</bpmn2:outgoing>
    </bpmn2:exclusiveGateway>
 
-   <bpmn2:endEvent id="End_Outbound_Nurturing_NaoEng" name="→ NURTURING (Nao Engajou)">
-     <bpmn2:incoming>Flow_Out_05_Nao</bpmn2:incoming>
+   <bpmn2:endEvent id="End_Sdr_NurtFrio" name="→ NURTURING (nao engajou no email)">
+     <bpmn2:incoming>Flow_Sdr_EngNao</bpmn2:incoming>
    </bpmn2:endEvent>
 
-   <bpmn2:exclusiveGateway id="Gw_Out_ICP" name="Tem Perfil ICP?">
-     <bpmn2:documentation>MESMA CHECKLIST ICP DO INBOUND (3 de 4):
-[ ] Segmento (identificado na prospeccao)
-[ ] Faturamento minimo R$10k/mes
-[ ] Dor financeira identificada (latente ou ativa)
-[ ] Decisor acessivel (dono, socio, gerente)
-3 de 4 = TEM PERFIL → criar Smart Lead para Vendedor</bpmn2:documentation>
-     <bpmn2:incoming>Flow_Out_04_Sim</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_Out_06_TemPerfil</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_Out_07_SemPerfil</bpmn2:outgoing>
+   <bpmn2:task id="Task_Sdr_CadOut" name="SDR aborda no WhatsApp (so leads quentes)">
+     <bpmn2:documentation>So chega aqui quem ESQUENTOU no cold email (clicou/engajou). Agora sim o SDR gasta WhatsApp — com quem ja demonstrou intencao.
+
+ABERTURA (referenciar o interesse, sem dizer "te mandei email"):
+"Oi [Nome]! Aqui e o [SDR] do Fyness. Vi que voce se interessou em organizar o financeiro do [Empresa]. Da pra fazer tudo pelo WhatsApp — manda a foto do comprovante e o assistente lanca. Posso te mostrar rapidinho como ficaria no SEU [segmento]?"
+
+TOM (publico solution-aware): nao precisa "criar dor do zero" — ele JA sabe que precisa organizar. Posicionar contra a planilha bagunçada e o ERP complexo: pratico, rapido, sem curva de aprendizado.
+
+OBJETIVO: levar pra qualificacao + agendar a reuniao com o Closer.
+REGRA: respondeu/engajou, segue pra qualificacao.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_EngSim</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_5</bpmn2:outgoing>
+   </bpmn2:task>
+
+   <bpmn2:startEvent id="Start_Sdr_Parc" name="Parceria Contador (base endossada)">
+     <bpmn2:documentation>Entrada de leads vindos da PARCERIA COM CONTADORES — substitui a prospeccao fria manual 1-a-1.
+O contador entrega a base de clientes dele (PMEs do ICP exato). Sao leads endossados e quentes.
+Diferente do outbound frio, aqui NAO precisa peneira dura: a base e quente e finita — vale acionar TODOS (com endosso antes).
+RESSALVA: fechar o contador e uma venda em si (tem ciclo). Nao largar 100% os outros canais ate ter 3-5 contadores rodando.</bpmn2:documentation>
+     <bpmn2:outgoing>Flow_Sdr_P1</bpmn2:outgoing>
+   </bpmn2:startEvent>
+
+   <bpmn2:task id="Task_Sdr_Endosso" name="Contador envia endosso (template pronto)">
+     <bpmn2:documentation>ANTES de qualquer ligacao, o contador manda uma RECOMENDACAO PESSOAL (do numero/nome dele) pros clientes. NAO pode parecer propaganda — tem que soar como conselho do contador. E a mensagem que transfere a confianca.
+
+ENTREGAR O TEMPLATE PRONTO pro contador (ele e ocupado, nao e marketeiro). Dar COMISSAO RECORRENTE pra mante-lo disparando.
+
+TEMPLATE (contador -> cliente, WhatsApp):
+"Fala [Nome]! Aqui e o [Contador]. To indicando pros meus clientes uma ferramenta que facilita demais o financeiro — voce manda a foto do comprovante no WhatsApp e ela lanca tudo, te mostra teu lucro real na hora. Pedi pra equipe do Fyness te ligar pra explicar. Pode atender numa boa, eu confio. Se quiser ja adiantar, chama eles aqui: [link]. Abraco!"
+
+Quem responder o CTA do link = quentissimo (SDR liga JA).</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_P1</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_P2</bpmn2:outgoing>
+   </bpmn2:task>
+
+   <bpmn2:task id="Task_Sdr_LigaParc" name="SDR liga amarrando no contador">
+     <bpmn2:documentation>O SDR liga AMARRANDO no contador — transfere a confianca nos primeiros 5 segundos.
+
+ABERTURA (ligacao):
+"Oi [Nome]! Aqui e o [SDR] do Fyness. O [Contador] me pediu pra te ligar — falou que voce ia curtir organizar o financeiro de um jeito mais facil, tudo pelo WhatsApp. Ele te mandou uma mensagem, viu? Posso te mostrar rapidinho como ficaria no teu [segmento]?"
+
+SE NAO ATENDER (follow-up WhatsApp):
+"Oi [Nome], aqui e o [SDR] do Fyness — o [Contador] pediu pra eu falar com voce sobre organizar o financeiro do [negocio] pelo WhatsApp. Tentei te ligar. Melhor horario pra 5 min, manha ou tarde?"
+
+REGRA: nao espere o cliente vir — ligue em TODA a base endossada em 2-3 dias. Quem veio pelo CTA, atenda na hora.
+Daqui segue pra qualificacao (mesma esteira do inbound/outbound).</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_P2</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_P3</bpmn2:outgoing>
+   </bpmn2:task>
+
+   <bpmn2:startEvent id="Start_Sdr_Indic" name="Indicacao (cliente atual)">
+     <bpmn2:documentation>CANAL Nº1 de geracao de reuniao — quente e gratis. Converte 15-25x mais que cold.
+FONTE: cliente atual satisfeito (Kaynan pede indicacao em TODO fechamento) + leads reativados do Nurturing.
+REGRA: o SDR trabalha indicacao SEMPRE primeiro, todo dia, antes de qualquer cold.</bpmn2:documentation>
+     <bpmn2:outgoing>Flow_Sdr_I1</bpmn2:outgoing>
+   </bpmn2:startEvent>
+
+   <bpmn2:task id="Task_Sdr_Indic" name="SDR contata o indicado (morno)">
+     <bpmn2:documentation>Abordagem com o nome de quem indicou (transfere a confianca):
+"Oi [Nome]! O [Cliente] passou teu contato — ele usa o Fyness pra cuidar do financeiro pelo WhatsApp e falou que ia fazer sentido pra voce tambem. Posso te mostrar em 10 min como ficaria no teu [segmento]? Amanha de manha ou a tarde?"
+Lead morno = alta taxa de reuniao. Segue direto pra qualificacao/agendamento.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_I1</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_I2</bpmn2:outgoing>
+   </bpmn2:task>
+
+   <bpmn2:exclusiveGateway id="Gw_Sdr_Merge" name="Em conversa">
+     <bpmn2:incoming>Flow_Sdr_2</bpmn2:incoming>
+     <bpmn2:incoming>Flow_Sdr_5</bpmn2:incoming>
+     <bpmn2:incoming>Flow_Sdr_P3</bpmn2:incoming>
+     <bpmn2:incoming>Flow_Sdr_I2</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_6</bpmn2:outgoing>
    </bpmn2:exclusiveGateway>
 
-   <bpmn2:task id="Task_Out_TagComunidade" name="Tag + Convite comunidade gratuita">
-     <bpmn2:documentation>Lead outbound engajou mas nao tem perfil ICP.
-ACOES:
-1. Tag "outbound_sem_perfil" no CRM
-2. Convidar para comunidade gratuita
-3. Mensagem: "Valeu pelo papo, [Nome]! O Fyness e mais indicado pra empresas um pouco maiores, mas voce PRECISA resolver o financeiro senao vai continuar perdendo dinheiro. Nossa comunidade de empresarios de [segmento] e GRATUITA — tem gente la que ja resolveu o financeiro e pode te ajudar. Entra: [link]. Quando crescer, a gente conversa."
-4. Mover para Nurturing</bpmn2:documentation>
-     <bpmn2:incoming>Flow_Out_07_SemPerfil</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_Out_08</bpmn2:outgoing>
+   <bpmn2:task id="Task_Sdr_Qualifica" name="Conecta com decisor + qualifica ICP">
+     <bpmn2:documentation>Conectou com o decisor. Qualificar ICP (3 de 4): faturamento R$10k+/mes, dor financeira (latente ou ativa), decisor acessivel, segmento atendido.
+Fazer 2-3 perguntas de DOR pra confirmar fit e ja gerar interesse:
+"Como voce controla o financeiro hoje?" / "Voce sabe seu lucro real do mes passado?" / "Quem cuida disso, voce ou alguem?"
+ANOTAR a dor principal e uma estimativa de quanto o lead pode estar perdendo — vai no handoff pro Closer.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_6</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_7</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:endEvent id="End_Outbound_Nurturing_SemPerfil" name="→ NURTURING (Sem Perfil)">
-     <bpmn2:incoming>Flow_Out_08</bpmn2:incoming>
+   <bpmn2:exclusiveGateway id="Gw_Sdr_ICP" name="Tem perfil ICP?">
+     <bpmn2:incoming>Flow_Sdr_7</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_9_Sim</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_Sdr_8_Nao</bpmn2:outgoing>
+   </bpmn2:exclusiveGateway>
+
+   <bpmn2:endEvent id="End_Sdr_NurtICP" name="→ NURTURING (sem perfil)">
+     <bpmn2:incoming>Flow_Sdr_8_Nao</bpmn2:incoming>
    </bpmn2:endEvent>
 
-   <bpmn2:task id="Task_Out_CriarSmartLead" name="Criar Smart Lead + Handoff para Vendedor">
-     <bpmn2:documentation>Lead outbound qualificado! Criar Smart Lead e passar para Vendedor.
-SCRIPT DO ROBO (pain + anticipacao):
-"[Nome], pelo que voce me contou, voce ta perdendo dinheiro todo mes sem perceber — e a maioria dos donos de [segmento] ta na mesma situacao. Vou te passar pro [Nome Vendedor], ele e especialista em montar o financeiro de [segmento]. Ele vai te mostrar EXATAMENTE quanto voce ta deixando escapar e como zerar esse vazamento. Qual melhor horario pra te ligar?"
+   <bpmn2:task id="Task_Sdr_Interesse" name="Gera interesse + envia teaser + propoe a reuniao">
+     <bpmn2:documentation>Lead qualificado. ESTE e o momento do TEASER — depois que o lead confessou a dor, nao antes.
 
-REGISTRAR NO CRM:
-- Nome do decisor
-- Melhor horario para contato
-- Canal preferido (WhatsApp/telefone)
-- Segmento do negocio
-- Cidade
-- Principal dor financeira relatada
-- Nivel de urgencia (1-5)
-- Fonte: outbound (Google Meu Negocio)
-- Historico de interacoes na cadencia de aquecimento
-- Estimativa de quanto o lead ta perdendo por mes
+SEQUENCIA (dor → teaser → agendamento):
+1. Conectar com a dor que o lead acabou de falar:
+"[Nome], e EXATAMENTE isso que o Fyness mata. Deixa eu te mostrar uma coisa rapidinha."
+2. Enviar o TEASER (30-60s) no WhatsApp.
+3. Fechar a reuniao usando o teaser como ponte:
+"Viu? Voce manda a foto e acabou a planilha. Imagina isso rodando no SEU [segmento]. Vou marcar 20 min com nosso especialista pra ele te mostrar AO VIVO, com os numeros do seu negocio. Fica melhor amanha 10h ou 16h?"
 
-HANDOFF: Notificar vendedor imediatamente.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_Out_06_TemPerfil</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_Out_09</bpmn2:outgoing>
+TECNICA: sempre 2 opcoes de horario (alternativa), nunca pergunta aberta.
+Confirmar na agenda do Closer + criar lembrete pro lead.
+
+═══ ESPECIFICACAO DO TEASER (o que gravar) ═══
+- Duracao: 30-60s (alvo 40s). Vertical 9:16, manda direto no chat do WhatsApp.
+- UMA cena so: manda foto do comprovante no WhatsApp → assistente lanca automatico → aparece no fluxo de caixa. Legenda na tela (a maioria ve sem som).
+- Primeiros 3 segundos PRENDEM: "Olha o que acontece quando voce manda um comprovante aqui..."
+- CTA no fim: "Quer ver isso no SEU negocio?"
+- Por segmento se der (restaurante, salao, loja); senao, generico.
+
+REGRA DE OURO: e TEASER, nao demo. Mostra SO o lancamento via WhatsApp (o gancho).
+NAO mostrar DRE completo, relatorios, recomendacoes — isso e municao do Closer ao vivo.
+Mandar a demo completa aqui QUEIMA o WOW da reuniao e derruba o comparecimento.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_9_Sim</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_10</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:endEvent id="End_Outbound_SmartLead" name="→ VENDEDOR (Smart Lead Outbound)">
-     <bpmn2:incoming>Flow_Out_09</bpmn2:incoming>
+   <bpmn2:exclusiveGateway id="Gw_Sdr_Agendou" name="Marcou reuniao?">
+     <bpmn2:incoming>Flow_Sdr_10</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_11_Sim</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_Sdr_12_Nao</bpmn2:outgoing>
+   </bpmn2:exclusiveGateway>
+
+   <bpmn2:task id="Task_Sdr_FollowAgenda" name="Follow-up para agendar (D1, D3, D5)">
+     <bpmn2:documentation>Lead qualificado mas nao marcou ainda. Cadencia curta de agendamento com dor + prova social:
+D1: "[Nome], consegui um horario pro nosso especialista te mostrar quanto voce ta perdendo. Amanha 10h ou 16h?"
+D3: "[Nome], o [case do segmento] tava na mesma situacao e ficou adiando. Quando viu os numeros, fechou na hora. Bora marcar 20 min?"
+D5: "[Nome], ultima janela essa semana. Cada dia sem controle e dinheiro saindo. Que horario fica bom?"
+Se conseguir, marca. Se nao, vai pra Nurturing.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_12_Nao</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_13</bpmn2:outgoing>
+   </bpmn2:task>
+
+   <bpmn2:exclusiveGateway id="Gw_Sdr_AgendouFollow" name="Conseguiu agendar?">
+     <bpmn2:incoming>Flow_Sdr_13</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_14_Sim</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_Sdr_15_Nao</bpmn2:outgoing>
+   </bpmn2:exclusiveGateway>
+
+   <bpmn2:endEvent id="End_Sdr_NurtNaoAgenda" name="→ NURTURING (nao agendou)">
+     <bpmn2:incoming>Flow_Sdr_15_Nao</bpmn2:incoming>
    </bpmn2:endEvent>
 
-   <!-- SEQUENCE FLOWS -->
-   <bpmn2:sequenceFlow id="Flow_Out_01" sourceRef="Start_Outbound" targetRef="Task_Out_Enriquecer" />
-   <bpmn2:sequenceFlow id="Flow_Out_02" sourceRef="Task_Out_Enriquecer" targetRef="Task_Out_Cadencia7Dias" />
-   <bpmn2:sequenceFlow id="Flow_Out_03" sourceRef="Task_Out_Cadencia7Dias" targetRef="Gw_Out_Engajou" />
-   <bpmn2:sequenceFlow id="Flow_Out_04_Sim" name="Sim (engajou)" sourceRef="Gw_Out_Engajou" targetRef="Gw_Out_ICP" />
-   <bpmn2:sequenceFlow id="Flow_Out_05_Nao" name="Nao (7 dias sem engajamento)" sourceRef="Gw_Out_Engajou" targetRef="End_Outbound_Nurturing_NaoEng" />
-   <bpmn2:sequenceFlow id="Flow_Out_06_TemPerfil" name="Tem Perfil (3/4)" sourceRef="Gw_Out_ICP" targetRef="Task_Out_CriarSmartLead" />
-   <bpmn2:sequenceFlow id="Flow_Out_07_SemPerfil" name="Sem Perfil" sourceRef="Gw_Out_ICP" targetRef="Task_Out_TagComunidade" />
-   <bpmn2:sequenceFlow id="Flow_Out_08" sourceRef="Task_Out_TagComunidade" targetRef="End_Outbound_Nurturing_SemPerfil" />
-   <bpmn2:sequenceFlow id="Flow_Out_09" sourceRef="Task_Out_CriarSmartLead" targetRef="End_Outbound_SmartLead" />
+   <bpmn2:task id="Task_Sdr_Handoff" name="Registra Smart Lead + handoff pro Closer">
+     <bpmn2:documentation>REUNIAO MARCADA! Registrar Smart Lead no CRM e passar TUDO pro Closer:
+- Nome do decisor e WhatsApp
+- Segmento e cidade
+- Dor financeira principal relatada
+- Faturamento aproximado
+- Estimativa de quanto o lead esta perdendo por mes (pro Closer ancorar)
+- Fonte (inbound da IA ou outbound)
+- Data e hora da reuniao
+HANDOFF: notificar o Closer + enviar lembrete pro lead 1h antes da reuniao.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Sdr_11_Sim</bpmn2:incoming>
+     <bpmn2:incoming>Flow_Sdr_14_Sim</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Sdr_16</bpmn2:outgoing>
+   </bpmn2:task>
+
+   <bpmn2:endEvent id="End_Sdr_Closer" name="→ CLOSER (reuniao agendada)">
+     <bpmn2:incoming>Flow_Sdr_16</bpmn2:incoming>
+   </bpmn2:endEvent>
+
+   <bpmn2:sequenceFlow id="Flow_Sdr_1" sourceRef="Start_Sdr_In" targetRef="Task_Sdr_InContato" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_2" sourceRef="Task_Sdr_InContato" targetRef="Gw_Sdr_Merge" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_3" sourceRef="Start_Sdr_Out" targetRef="Task_Sdr_Prospecta" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_4" sourceRef="Task_Sdr_Prospecta" targetRef="Task_Sdr_ColdEmail" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_Cold" sourceRef="Task_Sdr_ColdEmail" targetRef="Gw_Sdr_Engajou" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_EngSim" name="Sim (clicou/engajou)" sourceRef="Gw_Sdr_Engajou" targetRef="Task_Sdr_CadOut" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_EngNao" name="Nao (frio)" sourceRef="Gw_Sdr_Engajou" targetRef="End_Sdr_NurtFrio" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_5" sourceRef="Task_Sdr_CadOut" targetRef="Gw_Sdr_Merge" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_P1" sourceRef="Start_Sdr_Parc" targetRef="Task_Sdr_Endosso" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_P2" sourceRef="Task_Sdr_Endosso" targetRef="Task_Sdr_LigaParc" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_P3" sourceRef="Task_Sdr_LigaParc" targetRef="Gw_Sdr_Merge" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_I1" sourceRef="Start_Sdr_Indic" targetRef="Task_Sdr_Indic" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_I2" sourceRef="Task_Sdr_Indic" targetRef="Gw_Sdr_Merge" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_6" sourceRef="Gw_Sdr_Merge" targetRef="Task_Sdr_Qualifica" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_7" sourceRef="Task_Sdr_Qualifica" targetRef="Gw_Sdr_ICP" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_8_Nao" name="Sem perfil" sourceRef="Gw_Sdr_ICP" targetRef="End_Sdr_NurtICP" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_9_Sim" name="Tem perfil (3/4)" sourceRef="Gw_Sdr_ICP" targetRef="Task_Sdr_Interesse" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_10" sourceRef="Task_Sdr_Interesse" targetRef="Gw_Sdr_Agendou" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_11_Sim" name="Sim" sourceRef="Gw_Sdr_Agendou" targetRef="Task_Sdr_Handoff" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_12_Nao" name="Nao" sourceRef="Gw_Sdr_Agendou" targetRef="Task_Sdr_FollowAgenda" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_13" sourceRef="Task_Sdr_FollowAgenda" targetRef="Gw_Sdr_AgendouFollow" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_14_Sim" name="Sim" sourceRef="Gw_Sdr_AgendouFollow" targetRef="Task_Sdr_Handoff" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_15_Nao" name="Nao" sourceRef="Gw_Sdr_AgendouFollow" targetRef="End_Sdr_NurtNaoAgenda" />
+   <bpmn2:sequenceFlow id="Flow_Sdr_16" sourceRef="Task_Sdr_Handoff" targetRef="End_Sdr_Closer" />
 
  </bpmn2:process>
 
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <!-- POOL 3: PROCESS VENDEDOR (BLUE)                                -->
- <!-- y=900..1750 | elements y: 920-1730                             -->
+ <!-- POOL 3: CLOSER (PURPLE) — demo ao vivo, proposta e fechamento   -->
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <bpmn2:process id="Process_Vendedor" isExecutable="false">
+ <bpmn2:process id="Process_Closer" isExecutable="false">
 
-   <bpmn2:startEvent id="Start_Vendedor" name="Recebe Smart Lead (Inbound ou Outbound)">
-     <bpmn2:documentation>Vendedor recebe Smart Lead qualificado de qualquer um dos dois robos (Inbound ou Outbound).
-O CRM notifica o vendedor com todos os dados coletados pelo robo.
-ACAO IMEDIATA: Estudar o lead antes de fazer contato.</bpmn2:documentation>
-     <bpmn2:outgoing>Flow_V_01</bpmn2:outgoing>
+   <bpmn2:startEvent id="Start_Cl" name="Recebe reuniao agendada (do SDR)">
+     <bpmn2:documentation>O Closer recebe a reuniao ja agendada pelo SDR, com todos os dados do Smart Lead.
+ACAO IMEDIATA: estudar o lead antes da call.</bpmn2:documentation>
+     <bpmn2:outgoing>Flow_Cl_1</bpmn2:outgoing>
    </bpmn2:startEvent>
 
-   <bpmn2:task id="Task_V_EstudarLead" name="Estudar Lead (2-5 min)">
-     <bpmn2:documentation>PREPARACAO ANTES DO CONTATO (2-5 minutos):
-1. Ler todas as notas do robo (respostas, segmento, dor PRINCIPAL)
-2. Pesquisar Instagram/site da empresa
-3. Ver avaliacoes no Google (entender volume/tamanho)
-4. CALCULAR estimativa de perda financeira do lead (pra usar na call)
-5. Preparar gancho de DOR personalizado por segmento
-
-EXEMPLO DE GANCHO (sempre bater na DOR):
-- Restaurante: "Vi que seu restaurante tem 4.8 estrelas no Google! Com esse volume de vendas, se voce nao sabe o lucro real, ta perdendo MUITO dinheiro sem perceber..."
-- Loja: "Vi que voce tem uma loja de [produto] em [bairro]. Com o fluxo de varejo, se voce controla na mao, estatisticamente perde de 5-15% do faturamento..."
-- Servicos: "Vi que voce presta servicos de [tipo]. Com clientes diferentes, prazos diferentes, se voce nao tem controle em tempo real, ta deixando dinheiro na mesa todo mes..."</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_01</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_02</bpmn2:outgoing>
+   <bpmn2:task id="Task_Cl_Prepara" name="Prepara (estuda o lead, 5 min)">
+     <bpmn2:documentation>Antes da call (5 min):
+1. Ler as notas do SDR (dor principal, segmento, faturamento, estimativa de perda)
+2. Pesquisar Instagram/Google da empresa (volume, tamanho)
+3. Calcular a estimativa de perda do lead pra usar na demo
+4. Preparar o gancho de dor por segmento (Pitch 1 se tem funcionario no financeiro; Pitch 2 se faz sozinho)</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Cl_1</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_2</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:task id="Task_V_CadenciaVendedor" name="Cadencia WhatsApp Primeiro, Liga em Seguida (10 dias)">
-     <bpmn2:documentation>CADENCIA DO VENDEDOR (9 touchpoints em 10 dias — CADA MENSAGEM BATE EM DOR DIFERENTE):
+   <bpmn2:task id="Task_Cl_Reuniao" name="Reuniao ao vivo: Retomada + SPIN + Demo">
+     <bpmn2:documentation>REUNIAO CONSULTIVA (20-30 min) — fazer DOER antes do WOW:
 
-D0 - WhatsApp (dor + antecipacao):
-"[Nome], aqui e o [Vendedor] do Fyness. O [Nome Robo] me passou que voce ta controlando financeiro [na mao/com funcionario/de cabeca]. Vou te ligar em 2 minutinhos — quero te mostrar quanto dinheiro voce ta perdendo por mes sem saber. Nao e papo de vendedor, e conta matematica."
-→ Liga 2-3 minutos depois
+1) RETOMADA (2-3 min): relembrar a dor que o SDR anotou.
+"[Nome], o [SDR] me passou que voce controla o financeiro [na mao/de cabeca/com funcionario]. Piorou, melhorou ou continua igual? Hoje eu te mostro EXATAMENTE quanto isso custa e como resolver."
 
-D1 - Liga (horario diferente do D0)
+2) SPIN (5-8 min) — ver anotacao SPIN:
+S - "Como controla hoje? Quem faz? Quanto tempo/quanto paga?"
+P - "Sabe seu lucro REAL do mes passado? Ja faltou dinheiro pra pagar conta?"
+I - "Se perde 5-15% sem saber, em 1 ano da quanto? Se paga R$2-3k/mes de funcionario, sao R$30k/ano."
+N - "Se visse no celular agora quanto lucrou e o que tem a pagar — e mandasse foto do comprovante pra acabar com a planilha — quanto valeria?"
+ANOTAR os numeros de perda (vao justificar o preco).
 
-D2 - WhatsApp 2 (estatistica + dor):
-"[Nome], fiz uma conta rapida: se voce nao sabe seu lucro real, estatisticamente voce perde de 5-15% do faturamento todo mes. Num negocio de R$30k/mes, isso e R$1.500 a R$4.500 SUMINDO sem voce perceber. Posso te ligar 2 minutinhos pra te mostrar de onde vem esse vazamento?"
-→ Liga apos 2h
-
-D3 - Liga
-
-D5 - WhatsApp 3 (case + urgencia):
-"[Nome], o [Case] achava que tava tudo bem ate descobrir que perdia R$3k/mes em custos escondidos. Em 30 dias com o Fyness, zerou o vazamento. Ultimo contato — quando quiser resolver, me chama. Cada dia e mais dinheiro saindo."
-→ Liga
-
-D8 - Email break-off:
-"[Nome], tentei te contatar porque sei que voce ta perdendo dinheiro todo mes sem perceber. Vou parar de insistir. Mas fica a reflexao: se voce nao sabe seu lucro real HOJE, como vai tomar decisoes amanha? Quando quiser resolver, e so responder. Abs, [Vendedor]"
-
-TOTAL: 5 ligacoes + 3 WhatsApp + 1 email = 9 touchpoints
-REGRA: Se conectou em qualquer ponto, SAI da cadencia e vai para AIDA.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_02</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_03</bpmn2:outgoing>
+3) DEMO (8-10 min) — momento WOW:
+"Olha: mando essa foto de comprovante no WhatsApp... pronto, o assistente ja lancou, categorizado, no fluxo de caixa. Voce nunca mais digita nada."
+Mostrar com exemplos do segmento do lead:
+- Lancamento via WhatsApp (foto/audio/texto) — matar a planilha
+- DRE em tempo real — o lucro REAL que ele nao sabia
+- Recomendacoes do assistente (custo alto, conta vencendo)
+- Fluxo de caixa em tempo real
+- Educacao Financeira + Comunidade (pacote completo)
+RECONECTAR cada recurso com a dor do SPIN: "Lembra que voce me disse [dor]? Olha como acabou."</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Cl_2</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_3</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:exclusiveGateway id="Gw_V_Conectou" name="Conectou com Decisor?">
-     <bpmn2:incoming>Flow_V_03</bpmn2:incoming>
-     <bpmn2:incoming>Flow_V_GK_Sim</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_04_Sim</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_V_05_Nao</bpmn2:outgoing>
+   <bpmn2:task id="Task_Cl_Proposta" name="Proposta e negociacao (R$97 / R$67)">
+     <bpmn2:documentation>PROPOSTA COM ANCORAGEM NA PERDA (3-5 min):
+
+TRANSICAO (usar a dor do SPIN):
+"[Nome], com tudo que voce me mostrou, voce ta perdendo [estimativa] por mes sem controle. Sao R$[anual] por ANO sumindo. O Fyness resolve isso e ainda se paga."
+
+ANCORAGEM (na economia, nao no preco):
+Pitch 1 (tem funcionario): "Voce paga R$2-3k/mes pra alguem fazer o que o assistente faz por R$67/mes. Sao R$2k de economia POR MES."
+Pitch 2 (faz sozinho): "Voce gasta horas toda semana e ainda nao sabe o lucro real. R$67/mes no anual = R$2,20/dia. Menos que um cafezinho."
+
+ESCADA DE PRECO (ancorar no anual):
+1. ANUAL: R$67/mes (12x = R$804) — MELHOR, ancorar aqui
+2. MENSAL: R$97/mes (opcao B)
+
+CARENCIA DE PAGAMENTO (quebra o atrito — substitui o trial):
+"E pra voce comecar sem aperto: assina hoje e a primeira cobranca cai em ate 15 dias. Voce ja entra usando, manda o primeiro comprovante no WhatsApp, e so paga depois."
+
+FECHAMENTO (urgencia):
+"Faz sentido continuar perdendo [valor do SPIN] por mes ou vamos resolver isso agora? Te mando o contrato e voce ja comeca hoje."
+
+TODOS incluem: assistente no WhatsApp + SaaS completo + Educacao Financeira + Comunidade.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Cl_3</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_4</bpmn2:outgoing>
+   </bpmn2:task>
+
+   <bpmn2:exclusiveGateway id="Gw_Cl_Fechou" name="Fechou?">
+     <bpmn2:incoming>Flow_Cl_4</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_5_Sim</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_Cl_8_Nao</bpmn2:outgoing>
    </bpmn2:exclusiveGateway>
 
-   <bpmn2:task id="Task_V_Gatekeeper" name="Tecnicas Gatekeeper">
-     <bpmn2:documentation>TECNICAS PARA PASSAR PELO GATEKEEPER (Ep. 4):
-
-1. USAR O NOME: "Oi, o [Nome do Dono] esta? E o [Vendedor]."
-   (Usar primeiro nome passa familiaridade)
-
-2. SIMULAR PROXIMIDADE: "Ele pediu pra eu retornar..."
-   "Estava conversando com ele por WhatsApp..."
-
-3. PEDIR AJUDA: "Voce pode me ajudar? Preciso falar com o responsavel pelo financeiro..."
-
-4. ELOGIAR: "Nossa, que atendimento bom! Voce e a [Nome]? O [Dono] tem sorte de ter voce na equipe."
-
-5. HORARIO ESTRATEGICO: Ligar antes das 9h ou depois das 18h
-   (dono costuma atender nessas horas)
-
-6. WHATSAPP DIRETO: Se tem o WhatsApp da empresa,
-   mandar mensagem direta pro dono
-
-SE NAO PASSOU APOS 3 TENTATIVAS: Mover para Nurturing.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_05_Nao</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_GK_Check</bpmn2:outgoing>
+   <bpmn2:task id="Task_Cl_Contrato" name="Contrato assinado + carencia de pagamento (ate 15d)">
+     <bpmn2:documentation>VENDA FECHADA! Formalizar:
+1. Enviar contrato por assinatura digital
+2. Confirmar plano (Mensal R$97 ou Anual R$67/mes em 12x)
+3. Aplicar CARENCIA DE PAGAMENTO de ate 15 dias (assina agora, primeira cobranca em ate 15 dias)
+4. Coletar dados de pagamento (cartao recorrente)
+5. Disparar o onboarding imediatamente — o lead precisa ver valor ja</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Cl_5_Sim</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_6</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:exclusiveGateway id="Gw_V_PassouGK" name="Passou Gatekeeper?">
-     <bpmn2:incoming>Flow_V_GK_Check</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_GK_Sim</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_V_GK_Nao</bpmn2:outgoing>
-   </bpmn2:exclusiveGateway>
+   <bpmn2:task id="Task_Cl_Onboard" name="Ativar onboarding">
+     <bpmn2:documentation>ONBOARDING (ver valor IMEDIATO):
+1. Criar conta no Fyness + enviar credenciais (WhatsApp + email)
+2. "Manda AGORA a primeira foto de comprovante no WhatsApp e ve o assistente lancando tudo."
+3. Sessao de setup (30 min): plano de contas do segmento, contas a pagar/receber
+4. Dar acesso a Educacao Financeira + adicionar na Comunidade
+5. Agendar check-in D7 e D30
+6. Comemorar no grupo de vendas!</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Cl_6</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_7</bpmn2:outgoing>
+   </bpmn2:task>
 
-   <bpmn2:endEvent id="End_Vendedor_Nurturing" name="→ NURTURING (Nao Converteu)">
-     <bpmn2:incoming>Flow_V_GK_Nao</bpmn2:incoming>
-     <bpmn2:incoming>Flow_V_FollowUp_End</bpmn2:incoming>
-     <bpmn2:incoming>Flow_V_Obj_SemPerfil</bpmn2:incoming>
-     <bpmn2:incoming>Flow_V_Obj_NaoAgora</bpmn2:incoming>
-     <bpmn2:incoming>Flow_V_TrialConverteu_Nao</bpmn2:incoming>
+   <bpmn2:endEvent id="End_Cl_Venda" name="VENDA!">
+     <bpmn2:incoming>Flow_Cl_7</bpmn2:incoming>
    </bpmn2:endEvent>
 
-   <bpmn2:task id="Task_V_AIDA" name="Ligacao Conexao AIDA (5-8 min)">
-     <bpmn2:documentation>FRAMEWORK AIDA — LIGACAO DE CONEXAO AGRESSIVA (5-8 minutos):
-
-A — ATENCAO (primeiros 15 segundos — PAIN FIRST):
-"Oi [Nome]! Aqui e o [Vendedor] do Fyness. Vou ser direto contigo: voce sabe me dizer agora, de cabeca, quanto lucrou no mes passado? O numero REAL?"
-(Lead vai dizer "mais ou menos" ou "nao sei exatamente")
-"E EXATAMENTE ai que ta o problema. A maioria dos donos de [segmento] trabalha igual louco e no final do mes nao sabe se teve lucro ou prejuizo. E isso custa CARO."
-
-I — INTERESSE (micro-compromisso):
-"Posso te fazer uma pergunta em 2 minutinhos? Quero te mostrar uma coisa que vai mudar sua visao sobre o financeiro do seu negocio."
-(Se sim = micro-compromisso, lead esta engajado)
-(Se nao = "Sem problema! Mas [Nome], cada dia sem saber seu lucro real e dinheiro sumindo. Qual melhor horario pra te ligar?")
-
-D — DESEJO (case + diferenciais):
-"O [Case] tinha EXATAMENTE essa situacao. Controlava tudo em [planilha/cabeca/funcionario]. Quando colocou o Fyness, descobriu em 1 SEMANA que perdia R$3k/mes em custos que nem sabia que existiam. Hoje ele manda o comprovante no WhatsApp e o assistente financeiro faz tudo automatico — lancamento, DRE, fluxo de caixa. E alem do sistema, ele recebe educacao financeira e participa da comunidade de empresarios. Nao e so um sistema — e o pacote completo pra nunca mais ficar no escuro."
-
-A — ACAO (urgencia + demo):
-"Faz sentido eu te mostrar em 15 minutinhos como isso funcionaria pro SEU [segmento]? Te mostro ao vivo pelo WhatsApp. Voce vai ver EXATAMENTE quanto ta perdendo e como resolver."</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_04_Sim</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_06</bpmn2:outgoing>
-   </bpmn2:task>
-
-   <bpmn2:exclusiveGateway id="Gw_V_AceitouDemo" name="Aceitou Demo?">
-     <bpmn2:incoming>Flow_V_06</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_07_Sim</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_V_08_Nao</bpmn2:outgoing>
+   <bpmn2:exclusiveGateway id="Gw_Cl_Motivo" name="Motivo da objecao?">
+     <bpmn2:incoming>Flow_Cl_8_Nao</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_9_Pensar</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_Cl_10_Caro</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_Cl_11_Momento</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_Cl_12_Perfil</bpmn2:outgoing>
    </bpmn2:exclusiveGateway>
 
-   <bpmn2:task id="Task_V_FollowUpConteudo" name="Follow-up + Conteudo educativo">
-     <bpmn2:documentation>Lead conectou mas nao aceitou demo agora.
-ACOES:
-1. Enviar conteudo que AMPLIFIQUE a dor
-2. "[Nome], sem problema. Mas enquanto voce decide, vou te mandar um material que mostra quanto os donos de [segmento] PERDEM por mes sem controle financeiro. Os numeros assustam. Quando quiser resolver, me chama — cada dia sem controle e dinheiro sumindo."
-3. Agendar follow-up no CRM para D3, D7, D14
-4. Mover para Nurturing se nao engajar — com mensagens de DOR</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_08_Nao</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_FollowUp_End</bpmn2:outgoing>
+   <bpmn2:task id="Task_Cl_ObjPensar" name="Preciso pensar → follow-up + carencia">
+     <bpmn2:documentation>OBJECAO "preciso pensar" = nao sentiu dor suficiente.
+Follow-up (D1, D3, D5) reforcando QUANTO perde por dia/mes:
+D1: "[Nome], enquanto pensa, o financeiro continua no escuro. Qual a duvida que ta travando?"
+D3: prova social ("o [case] ficou pensando e ja tinha perdido R$3k quando comecou").
+D5: oferecer comecar com risco baixo via carencia de pagamento: "Assina hoje e so paga em ate 15 dias. Comeca usando sem tirar do bolso agora."
+Se nao avancar, mover pra Nurturing.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Cl_9_Pensar</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_13</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:task id="Task_V_Etapa1_Retomada" name="ETAPA 1: Apresentacao + Retomada">
-     <bpmn2:documentation>ETAPA 1 DA DEMO — RETOMADA COM DOR (2-3 min):
-
-ABRIR RELEMBRANDO A DOR:
-"[Nome]! Bom falar com voce de novo. Na nossa ultima conversa voce me contou que [resumir dor/situacao]. Me diz: piorou, melhorou ou continua igual?"
-(Se piorou ou igual = PERFEITO — amplificar)
-"Entao faz [X] dias que voce ta perdendo dinheiro sem saber. Vamos resolver isso HOJE."
-
-DEFINIR EXPECTATIVAS COM URGENCIA:
-"Nos proximos 15-20 minutos eu vou te mostrar EXATAMENTE quanto voce ta perdendo e como o Fyness resolve isso. No final, se fizer sentido — e vai fazer — a gente ve os proximos passos. Combinado?"
-
-DICA: NAO comecar com papo furado. Ir direto na dor. O lead ja sabe que e um tool financeiro — o que ele precisa sentir e que ta PERDENDO DINHEIRO.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_07_Sim</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_09</bpmn2:outgoing>
+   <bpmn2:task id="Task_Cl_ObjCaro" name="Esta caro → reframe ROI + carencia">
+     <bpmn2:documentation>OBJECAO "esta caro" = reframe pela perda.
+"Quanto voce PERDE por mes sem saber o lucro? R$97/mes se paga no primeiro mes. No anual sao R$67/mes — R$2,20 por dia."
+Pitch 1: "Voce paga R$2-3k/mes de funcionario. Isso nao e economia, e emergencia."
+Pitch 2: "Quanto vale sua hora? Voce ta pagando mais caro pra fazer pior na planilha."
+Facilitar entrada: "Assina hoje e a primeira cobranca cai em ate 15 dias."
+Se nao avancar, mover pra Nurturing.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Cl_10_Caro</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_14</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:task id="Task_V_Etapa2_SPIN" name="ETAPA 2: Descoberta SPIN">
-     <bpmn2:documentation>ETAPA 2 DA DEMO — DESCOBERTA SPIN SELLING AGRESSIVA (5-8 min):
-
-S — SITUACAO (entender pra poder DOER depois):
-"Como voce controla o financeiro hoje?" / "Quem faz isso?"
-"Quanto tempo por semana voce gasta com financeiro?"
-"Quanto voce paga pro funcionario que cuida disso?" (se tem funcionario)
-
-P — PROBLEMA (fazer DOER — perguntas que incomodam):
-"Voce sabe seu lucro REAL do ultimo mes? Nao por cima — o numero EXATO?"
-"Ja aconteceu de chegar no final do mes e nao ter dinheiro pra pagar as contas?"
-"Quanto voce paga pro funcionario que faz isso? E ele erra?" (se tem funcionario)
-"Quantas vezes voce ja pagou juros por esquecer uma conta?"
-"Voce ja tomou uma decisao importante — contratar, investir — sem saber os numeros reais?"
-
-I — IMPLICACAO (AMPLIFICAR a dor — fazer o lead SENTIR na carne):
-"Se voce ta perdendo 5-15% do faturamento sem saber, em 1 ano isso da quanto? Faz a conta."
-"Se voce paga R$2-3k/mes de funcionario, sao R$30k/ano SO com financeiro. E se um assistente no WhatsApp fizesse isso por R$137/mes?" (se tem funcionario)
-"Se voce gasta 8 horas por semana no financeiro, sao 400 horas por ano. Quanto voce cobra por hora? Faz a conta — voce ta PAGANDO pra fazer financeiro."
-"O que acontece se voce continuar mais 6 meses sem saber pra onde vai o dinheiro? Quanto mais voce perde?"
-"Seu concorrente ja sabe o lucro dele em tempo real. Quanto tempo voce acha que leva pra ele te ultrapassar?"
-
-N — NECESSIDADE (lead verbaliza a solucao — dor maxima):
-"Se voce pudesse ver AGORA, no celular, quanto lucrou hoje, quanto tem a pagar essa semana, e receber um alerta quando um custo ta acima do normal — quanto isso valeria pra voce?"
-"Se pudesse mandar foto do comprovante no WhatsApp e acabar com planilha PRA SEMPRE — faria sentido?"
-"Se alem de resolver o financeiro, voce ainda tivesse acesso a educacao financeira e uma comunidade de empresarios do seu segmento — isso mudaria o jogo?"
-
-DICA: ANOTAR TUDO — especialmente os numeros de perda. Vao ser usados na proposta pra justificar o preco. Quanto mais doloroso o SPIN, mais facil o fechamento.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_09</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_10</bpmn2:outgoing>
+   <bpmn2:task id="Task_Cl_ObjMomento" name="Nao e o momento → planta dor + Nurturing">
+     <bpmn2:documentation>OBJECAO "nao e o momento": plantar a semente da dor e manter canal aberto.
+"Quando VAI ser o momento? Enquanto espera, voce perde [valor do SPIN] por mes. Em 6 meses sao [valor x6]."
+ACOES: tag "nao_agora" + data de recontato, adicionar na comunidade e em remarketing, mover pra Nurturing com reativacao em 30 dias.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Cl_11_Momento</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_15</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:task id="Task_V_Etapa3_Demo" name="ETAPA 3: Demo Personalizada">
-     <bpmn2:documentation>ETAPA 3 DA DEMO — DEMONSTRACAO QUE FAZ DOER (8-10 min):
-
-ABRIR COM DOR ANTES DO WOW:
-"Agora vou te mostrar o que muda quando voce para de fazer na mao. Tudo aquilo que voce me contou — [resumir dores do SPIN] — ACABOU."
-
-MOMENTO WOW — ASSISTENTE PROCESSANDO COMPROVANTE VIA WHATSAPP:
-"Olha: eu mando essa foto de comprovante no WhatsApp... pronto. O assistente ja lancou, categorizado, no seu fluxo de caixa. Voce nunca mais precisa abrir planilha. Nunca mais digita nada. Mandou a foto e acabou."
-
-MOSTRAR USANDO EXEMPLOS DO SEGMENTO DO LEAD:
-
-1. LANCAMENTOS VIA WHATSAPP (principal diferencial — matar a planilha):
-"O assistente aceita foto, audio e texto. Voce manda: 'Paguei R$500 de aluguel' e ele lanca. Manda foto do boleto e ele cadastra a conta a pagar. Tudo pelo WhatsApp. Acabou a era da planilha."
-
-2. DRE EM TEMPO REAL (mostrar o lucro que o lead NAO sabe):
-"Esse e o DRE — seu lucro REAL. Nao o que voce ACHA que lucra, mas o numero EXATO. Lembra que voce me disse que nao sabe quanto lucrou no mes passado? Com o Fyness voce sabe em 1 clique. A pergunta e: voce quer continuar no escuro ou quer saber a verdade?"
-
-3. RECOMENDACOES DO ASSISTENTE (dinheiro escondido):
-"O assistente identificou que seus custos com [categoria] subiram 20% esse mes. Ele te avisa automatico e sugere onde cortar. Te avisa 3 dias antes de cada conta vencer — nunca mais paga juros. Quanto voce ja perdeu em juros por esquecimento?"
-
-4. FLUXO DE CAIXA EM TEMPO REAL:
-"Olha: voce ve EXATAMENTE quanto entrou, quanto saiu e quanto sobrou. Zero surpresa. Seu concorrente que usa o Fyness ja tem isso. E voce?"
-
-5. EDUCACAO FINANCEIRA + COMUNIDADE (pacote completo):
-"E alem do sistema, voce recebe acesso a plataforma de educacao financeira — cursos, aulas ao vivo, materiais sobre gestao, precificacao, fluxo de caixa. E entra na comunidade exclusiva de empresarios — networking, mentoria, troca de experiencia com gente do seu segmento. Nao e so um sistema, e o PACOTE COMPLETO pra voce nunca mais ficar no escuro com o financeiro."
-
-CONECTAR COM AS DORES DO SPIN (fazer doer de novo):
-"Lembra que voce me falou que [dor]? Olha como ACABOU esse problema."
-Se tem funcionario: "Tudo isso que seu funcionario faz por R$2-3k/mes, o assistente faz pelo WhatsApp. E nao erra, nao falta, nao pede aumento, nao pede ferias. Quanto voce economiza por ano?"
-Se faz sozinho: "Todas aquelas [X] horas por semana que voce perde em planilha? ACABOU. Manda foto no WhatsApp e pronto. O que voce faria com [X] horas extras por semana?"
-
-DICA: O MOMENTO WOW e o assistente processando o comprovante. Comecar por ai. Depois RECONECTAR com cada dor do SPIN. Quanto mais doer, mais facil fechar.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_10</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_11</bpmn2:outgoing>
+   <bpmn2:task id="Task_Cl_ObjPerfil" name="Sem perfil → descarte educado + comunidade">
+     <bpmn2:documentation>Closer percebe que nao tem fit real. Descarte educado:
+"[Nome], vou ser honesto: nesse momento o Fyness e mais indicado pra [criterio]. Mas voce PRECISA resolver o financeiro. Entra na nossa comunidade gratuita e, quando crescer, me chama."
+ACOES: tag "sem_perfil_closer", convidar pra comunidade, mover pra Nurturing (ciclo longo).</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Cl_12_Perfil</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Cl_16</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:task id="Task_V_Etapa4_Proposta" name="ETAPA 4: Proposta e Negociacao">
-     <bpmn2:documentation>ETAPA 4 DA DEMO — PROPOSTA COM URGENCIA (3-5 min):
-
-TRANSICAO — USAR A DOR DO SPIN:
-"[Nome], com tudo que voce me mostrou — voce ta perdendo [estimativa do SPIN] por mes sem controle. Sao R$[valor anual] por ANO sumindo. Cada dia que passa e mais dinheiro saindo. O Fyness resolve isso HOJE."
-(Esperar resposta — se SIM, apresentar preco)
-
-ANCORAGEM NA PERDA (nao no preco — na ECONOMIA):
-Se TEM FUNCIONARIO (Pitch 1):
-"Voce paga R$2-3k/mes pra alguem fazer o que o assistente do Fyness faz MELHOR por R$137/mes. Sao R$2k de economia POR MES. Em 1 ano voce economiza mais de R$20.000. E o assistente nao erra, nao falta, nao pede ferias, nao pede aumento. Cada dia que voce continua pagando esse funcionario e dinheiro jogado fora."
-Se FAZ SOZINHO (Pitch 2):
-"Voce gasta [X] horas por semana fazendo financeiro na mao — e AINDA nao sabe seu lucro real. Com o Fyness voce manda foto no WhatsApp e pronto. R$137/mes no anual — R$4,50 por dia. Menos que um cafezinho. E voce para de PERDER dinheiro todo mes sem perceber."
-
-ESCADA DE PRECO (sempre comecar pelo melhor):
-1. ANUAL PIX: R$1.497 a vista (sem taxa = MELHOR preco!)
-   → nao tem pix?
-2. ANUAL CARTAO: 12x R$137/mes (= R$1.644)
-   → cartao nao passou?
-3. SEMESTRAL: R$997 (cartao ou boleto) = R$166/mes
-   → nao tem R$997?
-4. ANUAL BOLETO: 3x R$548 (so lead top qualificado, aprovacao gestor)
-   → nao quer compromisso longo?
-5. MENSAL: R$197/mes (cartao recorrente)
-   → "preciso pensar"?
-6. TRIAL: 7 dias GRATIS, sem cartao
-
-TODOS incluem: Assistente financeiro no WhatsApp + SaaS financeiro completo + Plataforma de Educacao Financeira + Comunidade Exclusiva de Empresarios.
-Educacao e Comunidade = DIFERENCIAL (nao bonus).
-
-TRIAL COMO ARMA:
-"Se quiser testar antes, temos 7 dias GRATIS sem pedir cartao. Manda foto de comprovante no WhatsApp e ve a magica acontecer. Mas [Nome], cada dia sem o Fyness e mais dinheiro saindo pelo ralo."
-
-TECNICA DE FECHAMENTO (urgencia):
-"Consigo o anual no PIX por R$1.497 — voce ta perdendo [valor do SPIN] por mes. Em 1 mes o Fyness ja se pagou e voce AINDA economiza. Faz sentido continuar perdendo dinheiro ou vamos resolver isso AGORA?"
-(Se resistir, descer a escada de preco)</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_11</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_12</bpmn2:outgoing>
-   </bpmn2:task>
-
-   <bpmn2:exclusiveGateway id="Gw_V_Fechou" name="Fechou?">
-     <bpmn2:incoming>Flow_V_12</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_13_Sim</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_V_14_Nao</bpmn2:outgoing>
-   </bpmn2:exclusiveGateway>
-
-   <bpmn2:task id="Task_V_Onboarding" name="Ativar Onboarding">
-     <bpmn2:documentation>VENDA FECHADA! Ativar onboarding com URGENCIA — lead precisa ver valor IMEDIATO.
-ACOES:
-1. Criar conta no Fyness
-2. Enviar credenciais por WhatsApp + email
-3. Mensagem: "[Nome], PRONTO! Seu acesso ta liberado. Manda AGORA a primeira foto de comprovante no WhatsApp — voce vai ver o assistente lancando tudo automatico. A partir de hoje, ACABOU de perder dinheiro sem saber."
-4. Agendar sessao de setup (30 min) para configurar:
-   - Plano de contas personalizado para o segmento
-   - Importar dados existentes (se houver)
-   - Configurar contas a pagar/receber
-5. Dar acesso a plataforma de educacao financeira
-6. Adicionar na comunidade de empresarios
-7. Agendar check-in D7 e D30
-8. Comemorar no grupo de vendas!</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_13_Sim</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_Venda</bpmn2:outgoing>
-   </bpmn2:task>
-
-   <bpmn2:endEvent id="End_V_Venda" name="VENDA!">
-     <bpmn2:incoming>Flow_V_Venda</bpmn2:incoming>
-     <bpmn2:incoming>Flow_V_TrialConverteu_Sim</bpmn2:incoming>
+   <bpmn2:endEvent id="End_Cl_Nurt" name="→ NURTURING (nao converteu)">
+     <bpmn2:incoming>Flow_Cl_13</bpmn2:incoming>
+     <bpmn2:incoming>Flow_Cl_14</bpmn2:incoming>
+     <bpmn2:incoming>Flow_Cl_15</bpmn2:incoming>
+     <bpmn2:incoming>Flow_Cl_16</bpmn2:incoming>
    </bpmn2:endEvent>
 
-   <bpmn2:exclusiveGateway id="Gw_V_Motivo" name="Motivo da objecao?">
-     <bpmn2:incoming>Flow_V_14_Nao</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_Obj_Pensar</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_V_Obj_Caro</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_V_Obj_NaoAgora_Flow</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_V_Obj_SemPerfil_Flow</bpmn2:outgoing>
-   </bpmn2:exclusiveGateway>
-
-   <bpmn2:task id="Task_V_Obj_Pensar" name="Follow-up CRM (D1, D3, D5)">
-     <bpmn2:documentation>OBJECAO: "Preciso pensar"
-ESTRATEGIA: Follow-up com DOR — lembrar o que o lead ta perdendo cada dia.
-
-D1: WhatsApp com dor + resumo
-"[Nome], enquanto voce pensa, seu financeiro continua desorganizado. Lembra que voce me disse que [dor do SPIN]? Cada dia sem resolver e mais dinheiro saindo. As 3 coisas que mais fazem sentido pro seu [segmento]: [lista]. Qual e a duvida que ta te travando?"
-
-D3: Prova social + urgencia
-"[Nome], o [Case do segmento] tava na MESMA situacao que voce. Ficou 'pensando' 2 semanas. Quando finalmente comecou, descobriu que ja tinha perdido R$3k nesses 14 dias. Comecou a usar e zerou o vazamento em 30 dias."
-
-D5: Oferta Trial + ultimo push
-"[Nome], ultima tentativa. 7 dias GRATIS, sem cartao, sem compromisso. Manda uma foto de comprovante no WhatsApp e ve o assistente funcionando. Se voce nao descobrir que ta perdendo dinheiro, eu te devo um cafe. Mas cada dia que voce 'pensa', e mais dinheiro sumindo."
-
-DICA: "Preciso pensar" = o lead nao sentiu a dor o suficiente. Reforcar QUANTO ele ta perdendo por dia/mes/ano.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_Obj_Pensar</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_Pensar_Trial</bpmn2:outgoing>
-   </bpmn2:task>
-
-   <bpmn2:task id="Task_V_Obj_Caro" name="Oferta Trial 7 dias + ROI">
-     <bpmn2:documentation>OBJECAO: "Esta caro"
-ESTRATEGIA: Reframe pela DOR — quanto o lead ta PERDENDO e maior que o preco.
-
-REFRAME PRINCIPAL (pain first):
-"Entendo. Mas me diz: quanto voce ta PERDENDO por mes sem saber o lucro real? Se for R$1.000, R$2.000... o Fyness de R$197/mes se paga no PRIMEIRO mes. Na verdade, voce ta PERDENDO DINHEIRO cada dia que NAO usa. Caro e continuar sem controle."
-
-REFRAME 1 — Funcionario vs assistente (se tem funcionario):
-"Voce paga R$2-3k/mes pra alguem fazer financeiro. O Fyness custa R$137/mes no anual. Voce ta JOGANDO FORA R$2k por mes. Todo mes. Isso nao e economia — e EMERGENCIA."
-
-REFRAME 2 — Horas perdidas (se faz sozinho):
-"Quanto vale sua hora? Se voce gasta 8 horas por semana em planilha, sao 32 horas por mes. A R$50/hora, voce ta GASTANDO R$1.600/mes pra fazer financeiro na mao. O Fyness custa R$137/mes. Voce ta PAGANDO 10x mais pra fazer PIOR."
-
-REFRAME 3 — Custo diario:
-"R$4,50 por dia no anual. MENOS que um cafezinho. E cada dia SEM o Fyness voce perde mais que isso em custos escondidos."
-
-REFRAME 4 — PIX:
-"Se fizer no PIX anual: R$1.497 a vista — R$137/mes. Comparado com o que voce PERDE todo mes, isso e troco."
-
-TRIAL (ultima cartada):
-"Mas sabe o que? Testa 7 dias GRATIS. Sem cartao, sem compromisso. Manda foto de comprovante no WhatsApp e ve o assistente funcionando. Se em 7 dias voce nao descobrir que tava perdendo dinheiro, cancela sem pagar nada. Mas eu GARANTO que voce vai descobrir."</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_Obj_Caro</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_Caro_Trial</bpmn2:outgoing>
-   </bpmn2:task>
-
-   <bpmn2:task id="Task_V_Obj_NaoAgora" name="Nurturing + Remarketing">
-     <bpmn2:documentation>OBJECAO: "Nao e o momento"
-ESTRATEGIA: Plantar a semente da dor + manter canal aberto.
-
-"Entendo, [Nome]. Mas me diz uma coisa: quando VAI ser o momento? Porque enquanto voce espera o 'momento certo', voce ta perdendo [valor do SPIN] por mes. Em 30 dias sao [valor x 1]. Em 6 meses sao [valor x 6]. O momento certo era ontem.
-
-Mas respeito. Vou fazer o seguinte:
-1. Te adiciono na nossa comunidade de empresarios (gratuita — tem gente do seu segmento la)
-2. Daqui 30 dias eu te mando uma mensagem so pra ver quanto voce perdeu nesse periodo
-3. Quando a dor ficar insuportavel, e so me chamar."
-
-ACOES NO CRM:
-1. Tag "nao_agora" + data prevista de recontato
-2. Adicionar em lista de remarketing (Meta/Google) — anuncios de DOR
-3. Mover para Nurturing com reativacao em 30 dias</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_Obj_NaoAgora_Flow</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_Obj_NaoAgora</bpmn2:outgoing>
-   </bpmn2:task>
-
-   <bpmn2:task id="Task_V_Obj_SemPerfil" name="Descarte educado + Comunidade">
-     <bpmn2:documentation>OBJECAO: "Nao tenho perfil" / Vendedor percebe que nao tem fit
-ESTRATEGIA: Descarte educado + comunidade + plantar semente de dor.
-
-"[Nome], vou ser honesto: o Fyness e mais indicado pra empresas com [criterios]. Mas independente disso, voce PRECISA resolver o financeiro — senao cada mes e mais dinheiro sumindo. Vou te ajudar:
-1. Nossa comunidade de empresarios e GRATUITA — tem gente do seu segmento que ja resolveu o financeiro e compartilha como fez
-2. Tem conteudo de educacao financeira toda semana
-3. Quando seu negocio crescer, me chama — eu te mostro quanto voce ta perdendo."
-
-ACOES:
-1. Tag "sem_perfil_vendedor" no CRM
-2. Convidar para comunidade
-3. Mover para Nurturing (ciclo longo)</bpmn2:documentation>
-     <bpmn2:incoming>Flow_V_Obj_SemPerfil_Flow</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_Obj_SemPerfil</bpmn2:outgoing>
-   </bpmn2:task>
-
-   <!-- SUB-PROCESS: TRIAL 7 DIAS -->
-   <bpmn2:subProcess id="SubProcess_Trial" name="Trial 7 Dias">
-     <bpmn2:documentation>SUB-PROCESSO: TRIAL 7 DIAS GRATIS — MANTER URGENCIA
-Objetivo: converter trial em cliente pago. Lead precisa SENTIR o valor e ter MEDO de perder.
-
-D0 - SETUP + PRIMEIRO IMPACTO:
-- Criar conta trial no sistema
-- Enviar credenciais WhatsApp + email
-- Mensagem: "Bem-vindo ao Fyness, [Nome]! Seu acesso ta liberado. Manda AGORA a primeira foto de comprovante no WhatsApp e ve a magica acontecer. Voce vai se perguntar por que nao fez isso antes."
-- Agendar sessao de setup express (15 min)
-
-D3 - CHECK-IN AUTOMATICO (robo — pain reminder):
-- CRM envia: "[Nome]! Ja faz 3 dias do seu trial. Ja mandou comprovante pelo WhatsApp? Ja viu seu fluxo de caixa atualizado automatico? A maioria dos empresarios descobre um VAZAMENTO de dinheiro nos primeiros 3 dias. O que voce descobriu?"
-- Se responder com duvida, vendedor intervem
-
-D5 - VENDEDOR LIGA (urgencia):
-- Ligacao de check-in pessoal
-- "Oi [Nome]! Ta usando o Fyness? Ja descobriu algo que nao sabia sobre seu financeiro? A maioria descobre um vazamento nos primeiros 5 dias."
-- Se usou: "Voce ja [beneficio]. Imagina perder isso e voltar pra planilha?"
-- Se NAO usou: "[Nome], voce tem 2 dias pra testar de graca. Cada dia que passa sem usar e mais um dia perdendo dinheiro sem saber. Manda uma foto de comprovante AGORA."
-- Preparar para fechamento: "Seu trial acaba em 2 dias. Vamos garantir seu acesso?"
-
-D7 - VENDEDOR FECHA (ultimato):
-- Ligacao de fechamento
-- "Oi [Nome]! Os 7 dias acabaram. Voce viu o que o assistente faz. A pergunta e: voce quer VOLTAR pra planilha ou quer manter o controle? Vou te fazer a melhor condicao: anual no PIX por R$1.497 — sem taxa nenhuma. Cada dia sem o Fyness agora e dinheiro sumindo."
-- Descer escada de preco se necessario: PIX → Anual cartao 12x R$137 → Semestral R$997 → Mensal R$197
-- Se nao converter: mover para Nurturing com mensagem de dor
-
-METRICAS: Taxa de conversao trial→pago meta: >25%</bpmn2:documentation>
-
-     <bpmn2:startEvent id="Start_Trial" name="Inicio Trial">
-       <bpmn2:outgoing>Flow_Trial_01</bpmn2:outgoing>
-     </bpmn2:startEvent>
-     <bpmn2:task id="Task_Trial_Setup" name="D0: Setup conta trial">
-       <bpmn2:incoming>Flow_Trial_01</bpmn2:incoming>
-       <bpmn2:outgoing>Flow_Trial_02</bpmn2:outgoing>
-     </bpmn2:task>
-     <bpmn2:task id="Task_Trial_CheckIn" name="D3: Check-in auto + D5: Vendedor liga">
-       <bpmn2:incoming>Flow_Trial_02</bpmn2:incoming>
-       <bpmn2:outgoing>Flow_Trial_03</bpmn2:outgoing>
-     </bpmn2:task>
-     <bpmn2:task id="Task_Trial_Fecha" name="D7: Vendedor fecha">
-       <bpmn2:incoming>Flow_Trial_03</bpmn2:incoming>
-       <bpmn2:outgoing>Flow_Trial_04</bpmn2:outgoing>
-     </bpmn2:task>
-     <bpmn2:endEvent id="End_Trial" name="Fim Trial">
-       <bpmn2:incoming>Flow_Trial_04</bpmn2:incoming>
-     </bpmn2:endEvent>
-     <bpmn2:sequenceFlow id="Flow_Trial_01" sourceRef="Start_Trial" targetRef="Task_Trial_Setup" />
-     <bpmn2:sequenceFlow id="Flow_Trial_02" sourceRef="Task_Trial_Setup" targetRef="Task_Trial_CheckIn" />
-     <bpmn2:sequenceFlow id="Flow_Trial_03" sourceRef="Task_Trial_CheckIn" targetRef="Task_Trial_Fecha" />
-     <bpmn2:sequenceFlow id="Flow_Trial_04" sourceRef="Task_Trial_Fecha" targetRef="End_Trial" />
-   </bpmn2:subProcess>
-
-   <bpmn2:exclusiveGateway id="Gw_V_TrialConverteu" name="Converteu?">
-     <bpmn2:incoming>Flow_V_Trial_Done</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_V_TrialConverteu_Sim</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_V_TrialConverteu_Nao</bpmn2:outgoing>
-   </bpmn2:exclusiveGateway>
-
-   <!-- SEQUENCE FLOWS -->
-   <bpmn2:sequenceFlow id="Flow_V_01" sourceRef="Start_Vendedor" targetRef="Task_V_EstudarLead" />
-   <bpmn2:sequenceFlow id="Flow_V_02" sourceRef="Task_V_EstudarLead" targetRef="Task_V_CadenciaVendedor" />
-   <bpmn2:sequenceFlow id="Flow_V_03" sourceRef="Task_V_CadenciaVendedor" targetRef="Gw_V_Conectou" />
-   <bpmn2:sequenceFlow id="Flow_V_04_Sim" name="Sim" sourceRef="Gw_V_Conectou" targetRef="Task_V_AIDA" />
-   <bpmn2:sequenceFlow id="Flow_V_05_Nao" name="Nao (nao conectou)" sourceRef="Gw_V_Conectou" targetRef="Task_V_Gatekeeper" />
-   <bpmn2:sequenceFlow id="Flow_V_GK_Check" sourceRef="Task_V_Gatekeeper" targetRef="Gw_V_PassouGK" />
-   <bpmn2:sequenceFlow id="Flow_V_GK_Sim" name="Sim" sourceRef="Gw_V_PassouGK" targetRef="Gw_V_Conectou" />
-   <bpmn2:sequenceFlow id="Flow_V_GK_Nao" name="Nao (3 tentativas)" sourceRef="Gw_V_PassouGK" targetRef="End_Vendedor_Nurturing" />
-   <bpmn2:sequenceFlow id="Flow_V_06" sourceRef="Task_V_AIDA" targetRef="Gw_V_AceitouDemo" />
-   <bpmn2:sequenceFlow id="Flow_V_07_Sim" name="Sim" sourceRef="Gw_V_AceitouDemo" targetRef="Task_V_Etapa1_Retomada" />
-   <bpmn2:sequenceFlow id="Flow_V_08_Nao" name="Nao" sourceRef="Gw_V_AceitouDemo" targetRef="Task_V_FollowUpConteudo" />
-   <bpmn2:sequenceFlow id="Flow_V_FollowUp_End" sourceRef="Task_V_FollowUpConteudo" targetRef="End_Vendedor_Nurturing" />
-   <bpmn2:sequenceFlow id="Flow_V_09" sourceRef="Task_V_Etapa1_Retomada" targetRef="Task_V_Etapa2_SPIN" />
-   <bpmn2:sequenceFlow id="Flow_V_10" sourceRef="Task_V_Etapa2_SPIN" targetRef="Task_V_Etapa3_Demo" />
-   <bpmn2:sequenceFlow id="Flow_V_11" sourceRef="Task_V_Etapa3_Demo" targetRef="Task_V_Etapa4_Proposta" />
-   <bpmn2:sequenceFlow id="Flow_V_12" sourceRef="Task_V_Etapa4_Proposta" targetRef="Gw_V_Fechou" />
-   <bpmn2:sequenceFlow id="Flow_V_13_Sim" name="Sim!" sourceRef="Gw_V_Fechou" targetRef="Task_V_Onboarding" />
-   <bpmn2:sequenceFlow id="Flow_V_14_Nao" name="Nao" sourceRef="Gw_V_Fechou" targetRef="Gw_V_Motivo" />
-   <bpmn2:sequenceFlow id="Flow_V_Venda" sourceRef="Task_V_Onboarding" targetRef="End_V_Venda" />
-   <bpmn2:sequenceFlow id="Flow_V_Obj_Pensar" name="Preciso pensar" sourceRef="Gw_V_Motivo" targetRef="Task_V_Obj_Pensar" />
-   <bpmn2:sequenceFlow id="Flow_V_Obj_Caro" name="Esta caro" sourceRef="Gw_V_Motivo" targetRef="Task_V_Obj_Caro" />
-   <bpmn2:sequenceFlow id="Flow_V_Obj_NaoAgora_Flow" name="Nao e o momento" sourceRef="Gw_V_Motivo" targetRef="Task_V_Obj_NaoAgora" />
-   <bpmn2:sequenceFlow id="Flow_V_Obj_SemPerfil_Flow" name="Sem perfil" sourceRef="Gw_V_Motivo" targetRef="Task_V_Obj_SemPerfil" />
-   <bpmn2:sequenceFlow id="Flow_V_Pensar_Trial" sourceRef="Task_V_Obj_Pensar" targetRef="SubProcess_Trial" />
-   <bpmn2:sequenceFlow id="Flow_V_Caro_Trial" sourceRef="Task_V_Obj_Caro" targetRef="SubProcess_Trial" />
-   <bpmn2:sequenceFlow id="Flow_V_Obj_NaoAgora" sourceRef="Task_V_Obj_NaoAgora" targetRef="End_Vendedor_Nurturing" />
-   <bpmn2:sequenceFlow id="Flow_V_Obj_SemPerfil" sourceRef="Task_V_Obj_SemPerfil" targetRef="End_Vendedor_Nurturing" />
-   <bpmn2:sequenceFlow id="Flow_V_Trial_Done" sourceRef="SubProcess_Trial" targetRef="Gw_V_TrialConverteu" />
-   <bpmn2:sequenceFlow id="Flow_V_TrialConverteu_Sim" name="Sim" sourceRef="Gw_V_TrialConverteu" targetRef="End_V_Venda" />
-   <bpmn2:sequenceFlow id="Flow_V_TrialConverteu_Nao" name="Nao" sourceRef="Gw_V_TrialConverteu" targetRef="End_Vendedor_Nurturing" />
+   <bpmn2:sequenceFlow id="Flow_Cl_1" sourceRef="Start_Cl" targetRef="Task_Cl_Prepara" />
+   <bpmn2:sequenceFlow id="Flow_Cl_2" sourceRef="Task_Cl_Prepara" targetRef="Task_Cl_Reuniao" />
+   <bpmn2:sequenceFlow id="Flow_Cl_3" sourceRef="Task_Cl_Reuniao" targetRef="Task_Cl_Proposta" />
+   <bpmn2:sequenceFlow id="Flow_Cl_4" sourceRef="Task_Cl_Proposta" targetRef="Gw_Cl_Fechou" />
+   <bpmn2:sequenceFlow id="Flow_Cl_5_Sim" name="Sim!" sourceRef="Gw_Cl_Fechou" targetRef="Task_Cl_Contrato" />
+   <bpmn2:sequenceFlow id="Flow_Cl_6" sourceRef="Task_Cl_Contrato" targetRef="Task_Cl_Onboard" />
+   <bpmn2:sequenceFlow id="Flow_Cl_7" sourceRef="Task_Cl_Onboard" targetRef="End_Cl_Venda" />
+   <bpmn2:sequenceFlow id="Flow_Cl_8_Nao" name="Nao" sourceRef="Gw_Cl_Fechou" targetRef="Gw_Cl_Motivo" />
+   <bpmn2:sequenceFlow id="Flow_Cl_9_Pensar" name="Preciso pensar" sourceRef="Gw_Cl_Motivo" targetRef="Task_Cl_ObjPensar" />
+   <bpmn2:sequenceFlow id="Flow_Cl_10_Caro" name="Esta caro" sourceRef="Gw_Cl_Motivo" targetRef="Task_Cl_ObjCaro" />
+   <bpmn2:sequenceFlow id="Flow_Cl_11_Momento" name="Nao e o momento" sourceRef="Gw_Cl_Motivo" targetRef="Task_Cl_ObjMomento" />
+   <bpmn2:sequenceFlow id="Flow_Cl_12_Perfil" name="Sem perfil" sourceRef="Gw_Cl_Motivo" targetRef="Task_Cl_ObjPerfil" />
+   <bpmn2:sequenceFlow id="Flow_Cl_13" sourceRef="Task_Cl_ObjPensar" targetRef="End_Cl_Nurt" />
+   <bpmn2:sequenceFlow id="Flow_Cl_14" sourceRef="Task_Cl_ObjCaro" targetRef="End_Cl_Nurt" />
+   <bpmn2:sequenceFlow id="Flow_Cl_15" sourceRef="Task_Cl_ObjMomento" targetRef="End_Cl_Nurt" />
+   <bpmn2:sequenceFlow id="Flow_Cl_16" sourceRef="Task_Cl_ObjPerfil" targetRef="End_Cl_Nurt" />
 
  </bpmn2:process>
 
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <!-- POOL 4: PROCESS NURTURING (PURPLE)                             -->
- <!-- y=1820..2140 | elements y: 1840-2120                           -->
+ <!-- POOL 4: NURTURING (AMBER)                                       -->
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <bpmn2:process id="Process_Nurturing" isExecutable="false">
+ <bpmn2:process id="Process_Nurt" isExecutable="false">
 
-   <bpmn2:startEvent id="Start_Nurturing" name="Recebe Leads Nao Convertidos (Inbound + Outbound + Vendedor)">
-     <bpmn2:documentation>Recebe leads nao convertidos de QUALQUER pool:
-- Inbound: sem perfil ICP ou nao respondeu cadencia
-- Outbound: nao engajou ou sem perfil
-- Vendedor: nao conectou, nao aceitou demo, objecoes nao resolvidas, trial nao convertido
-
-REGRA: Todo lead que nao converteu vai para Nurturing. Nenhum lead e descartado sem passar por aqui.</bpmn2:documentation>
-     <bpmn2:outgoing>Flow_N_01</bpmn2:outgoing>
+   <bpmn2:startEvent id="Start_Nu" name="Recebe nao convertidos (todos os pools)">
+     <bpmn2:documentation>Recebe leads nao convertidos de qualquer pool:
+- IA Inbound: nao respondeu ou nao qualificado pra contato
+- SDR: sem perfil ICP ou nao agendou reuniao
+- Closer: nao fechou (pensar, caro, nao e o momento, sem perfil)
+REGRA: nenhum lead e descartado sem passar por aqui.</bpmn2:documentation>
+     <bpmn2:outgoing>Flow_Nu_1</bpmn2:outgoing>
    </bpmn2:startEvent>
 
-   <bpmn2:task id="Task_N_Conteudo" name="Conteudo educativo financeiro automatico (semanal)">
-     <bpmn2:documentation>CRM envia conteudo educativo automatico toda semana — CADA CONTEUDO BATE NA DOR:
-SEMANA 1: "[Nome], voce sabia que 82% dos empresarios nao sabem o lucro real? Esse conteudo mostra os 5 sinais de que voce ta PERDENDO dinheiro sem perceber."
-SEMANA 2: "[Nome], quanto voce ACHA que lucra por mes? E quanto voce lucra DE VERDADE? A diferenca assusta. Aprenda a calcular."
-SEMANA 3: "[Nome], cada hora que voce gasta em planilha e uma hora que voce NAO ta vendendo. Veja quando e hora de parar de jogar dinheiro fora."
-SEMANA 4: "[Nome], o [empresario] tava na mesma situacao que voce. Perdendo dinheiro todo mes sem saber. Em 30 dias resolveu. Veja como."
-
-CANAIS: WhatsApp (principal) + Email (secundario)
-FORMATO: Texto curto com DOR + link para conteudo completo
-REGRA: Se lead interagir com conteudo, notificar vendedor IMEDIATAMENTE (lead ta sentindo a dor).</bpmn2:documentation>
-     <bpmn2:incoming>Flow_N_01</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_N_02</bpmn2:outgoing>
+   <bpmn2:task id="Task_Nu_Conteudo" name="Conteudo educativo semanal">
+     <bpmn2:documentation>CRM envia conteudo educativo automatico toda semana — cada um bate na dor:
+S1: "82% dos empresarios nao sabem o lucro real. Veja os 5 sinais de que voce ta perdendo dinheiro."
+S2: "Quanto voce ACHA que lucra vs quanto lucra DE VERDADE? A diferenca assusta."
+S3: "Cada hora na planilha e uma hora que voce nao ta vendendo."
+S4: "O [empresario] resolveu em 30 dias. Veja como."
+CANAIS: WhatsApp (principal) + email. Se interagir, notificar o SDR IMEDIATAMENTE.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Nu_1</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Nu_2</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:task id="Task_N_Comunidade" name="Convite comunidade de empresarios">
-     <bpmn2:documentation>Convidar para comunidade gratuita de empresarios Fyness.
-BENEFICIOS DA COMUNIDADE:
-- Networking com outros empresarios que JA resolveram o financeiro
-- Conteudo exclusivo sobre gestao financeira
-- Aulas ao vivo semanais
-- Mentoria de empresarios mais experientes
-- Acesso a materiais de educacao financeira
-
-MENSAGEM (pain + comunidade):
-"[Nome], enquanto voce pensa, seu financeiro continua desorganizado. Cada dia sem controle e dinheiro que some. Mas independente de tudo, nossa comunidade de empresarios e GRATUITA — tem [X] empresarios que ja resolveram o financeiro trocando experiencia. Entra la e ve como os outros estao fazendo: [link]. Quando quiser resolver de vez, o Fyness ta aqui."</bpmn2:documentation>
-     <bpmn2:incoming>Flow_N_02</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_N_03</bpmn2:outgoing>
+   <bpmn2:task id="Task_Nu_Comunidade" name="Convite comunidade de empresarios">
+     <bpmn2:documentation>Convidar pra comunidade gratuita de empresarios Fyness.
+BENEFICIOS: networking com quem ja resolveu o financeiro, aulas ao vivo, mentoria, materiais.
+MENSAGEM (dor + comunidade): "[Nome], enquanto pensa, o financeiro continua no escuro. Mas a comunidade e gratuita — tem gente do seu segmento que ja resolveu. Entra: [link]."</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Nu_2</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Nu_3</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:task id="Task_N_Remarketing" name="Remarketing (Meta/Google)">
-     <bpmn2:documentation>REMARKETING AUTOMATIZADO — ANUNCIOS DE DOR:
-1. Adicionar lead em audiencia personalizada do Meta Ads
-2. Adicionar em lista de remarketing do Google Ads
-3. Anuncios focados em DOR FINANCEIRA (fazer o lead sentir que ta perdendo dinheiro)
-4. Exemplos de anuncios:
-   - "Quanto dinheiro voce PERDEU esse mes sem perceber?" + link conteudo
-   - "Seu concorrente ja sabe o lucro dele em tempo real. E voce?" + video
-   - "Voce trabalha 12h por dia e no final do mes nao sabe se teve lucro?" + case
-   - "R$4,50/dia pra nunca mais perder dinheiro sem saber" + demo
-   - Depoimentos: "Descobri que perdia R$3k/mes sem saber"
-5. Budget: R$2-5/dia por lead em remarketing</bpmn2:documentation>
-     <bpmn2:incoming>Flow_N_03</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_N_04</bpmn2:outgoing>
+   <bpmn2:task id="Task_Nu_Remarketing" name="Remarketing (Meta / Google)">
+     <bpmn2:documentation>REMARKETING com anuncios de DOR:
+1. Adicionar em audiencia do Meta Ads e lista do Google Ads
+2. Anuncios focados em dor financeira:
+   - "Quanto dinheiro voce perdeu esse mes sem perceber?"
+   - "Seu concorrente ja sabe o lucro dele em tempo real. E voce?"
+   - "R$2,20/dia pra nunca mais perder dinheiro sem saber"
+   - Depoimento: "Descobri que perdia R$3k/mes sem saber"
+3. Budget: R$2-5/dia por lead</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Nu_3</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Nu_4</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:task id="Task_N_Reativacao" name="Reativacao periodica (30-60 dias, max 3 ciclos)">
-     <bpmn2:documentation>REATIVACAO PERIODICA — CADA CICLO BATE EM DOR DIFERENTE:
-A cada 30-60 dias, robo entra em contato para reativar lead.
-
-CICLO 1 (30 dias — dor acumulada):
-"[Nome], faz 1 mes que a gente conversou. Se voce ainda nao sabe seu lucro real, ja perdeu mais 1 mes de dinheiro sem perceber. Estatisticamente, sao de R$1.500 a R$4.500 que sumiram. O Fyness resolve isso em 30 dias — assistente no WhatsApp + educacao financeira + comunidade de empresarios. Quando quiser parar de perder, e so responder."
-
-CICLO 2 (60 dias — concorrente):
-"[Nome], nos ultimos 2 meses, [X] empresarios do seu segmento em [cidade] comecaram a usar o Fyness. Eles ja sabem o lucro real em tempo real. E voce? Ainda controlando na mao? Cada dia e mais distancia entre voce e quem ja resolveu. Quer ver como funciona? [link demo]"
-
-CICLO 3 (90 dias — ULTIMO — dor maxima):
-"[Nome], ultima mensagem. Nos ultimos 3 meses voce perdeu entre R$4.500 e R$13.500 sem saber pra onde foi. Isso e o CUSTO de nao ter controle financeiro. Se em algum momento a dor ficar grande demais, e so responder aqui. O Fyness custa R$4,50/dia. Quanto voce perdeu hoje?"
-
-MAXIMO: 3 ciclos. Apos 3 ciclos sem resposta → descarte elegante.</bpmn2:documentation>
-     <bpmn2:incoming>Flow_N_04</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_N_05</bpmn2:outgoing>
+   <bpmn2:task id="Task_Nu_Reativacao" name="Reativacao periodica (30-60d, max 3 ciclos)">
+     <bpmn2:documentation>REATIVACAO — cada ciclo bate em dor diferente:
+CICLO 1 (30d): "Faz 1 mes. Se ainda nao sabe o lucro real, perdeu mais 1 mes de dinheiro. Da pra resolver em 30 dias."
+CICLO 2 (60d): "[X] empresarios do seu segmento em [cidade] ja usam o Fyness. Eles sabem o lucro em tempo real. E voce?"
+CICLO 3 (90d, ultimo): "Nos ultimos 3 meses voce perdeu entre R$4.500 e R$13.500 sem saber. R$2,20/dia resolve. Quanto voce perdeu hoje?"
+MAXIMO 3 ciclos. Se reativar, volta pro SDR humano.</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Nu_4</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Nu_5</bpmn2:outgoing>
    </bpmn2:task>
 
-   <bpmn2:exclusiveGateway id="Gw_N_Reativou" name="Reativou?">
-     <bpmn2:incoming>Flow_N_05</bpmn2:incoming>
-     <bpmn2:outgoing>Flow_N_06_Sim</bpmn2:outgoing>
-     <bpmn2:outgoing>Flow_N_07_Nao</bpmn2:outgoing>
+   <bpmn2:exclusiveGateway id="Gw_Nu_Reativou" name="Reativou?">
+     <bpmn2:incoming>Flow_Nu_5</bpmn2:incoming>
+     <bpmn2:outgoing>Flow_Nu_6_Sim</bpmn2:outgoing>
+     <bpmn2:outgoing>Flow_Nu_7_Nao</bpmn2:outgoing>
    </bpmn2:exclusiveGateway>
 
-   <bpmn2:endEvent id="End_Nurturing_Reativacao" name="→ SDR INBOUND (Reativacao)">
-     <bpmn2:incoming>Flow_N_06_Sim</bpmn2:incoming>
+   <bpmn2:endEvent id="End_Nu_SDR" name="→ SDR HUMANO (reativado)">
+     <bpmn2:incoming>Flow_Nu_6_Sim</bpmn2:incoming>
    </bpmn2:endEvent>
 
-   <bpmn2:endEvent id="End_Nurturing_Descarte" name="Descarte elegante (apos 3 ciclos)">
-     <bpmn2:documentation>Lead passou por 3 ciclos de reativacao sem engajar.
-DESCARTE ELEGANTE:
+   <bpmn2:endEvent id="End_Nu_Descarte" name="Descarte elegante (apos 3 ciclos)">
+     <bpmn2:documentation>Lead passou por 3 ciclos sem engajar.
 1. Remover de listas ativas de remarketing
-2. Manter em base fria (pode ser reativado por campanha massiva futura)
+2. Manter em base fria (reativavel por campanha massiva futura)
 3. Tag "descarte_elegante" + data
-4. NAO enviar mais mensagens individuais</bpmn2:documentation>
-     <bpmn2:incoming>Flow_N_07_Nao</bpmn2:incoming>
+4. Nao enviar mais mensagens individuais</bpmn2:documentation>
+     <bpmn2:incoming>Flow_Nu_7_Nao</bpmn2:incoming>
    </bpmn2:endEvent>
 
-   <!-- SEQUENCE FLOWS -->
-   <bpmn2:sequenceFlow id="Flow_N_01" sourceRef="Start_Nurturing" targetRef="Task_N_Conteudo" />
-   <bpmn2:sequenceFlow id="Flow_N_02" sourceRef="Task_N_Conteudo" targetRef="Task_N_Comunidade" />
-   <bpmn2:sequenceFlow id="Flow_N_03" sourceRef="Task_N_Comunidade" targetRef="Task_N_Remarketing" />
-   <bpmn2:sequenceFlow id="Flow_N_04" sourceRef="Task_N_Remarketing" targetRef="Task_N_Reativacao" />
-   <bpmn2:sequenceFlow id="Flow_N_05" sourceRef="Task_N_Reativacao" targetRef="Gw_N_Reativou" />
-   <bpmn2:sequenceFlow id="Flow_N_06_Sim" name="Sim (reativou)" sourceRef="Gw_N_Reativou" targetRef="End_Nurturing_Reativacao" />
-   <bpmn2:sequenceFlow id="Flow_N_07_Nao" name="Nao (3 ciclos sem resposta)" sourceRef="Gw_N_Reativou" targetRef="End_Nurturing_Descarte" />
+   <bpmn2:sequenceFlow id="Flow_Nu_1" sourceRef="Start_Nu" targetRef="Task_Nu_Conteudo" />
+   <bpmn2:sequenceFlow id="Flow_Nu_2" sourceRef="Task_Nu_Conteudo" targetRef="Task_Nu_Comunidade" />
+   <bpmn2:sequenceFlow id="Flow_Nu_3" sourceRef="Task_Nu_Comunidade" targetRef="Task_Nu_Remarketing" />
+   <bpmn2:sequenceFlow id="Flow_Nu_4" sourceRef="Task_Nu_Remarketing" targetRef="Task_Nu_Reativacao" />
+   <bpmn2:sequenceFlow id="Flow_Nu_5" sourceRef="Task_Nu_Reativacao" targetRef="Gw_Nu_Reativou" />
+   <bpmn2:sequenceFlow id="Flow_Nu_6_Sim" name="Sim (reativou)" sourceRef="Gw_Nu_Reativou" targetRef="End_Nu_SDR" />
+   <bpmn2:sequenceFlow id="Flow_Nu_7_Nao" name="Nao (3 ciclos)" sourceRef="Gw_Nu_Reativou" targetRef="End_Nu_Descarte" />
 
  </bpmn2:process>
 
  <!-- ═══════════════════════════════════════════════════════════════ -->
- <!-- BPMN DIAGRAM: Layout Visual de Todos os Pools                  -->
+ <!-- BPMN DIAGRAM: layout visual                                     -->
  <!-- ═══════════════════════════════════════════════════════════════ -->
  <bpmndi:BPMNDiagram id="BPMNDiagram_InsideSales">
    <bpmndi:BPMNPlane id="BPMNPlane_InsideSales" bpmnElement="Collaboration_InsideSales">
 
-     <!-- ══════════════════════════════════════════════════════════ -->
-     <!-- POOL 1: SDR ROBO INBOUND (GREEN) x=160 y=60 w=2600 h=350 -->
-     <!-- ══════════════════════════════════════════════════════════ -->
-     <bpmndi:BPMNShape id="Shape_Pool_Inbound" bpmnElement="Pool_Inbound" isHorizontal="true"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="160" y="60" width="2600" height="350" />
+     <!-- POOL 1: IA INBOUND (GREEN) -->
+     <bpmndi:BPMNShape id="Shape_Pool_IaInbound" bpmnElement="Pool_IaInbound" isHorizontal="true" bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
+       <dc:Bounds x="160" y="40" width="2000" height="360" />
      </bpmndi:BPMNShape>
-
-     <!-- Start Inbound -->
-     <bpmndi:BPMNShape id="Shape_Start_Inbound" bpmnElement="Start_Inbound"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="242" y="202" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: WhatsApp qualificador -->
-     <bpmndi:BPMNShape id="Shape_Task_In_WhatsQualificador" bpmnElement="Task_In_WhatsQualificador"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="340" y="180" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Gateway: Respondeu? -->
-     <bpmndi:BPMNShape id="Shape_Gw_In_Respondeu" bpmnElement="Gw_In_Respondeu" isMarkerVisible="true"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="585" y="195" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Cadencia automatica -->
-     <bpmndi:BPMNShape id="Shape_Task_In_CadenciaAuto" bpmnElement="Task_In_CadenciaAuto"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="560" y="300" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Gateway: Respondeu cadencia? -->
-     <bpmndi:BPMNShape id="Shape_Gw_In_RespondeuCadencia" bpmnElement="Gw_In_RespondeuCadencia" isMarkerVisible="true"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="805" y="315" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- End: Nurturing nao respondeu -->
-     <bpmndi:BPMNShape id="Shape_End_Inbound_Nurturing_NaoResp" bpmnElement="End_Inbound_Nurturing_NaoResp"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="922" y="322" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- Gateway: ICP -->
-     <bpmndi:BPMNShape id="Shape_Gw_In_ICP" bpmnElement="Gw_In_ICP" isMarkerVisible="true"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="805" y="195" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Tag sem perfil -->
-     <bpmndi:BPMNShape id="Shape_Task_In_TagSemPerfil" bpmnElement="Task_In_TagSemPerfil"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="1010" y="300" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- End: Nurturing sem perfil -->
-     <bpmndi:BPMNShape id="Shape_End_Inbound_Nurturing_SemPerfil" bpmnElement="End_Inbound_Nurturing_SemPerfil"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="1252" y="322" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Demo Gravada -->
-     <bpmndi:BPMNShape id="Shape_Task_In_DemoGravada" bpmnElement="Task_In_DemoGravada"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="1010" y="180" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Criar Smart Lead -->
-     <bpmndi:BPMNShape id="Shape_Task_In_CriarSmartLead" bpmnElement="Task_In_CriarSmartLead"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="1250" y="180" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- End: Smart Lead -->
-     <bpmndi:BPMNShape id="Shape_End_Inbound_SmartLead" bpmnElement="End_Inbound_SmartLead"
-       bioc:stroke="#66bb6a" bioc:fill="#f1f8e9">
-       <dc:Bounds x="1492" y="202" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- EDGES Pool 1 -->
-     <bpmndi:BPMNEdge id="Edge_Flow_In_01" bpmnElement="Flow_In_01">
-       <di:waypoint x="278" y="220" />
-       <di:waypoint x="340" y="220" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_02" bpmnElement="Flow_In_02">
-       <di:waypoint x="520" y="220" />
-       <di:waypoint x="585" y="220" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_03_Sim" bpmnElement="Flow_In_03_Sim">
-       <di:waypoint x="635" y="220" />
-       <di:waypoint x="805" y="220" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_04_Nao" bpmnElement="Flow_In_04_Nao">
-       <di:waypoint x="610" y="245" />
-       <di:waypoint x="610" y="340" />
-       <di:waypoint x="560" y="340" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_05" bpmnElement="Flow_In_05">
-       <di:waypoint x="740" y="340" />
-       <di:waypoint x="805" y="340" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_06_Sim" bpmnElement="Flow_In_06_Sim">
-       <di:waypoint x="830" y="315" />
-       <di:waypoint x="830" y="245" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_07_Nao" bpmnElement="Flow_In_07_Nao">
-       <di:waypoint x="855" y="340" />
-       <di:waypoint x="922" y="340" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_08_TemPerfil" bpmnElement="Flow_In_08_TemPerfil">
-       <di:waypoint x="855" y="220" />
-       <di:waypoint x="1010" y="220" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_09_SemPerfil" bpmnElement="Flow_In_09_SemPerfil">
-       <di:waypoint x="830" y="245" />
-       <di:waypoint x="830" y="340" />
-       <di:waypoint x="1010" y="340" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_10" bpmnElement="Flow_In_10">
-       <di:waypoint x="1190" y="340" />
-       <di:waypoint x="1252" y="340" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_DemoToSmart" bpmnElement="Flow_In_DemoToSmart">
-       <di:waypoint x="1190" y="220" />
-       <di:waypoint x="1250" y="220" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_In_11" bpmnElement="Flow_In_11">
-       <di:waypoint x="1430" y="220" />
-       <di:waypoint x="1492" y="220" />
-     </bpmndi:BPMNEdge>
-
-     <!-- ══════════════════════════════════════════════════════════ -->
-     <!-- POOL 2: SDR ROBO OUTBOUND (ORANGE) x=160 y=480 w=2600 h=350 -->
-     <!-- ══════════════════════════════════════════════════════════ -->
-     <bpmndi:BPMNShape id="Shape_Pool_Outbound" bpmnElement="Pool_Outbound" isHorizontal="true"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="160" y="480" width="2600" height="350" />
-     </bpmndi:BPMNShape>
-
-     <!-- Start Outbound -->
-     <bpmndi:BPMNShape id="Shape_Start_Outbound" bpmnElement="Start_Outbound"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="242" y="622" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Enriquecer Lead -->
-     <bpmndi:BPMNShape id="Shape_Task_Out_Enriquecer" bpmnElement="Task_Out_Enriquecer"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="340" y="600" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Cadencia 7 dias -->
-     <bpmndi:BPMNShape id="Shape_Task_Out_Cadencia7Dias" bpmnElement="Task_Out_Cadencia7Dias"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="580" y="600" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Gateway: Engajou? -->
-     <bpmndi:BPMNShape id="Shape_Gw_Out_Engajou" bpmnElement="Gw_Out_Engajou" isMarkerVisible="true"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="825" y="615" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- End: Nurturing nao engajou -->
-     <bpmndi:BPMNShape id="Shape_End_Outbound_Nurturing_NaoEng" bpmnElement="End_Outbound_Nurturing_NaoEng"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="832" y="732" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- Gateway: ICP Outbound -->
-     <bpmndi:BPMNShape id="Shape_Gw_Out_ICP" bpmnElement="Gw_Out_ICP" isMarkerVisible="true"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="945" y="615" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Tag + comunidade outbound -->
-     <bpmndi:BPMNShape id="Shape_Task_Out_TagComunidade" bpmnElement="Task_Out_TagComunidade"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="1050" y="710" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- End: Nurturing sem perfil outbound -->
-     <bpmndi:BPMNShape id="Shape_End_Outbound_Nurturing_SemPerfil" bpmnElement="End_Outbound_Nurturing_SemPerfil"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="1292" y="732" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Criar Smart Lead Outbound -->
-     <bpmndi:BPMNShape id="Shape_Task_Out_CriarSmartLead" bpmnElement="Task_Out_CriarSmartLead"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="1050" y="600" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- End: Smart Lead Outbound -->
-     <bpmndi:BPMNShape id="Shape_End_Outbound_SmartLead" bpmnElement="End_Outbound_SmartLead"
-       bioc:stroke="#ffa726" bioc:fill="#fff8e1">
-       <dc:Bounds x="1292" y="622" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- EDGES Pool 2 -->
-     <bpmndi:BPMNEdge id="Edge_Flow_Out_01" bpmnElement="Flow_Out_01">
-       <di:waypoint x="278" y="640" />
-       <di:waypoint x="340" y="640" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Out_02" bpmnElement="Flow_Out_02">
-       <di:waypoint x="520" y="640" />
-       <di:waypoint x="580" y="640" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Out_03" bpmnElement="Flow_Out_03">
-       <di:waypoint x="760" y="640" />
-       <di:waypoint x="825" y="640" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Out_04_Sim" bpmnElement="Flow_Out_04_Sim">
-       <di:waypoint x="875" y="640" />
-       <di:waypoint x="945" y="640" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Out_05_Nao" bpmnElement="Flow_Out_05_Nao">
-       <di:waypoint x="850" y="665" />
-       <di:waypoint x="850" y="732" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Out_06_TemPerfil" bpmnElement="Flow_Out_06_TemPerfil">
-       <di:waypoint x="995" y="640" />
-       <di:waypoint x="1050" y="640" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Out_07_SemPerfil" bpmnElement="Flow_Out_07_SemPerfil">
-       <di:waypoint x="970" y="665" />
-       <di:waypoint x="970" y="750" />
-       <di:waypoint x="1050" y="750" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Out_08" bpmnElement="Flow_Out_08">
-       <di:waypoint x="1230" y="750" />
-       <di:waypoint x="1292" y="750" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Out_09" bpmnElement="Flow_Out_09">
-       <di:waypoint x="1230" y="640" />
-       <di:waypoint x="1292" y="640" />
-     </bpmndi:BPMNEdge>
-
-     <!-- ══════════════════════════════════════════════════════════ -->
-     <!-- POOL 3: VENDEDOR (BLUE) x=160 y=900 w=4200 h=850         -->
-     <!-- ══════════════════════════════════════════════════════════ -->
-     <bpmndi:BPMNShape id="Shape_Pool_Vendedor" bpmnElement="Pool_Vendedor" isHorizontal="true"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="160" y="900" width="4200" height="850" />
-     </bpmndi:BPMNShape>
-
-     <!-- Start Vendedor -->
-     <bpmndi:BPMNShape id="Shape_Start_Vendedor" bpmnElement="Start_Vendedor"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="242" y="1082" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Estudar Lead -->
-     <bpmndi:BPMNShape id="Shape_Task_V_EstudarLead" bpmnElement="Task_V_EstudarLead"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="340" y="1060" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Cadencia Vendedor -->
-     <bpmndi:BPMNShape id="Shape_Task_V_CadenciaVendedor" bpmnElement="Task_V_CadenciaVendedor"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="580" y="1060" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Gateway: Conectou? -->
-     <bpmndi:BPMNShape id="Shape_Gw_V_Conectou" bpmnElement="Gw_V_Conectou" isMarkerVisible="true"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="825" y="1075" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Gatekeeper -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Gatekeeper" bpmnElement="Task_V_Gatekeeper"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="800" y="1210" width="180" height="80" />
+     <bpmndi:BPMNShape id="Shape_Start_In" bpmnElement="Start_In">
+       <dc:Bounds x="240" y="162" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="222" y="205" width="80" height="40" /></bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
-
-     <!-- Gateway: Passou GK? -->
-     <bpmndi:BPMNShape id="Shape_Gw_V_PassouGK" bpmnElement="Gw_V_PassouGK" isMarkerVisible="true"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="1045" y="1225" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: AIDA -->
-     <bpmndi:BPMNShape id="Shape_Task_V_AIDA" bpmnElement="Task_V_AIDA"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="940" y="1060" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Gateway: Aceitou Demo? -->
-     <bpmndi:BPMNShape id="Shape_Gw_V_AceitouDemo" bpmnElement="Gw_V_AceitouDemo" isMarkerVisible="true"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="1185" y="1075" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Follow-up conteudo -->
-     <bpmndi:BPMNShape id="Shape_Task_V_FollowUpConteudo" bpmnElement="Task_V_FollowUpConteudo"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="1160" y="1210" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Etapa 1 Retomada -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Etapa1_Retomada" bpmnElement="Task_V_Etapa1_Retomada"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="1300" y="1060" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Etapa 2 SPIN -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Etapa2_SPIN" bpmnElement="Task_V_Etapa2_SPIN"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="1540" y="1060" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Etapa 3 Demo -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Etapa3_Demo" bpmnElement="Task_V_Etapa3_Demo"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="1780" y="1060" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Etapa 4 Proposta -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Etapa4_Proposta" bpmnElement="Task_V_Etapa4_Proposta"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2020" y="1060" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Gateway: Fechou? -->
-     <bpmndi:BPMNShape id="Shape_Gw_V_Fechou" bpmnElement="Gw_V_Fechou" isMarkerVisible="true"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2265" y="1075" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Onboarding -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Onboarding" bpmnElement="Task_V_Onboarding"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2380" y="960" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- End: VENDA! -->
-     <bpmndi:BPMNShape id="Shape_End_V_Venda" bpmnElement="End_V_Venda"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2622" y="982" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- Gateway: Motivo objecao -->
-     <bpmndi:BPMNShape id="Shape_Gw_V_Motivo" bpmnElement="Gw_V_Motivo" isMarkerVisible="true"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2380" y="1180" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Objecao Pensar -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Obj_Pensar" bpmnElement="Task_V_Obj_Pensar"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2520" y="1130" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Objecao Caro -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Obj_Caro" bpmnElement="Task_V_Obj_Caro"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2520" y="1240" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Objecao Nao Agora -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Obj_NaoAgora" bpmnElement="Task_V_Obj_NaoAgora"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2520" y="1350" width="180" height="80" />
+     <bpmndi:BPMNShape id="Shape_Task_In_Responde" bpmnElement="Task_In_Responde">
+       <dc:Bounds x="330" y="140" width="160" height="80" />
      </bpmndi:BPMNShape>
-
-     <!-- Task: Objecao Sem Perfil -->
-     <bpmndi:BPMNShape id="Shape_Task_V_Obj_SemPerfil" bpmnElement="Task_V_Obj_SemPerfil"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2520" y="1460" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Sub-Process: Trial -->
-     <bpmndi:BPMNShape id="Shape_SubProcess_Trial" bpmnElement="SubProcess_Trial" isExpanded="true"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2780" y="1155" width="700" height="100" />
-     </bpmndi:BPMNShape>
-
-     <!-- Trial internal elements -->
-     <bpmndi:BPMNShape id="Shape_Start_Trial" bpmnElement="Start_Trial"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2800" y="1187" width="36" height="36" />
-     </bpmndi:BPMNShape>
-     <bpmndi:BPMNShape id="Shape_Task_Trial_Setup" bpmnElement="Task_Trial_Setup"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="2860" y="1175" width="140" height="60" />
-     </bpmndi:BPMNShape>
-     <bpmndi:BPMNShape id="Shape_Task_Trial_CheckIn" bpmnElement="Task_Trial_CheckIn"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="3020" y="1175" width="140" height="60" />
-     </bpmndi:BPMNShape>
-     <bpmndi:BPMNShape id="Shape_Task_Trial_Fecha" bpmnElement="Task_Trial_Fecha"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="3180" y="1175" width="140" height="60" />
-     </bpmndi:BPMNShape>
-     <bpmndi:BPMNShape id="Shape_End_Trial" bpmnElement="End_Trial"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="3340" y="1187" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- Trial internal edges -->
-     <bpmndi:BPMNEdge id="Edge_Flow_Trial_01" bpmnElement="Flow_Trial_01">
-       <di:waypoint x="2836" y="1205" />
-       <di:waypoint x="2860" y="1205" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Trial_02" bpmnElement="Flow_Trial_02">
-       <di:waypoint x="3000" y="1205" />
-       <di:waypoint x="3020" y="1205" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Trial_03" bpmnElement="Flow_Trial_03">
-       <di:waypoint x="3160" y="1205" />
-       <di:waypoint x="3180" y="1205" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_Trial_04" bpmnElement="Flow_Trial_04">
-       <di:waypoint x="3320" y="1205" />
-       <di:waypoint x="3340" y="1205" />
-     </bpmndi:BPMNEdge>
-
-     <!-- Gateway: Trial Converteu? -->
-     <bpmndi:BPMNShape id="Shape_Gw_V_TrialConverteu" bpmnElement="Gw_V_TrialConverteu" isMarkerVisible="true"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="3555" y="1180" width="50" height="50" />
-     </bpmndi:BPMNShape>
-
-     <!-- End: Nurturing Vendedor -->
-     <bpmndi:BPMNShape id="Shape_End_Vendedor_Nurturing" bpmnElement="End_Vendedor_Nurturing"
-       bioc:stroke="#42a5f5" bioc:fill="#e8f4fd">
-       <dc:Bounds x="3700" y="1350" width="36" height="36" />
-     </bpmndi:BPMNShape>
-
-     <!-- EDGES Pool 3 -->
-     <bpmndi:BPMNEdge id="Edge_Flow_V_01" bpmnElement="Flow_V_01">
-       <di:waypoint x="278" y="1100" />
-       <di:waypoint x="340" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_02" bpmnElement="Flow_V_02">
-       <di:waypoint x="520" y="1100" />
-       <di:waypoint x="580" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_03" bpmnElement="Flow_V_03">
-       <di:waypoint x="760" y="1100" />
-       <di:waypoint x="825" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_04_Sim" bpmnElement="Flow_V_04_Sim">
-       <di:waypoint x="875" y="1100" />
-       <di:waypoint x="940" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_05_Nao" bpmnElement="Flow_V_05_Nao">
-       <di:waypoint x="850" y="1125" />
-       <di:waypoint x="850" y="1250" />
-       <di:waypoint x="800" y="1250" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_GK_Check" bpmnElement="Flow_V_GK_Check">
-       <di:waypoint x="980" y="1250" />
-       <di:waypoint x="1045" y="1250" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_GK_Sim" bpmnElement="Flow_V_GK_Sim">
-       <di:waypoint x="1070" y="1225" />
-       <di:waypoint x="1070" y="1100" />
-       <di:waypoint x="875" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_GK_Nao" bpmnElement="Flow_V_GK_Nao">
-       <di:waypoint x="1070" y="1275" />
-       <di:waypoint x="1070" y="1368" />
-       <di:waypoint x="3700" y="1368" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_06" bpmnElement="Flow_V_06">
-       <di:waypoint x="1120" y="1100" />
-       <di:waypoint x="1185" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_07_Sim" bpmnElement="Flow_V_07_Sim">
-       <di:waypoint x="1235" y="1100" />
-       <di:waypoint x="1300" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_08_Nao" bpmnElement="Flow_V_08_Nao">
-       <di:waypoint x="1210" y="1125" />
-       <di:waypoint x="1210" y="1250" />
-       <di:waypoint x="1160" y="1250" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_FollowUp_End" bpmnElement="Flow_V_FollowUp_End">
-       <di:waypoint x="1340" y="1250" />
-       <di:waypoint x="1340" y="1368" />
-       <di:waypoint x="3700" y="1368" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_09" bpmnElement="Flow_V_09">
-       <di:waypoint x="1480" y="1100" />
-       <di:waypoint x="1540" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_10" bpmnElement="Flow_V_10">
-       <di:waypoint x="1720" y="1100" />
-       <di:waypoint x="1780" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_11" bpmnElement="Flow_V_11">
-       <di:waypoint x="1960" y="1100" />
-       <di:waypoint x="2020" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_12" bpmnElement="Flow_V_12">
-       <di:waypoint x="2200" y="1100" />
-       <di:waypoint x="2265" y="1100" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_13_Sim" bpmnElement="Flow_V_13_Sim">
-       <di:waypoint x="2290" y="1075" />
-       <di:waypoint x="2290" y="1000" />
-       <di:waypoint x="2380" y="1000" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_14_Nao" bpmnElement="Flow_V_14_Nao">
-       <di:waypoint x="2290" y="1125" />
-       <di:waypoint x="2290" y="1205" />
-       <di:waypoint x="2380" y="1205" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Venda" bpmnElement="Flow_V_Venda">
-       <di:waypoint x="2560" y="1000" />
-       <di:waypoint x="2622" y="1000" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Obj_Pensar" bpmnElement="Flow_V_Obj_Pensar">
-       <di:waypoint x="2430" y="1195" />
-       <di:waypoint x="2475" y="1170" />
-       <di:waypoint x="2520" y="1170" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Obj_Caro" bpmnElement="Flow_V_Obj_Caro">
-       <di:waypoint x="2430" y="1210" />
-       <di:waypoint x="2475" y="1280" />
-       <di:waypoint x="2520" y="1280" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Obj_NaoAgora_Flow" bpmnElement="Flow_V_Obj_NaoAgora_Flow">
-       <di:waypoint x="2405" y="1230" />
-       <di:waypoint x="2405" y="1390" />
-       <di:waypoint x="2520" y="1390" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Obj_SemPerfil_Flow" bpmnElement="Flow_V_Obj_SemPerfil_Flow">
-       <di:waypoint x="2405" y="1230" />
-       <di:waypoint x="2405" y="1500" />
-       <di:waypoint x="2520" y="1500" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Pensar_Trial" bpmnElement="Flow_V_Pensar_Trial">
-       <di:waypoint x="2700" y="1170" />
-       <di:waypoint x="2740" y="1170" />
-       <di:waypoint x="2740" y="1205" />
-       <di:waypoint x="2780" y="1205" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Caro_Trial" bpmnElement="Flow_V_Caro_Trial">
-       <di:waypoint x="2700" y="1280" />
-       <di:waypoint x="2740" y="1280" />
-       <di:waypoint x="2740" y="1205" />
-       <di:waypoint x="2780" y="1205" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Obj_NaoAgora" bpmnElement="Flow_V_Obj_NaoAgora">
-       <di:waypoint x="2700" y="1390" />
-       <di:waypoint x="3718" y="1390" />
-       <di:waypoint x="3718" y="1386" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Obj_SemPerfil" bpmnElement="Flow_V_Obj_SemPerfil">
-       <di:waypoint x="2700" y="1500" />
-       <di:waypoint x="3718" y="1500" />
-       <di:waypoint x="3718" y="1386" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_Trial_Done" bpmnElement="Flow_V_Trial_Done">
-       <di:waypoint x="3480" y="1205" />
-       <di:waypoint x="3555" y="1205" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_TrialConverteu_Sim" bpmnElement="Flow_V_TrialConverteu_Sim">
-       <di:waypoint x="3580" y="1180" />
-       <di:waypoint x="3580" y="1000" />
-       <di:waypoint x="2658" y="1000" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_V_TrialConverteu_Nao" bpmnElement="Flow_V_TrialConverteu_Nao">
-       <di:waypoint x="3580" y="1230" />
-       <di:waypoint x="3580" y="1368" />
-       <di:waypoint x="3736" y="1368" />
-     </bpmndi:BPMNEdge>
-
-     <!-- ══════════════════════════════════════════════════════════ -->
-     <!-- POOL 4: NURTURING (PURPLE) x=160 y=1820 w=2600 h=320     -->
-     <!-- ══════════════════════════════════════════════════════════ -->
-     <bpmndi:BPMNShape id="Shape_Pool_Nurturing" bpmnElement="Pool_Nurturing" isHorizontal="true"
-       bioc:stroke="#ab47bc" bioc:fill="#fce4ec">
-       <dc:Bounds x="160" y="1820" width="2600" height="320" />
-     </bpmndi:BPMNShape>
-
-     <!-- Start Nurturing -->
-     <bpmndi:BPMNShape id="Shape_Start_Nurturing" bpmnElement="Start_Nurturing"
-       bioc:stroke="#ab47bc" bioc:fill="#fce4ec">
-       <dc:Bounds x="242" y="1952" width="36" height="36" />
+     <bpmndi:BPMNShape id="Shape_Gw_In_Respondeu" bpmnElement="Gw_In_Respondeu" isMarkerVisible="true">
+       <dc:Bounds x="540" y="155" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="535" y="128" width="60" height="14" /></bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
-
-     <!-- Task: Conteudo -->
-     <bpmndi:BPMNShape id="Shape_Task_N_Conteudo" bpmnElement="Task_N_Conteudo"
-       bioc:stroke="#ab47bc" bioc:fill="#fce4ec">
-       <dc:Bounds x="340" y="1930" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Comunidade -->
-     <bpmndi:BPMNShape id="Shape_Task_N_Comunidade" bpmnElement="Task_N_Comunidade"
-       bioc:stroke="#ab47bc" bioc:fill="#fce4ec">
-       <dc:Bounds x="580" y="1930" width="180" height="80" />
+     <bpmndi:BPMNShape id="Shape_Task_In_FollowUp" bpmnElement="Task_In_FollowUp">
+       <dc:Bounds x="485" y="270" width="160" height="80" />
      </bpmndi:BPMNShape>
-
-     <!-- Task: Remarketing -->
-     <bpmndi:BPMNShape id="Shape_Task_N_Remarketing" bpmnElement="Task_N_Remarketing"
-       bioc:stroke="#ab47bc" bioc:fill="#fce4ec">
-       <dc:Bounds x="820" y="1930" width="180" height="80" />
-     </bpmndi:BPMNShape>
-
-     <!-- Task: Reativacao -->
-     <bpmndi:BPMNShape id="Shape_Task_N_Reativacao" bpmnElement="Task_N_Reativacao"
-       bioc:stroke="#ab47bc" bioc:fill="#fce4ec">
-       <dc:Bounds x="1060" y="1930" width="180" height="80" />
+     <bpmndi:BPMNShape id="Shape_Gw_In_RespFollow" bpmnElement="Gw_In_RespFollow" isMarkerVisible="true">
+       <dc:Bounds x="700" y="285" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="690" y="338" width="70" height="14" /></bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
-
-     <!-- Gateway: Reativou? -->
-     <bpmndi:BPMNShape id="Shape_Gw_N_Reativou" bpmnElement="Gw_N_Reativou" isMarkerVisible="true"
-       bioc:stroke="#ab47bc" bioc:fill="#fce4ec">
-       <dc:Bounds x="1305" y="1945" width="50" height="50" />
+     <bpmndi:BPMNShape id="Shape_End_In_NurtNaoResp" bpmnElement="End_In_NurtNaoResp">
+       <dc:Bounds x="820" y="292" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="800" y="332" width="80" height="40" /></bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
-
-     <!-- End: Reativacao -->
-     <bpmndi:BPMNShape id="Shape_End_Nurturing_Reativacao" bpmnElement="End_Nurturing_Reativacao"
-       bioc:stroke="#ab47bc" bioc:fill="#fce4ec">
-       <dc:Bounds x="1422" y="1872" width="36" height="36" />
+     <bpmndi:BPMNShape id="Shape_Gw_In_Real" bpmnElement="Gw_In_Real" isMarkerVisible="true">
+       <dc:Bounds x="660" y="155" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="650" y="128" width="70" height="14" /></bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
-
-     <!-- End: Descarte -->
-     <bpmndi:BPMNShape id="Shape_End_Nurturing_Descarte" bpmnElement="End_Nurturing_Descarte"
-       bioc:stroke="#ab47bc" bioc:fill="#fce4ec">
-       <dc:Bounds x="1422" y="2052" width="36" height="36" />
+     <bpmndi:BPMNShape id="Shape_End_In_Descarte" bpmnElement="End_In_Descarte">
+       <dc:Bounds x="667" y="155" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="600" y="115" width="170" height="40" /></bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
-
-     <!-- Fix Nurturing Start to be inside Pool 4 -->
-     <!-- Overriding Start_Nurturing position to be within Pool 4 bounds -->
-
-     <!-- EDGES Pool 4 -->
-     <bpmndi:BPMNEdge id="Edge_Flow_N_01" bpmnElement="Flow_N_01">
-       <di:waypoint x="278" y="1970" />
-       <di:waypoint x="340" y="1970" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_N_02" bpmnElement="Flow_N_02">
-       <di:waypoint x="520" y="1970" />
-       <di:waypoint x="580" y="1970" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_N_03" bpmnElement="Flow_N_03">
-       <di:waypoint x="760" y="1970" />
-       <di:waypoint x="820" y="1970" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_N_04" bpmnElement="Flow_N_04">
-       <di:waypoint x="1000" y="1970" />
-       <di:waypoint x="1060" y="1970" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_N_05" bpmnElement="Flow_N_05">
-       <di:waypoint x="1240" y="1970" />
-       <di:waypoint x="1305" y="1970" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_N_06_Sim" bpmnElement="Flow_N_06_Sim">
-       <di:waypoint x="1330" y="1945" />
-       <di:waypoint x="1330" y="1890" />
-       <di:waypoint x="1422" y="1890" />
-     </bpmndi:BPMNEdge>
-     <bpmndi:BPMNEdge id="Edge_Flow_N_07_Nao" bpmnElement="Flow_N_07_Nao">
-       <di:waypoint x="1330" y="1995" />
-       <di:waypoint x="1330" y="2070" />
-       <di:waypoint x="1422" y="2070" />
-     </bpmndi:BPMNEdge>
-
-     <!-- ══════════════════════════════════════════════════════════ -->
-     <!-- TEXT ANNOTATIONS (below Pool 4, y >= 2200)                 -->
-     <!-- ══════════════════════════════════════════════════════════ -->
-
-     <bpmndi:BPMNShape id="Shape_Annotation_Portais" bpmnElement="Annotation_Portais">
-       <dc:Bounds x="2700" y="60" width="350" height="180" />
+     <bpmndi:BPMNShape id="Shape_Task_In_Entrega" bpmnElement="Task_In_Entrega">
+       <dc:Bounds x="780" y="140" width="160" height="80" />
      </bpmndi:BPMNShape>
-
-     <bpmndi:BPMNShape id="Shape_Annotation_ICP" bpmnElement="Annotation_ICP">
-       <dc:Bounds x="160" y="2200" width="380" height="220" />
+     <bpmndi:BPMNShape id="Shape_End_In_SDR" bpmnElement="End_In_SDR">
+       <dc:Bounds x="1000" y="162" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="978" y="205" width="80" height="40" /></bpmndi:BPMNLabel>
      </bpmndi:BPMNShape>
 
+     <bpmndi:BPMNEdge id="Edge_Flow_In_1" bpmnElement="Flow_In_1"><di:waypoint x="276" y="180" /><di:waypoint x="330" y="180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_In_2" bpmnElement="Flow_In_2"><di:waypoint x="490" y="180" /><di:waypoint x="540" y="180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_In_3_Sim" bpmnElement="Flow_In_3_Sim"><di:waypoint x="590" y="180" /><di:waypoint x="660" y="180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_In_4_Nao" bpmnElement="Flow_In_4_Nao"><di:waypoint x="565" y="205" /><di:waypoint x="565" y="270" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_In_5" bpmnElement="Flow_In_5"><di:waypoint x="645" y="310" /><di:waypoint x="700" y="310" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_In_6_Sim" bpmnElement="Flow_In_6_Sim"><di:waypoint x="725" y="285" /><di:waypoint x="725" y="180" /><di:waypoint x="710" y="180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_In_7_Nao" bpmnElement="Flow_In_7_Nao"><di:waypoint x="750" y="310" /><di:waypoint x="820" y="310" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_In_8_Sim" bpmnElement="Flow_In_8_Sim"><di:waypoint x="710" y="180" /><di:waypoint x="780" y="180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_In_9_Nao" bpmnElement="Flow_In_9_Nao"><di:waypoint x="685" y="180" /><di:waypoint x="685" y="191" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_In_10" bpmnElement="Flow_In_10"><di:waypoint x="940" y="180" /><di:waypoint x="1000" y="180" /></bpmndi:BPMNEdge>
 
-     <bpmndi:BPMNShape id="Shape_Annotation_SPIN" bpmnElement="Annotation_SPIN">
-       <dc:Bounds x="1420" y="2200" width="380" height="300" />
+     <!-- POOL 2: SDR HUMANO (BLUE) -->
+     <bpmndi:BPMNShape id="Shape_Pool_Sdr" bpmnElement="Pool_Sdr" isHorizontal="true" bioc:stroke="#42a5f5" bioc:fill="#e3f2fd">
+       <dc:Bounds x="160" y="440" width="2000" height="560" />
      </bpmndi:BPMNShape>
-
+     <bpmndi:BPMNShape id="Shape_Start_Sdr_In" bpmnElement="Start_Sdr_In">
+       <dc:Bounds x="240" y="502" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="222" y="545" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_InContato" bpmnElement="Task_Sdr_InContato">
+       <dc:Bounds x="320" y="480" width="160" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Start_Sdr_Out" bpmnElement="Start_Sdr_Out">
+       <dc:Bounds x="240" y="682" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="222" y="725" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_Prospecta" bpmnElement="Task_Sdr_Prospecta">
+       <dc:Bounds x="320" y="660" width="160" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_ColdEmail" bpmnElement="Task_Sdr_ColdEmail">
+       <dc:Bounds x="520" y="660" width="170" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Gw_Sdr_Engajou" bpmnElement="Gw_Sdr_Engajou" isMarkerVisible="true">
+       <dc:Bounds x="720" y="675" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="700" y="648" width="90" height="14" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_CadOut" bpmnElement="Task_Sdr_CadOut">
+       <dc:Bounds x="800" y="660" width="170" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_End_Sdr_NurtFrio" bpmnElement="End_Sdr_NurtFrio">
+       <dc:Bounds x="727" y="792" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="700" y="832" width="100" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Start_Sdr_Parc" bpmnElement="Start_Sdr_Parc">
+       <dc:Bounds x="240" y="592" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="222" y="628" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_Endosso" bpmnElement="Task_Sdr_Endosso">
+       <dc:Bounds x="320" y="570" width="170" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_LigaParc" bpmnElement="Task_Sdr_LigaParc">
+       <dc:Bounds x="560" y="570" width="180" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Start_Sdr_Indic" bpmnElement="Start_Sdr_Indic">
+       <dc:Bounds x="240" y="872" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="222" y="912" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_Indic" bpmnElement="Task_Sdr_Indic">
+       <dc:Bounds x="320" y="850" width="180" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Gw_Sdr_Merge" bpmnElement="Gw_Sdr_Merge" isMarkerVisible="true">
+       <dc:Bounds x="1010" y="585" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1005" y="558" width="60" height="14" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_Qualifica" bpmnElement="Task_Sdr_Qualifica">
+       <dc:Bounds x="1110" y="570" width="170" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Gw_Sdr_ICP" bpmnElement="Gw_Sdr_ICP" isMarkerVisible="true">
+       <dc:Bounds x="1320" y="585" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1310" y="558" width="70" height="14" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_End_Sdr_NurtICP" bpmnElement="End_Sdr_NurtICP">
+       <dc:Bounds x="1327" y="720" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1300" y="760" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_Interesse" bpmnElement="Task_Sdr_Interesse">
+       <dc:Bounds x="1420" y="570" width="190" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Gw_Sdr_Agendou" bpmnElement="Gw_Sdr_Agendou" isMarkerVisible="true">
+       <dc:Bounds x="1650" y="585" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1638" y="558" width="74" height="14" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_FollowAgenda" bpmnElement="Task_Sdr_FollowAgenda">
+       <dc:Bounds x="1595" y="720" width="160" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Gw_Sdr_AgendouFollow" bpmnElement="Gw_Sdr_AgendouFollow" isMarkerVisible="true">
+       <dc:Bounds x="1810" y="735" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1798" y="788" width="74" height="14" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_End_Sdr_NurtNaoAgenda" bpmnElement="End_Sdr_NurtNaoAgenda">
+       <dc:Bounds x="1910" y="742" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1890" y="782" width="80" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Sdr_Handoff" bpmnElement="Task_Sdr_Handoff">
+       <dc:Bounds x="1750" y="570" width="170" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_End_Sdr_Closer" bpmnElement="End_Sdr_Closer">
+       <dc:Bounds x="1960" y="592" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1938" y="635" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_1" bpmnElement="Flow_Sdr_1"><di:waypoint x="276" y="520" /><di:waypoint x="320" y="520" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_2" bpmnElement="Flow_Sdr_2"><di:waypoint x="480" y="520" /><di:waypoint x="1035" y="520" /><di:waypoint x="1035" y="585" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_3" bpmnElement="Flow_Sdr_3"><di:waypoint x="276" y="700" /><di:waypoint x="320" y="700" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_4" bpmnElement="Flow_Sdr_4"><di:waypoint x="480" y="700" /><di:waypoint x="520" y="700" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_Cold" bpmnElement="Flow_Sdr_Cold"><di:waypoint x="690" y="700" /><di:waypoint x="720" y="700" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_EngSim" bpmnElement="Flow_Sdr_EngSim"><di:waypoint x="770" y="700" /><di:waypoint x="800" y="700" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_EngNao" bpmnElement="Flow_Sdr_EngNao"><di:waypoint x="745" y="725" /><di:waypoint x="745" y="792" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_5" bpmnElement="Flow_Sdr_5"><di:waypoint x="970" y="700" /><di:waypoint x="1035" y="700" /><di:waypoint x="1035" y="635" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_P1" bpmnElement="Flow_Sdr_P1"><di:waypoint x="276" y="610" /><di:waypoint x="320" y="610" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_P2" bpmnElement="Flow_Sdr_P2"><di:waypoint x="490" y="610" /><di:waypoint x="560" y="610" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_P3" bpmnElement="Flow_Sdr_P3"><di:waypoint x="740" y="610" /><di:waypoint x="1010" y="610" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_I1" bpmnElement="Flow_Sdr_I1"><di:waypoint x="276" y="890" /><di:waypoint x="320" y="890" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_I2" bpmnElement="Flow_Sdr_I2"><di:waypoint x="500" y="890" /><di:waypoint x="1045" y="890" /><di:waypoint x="1045" y="635" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_6" bpmnElement="Flow_Sdr_6"><di:waypoint x="1060" y="610" /><di:waypoint x="1110" y="610" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_7" bpmnElement="Flow_Sdr_7"><di:waypoint x="1280" y="610" /><di:waypoint x="1320" y="610" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_8_Nao" bpmnElement="Flow_Sdr_8_Nao"><di:waypoint x="1345" y="635" /><di:waypoint x="1345" y="720" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_9_Sim" bpmnElement="Flow_Sdr_9_Sim"><di:waypoint x="1370" y="610" /><di:waypoint x="1420" y="610" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_10" bpmnElement="Flow_Sdr_10"><di:waypoint x="1610" y="610" /><di:waypoint x="1650" y="610" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_11_Sim" bpmnElement="Flow_Sdr_11_Sim"><di:waypoint x="1700" y="610" /><di:waypoint x="1750" y="610" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_12_Nao" bpmnElement="Flow_Sdr_12_Nao"><di:waypoint x="1675" y="635" /><di:waypoint x="1675" y="720" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_13" bpmnElement="Flow_Sdr_13"><di:waypoint x="1755" y="760" /><di:waypoint x="1810" y="760" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_14_Sim" bpmnElement="Flow_Sdr_14_Sim"><di:waypoint x="1835" y="735" /><di:waypoint x="1835" y="650" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_15_Nao" bpmnElement="Flow_Sdr_15_Nao"><di:waypoint x="1860" y="760" /><di:waypoint x="1910" y="760" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Sdr_16" bpmnElement="Flow_Sdr_16"><di:waypoint x="1920" y="610" /><di:waypoint x="1960" y="610" /></bpmndi:BPMNEdge>
+
+     <!-- POOL 3: CLOSER (PURPLE) -->
+     <bpmndi:BPMNShape id="Shape_Pool_Closer" bpmnElement="Pool_Closer" isHorizontal="true" bioc:stroke="#7e57c2" bioc:fill="#ede7f6">
+       <dc:Bounds x="160" y="1040" width="2000" height="560" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Start_Cl" bpmnElement="Start_Cl">
+       <dc:Bounds x="240" y="1162" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="222" y="1205" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Cl_Prepara" bpmnElement="Task_Cl_Prepara">
+       <dc:Bounds x="320" y="1140" width="160" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Cl_Reuniao" bpmnElement="Task_Cl_Reuniao">
+       <dc:Bounds x="540" y="1135" width="190" height="90" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Cl_Proposta" bpmnElement="Task_Cl_Proposta">
+       <dc:Bounds x="780" y="1135" width="190" height="90" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Gw_Cl_Fechou" bpmnElement="Gw_Cl_Fechou" isMarkerVisible="true">
+       <dc:Bounds x="1010" y="1155" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1005" y="1128" width="60" height="14" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Cl_Contrato" bpmnElement="Task_Cl_Contrato">
+       <dc:Bounds x="1110" y="1140" width="180" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Cl_Onboard" bpmnElement="Task_Cl_Onboard">
+       <dc:Bounds x="1330" y="1140" width="160" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_End_Cl_Venda" bpmnElement="End_Cl_Venda">
+       <dc:Bounds x="1540" y="1162" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1535" y="1205" width="50" height="20" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Gw_Cl_Motivo" bpmnElement="Gw_Cl_Motivo" isMarkerVisible="true">
+       <dc:Bounds x="1010" y="1335" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="998" y="1308" width="74" height="14" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Cl_ObjPensar" bpmnElement="Task_Cl_ObjPensar">
+       <dc:Bounds x="540" y="1440" width="160" height="70" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Cl_ObjCaro" bpmnElement="Task_Cl_ObjCaro">
+       <dc:Bounds x="740" y="1440" width="160" height="70" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Cl_ObjMomento" bpmnElement="Task_Cl_ObjMomento">
+       <dc:Bounds x="940" y="1440" width="160" height="70" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Cl_ObjPerfil" bpmnElement="Task_Cl_ObjPerfil">
+       <dc:Bounds x="1140" y="1440" width="160" height="70" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_End_Cl_Nurt" bpmnElement="End_Cl_Nurt">
+       <dc:Bounds x="1402" y="1522" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1382" y="1562" width="80" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_1" bpmnElement="Flow_Cl_1"><di:waypoint x="276" y="1180" /><di:waypoint x="320" y="1180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_2" bpmnElement="Flow_Cl_2"><di:waypoint x="480" y="1180" /><di:waypoint x="540" y="1180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_3" bpmnElement="Flow_Cl_3"><di:waypoint x="730" y="1180" /><di:waypoint x="780" y="1180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_4" bpmnElement="Flow_Cl_4"><di:waypoint x="970" y="1180" /><di:waypoint x="1010" y="1180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_5_Sim" bpmnElement="Flow_Cl_5_Sim"><di:waypoint x="1060" y="1180" /><di:waypoint x="1110" y="1180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_6" bpmnElement="Flow_Cl_6"><di:waypoint x="1290" y="1180" /><di:waypoint x="1330" y="1180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_7" bpmnElement="Flow_Cl_7"><di:waypoint x="1490" y="1180" /><di:waypoint x="1540" y="1180" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_8_Nao" bpmnElement="Flow_Cl_8_Nao"><di:waypoint x="1035" y="1205" /><di:waypoint x="1035" y="1335" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_9_Pensar" bpmnElement="Flow_Cl_9_Pensar"><di:waypoint x="1010" y="1360" /><di:waypoint x="620" y="1360" /><di:waypoint x="620" y="1440" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_10_Caro" bpmnElement="Flow_Cl_10_Caro"><di:waypoint x="1020" y="1385" /><di:waypoint x="820" y="1410" /><di:waypoint x="820" y="1440" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_11_Momento" bpmnElement="Flow_Cl_11_Momento"><di:waypoint x="1035" y="1385" /><di:waypoint x="1035" y="1440" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_12_Perfil" bpmnElement="Flow_Cl_12_Perfil"><di:waypoint x="1060" y="1360" /><di:waypoint x="1220" y="1360" /><di:waypoint x="1220" y="1440" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_13" bpmnElement="Flow_Cl_13"><di:waypoint x="620" y="1510" /><di:waypoint x="620" y="1540" /><di:waypoint x="1402" y="1540" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_14" bpmnElement="Flow_Cl_14"><di:waypoint x="820" y="1510" /><di:waypoint x="820" y="1540" /><di:waypoint x="1402" y="1540" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_15" bpmnElement="Flow_Cl_15"><di:waypoint x="1020" y="1510" /><di:waypoint x="1020" y="1540" /><di:waypoint x="1402" y="1540" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Cl_16" bpmnElement="Flow_Cl_16"><di:waypoint x="1220" y="1510" /><di:waypoint x="1220" y="1540" /><di:waypoint x="1402" y="1540" /></bpmndi:BPMNEdge>
+
+     <!-- POOL 4: NURTURING (AMBER) -->
+     <bpmndi:BPMNShape id="Shape_Pool_Nurt" bpmnElement="Pool_Nurt" isHorizontal="true" bioc:stroke="#ffa726" bioc:fill="#fff8e1">
+       <dc:Bounds x="160" y="1640" width="2000" height="320" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Start_Nu" bpmnElement="Start_Nu">
+       <dc:Bounds x="240" y="1762" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="222" y="1805" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Nu_Conteudo" bpmnElement="Task_Nu_Conteudo">
+       <dc:Bounds x="320" y="1740" width="160" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Nu_Comunidade" bpmnElement="Task_Nu_Comunidade">
+       <dc:Bounds x="540" y="1740" width="160" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Nu_Remarketing" bpmnElement="Task_Nu_Remarketing">
+       <dc:Bounds x="760" y="1740" width="160" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Task_Nu_Reativacao" bpmnElement="Task_Nu_Reativacao">
+       <dc:Bounds x="980" y="1740" width="180" height="80" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Gw_Nu_Reativou" bpmnElement="Gw_Nu_Reativou" isMarkerVisible="true">
+       <dc:Bounds x="1200" y="1755" width="50" height="50" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1195" y="1728" width="60" height="14" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_End_Nu_SDR" bpmnElement="End_Nu_SDR">
+       <dc:Bounds x="1300" y="1762" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1280" y="1805" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_End_Nu_Descarte" bpmnElement="End_Nu_Descarte">
+       <dc:Bounds x="1207" y="1870" width="36" height="36" />
+       <bpmndi:BPMNLabel><dc:Bounds x="1187" y="1910" width="90" height="40" /></bpmndi:BPMNLabel>
+     </bpmndi:BPMNShape>
+
+     <bpmndi:BPMNEdge id="Edge_Flow_Nu_1" bpmnElement="Flow_Nu_1"><di:waypoint x="276" y="1780" /><di:waypoint x="320" y="1780" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Nu_2" bpmnElement="Flow_Nu_2"><di:waypoint x="480" y="1780" /><di:waypoint x="540" y="1780" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Nu_3" bpmnElement="Flow_Nu_3"><di:waypoint x="700" y="1780" /><di:waypoint x="760" y="1780" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Nu_4" bpmnElement="Flow_Nu_4"><di:waypoint x="920" y="1780" /><di:waypoint x="980" y="1780" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Nu_5" bpmnElement="Flow_Nu_5"><di:waypoint x="1160" y="1780" /><di:waypoint x="1200" y="1780" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Nu_6_Sim" bpmnElement="Flow_Nu_6_Sim"><di:waypoint x="1250" y="1780" /><di:waypoint x="1300" y="1780" /></bpmndi:BPMNEdge>
+     <bpmndi:BPMNEdge id="Edge_Flow_Nu_7_Nao" bpmnElement="Flow_Nu_7_Nao"><di:waypoint x="1225" y="1805" /><di:waypoint x="1225" y="1870" /></bpmndi:BPMNEdge>
+
+     <!-- ANNOTATIONS -->
      <bpmndi:BPMNShape id="Shape_Annotation_Precos" bpmnElement="Annotation_Precos">
-       <dc:Bounds x="580" y="2200" width="500" height="580" />
+       <dc:Bounds x="200" y="2010" width="440" height="420" />
      </bpmndi:BPMNShape>
-
-
+     <bpmndi:BPMNShape id="Shape_Annotation_ICP" bpmnElement="Annotation_ICP">
+       <dc:Bounds x="680" y="2010" width="380" height="360" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Annotation_SPIN" bpmnElement="Annotation_SPIN">
+       <dc:Bounds x="1100" y="2010" width="440" height="360" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Annotation_Portais" bpmnElement="Annotation_Portais">
+       <dc:Bounds x="1580" y="2010" width="380" height="220" />
+     </bpmndi:BPMNShape>
+     <bpmndi:BPMNShape id="Shape_Annotation_PlaybookSdr" bpmnElement="Annotation_PlaybookSdr">
+       <dc:Bounds x="200" y="2470" width="520" height="340" />
+     </bpmndi:BPMNShape>
 
    </bpmndi:BPMNPlane>
  </bpmndi:BPMNDiagram>

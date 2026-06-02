@@ -58,7 +58,7 @@ export function DailyGoalProgress({ callsToday = 0, meetingsToday = 0 }) {
 
   return (
     <>
-      <div className="mb-4 mt-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+      <div className="mb-4 mt-1 crm-glass rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Target size={16} className="text-fyness-primary" />

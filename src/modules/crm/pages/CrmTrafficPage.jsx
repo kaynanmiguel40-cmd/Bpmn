@@ -123,7 +123,7 @@ function TrafficSkeleton() {
     <div className="animate-pulse space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+          <div key={i} className="crm-glass rounded-2xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="h-3 w-20 bg-slate-200 dark:bg-slate-700 rounded" />
               <div className="w-9 h-9 bg-slate-200 dark:bg-slate-700 rounded-lg" />
@@ -142,7 +142,7 @@ function TrafficSkeleton() {
 function ChannelBarTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2">
+    <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg px-3 py-2">
       <p className="text-xs font-medium text-slate-700 dark:text-slate-200 mb-1">{label}</p>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2">
@@ -158,7 +158,7 @@ function ChannelBarTooltip({ active, payload, label }) {
 function LeadsOverTimeTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2">
+    <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg px-3 py-2">
       <p className="text-xs font-medium text-slate-700 dark:text-slate-200 mb-1">{label}</p>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2">
@@ -177,7 +177,7 @@ function PieTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const d = payload[0];
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2">
+    <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg px-3 py-2">
       <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{d.name}</p>
       <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{formatNumber(d.value)} leads</p>
     </div>
@@ -402,7 +402,7 @@ export function CrmTrafficPage() {
       {/* Charts Row: Bar + Pie */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* BarChart: Gasto vs Receita por Canal */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">Gasto vs Receita por Canal</h3>
           {isChartsLoading ? (
             <div className="h-72 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />
@@ -424,7 +424,7 @@ export function CrmTrafficPage() {
         </div>
 
         {/* PieChart: Distribuicao de Leads */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+        <div className="crm-glass rounded-2xl p-5">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">Distribuicao de Leads por Canal</h3>
           {isChartsLoading ? (
             <div className="h-72 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />
@@ -447,7 +447,7 @@ export function CrmTrafficPage() {
       </div>
 
       {/* ComposedChart: Leads + CPL ao longo do tempo */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
+      <div className="crm-glass rounded-2xl p-5">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">Leads e CPL ao Longo do Tempo</h3>
         {isChartsLoading ? (
           <div className="h-72 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />

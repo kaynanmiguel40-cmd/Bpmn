@@ -188,7 +188,7 @@ export function CrmDealDetailPage() {
         {/* SIDEBAR */}
         <div className="w-full lg:w-80 shrink-0 space-y-3">
           {/* Valor */}
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+          <div className="crm-glass rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-1">
               <DollarSign size={14} className="text-slate-400" />
               <span className="text-[10px] text-slate-400 uppercase tracking-wider">Valor</span>
@@ -198,7 +198,7 @@ export function CrmDealDetailPage() {
 
           {/* Estagio */}
           {deal.stage && (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+            <div className="crm-glass rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-1.5">
                 <Target size={14} className="text-slate-400" />
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider">Estagio</span>
@@ -211,7 +211,7 @@ export function CrmDealDetailPage() {
           )}
 
           {/* Probabilidade */}
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+          <div className="crm-glass rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-1.5">
               <TrendingUp size={14} className="text-slate-400" />
               <span className="text-[10px] text-slate-400 uppercase tracking-wider">Probabilidade</span>
@@ -226,7 +226,7 @@ export function CrmDealDetailPage() {
 
           {/* Segmento */}
           {deal.segment && (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+            <div className="crm-glass rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-1.5">
                 <Building2 size={14} className="text-slate-400" />
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider">Segmento</span>
@@ -237,7 +237,7 @@ export function CrmDealDetailPage() {
 
           {/* Previsao */}
           {deal.expectedCloseDate && (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+            <div className="crm-glass rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-1">
                 <CalendarCheck size={14} className="text-slate-400" />
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider">Previsao de fechamento</span>
@@ -248,7 +248,7 @@ export function CrmDealDetailPage() {
 
           {/* Vendedor Responsavel */}
           {deal.owner && (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+            <div className="crm-glass rounded-2xl p-4">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Vendedor Responsavel</div>
               <div className="flex items-center gap-2.5">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ backgroundColor: deal.owner.color || '#6366f1' }}>
@@ -278,7 +278,7 @@ export function CrmDealDetailPage() {
                 : '';
 
             return (
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+              <div className="crm-glass rounded-2xl p-4">
                 <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Contato</div>
                 {ctName && (
                   <div className="flex items-center gap-2.5 mb-3">
@@ -347,7 +347,7 @@ export function CrmDealDetailPage() {
 
           {/* Empresa */}
           {deal.company && (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+            <div className="crm-glass rounded-2xl p-4">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Empresa</div>
               <div className="flex items-center gap-2">
                 <Building2 size={14} className="text-slate-400" />
@@ -433,7 +433,7 @@ export function CrmDealDetailPage() {
                             <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px] bg-blue-100 dark:bg-blue-900/30">
                               <Icon size={12} className="text-blue-600 dark:text-blue-400" />
                             </div>
-                            <div className="flex-1 min-w-0 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700/50 px-4 py-3">
+                            <div className="flex-1 min-w-0 crm-glass rounded-2xl px-4 py-3">
                               <div className="flex items-center justify-between gap-2 mb-0.5">
                                 <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{act.title}</span>
                                 <CrmBadge variant="neutral" size="sm">{label}</CrmBadge>
@@ -492,7 +492,7 @@ export function CrmDealDetailPage() {
                               <div className="w-[26px] h-[26px] rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px]">
                                 <Icon size={12} className="text-emerald-600 dark:text-emerald-400" />
                               </div>
-                              <div className="flex-1 min-w-0 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700/50 px-4 py-3">
+                              <div className="flex-1 min-w-0 crm-glass rounded-2xl px-4 py-3">
                                 <div className="flex items-center justify-between gap-2 mb-0.5">
                                   <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{item.title}</span>
                                   <div className="flex items-center gap-2 shrink-0">
@@ -547,7 +547,7 @@ export function CrmDealDetailPage() {
 
           {/* Tab: Notas */}
           {activeTab === 'notes' && (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+            <div className="crm-glass rounded-2xl p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Anotacoes</span>
                 {notesSaving && <span className="text-xs text-slate-400 animate-pulse">Salvando...</span>}

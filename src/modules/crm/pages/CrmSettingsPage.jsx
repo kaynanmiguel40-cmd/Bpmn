@@ -5,13 +5,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  Users, Tag, Settings, Check, Plus, Save, X, AlertTriangle, Globe, Zap, XCircle, Kanban,
+  Users, Tag, Settings, Check, Plus, Save, X, AlertTriangle, Globe, Zap, XCircle, Kanban, Target,
 } from 'lucide-react';
 import { CrmPageHeader, CrmAvatar } from '../components/ui';
 import { useTeamMembers } from '../../../hooks/queries';
 import { updateTeamMember } from '../../../lib/teamService';
 import CrmAutomationsPage from './CrmAutomationsPage';
-import { useCrmPipelines, useSeedCommercialPipelines } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useSeedCommercialPipelines, useSeedEarlyStagePipelines } from '../hooks/useCrmQueries';
 import { getCrmWorkspaceSettings, saveCrmWorkspaceSettings } from '../lib/workspaceSettings';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -35,12 +35,12 @@ const CURRENCIES = [
 
 // ─── Helpers de estilo ────────────────────────────────────────────────────────
 
-const inputCls = 'w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40';
+const inputCls = 'w-full px-3 py-2 text-sm bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40';
 const labelCls = 'block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1';
 
 function SectionCard({ icon: Icon, color, title, subtitle, children }) {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50">
+    <div className="crm-glass rounded-2xl">
       <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-700/50">
         <div className={`w-9 h-9 rounded-lg ${color} flex items-center justify-center shrink-0`}>
           <Icon size={18} />
@@ -349,6 +349,97 @@ function LostRoutingSection() {
   );
 }
 
+// ─── Pipeline Outbound Manual (early stage) ──────────────────────────────────
+
+function SeedOutboundManualSection() {
+  const { data: pipelines = [] } = useCrmPipelines();
+  const seedMutation = useSeedEarlyStagePipelines();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const hasPipelines = pipelines.length > 0;
+
+  const handleConfirm = async () => {
+    try {
+      await seedMutation.mutateAsync();
+    } finally {
+      setConfirmOpen(false);
+    }
+  };
+
+  return (
+    <SectionCard
+      icon={Target}
+      color="bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400"
+      title="Pipelines do estágio atual (Vendas + Parceiros)"
+      subtitle="Três pipelines pro processo na unha: Vendas (Outbound Manual) pra cliente final, Parceiros pra adquirir contadores/financeiras, e Leads de Parceiros pros clientes que eles indicam. Mesma espinha: entrada → Em cadência → Respondeu → Reunião → Proposta → Fechado."
+    >
+      <div className="space-y-3">
+        {hasPipelines && (
+          <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+            <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Começar limpo vai <strong>apagar TODOS os dados do CRM</strong> (deals, contatos, empresas, atividades, metas, prospects) e as {pipelines.length} pipeline{pipelines.length !== 1 ? 's' : ''} atua{pipelines.length !== 1 ? 'is' : 'l'}, deixando só "Outbound Manual", "Parceiros" e "Leads de Parceiros".
+            </p>
+          </div>
+        )}
+
+        <button
+          onClick={() => setConfirmOpen(true)}
+          disabled={seedMutation.isPending}
+          className="flex items-center gap-2 px-4 py-2 text-sm bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+        >
+          {seedMutation.isPending
+            ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Criando...</>
+            : <><Target size={14} /> Começar limpo com Vendas + Parceiros</>}
+        </button>
+
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          Cria 3 pipelines: "Outbound Manual" (vendas frias), "Parceiros" (aquisição de contadores) e "Leads de Parceiros" (clientes indicados). A cadência de follow-up não vira coluna — vive como atividades dentro de "Em cadência" (botão "Iniciar cadência" no card), e funciona igual nas três.
+        </p>
+      </div>
+
+      {confirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+          onClick={() => setConfirmOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="crm-glass rounded-2xl shadow-xl w-full max-w-md p-6"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Começar limpo?</h3>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+              {hasPipelines
+                ? 'Isso vai apagar TODOS os dados do CRM (deals, contatos, atividades, prospects, etc.) e as pipelines atuais antes de criar "Outbound Manual", "Parceiros" e "Leads de Parceiros". Ação IRREVERSÍVEL.'
+                : 'Vai criar as pipelines "Outbound Manual", "Parceiros" e "Leads de Parceiros". Como não há dados, nada será apagado.'}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setConfirmOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirm}
+                disabled={seedMutation.isPending}
+                className="px-4 py-2 text-sm font-medium bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg"
+              >
+                Sim, começar limpo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 // ─── Restaurar pipelines comerciais (re-seed) ────────────────────────────────
 
 function RestoreCommercialPipelinesSection() {
@@ -406,7 +497,7 @@ function RestoreCommercialPipelinesSection() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-md p-6"
+            className="crm-glass rounded-2xl shadow-xl w-full max-w-md p-6"
           >
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
@@ -497,6 +588,8 @@ function PreferenciasTab() {
           </button>
         </div>
       </SectionCard>
+
+      <SeedOutboundManualSection />
 
       <RestoreCommercialPipelinesSection />
 

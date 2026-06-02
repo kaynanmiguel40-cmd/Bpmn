@@ -59,7 +59,7 @@ export function WhatsAppMessagesTab({
   const conversation = { contactId, prospectId, otherName, otherPhone, dealId, avatarColor };
 
   return (
-    <div className="flex flex-col bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" style={{ minHeight: 400, maxHeight: 600 }}>
+    <div className="flex flex-col crm-glass rounded-2xl overflow-hidden" style={{ minHeight: 400, maxHeight: 600 }}>
       <header className="px-3 py-2 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           WhatsApp · {otherPhone}

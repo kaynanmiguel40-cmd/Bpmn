@@ -67,7 +67,7 @@ function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField 
         </button>
       )}
       {open && items.length > 0 && (
-        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg max-h-40 overflow-y-auto">
           {items.map(item => (
             <button key={item.id} type="button"
               onClick={() => { onChange(item.id); setSearch(''); setOpen(false); }}

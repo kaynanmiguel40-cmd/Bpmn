@@ -48,7 +48,7 @@ const SIZE_LABELS = {
 function ChartTooltip({ active, payload, label, suffix = '' }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg px-3 py-2 text-xs">
+    <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg px-3 py-2 text-xs">
       <p className="font-semibold text-slate-700 dark:text-slate-200">{label || payload[0]?.name}</p>
       <p className="text-slate-500 dark:text-slate-400">
         {payload[0]?.value}{suffix}
@@ -64,7 +64,7 @@ function RevenueTooltip({ active, payload, label }) {
     ? `R$ ${(val / 1000000).toFixed(1)}M`
     : `R$ ${(val / 1000).toFixed(0)}K`;
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg px-3 py-2 text-xs">
+    <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg px-3 py-2 text-xs">
       <p className="font-semibold text-slate-700 dark:text-slate-200">{label || payload[0]?.name}</p>
       <p className="text-slate-500 dark:text-slate-400">{formatted}/ano</p>
     </div>
@@ -75,7 +75,7 @@ function PieTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const item = payload[0];
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg px-3 py-2 text-xs">
+    <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg shadow-lg px-3 py-2 text-xs">
       <p className="font-semibold text-slate-700 dark:text-slate-200">{item.name}</p>
       <p className="text-slate-500 dark:text-slate-400">
         {item.value} empresas ({((item.value / item.payload.total) * 100).toFixed(1)}%)

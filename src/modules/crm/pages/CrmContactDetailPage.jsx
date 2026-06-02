@@ -132,7 +132,7 @@ export function CrmContactDetailPage() {
       {/* Info cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {contact.email && (
-          <a href={`mailto:${contact.email}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 dark:hover:border-blue-700 transition-colors group">
+          <a href={`mailto:${contact.email}`} className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 dark:hover:border-blue-700 transition-colors group">
             <Mail size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Email</div>
@@ -141,7 +141,7 @@ export function CrmContactDetailPage() {
           </a>
         )}
         {contact.phone && (
-          <a href={`tel:${contact.phone}`} className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-300 dark:hover:border-blue-700 transition-colors group">
+          <a href={`tel:${contact.phone}`} className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 dark:hover:border-blue-700 transition-colors group">
             <Phone size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Telefone</div>
@@ -150,7 +150,7 @@ export function CrmContactDetailPage() {
           </a>
         )}
         {(contact.city || contact.state) && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50">
+          <div className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl">
             <MapPin size={16} className="text-slate-400" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Localizacao</div>
@@ -161,7 +161,7 @@ export function CrmContactDetailPage() {
           </div>
         )}
         {contact.tags?.length > 0 && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50">
+          <div className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl">
             <Tag size={16} className="text-slate-400" />
             <div className="min-w-0">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Tags</div>
@@ -242,7 +242,7 @@ export function CrmContactDetailPage() {
                 {contact.deals.map(deal => {
                   const ds = DEAL_STATUS[deal.status] || DEAL_STATUS.open;
                   return (
-                    <div key={deal.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors cursor-pointer" onClick={() => navigate(`/crm/deals`)}>
+                    <div key={deal.id} className="crm-glass rounded-2xl p-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors cursor-pointer" onClick={() => navigate(`/crm/deals`)}>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{deal.title}</span>
                         <CrmBadge variant={ds.variant} dot>{ds.label}</CrmBadge>
@@ -258,7 +258,7 @@ export function CrmContactDetailPage() {
 
         {/* NOTES */}
         {activeTab === 'notes' && (
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+          <div className="crm-glass rounded-2xl p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Anotacoes</span>
               {notesSaving && <span className="text-xs text-slate-400 animate-pulse">Salvando...</span>}

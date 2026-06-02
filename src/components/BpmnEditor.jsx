@@ -765,6 +765,67 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
         console.error('Erro ao carregar template Pos-Venda:', e);
         return false;
       }
+    },
+
+    async loadCsTemplateByKey(key) {
+      if (!modelerRef.current) return false;
+
+      try {
+        const loaders = {
+          agora: () => import('../utils/cs/cs00AgoraTemplate').then(m => m.CS_00_AGORA_TEMPLATE_XML),
+          macro: () => import('../utils/cs/csMacroTemplate').then(m => m.CS_MACRO_TEMPLATE_XML),
+          fase1: () => import('../utils/cs/cs01ImplementacaoTemplate').then(m => m.CS_01_IMPLEMENTACAO_TEMPLATE_XML),
+          fase2: () => import('../utils/cs/cs02AtivacaoTemplate').then(m => m.CS_02_ATIVACAO_TEMPLATE_XML),
+          fase3: () => import('../utils/cs/cs03HabitoTemplate').then(m => m.CS_03_HABITO_TEMPLATE_XML),
+          fase4: () => import('../utils/cs/cs04ExpansaoTemplate').then(m => m.CS_04_EXPANSAO_TEMPLATE_XML),
+          fase5: () => import('../utils/cs/cs05RenovacaoTemplate').then(m => m.CS_05_RENOVACAO_TEMPLATE_XML),
+          fase6: () => import('../utils/cs/cs06AdvocacyTemplate').then(m => m.CS_06_ADVOCACY_TEMPLATE_XML),
+        };
+
+        const loader = loaders[key];
+        if (!loader) {
+          console.error('Template CS desconhecido:', key);
+          return false;
+        }
+
+        const xml = await loader();
+        await modelerRef.current.importXML(xml);
+
+        const canvas = modelerRef.current.get('canvas');
+        canvas.zoom(0.5);
+
+        const viewbox = canvas.viewbox();
+        const elementRegistry = modelerRef.current.get('elementRegistry');
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        elementRegistry.forEach((element) => {
+          if (element.x !== undefined && element.y !== undefined) {
+            minX = Math.min(minX, element.x);
+            minY = Math.min(minY, element.y);
+            maxX = Math.max(maxX, element.x + (element.width || 0));
+            maxY = Math.max(maxY, element.y + (element.height || 0));
+          }
+        });
+
+        if (minX !== Infinity) {
+          const contentCenterX = (minX + maxX) / 2;
+          const contentCenterY = (minY + maxY) / 2;
+          canvas.viewbox({
+            x: contentCenterX - viewbox.width / 2,
+            y: contentCenterY - viewbox.height / 2,
+            width: viewbox.width,
+            height: viewbox.height
+          });
+        }
+
+        const { xml: newXml } = await modelerRef.current.saveXML({ format: true });
+        if (onXmlChange) onXmlChange(newXml);
+
+        return true;
+      } catch (e) {
+        console.error('Erro ao carregar template CS:', e);
+        return false;
+      }
     }
   }), [onXmlChange]);
 

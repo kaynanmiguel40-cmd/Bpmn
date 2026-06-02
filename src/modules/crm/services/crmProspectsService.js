@@ -438,6 +438,15 @@ export async function lookupCnpjByName(name, uf, city = '') {
 
       trackCdLookup();
 
+      // 401 = chave invalida, 403 = sem saldo na Casa dos Dados. Nenhum dos dois
+      // melhora trocando a variante de busca — aborta o loop na hora (evita 3x
+      // request/403 no console) e segue sem enriquecer. O fluxo Google nao
+      // depende da CD: o lead entra na pipeline sem CNPJ, so com dados do Google.
+      // Nao cacheia miss — assim, se recarregar credito depois, volta a funcionar.
+      if (res.status === 401 || res.status === 403) {
+        return null;
+      }
+
       if (!res.ok) {
         hadTransportError = true;
         console.warn('[lookupCnpj] HTTP', res.status, 'variant:', variant);

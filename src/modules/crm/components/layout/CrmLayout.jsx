@@ -18,7 +18,7 @@ import { useCrmRealtime } from '../../hooks/useCrmRealtime';
 
 // Mapa de titulos CRM
 const crmRouteTitles = {
-  '/crm': 'Dashboard Diario',
+  '/crm': 'Dashboard',
   '/crm/pipeline': 'Pipeline',
   '/crm/deals': 'Negocios',
   '/crm/cadastros': 'Cadastros',
@@ -63,7 +63,7 @@ function CrmTopbar({ onToggleMobileMenu }) {
   const breadcrumb = getBreadcrumb();
 
   return (
-    <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700/50 px-4 md:px-6 flex items-center justify-between shrink-0">
+    <header className="h-14 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border-b border-white/60 dark:border-white/10 px-4 md:px-6 flex items-center justify-between shrink-0 sticky top-0 z-20">
       {/* Left: Mobile menu + Breadcrumb */}
       <div className="flex items-center gap-3">
         {/* Mobile menu toggle */}
@@ -151,7 +151,7 @@ export function CrmLayout() {
         <main
           role="main"
           aria-label="Conteudo CRM"
-          className="flex-1 overflow-auto p-4 md:p-6"
+          className="flex-1 overflow-auto p-4 md:p-6 crm-mesh bg-slate-50 dark:bg-slate-950"
         >
           <Outlet />
         </main>

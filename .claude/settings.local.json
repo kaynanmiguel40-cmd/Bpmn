@@ -10,7 +10,28 @@
       "Bash(code --version)",
       "Bash(\"/c/Program Files/nodejs/node.exe\" --version)",
       "Bash(PATH=\"/c/Program Files/nodejs:$PATH\")",
-      "Bash(node node_modules/vite/bin/vite.js build)"
+      "Bash(node node_modules/vite/bin/vite.js build)",
+      "Bash(node --check src/hooks/useRealtimeSubscription.js)",
+      "Bash(node --check src/modules/crm/services/crmProspectsService.js)",
+      "Bash(node --check src/modules/crm/services/crmDealsService.js)",
+      "Bash(node --check src/modules/crm/schemas/crmValidation.js)",
+      "Bash(node --check src/modules/crm/services/crmCompaniesService.js)",
+      "Bash(node --check src/modules/crm/hooks/useCrmQueries.js)",
+      "Bash(node --check src/modules/crm/services/crmActivitiesService.js)",
+      "Bash(node --check src/modules/crm/services/crmDashboardService.js)",
+      "Bash(node --check src/modules/crm/components/ui/CrmModal.jsx)",
+      "Bash(node --check src/modules/crm/components/LostReasonModal.jsx)",
+      "Bash(node --check src/modules/crm/components/ScheduleMeetingModal.jsx)",
+      "Bash(node --check src/modules/crm/components/GoalFormModal.jsx)",
+      "Bash(git commit -m ' *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(grep -v \"^\\\\s*$\")",
+      "Bash(grep -oE \"\\\\\"\\(warn|error|issue|problem\\)[^\\\\\"]{0,100}\\\\\"\" dist/bundle-stats.html)",
+      "Bash(npx eslint *)",
+      "Bash(ls .vscode)",
+      "Bash(grep -c \"dist\" .gitignore)",
+      "Bash(node --check src/modules/crm/components/DealFormModal.jsx)",
+      "Bash(awk '{print $2}')"
     ]
   }
 }

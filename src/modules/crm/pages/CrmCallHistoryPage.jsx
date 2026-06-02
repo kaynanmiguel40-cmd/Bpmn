@@ -198,7 +198,7 @@ export function CrmCallHistoryPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               to="/crm/discador"
-              className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
+              className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
             >
               <ArrowLeft size={14} /> Voltar ao discador
             </Link>
@@ -210,7 +210,7 @@ export function CrmCallHistoryPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar numero ou notas..."
-                className="pl-8 pr-7 py-1.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
+                className="pl-8 pr-7 py-1.5 text-sm bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
               />
               {search && (
                 <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -222,7 +222,7 @@ export function CrmCallHistoryPage() {
             <select
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
-              className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+              className="text-xs bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
             >
               {PERIODS.map(p => (
                 <option key={p.value} value={p.value}>{p.label}</option>
@@ -232,7 +232,7 @@ export function CrmCallHistoryPage() {
             <select
               value={outcomeFilter}
               onChange={(e) => setOutcomeFilter(e.target.value)}
-              className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+              className="text-xs bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
             >
               <option value="">Todos resultados</option>
               {Object.entries(CALL_OUTCOMES).map(([k, o]) => (
@@ -240,7 +240,7 @@ export function CrmCallHistoryPage() {
               ))}
             </select>
 
-            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={teamMode === '1'}

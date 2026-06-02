@@ -104,7 +104,7 @@ export function MessageComposer({ conversation, disabled, placeholder = 'Mensage
   const isSending = uploading || sendMutation.isPending;
 
   return (
-    <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 relative">
+    <div className="border-t border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/50 backdrop-blur-xl p-3 relative">
       {/* Preview do anexo */}
       {attachment && (
         <div className="mb-2 flex items-center gap-3 bg-slate-50 dark:bg-slate-800 rounded-md p-2 border border-slate-200 dark:border-slate-700">
@@ -134,7 +134,7 @@ export function MessageComposer({ conversation, disabled, placeholder = 'Mensage
 
       {/* Menu anexar */}
       {attachMenuOpen && (
-        <div className="absolute bottom-16 left-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg overflow-hidden z-10">
+        <div className="absolute bottom-16 left-3 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-md shadow-lg overflow-hidden z-10">
           <button
             type="button"
             onClick={() => imageInputRef.current?.click()}
@@ -185,7 +185,7 @@ export function MessageComposer({ conversation, disabled, placeholder = 'Mensage
           placeholder={disabled ? 'Instância desconectada' : (attachment ? 'Adicionar legenda (opcional)...' : placeholder)}
           disabled={disabled || isSending}
           rows={1}
-          className="flex-1 resize-none rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 px-3 py-2 max-h-32 focus:outline-none focus:ring-2 focus:ring-fyness-primary disabled:opacity-50"
+          className="flex-1 resize-none rounded-xl border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-800/60 backdrop-blur text-sm text-slate-800 dark:text-slate-100 px-3 py-2 max-h-32 focus:outline-none focus:ring-2 focus:ring-fyness-primary disabled:opacity-50"
           style={{ minHeight: 38 }}
         />
         <button

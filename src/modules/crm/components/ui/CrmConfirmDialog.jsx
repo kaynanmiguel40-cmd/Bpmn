@@ -55,7 +55,7 @@ export function CrmConfirmDialog({
         <button
           onClick={onCancel}
           disabled={loading}
-          className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+          className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white/60 dark:bg-white/5 backdrop-blur border border-slate-300/70 dark:border-white/10 rounded-xl hover:bg-white/80 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
         >
           Cancelar
         </button>

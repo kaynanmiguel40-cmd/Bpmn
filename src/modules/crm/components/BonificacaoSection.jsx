@@ -11,7 +11,7 @@
  */
 
 import { Trophy, Medal, Award, Target } from 'lucide-react';
-import { CrmAvatar } from './ui';
+import { CrmAvatar, CrmPanel } from './ui';
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val || 0);
@@ -107,62 +107,60 @@ function VendedorRow({ row }) {
 export function BonificacaoSection({ rows = [], loading }) {
   if (loading) {
     return (
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
-        <div className="h-4 w-40 bg-slate-200 dark:bg-slate-700 rounded mb-4 animate-pulse" />
+      <CrmPanel title="Progresso de Bonificacao" icon={Trophy} accent="amber">
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
             <div key={i} className="flex items-center gap-3 animate-pulse">
-              <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700" />
+              <div className="w-7 h-7 rounded-full bg-slate-200/70 dark:bg-slate-700/70" />
               <div className="flex-1 space-y-1.5">
-                <div className="h-3 w-32 bg-slate-200 dark:bg-slate-700 rounded" />
+                <div className="h-3 w-32 bg-slate-200/70 dark:bg-slate-700/70 rounded" />
                 <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded" />
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </CrmPanel>
     );
   }
 
   if (!rows.length) {
     return (
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5 text-center">
-        <Trophy size={28} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Nenhum vendedor com cargo CRM atribuido.
-        </p>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-          Configure cargos em Configuracoes &gt; Equipe.
-        </p>
-      </div>
+      <CrmPanel>
+        <div className="text-center py-2">
+          <Trophy size={28} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Nenhum vendedor com cargo CRM atribuido.
+          </p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+            Configure cargos em Configuracoes &gt; Equipe.
+          </p>
+        </div>
+      </CrmPanel>
     );
   }
 
+  const tierLegend = (
+    <div className="hidden sm:flex items-center gap-3 text-[10px]">
+      <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+        <Award size={11} /> Bronze 30%
+      </span>
+      <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300">
+        <Medal size={11} /> Prata 60%
+      </span>
+      <span className="inline-flex items-center gap-1 text-yellow-700 dark:text-yellow-400">
+        <Trophy size={11} /> Ouro 100%
+      </span>
+    </div>
+  );
+
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700/50 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Trophy size={16} className="text-yellow-500" />
-          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Progresso de Bonificacao</h3>
-        </div>
-        <div className="hidden sm:flex items-center gap-3 text-[10px]">
-          <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
-            <Award size={11} /> Bronze 30%
-          </span>
-          <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300">
-            <Medal size={11} /> Prata 60%
-          </span>
-          <span className="inline-flex items-center gap-1 text-yellow-700 dark:text-yellow-400">
-            <Trophy size={11} /> Ouro 100%
-          </span>
-        </div>
-      </div>
-      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+    <CrmPanel title="Progresso de Bonificacao" icon={Trophy} accent="amber" action={tierLegend}>
+      <div className="divide-y divide-slate-200/60 dark:divide-white/5">
         {rows.map(row => (
           <VendedorRow key={row.vendedor.id} row={row} />
         ))}
       </div>
-    </div>
+    </CrmPanel>
   );
 }
 

@@ -21,7 +21,7 @@ export function LostReasonModal({ open, onClose, onConfirm, isPending }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-md mx-4 p-6">
+      <div onClick={(e) => e.stopPropagation()} className="crm-glass rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center shrink-0">
             <XCircle size={20} className="text-rose-600 dark:text-rose-400" />
