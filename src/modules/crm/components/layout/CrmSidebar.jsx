@@ -25,6 +25,7 @@ import {
   Zap,
   PhoneCall,
   MessageCircle,
+  Sunrise,
 } from 'lucide-react';
 import logoFyness from '../../../../assets/logo-fyness.png';
 
@@ -49,6 +50,7 @@ const crmNavItems = [
   { section: 'Cadastros' },
   { to: '/crm/cadastros', icon: Users, label: 'Cadastros' },
   { section: 'Gestao' },
+  { to: '/crm/daily', icon: Sunrise, label: 'Daily do Time' },
   { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { to: '/crm/goals', icon: Trophy, label: 'Metas' },
   { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },

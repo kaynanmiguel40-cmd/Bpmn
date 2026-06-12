@@ -127,10 +127,20 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
   }, [open, activity, reset, defaultDealId, defaultContactId]);
 
   const onSubmit = async (data) => {
+    // <input type="datetime-local"> devolve "YYYY-MM-DDTHH:MM" sem timezone.
+    // Sem converter pra ISO UTC, o Postgres assume UTC e a hora exibida fica
+    // off-by-3h (no Brasil). new Date(s) interpreta como LOCAL; toISOString
+    // serializa em UTC — round-trip correto.
+    const toIsoUtc = (s) => (s ? new Date(s).toISOString() : null);
+    const payload = {
+      ...data,
+      startDate: toIsoUtc(data.startDate),
+      endDate: toIsoUtc(data.endDate),
+    };
     if (isEdit) {
-      await updateMutation.mutateAsync({ id: activity.id, updates: data });
+      await updateMutation.mutateAsync({ id: activity.id, updates: payload });
     } else {
-      await createMutation.mutateAsync(data);
+      await createMutation.mutateAsync(payload);
     }
     onClose();
   };

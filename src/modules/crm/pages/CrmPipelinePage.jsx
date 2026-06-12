@@ -811,7 +811,30 @@ function SeedOrCreateEmpty({ onCreateManual }) {
 
 export function CrmPipelinePage() {
   const { data: pipelines, isLoading: loadingPipelines } = useCrmPipelines();
-  const [selectedPipelineId, setSelectedPipelineId] = useUrlState('pipeline', '');
+  // Persiste a pipeline selecionada entre sessoes (igual viewMode/filtros).
+  // Le localStorage SINCRONO na inicializacao pra evitar flash da primeira
+  // pipeline (ex: Outbound) antes de restaurar a salva. URL ainda e fonte
+  // de verdade quando presente.
+  const PIPELINE_SELECTED_KEY = 'crm-pipeline-selected';
+  const [selectedPipelineId, setSelectedPipelineId] = useUrlState('pipeline', (() => {
+    try { return localStorage.getItem(PIPELINE_SELECTED_KEY) || ''; } catch { return ''; }
+  })());
+
+  // Salva quando muda
+  useEffect(() => {
+    if (!selectedPipelineId) return;
+    try { localStorage.setItem(PIPELINE_SELECTED_KEY, selectedPipelineId); } catch {}
+  }, [selectedPipelineId]);
+
+  // Se a pipeline salva nao existe mais (foi deletada), limpa e cai no fallback
+  useEffect(() => {
+    if (!selectedPipelineId || !pipelines || pipelines.length === 0) return;
+    if (!pipelines.some(p => p.id === selectedPipelineId)) {
+      setSelectedPipelineId('');
+      try { localStorage.removeItem(PIPELINE_SELECTED_KEY); } catch {}
+    }
+  }, [pipelines, selectedPipelineId, setSelectedPipelineId]);
+
   const activePipelineId = selectedPipelineId || pipelines?.[0]?.id || null;
 
   const { data: pipelineData, isLoading: loadingDeals } = useCrmPipelineWithDeals(activePipelineId);

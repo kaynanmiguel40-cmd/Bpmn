@@ -780,6 +780,11 @@ const BpmnEditor = forwardRef(function BpmnEditor({ xml, onXmlChange, onElementS
           fase4: () => import('../utils/cs/cs04ExpansaoTemplate').then(m => m.CS_04_EXPANSAO_TEMPLATE_XML),
           fase5: () => import('../utils/cs/cs05RenovacaoTemplate').then(m => m.CS_05_RENOVACAO_TEMPLATE_XML),
           fase6: () => import('../utils/cs/cs06AdvocacyTemplate').then(m => m.CS_06_ADVOCACY_TEMPLATE_XML),
+          cadenciaProspeccao: () => import('../utils/comercial/cadenciaProspeccaoTemplate').then(m => m.CADENCIA_PROSPECCAO_TEMPLATE_XML),
+          cadenciaIndicacao: () => import('../utils/comercial/cadenciaIndicacaoTemplate').then(m => m.CADENCIA_INDICACAO_TEMPLATE_XML),
+          cadenciaInbound: () => import('../utils/comercial/cadenciaInboundOrganicoTemplate').then(m => m.CADENCIA_INBOUND_ORGANICO_TEMPLATE_XML),
+          cadenciaAnuncio: () => import('../utils/comercial/cadenciaAnuncioPagoTemplate').then(m => m.CADENCIA_ANUNCIO_PAGO_TEMPLATE_XML),
+          cadenciaAquecida: () => import('../utils/comercial/cadenciaProspeccaoAquecidaTemplate').then(m => m.CADENCIA_PROSPECCAO_AQUECIDA_TEMPLATE_XML),
         };
 
         const loader = loaders[key];

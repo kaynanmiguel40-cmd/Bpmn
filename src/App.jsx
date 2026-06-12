@@ -26,6 +26,7 @@ const EapGanttPage = lazy(() => import('./pages/eap/EapGanttPage'))
 // CRM Module (lazy loaded — app dentro do app)
 const CrmLayout = lazy(() => import('./modules/crm/components/layout/CrmLayout'))
 const CrmDashboardPage = lazy(() => import('./modules/crm/pages/CrmDashboardPage'))
+const CrmDailyPage = lazy(() => import('./modules/crm/pages/CrmDailyPage'))
 const CrmPipelinePage = lazy(() => import('./modules/crm/pages/CrmPipelinePage'))
 const CrmDealsPage = lazy(() => import('./modules/crm/pages/CrmDealsPage'))
 const CrmDealDetailPage = lazy(() => import('./modules/crm/pages/CrmDealDetailPage'))
@@ -101,6 +102,7 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route path="/crm" element={<CrmLayout />}>
                 <Route index element={<ErrorBoundary><CrmDashboardPage /></ErrorBoundary>} />
+                <Route path="daily" element={<ErrorBoundary><CrmDailyPage /></ErrorBoundary>} />
                 <Route path="pipeline" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="pipeline/:pipelineId" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="deals" element={<ErrorBoundary><CrmDealsPage /></ErrorBoundary>} />

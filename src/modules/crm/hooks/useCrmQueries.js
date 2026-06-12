@@ -12,6 +12,7 @@ import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverT
 import { getCrmProspects, getProspectListNames, getProspectsAnalytics, createCrmProspect, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
 import { getCrmGoals, getCrmGoalById, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
 import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities, getSellersReport } from '../services/crmReportsService';
+import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, updateCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
 import { getCrmMessages, getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead, toggleCrmMessageStarred, markCrmMessageAsSpam, softDeleteCrmMessage } from '../services/crmMessagesService';
@@ -43,6 +44,8 @@ export const crmQueryKeys = {
   learnedProbabilities: (pipelineId) => ['crm', 'learnedProbabilities', pipelineId || 'all'],
   activitiesReport: (start, end) => ['crm', 'activitiesReport', start, end],
   sellersReport: (start, end) => ['crm', 'sellersReport', start, end],
+  dailyScoreboard: (start, end) => ['crm', 'dailyScoreboard', start, end],
+  dailyBriefing: ['crm', 'dailyBriefing'],
   traffic: ['crm', 'traffic'],
   trafficKPIs: ['crm', 'trafficKPIs'],
   trafficByChannel: ['crm', 'trafficByChannel'],
@@ -895,6 +898,23 @@ export function useSellersReport(startDate, endDate) {
     queryFn: () => getSellersReport(startDate, endDate),
     enabled: !!startDate && !!endDate,
     staleTime: 120_000,
+  });
+}
+
+export function useDailyScoreboard(dayStartISO, dayEndISO) {
+  return useQuery({
+    queryKey: crmQueryKeys.dailyScoreboard(dayStartISO, dayEndISO),
+    queryFn: () => getDailyScoreboard(dayStartISO, dayEndISO),
+    enabled: !!dayStartISO && !!dayEndISO,
+    staleTime: 60_000,
+  });
+}
+
+export function useDailyBriefing() {
+  return useQuery({
+    queryKey: crmQueryKeys.dailyBriefing,
+    queryFn: () => getDailyBriefing(),
+    staleTime: 60_000,
   });
 }
 

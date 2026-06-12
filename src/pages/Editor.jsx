@@ -50,6 +50,7 @@ export default function Editor() {
   const [pdfScale, setPdfScale] = useState(2);
   const [showProcessOrder, setShowProcessOrder] = useState(false);
   const [showCsDropdown, setShowCsDropdown] = useState(false);
+  const [showCadenciasDropdown, setShowCadenciasDropdown] = useState(false);
 
   // Carregar todos os projetos para o painel de dependências
   useEffect(() => {
@@ -604,6 +605,60 @@ export default function Editor() {
               </svg>
               <span>RH</span>
             </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowCadenciasDropdown(v => !v)}
+                className="flex items-center gap-2 px-3 py-2 border border-amber-300 bg-amber-50 rounded-lg text-amber-700 hover:bg-amber-100 transition-colors text-sm"
+                title="Cadências de Prospecção por canal"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42a.25.25 0 01-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1 1 0 0020 4H5.21l-.94-2H1v2h2zm14 14a2 2 0 100 4 2 2 0 000-4zM7 19a2 2 0 100 4 2 2 0 000-4z" />
+                </svg>
+                <span>Cadências</span>
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showCadenciasDropdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowCadenciasDropdown(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1 w-80 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
+                    {[
+                      { key: 'cadenciaProspeccao', label: 'Endosso do contador', desc: '12 toques · 14 dias · cara de pau' },
+                      { key: 'cadenciaIndicacao', label: 'Indicação direta de cliente', desc: '6 toques · 7 dias · peer-to-peer' },
+                      { key: 'cadenciaInbound', label: 'Inbound orgânico (Insta/TikTok/Site)', desc: '9 toques · 14 dias · educativo' },
+                      { key: 'cadenciaAnuncio', label: 'Anúncio pago (Meta/Google Ads)', desc: '7 toques · 7 dias · SPEED-TO-LEAD' },
+                      { key: 'cadenciaAquecida', label: 'Prospecção aquecida (outbound)', desc: '3d pré-aquecimento + 8 toques · 11 dias' },
+                    ].map(({ key, label, desc }) => (
+                      <button
+                        key={key}
+                        onClick={async () => {
+                          setShowCadenciasDropdown(false);
+                          if (!window.confirm(`Isso vai substituir o diagrama atual pelo template "${label}". Continuar?`)) return;
+                          const ok = await bpmnEditorRef.current?.loadCsTemplateByKey(key);
+                          if (ok) {
+                            setSuccessMessage(`Template "${label}" carregado!`);
+                            setShowSaveToast(true);
+                            setTimeout(() => { setShowSaveToast(false); setSuccessMessage(''); }, 3000);
+                          } else {
+                            setErrorMessage(`Erro ao carregar template "${label}"`);
+                            setShowErrorToast(true);
+                            setTimeout(() => { setShowErrorToast(false); setErrorMessage(''); }, 4000);
+                          }
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-amber-50 transition-colors"
+                      >
+                        <div className="text-sm font-medium text-slate-800">{label}</div>
+                        <div className="text-xs text-slate-500">{desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <div className="relative">
               <button
                 onClick={() => setShowCsDropdown(v => !v)}

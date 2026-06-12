@@ -369,10 +369,14 @@ export async function searchProspectsByGoogle(filters = {}, pageToken = '') {
   const cached = readGpSearchCache(cacheKey);
   if (cached) {
     const converted = readConvertedPlaces();
-    if (converted.size > 0) {
-      return { ...cached, data: cached.data.filter(p => !converted.has(p.googlePlaceId)) };
-    }
-    return cached;
+    const data = converted.size > 0
+      ? cached.data.filter(p => !converted.has(p.googlePlaceId))
+      : cached.data;
+    // Tokens de paginacao do Google expiram em minutos; nosso cache vive ate 7
+    // dias. Servir um nextPageToken cacheado leva ao 400 "params must match" na
+    // hora de carregar mais. Entao zeramos o token ao vir do cache — paginar
+    // exige uma busca fresca (com token vivo).
+    return { ...cached, data, nextPageToken: null };
   }
 
   try {
@@ -399,6 +403,14 @@ export async function searchProspectsByGoogle(filters = {}, pageToken = '') {
     if (!res.ok) {
       const errBody = await res.text().catch(() => '');
       console.error('[gpSearch] HTTP', res.status, errBody.slice(0, 200));
+
+      // Falha numa request de paginacao (com pageToken) = token do Google
+      // expirou (duram poucos minutos). Nao eh erro real pro usuario: a 1a
+      // pagina ja carregou. Encerra a paginacao em silencio, sem toast.
+      if (pageToken) {
+        return { data: [], nextPageToken: null, source: 'google-first' };
+      }
+
       // 429 = quota diaria esgotada. 401/403 = key invalida ou sem permissao.
       // Sinaliza pra UI conseguir mostrar mensagem clara.
       const error = res.status === 429 ? 'quota_exceeded'
