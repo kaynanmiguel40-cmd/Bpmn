@@ -13,6 +13,7 @@ import { getCrmProspects, updateCrmProspect, softDeleteCrmProspect, sendToPipeli
 import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
 import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities, getSellersReport } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
+import { getCrmCalendarActivities, getLeadTimeline } from '../services/crmAgendaService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
 import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead } from '../services/crmMessagesService';
@@ -30,6 +31,8 @@ export const crmQueryKeys = {
   deals: ['crm', 'deals'],
   deal: (id) => ['crm', 'deal', id],
   activities: ['crm', 'activities'],
+  calendarActivities: (start, end) => ['crm', 'calendarActivities', start, end],
+  leadTimeline: (key) => ['crm', 'leadTimeline', key],
   goals: ['crm', 'goals'],
   goalsProgress: ['crm', 'goalsProgress'],
   dashboard: ['crm', 'dashboard'],
@@ -542,6 +545,26 @@ export function useCrmActivities(filters = {}) {
   });
 }
 
+// Atividades do CRM que cruzam o recorte visivel do calendario (Agenda).
+export function useCrmCalendarActivities(start, end) {
+  return useQuery({
+    queryKey: crmQueryKeys.calendarActivities(start, end),
+    queryFn: () => getCrmCalendarActivities({ start, end }),
+    enabled: !!start && !!end,
+    staleTime: 30_000,
+  });
+}
+
+// Timeline unificada de um lead (atividades + ligacoes + WhatsApp + estagio).
+export function useLeadTimeline({ dealId = null, contactId = null } = {}) {
+  return useQuery({
+    queryKey: crmQueryKeys.leadTimeline(`${dealId || ''}:${contactId || ''}`),
+    queryFn: () => getLeadTimeline({ dealId, contactId }),
+    enabled: !!(dealId || contactId),
+    staleTime: 15_000,
+  });
+}
+
 export function useCreateCrmActivity() {
   const qc = useQueryClient();
   return useMutation({
@@ -549,6 +572,8 @@ export function useCreateCrmActivity() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['agendaEvents'] });
       toast('Atividade criada com sucesso', 'success');
@@ -563,6 +588,8 @@ export function useUpdateCrmActivity() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: ['agendaEvents'] });
     },
   });
@@ -575,6 +602,8 @@ export function useDeleteCrmActivity() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['agendaEvents'] });
       toast('Atividade excluida', 'success');
@@ -589,6 +618,8 @@ export function useCompleteCrmActivity() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       toast('Atividade concluida', 'success');
     },

@@ -15,13 +15,14 @@ import { crmQueryKeys } from './useCrmQueries';
 export function useCrmRealtime(options = {}) {
   const { enabled = true, onDealChange, onActivityChange } = options;
 
-  // Deals — atualiza Kanban e Dashboard
+  // Deals — atualiza Kanban, Dashboard e a timeline do lead na Agenda
   useRealtimeSubscription(
     'crm_deals',
     [
       crmQueryKeys.deals,
       crmQueryKeys.dashboard,
       ['crm', 'pipelineDeals'],
+      ['crm', 'leadTimeline'],
     ],
     {
       enabled,
@@ -31,12 +32,14 @@ export function useCrmRealtime(options = {}) {
     }
   );
 
-  // Activities — atualiza lista e Dashboard
+  // Activities — atualiza lista, Dashboard, calendario da Agenda e timeline
   useRealtimeSubscription(
     'crm_activities',
     [
       crmQueryKeys.activities,
       crmQueryKeys.dashboard,
+      ['crm', 'calendarActivities'],
+      ['crm', 'leadTimeline'],
     ],
     {
       enabled,
@@ -59,17 +62,17 @@ export function useCrmRealtime(options = {}) {
     { enabled }
   );
 
-  // Calls — atualiza discador, historico e dashboard
+  // Calls — atualiza discador, historico, dashboard e timeline do lead
   useRealtimeSubscription(
     'crm_calls',
-    [crmQueryKeys.calls, ['crm', 'dialerQueue'], ['crm', 'recentCalls'], crmQueryKeys.dialerKPIs, crmQueryKeys.dashboard],
+    [crmQueryKeys.calls, ['crm', 'dialerQueue'], ['crm', 'recentCalls'], crmQueryKeys.dialerKPIs, crmQueryKeys.dashboard, ['crm', 'leadTimeline']],
     { enabled }
   );
 
-  // Messages — atualiza inbox WhatsApp e conversa aberta
+  // Messages — atualiza inbox WhatsApp, conversa aberta e timeline do lead
   useRealtimeSubscription(
     'crm_messages',
-    [['crm', 'conversation'], ['crm', 'inbox']],
+    [['crm', 'conversation'], ['crm', 'inbox'], ['crm', 'leadTimeline']],
     { enabled }
   );
 

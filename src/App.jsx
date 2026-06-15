@@ -35,6 +35,7 @@ const CrmContactDetailPage = lazy(() => import('./modules/crm/pages/CrmContactDe
 const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage'))
 const CrmCompanyDetailPage = lazy(() => import('./modules/crm/pages/CrmCompanyDetailPage'))
 const CrmActivitiesPage = lazy(() => import('./modules/crm/pages/CrmActivitiesPage'))
+const CrmAgendaPage = lazy(() => import('./modules/crm/pages/CrmAgendaPage'))
 const CrmGoalsPage = lazy(() => import('./modules/crm/pages/CrmGoalsPage'))
 const CrmReportsPage = lazy(() => import('./modules/crm/pages/CrmReportsPage'))
 const CrmForecastPage = lazy(() => import('./modules/crm/pages/CrmForecastPage'))
@@ -113,6 +114,7 @@ function App() {
                 <Route path="companies" element={<ErrorBoundary><CrmCompaniesPage /></ErrorBoundary>} />
                 <Route path="companies/:id" element={<ErrorBoundary><CrmCompanyDetailPage /></ErrorBoundary>} />
                 <Route path="activities" element={<ErrorBoundary><CrmActivitiesPage /></ErrorBoundary>} />
+                <Route path="agenda" element={<ErrorBoundary><CrmAgendaPage /></ErrorBoundary>} />
                 <Route path="discador" element={<ErrorBoundary><CrmDialerPage /></ErrorBoundary>} />
                 <Route path="discador/historico" element={<ErrorBoundary><CrmCallHistoryPage /></ErrorBoundary>} />
                 <Route path="inbox" element={<ErrorBoundary><CrmInboxPage /></ErrorBoundary>} />

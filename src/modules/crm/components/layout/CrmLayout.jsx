@@ -25,6 +25,7 @@ const crmRouteTitles = {
   '/crm/cadastros': 'Cadastros',
   '/crm/contacts': 'Contatos',
   '/crm/companies': 'Empresas',
+  '/crm/agenda': 'Agenda',
   '/crm/activities': 'Atividades',
   '/crm/discador': 'Discador',
   '/crm/discador/historico': 'Historico',
