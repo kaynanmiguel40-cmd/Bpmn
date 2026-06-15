@@ -1,7 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query'
+import { toast } from './contexts/ToastContext'
 import { AuthProvider } from './contexts/AuthContext'
 import { PermissionProvider } from './contexts/PermissionContext'
 import { ThemeProvider } from './contexts/ThemeContext'
@@ -46,6 +47,14 @@ window.addEventListener('load', () => {
 
 // React Query client global
 const queryClient = new QueryClient({
+  // Rede de seguranca global: mutation que falha SEM onError proprio ainda
+  // avisa o usuario — evita o padrao "falhou em silencio e parecia sucesso".
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      if (mutation.options.onError) return; // quem trata o proprio erro, trata
+      toast(`Erro: ${error?.message || 'falha inesperada'}`, 'error');
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 30_000,

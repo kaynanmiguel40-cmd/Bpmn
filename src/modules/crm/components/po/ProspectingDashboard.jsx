@@ -9,7 +9,6 @@ import { Map, Calendar, TrendingUp, Crosshair, Globe } from 'lucide-react';
 import BrazilMap, { COLOR_MODES } from './BrazilMap';
 import StateDetailPanel from './StateDetailPanel';
 import { getProspectionStats } from '../../data/brazilStates';
-import { useDealsWithMeetings } from '../../hooks/useCrmQueries';
 
 export default function ProspectingDashboard() {
   const [selectedState, setSelectedState] = useState(null);
@@ -22,22 +21,6 @@ export default function ProspectingDashboard() {
   const handleCityClick = useCallback((cityName) => {
     mapRef.current?.navigateToCity(cityName);
   }, []);
-
-  // Reunioes agendadas para pins no mapa
-  const { data: dealsWithMeetings = [] } = useDealsWithMeetings();
-  const meetingPins = useMemo(() =>
-    dealsWithMeetings
-      .filter(d => d.meetingCity)
-      .map(d => ({
-        dealId: d.id,
-        title: d.title,
-        city: d.meetingCity,
-        uf: d.company?.state || d.contact?.state || '',
-        meetingDate: d.meetingDate,
-        companyName: d.company?.name || d.title,
-      })),
-    [dealsWithMeetings]
-  );
 
   return (
     <div className="flex flex-col h-full gap-2">
@@ -88,7 +71,6 @@ export default function ProspectingDashboard() {
             selectedState={selectedState}
             onSelectState={setSelectedState}
             colorMode={colorMode}
-            meetingPins={meetingPins}
           />
         </div>
 

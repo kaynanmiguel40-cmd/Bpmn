@@ -86,21 +86,6 @@ export async function getCrmGoals(filters = {}) {
   return { data: (data || []).map(dbToCrmGoal), count: count || 0 };
 }
 
-export async function getCrmGoalById(id) {
-  const { data, error } = await supabase
-    .from('crm_goals')
-    .select('*, team_members(id, name, color, auth_user_id)')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single();
-
-  if (error) {
-    toast(`Erro ao buscar meta: ${error.message}`, 'error');
-    return null;
-  }
-  return dbToCrmGoal(data);
-}
-
 export async function createCrmGoal(data) {
   const session = await supabase.auth.getSession();
   const userId = session.data?.session?.user?.id;

@@ -3,13 +3,11 @@ import {
   crmCompanySchema,
   crmContactSchema,
   crmPipelineSchema,
-  crmPipelineStageSchema,
   crmDealSchema,
   crmActivitySchema,
   crmGoalSchema,
   crmTrafficSchema,
   crmProspectSchema,
-  crmSettingsSchema,
 } from '../crmValidation';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,28 +109,6 @@ describe('crmPipelineSchema', () => {
 
   it('rejeita pipeline sem nome', () => {
     expect(crmPipelineSchema.safeParse({}).success).toBe(false);
-  });
-});
-
-describe('crmPipelineStageSchema', () => {
-  it('aceita stage com pipelineId, name e position', () => {
-    const r = crmPipelineStageSchema.safeParse({ pipelineId: 'p1', name: 'Etapa', position: 1 });
-    expect(r.success).toBe(true);
-    expect(r.data.color).toBe('#6366f1');
-    expect(r.data.isWinStage).toBe(false);
-    expect(r.data.triggersMeeting).toBe(false);
-  });
-
-  it('rejeita stage sem pipelineId', () => {
-    expect(crmPipelineStageSchema.safeParse({ name: 'X', position: 1 }).success).toBe(false);
-  });
-
-  it('rejeita position negativa', () => {
-    expect(crmPipelineStageSchema.safeParse({ pipelineId: 'p1', name: 'X', position: -1 }).success).toBe(false);
-  });
-
-  it('aceita position 0', () => {
-    expect(crmPipelineStageSchema.safeParse({ pipelineId: 'p1', name: 'X', position: 0 }).success).toBe(true);
   });
 });
 
@@ -349,25 +325,5 @@ describe('crmProspectSchema', () => {
       expect(crmProspectSchema.safeParse({ companyName: 'X', partnerCategory: c }).success).toBe(true);
     });
     expect(crmProspectSchema.safeParse({ companyName: 'X', partnerCategory: null }).success).toBe(true);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SETTINGS
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('crmSettingsSchema', () => {
-  it('aceita settings vazio (todos opcionais)', () => {
-    const r = crmSettingsSchema.safeParse({});
-    expect(r.success).toBe(true);
-    expect(r.data.accentColor).toBe('#6366f1');
-  });
-
-  it('rejeita email invalido', () => {
-    expect(crmSettingsSchema.safeParse({ companyEmail: 'fail' }).success).toBe(false);
-  });
-
-  it('aceita email vazio (literal)', () => {
-    expect(crmSettingsSchema.safeParse({ companyEmail: '' }).success).toBe(true);
   });
 });

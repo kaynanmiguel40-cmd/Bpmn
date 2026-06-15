@@ -98,14 +98,3 @@ export async function createCrmWhatsAppInstance({ instanceName, teamMemberId = n
   return { ok: true, instance: dbToCrmWhatsAppInstance(data) };
 }
 
-export async function assignCrmWhatsAppInstance(instanceId, teamMemberId) {
-  const { error } = await supabase
-    .from('crm_whatsapp_instances')
-    .update({ team_member_id: teamMemberId })
-    .eq('id', instanceId);
-  if (error) {
-    toast(`Erro ao alocar: ${error.message}`, 'error');
-    return { ok: false };
-  }
-  return { ok: true };
-}

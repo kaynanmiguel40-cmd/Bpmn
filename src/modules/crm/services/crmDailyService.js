@@ -23,7 +23,7 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO) {
     const monthStartISO = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const monthEndISO = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
-    const [callsRes, msgsRes, meetingsRes, tasksRes, membersRes, wonRes, openRes] = await Promise.all([
+    const [callsRes, msgsRes, meetingsRes, tasksRes, membersRes, wonRes, openRes, dayWonRes] = await Promise.all([
       supabase.from('crm_calls')
         .select('created_by, outcome')
         .gte('started_at', dayStartISO).lt('started_at', dayEndISO)
@@ -52,6 +52,12 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO) {
       supabase.from('crm_deals')
         .select('value')
         .eq('status', 'open')
+        .is('deleted_at', null),
+      // Contratos fechados NO DIA (card "Contratos fechados")
+      supabase.from('crm_deals')
+        .select('id')
+        .eq('status', 'won')
+        .gte('closed_at', dayStartISO).lt('closed_at', dayEndISO)
         .is('deleted_at', null),
     ]);
 
@@ -100,6 +106,9 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO) {
     return {
       sellers,
       totals,
+      day: {
+        wonCount: (dayWonRes.data || []).length,
+      },
       month: {
         wonValue: wonDeals.reduce((s, d) => s + (d.value || 0), 0),
         wonCount: wonDeals.length,

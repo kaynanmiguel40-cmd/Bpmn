@@ -121,7 +121,7 @@ function CompanyCombobox({ value, onChange }) {
 }
 
 export function ContactFormModal({ open, onClose, contact = null }) {
-  const isEdit = !!contact;
+  const isEdit = !!contact?.id;
   const createMutation = useCreateCrmContact();
   const updateMutation = useUpdateCrmContact();
   const isPending = createMutation.isPending || updateMutation.isPending;

@@ -32,16 +32,12 @@ export interface CrmDeal {
   lostReason: string | null;
   segment: string | null;
   notes: string;
-  meetingAgendaEventId: string | null;
-  meetingDate: string | null;
-  meetingCity: string | null;
   ownerId: string | null;
   owner: { id: string; name: string; color?: string | null } | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
-  _triggersMeeting?: boolean;
   _movedTo?: 'nurturing' | 'descarte' | null;
 }
 
@@ -66,9 +62,6 @@ export interface CrmDealRow {
   lost_reason?: string | null;
   segment?: string | null;
   notes?: string | null;
-  meeting_agenda_event_id?: string | null;
-  meeting_date?: string | null;
-  meeting_city?: string | null;
   owner_id?: string | null;
   team_members?: { id: string; name: string; color?: string | null } | null;
   created_by?: string | null;
@@ -129,9 +122,6 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
     lostReason: row.lost_reason || null,
     segment: row.segment || null,
     notes: row.notes || '',
-    meetingAgendaEventId: row.meeting_agenda_event_id || null,
-    meetingDate: row.meeting_date || null,
-    meetingCity: row.meeting_city || null,
     ownerId: row.owner_id || null,
     owner: row.team_members ? {
       id: row.team_members.id,
@@ -168,11 +158,9 @@ const dealService = createCRUDService<CrmDeal, CrmDealRow>({
     segment: 'segment',
     status: 'status',
     lostReason: 'lost_reason',
+    closedAt: 'closed_at',
     notes: 'notes',
     ownerId: 'owner_id',
-    meetingAgendaEventId: 'meeting_agenda_event_id',
-    meetingDate: 'meeting_date',
-    meetingCity: 'meeting_city',
   },
   orderBy: 'created_at',
   orderAsc: false,
@@ -218,22 +206,6 @@ export async function getCrmDeals(filters: CrmDealFilters = {}): Promise<{ data:
   };
 }
 
-export async function getDealsByPipeline(pipelineId: string): Promise<CrmDeal[]> {
-  const { data, error } = await supabase
-    .from('crm_deals')
-    .select('*, crm_contacts(id, name, avatar_color), crm_companies(id, name, segment), team_members(id, name, color)')
-    .eq('pipeline_id', pipelineId)
-    .eq('status', 'open')
-    .is('deleted_at', null)
-    .order('created_at');
-
-  if (error) {
-    toast(`Erro ao buscar deals do pipeline: ${error.message}`, 'error');
-    return [];
-  }
-  return ((data as CrmDealRow[]) || []).map(row => dbToCrmDeal(row) as CrmDeal);
-}
-
 export async function getCrmDealById(id: string): Promise<CrmDeal | null> {
   const { data, error } = await supabase
     .from('crm_deals')
@@ -259,7 +231,21 @@ export async function createCrmDeal(data: Record<string, unknown>): Promise<CrmD
 }
 
 export async function updateCrmDeal(id: string, updates: Record<string, unknown>): Promise<CrmDeal | null> {
-  return dealService.update(id, updates);
+  // closed_at e probability andam JUNTOS com o status em QUALQUER caminho que
+  // edite status (form de detalhe, dropdown, etc). Sem isso, um deal marcado
+  // won/lost pelo formulario fica sem closed_at e SOME dos relatorios que
+  // filtram por closed_at — a divergencia classica entre arrastar e editar.
+  const next = { ...updates };
+  if (next.status === 'won') {
+    if (next.closedAt === undefined) next.closedAt = new Date().toISOString();
+    if (next.probability === undefined) next.probability = 100;
+  } else if (next.status === 'lost') {
+    if (next.closedAt === undefined) next.closedAt = new Date().toISOString();
+    if (next.probability === undefined) next.probability = 0;
+  } else if (next.status === 'open') {
+    next.closedAt = null; // reabrir limpa o fechamento
+  }
+  return dealService.update(id, next);
 }
 
 export async function softDeleteCrmDeal(id: string): Promise<boolean> {
@@ -333,7 +319,6 @@ export async function moveDealToStage(dealId: string, stageId: string): Promise<
   }
 
   const result = dbToCrmDeal(data as CrmDealRow);
-  if (result) result._triggersMeeting = false;
 
   if (cur && cur.stage_id !== stageId && result) {
     triggerAutomationsForDeal(result, stageId).catch(console.warn);
@@ -342,21 +327,60 @@ export async function moveDealToStage(dealId: string, stageId: string): Promise<
   return result;
 }
 
+/**
+ * Marca o deal como ganho. Equivalente a arrastar pro estagio de vitoria:
+ * move pro win stage da pipeline (se houver), grava o historico de transicao
+ * e dispara as automacoes da etapa. Antes, o botao de "trofeu" so trocava o
+ * status e divergia do drag (sem stage/history/automacao).
+ */
 export async function markDealAsWon(dealId: string): Promise<CrmDeal | null> {
+  const { data: current } = await supabase
+    .from('crm_deals')
+    .select('stage_id, pipeline_id, status')
+    .eq('id', dealId)
+    .single();
+  const cur = current as { stage_id?: string | null; pipeline_id?: string | null } | null;
+
+  // Acha o estagio de vitoria da pipeline pra alinhar a coluna do Kanban
+  let winStageId: string | null = null;
+  if (cur?.pipeline_id) {
+    const { data: winStage } = await supabase
+      .from('crm_pipeline_stages')
+      .select('id')
+      .eq('pipeline_id', cur.pipeline_id)
+      .eq('is_win_stage', true)
+      .maybeSingle();
+    winStageId = (winStage as { id?: string } | null)?.id ?? null;
+  }
+
+  const nowIso = new Date().toISOString();
+  const movedStage = !!winStageId && winStageId !== cur?.stage_id;
+  const updatePayload: Record<string, unknown> = {
+    status: 'won',
+    probability: 100,
+    closed_at: nowIso,
+    updated_at: nowIso,
+  };
+  if (movedStage) updatePayload.stage_id = winStageId;
+
   const { data, error } = await supabase
     .from('crm_deals')
-    .update({
-      status: 'won',
-      probability: 100,
-      closed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq('id', dealId)
     .select()
     .single();
 
   if (error) throw new Error(error.message);
-  return dbToCrmDeal(data as CrmDealRow);
+
+  if (movedStage && cur?.pipeline_id) {
+    await recordStageTransition(dealId, cur.stage_id || null, winStageId as string, cur.pipeline_id);
+  }
+
+  const result = dbToCrmDeal(data as CrmDealRow);
+  if (movedStage && result) {
+    triggerAutomationsForDeal(result, winStageId as string).catch(console.warn);
+  }
+  return result;
 }
 
 interface PipelineConfig {
@@ -601,104 +625,4 @@ export async function getDealStageHistory(dealId: string): Promise<DealStageHist
       : null,
     createdAt: row.created_at,
   }));
-}
-
-// ==================== MEETING SCHEDULING ====================
-
-export interface UpdateDealMeetingPayload {
-  agendaEventId: string | null;
-  meetingDate: string;
-  meetingCity?: string | null;
-}
-
-export async function updateDealMeeting(
-  dealId: string,
-  { agendaEventId, meetingDate, meetingCity }: UpdateDealMeetingPayload,
-): Promise<CrmDeal | null> {
-  const { data, error } = await supabase
-    .from('crm_deals')
-    .update({
-      meeting_agenda_event_id: agendaEventId || null,
-      meeting_date: meetingDate,
-      meeting_city: meetingCity || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', dealId)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return dbToCrmDeal(data as CrmDealRow);
-}
-
-export async function getDealsWithMeetings(): Promise<CrmDeal[]> {
-  const { data, error } = await supabase
-    .from('crm_deals')
-    .select('*, crm_companies(id, name, city, state), crm_contacts(id, name)')
-    .not('meeting_date', 'is', null)
-    .is('deleted_at', null)
-    .order('meeting_date');
-
-  if (error) return [];
-  return ((data as CrmDealRow[]) || []).map(row => dbToCrmDeal(row) as CrmDeal);
-}
-
-export interface SchedulePartnerMeetingPayload {
-  date: string;
-  time: string;
-  notes?: string;
-  city?: string;
-}
-
-export async function schedulePartnerMeeting(
-  dealId: string,
-  { date, time, notes, city }: SchedulePartnerMeetingPayload,
-): Promise<unknown> {
-  const deal = await getCrmDealById(dealId);
-  if (!deal) throw new Error('Deal nao encontrado');
-
-  const partnerName = deal.company?.name || deal.title;
-  const meetingCity = city || deal.meetingCity || '';
-  const meetingTitle = `Reuniao - ${partnerName}${meetingCity ? ` - ${meetingCity}` : ''}`;
-
-  const localStart = new Date(`${date}T${time}:00`);
-  const startDate = localStart.toISOString();
-  const endDate = new Date(localStart.getTime() + 60 * 60 * 1000).toISOString();
-
-  const { data: gestores } = await supabase
-    .from('team_members')
-    .select('id, name, auth_user_id')
-    .eq('crm_role', 'gestor');
-
-  const attendeeIds = ((gestores as Array<{ id: string }>) || []).map(g => g.id);
-
-  const { createAgendaEvent } = await import('../../../lib/agendaService');
-  const agendaEvent = await createAgendaEvent({
-    title: meetingTitle,
-    description: `Parceiro: ${partnerName}\nCidade: ${meetingCity}\n${notes || ''}`.trim(),
-    startDate,
-    endDate,
-    type: 'meeting',
-    color: '#3b82f6',
-    assignee: attendeeIds[0] || null,
-    attendees: attendeeIds,
-  });
-
-  await createCrmActivity({
-    title: meetingTitle,
-    description: notes || '',
-    type: 'meeting',
-    dealId,
-    contactId: deal.contactId || null,
-    startDate,
-    endDate,
-  });
-
-  await updateDealMeeting(dealId, {
-    agendaEventId: (agendaEvent as { id?: string } | null)?.id || null,
-    meetingDate: startDate,
-    meetingCity,
-  });
-
-  return agendaEvent;
 }

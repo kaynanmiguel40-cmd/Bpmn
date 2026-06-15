@@ -1,6 +1,6 @@
 /**
  * Mapeamento de Segmentos da UI para codigos CNAE (Receita Federal).
- * Usado pelo Edge Function search-leads para traduzir filtros.
+ * Usado pela busca de prospects (Casa dos Dados) para traduzir filtros.
  *
  * Formato CNAE: 7 digitos sem pontuacao (ex: "6201501")
  * Fonte: https://concla.ibge.gov.br/busca-online-cnae.html

@@ -28,7 +28,7 @@ const SEGMENT_OPTIONS = [
 ];
 
 export function CompanyFormModal({ open, onClose, company = null }) {
-  const isEdit = !!company;
+  const isEdit = !!company?.id;
   const createMutation = useCreateCrmCompany();
   const updateMutation = useUpdateCrmCompany();
   const isPending = createMutation.isPending || updateMutation.isPending;

@@ -13,7 +13,6 @@
 
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
-import { escapeIlike } from '../lib/searchFilters';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -51,43 +50,6 @@ export function dbToCrmMessage(row) {
 }
 
 // ==================== LISTAGEM ====================
-
-/**
- * Lista mensagens (filtros: contactId, prospectId, dealId, search, page).
- * Ordem: sent_at DESC (mais recente primeiro).
- */
-export async function getCrmMessages(filters = {}) {
-  const {
-    contactId, prospectId, dealId, instanceId, search, direction,
-    page, perPage = 50, sortOrder = 'desc',
-  } = filters;
-
-  let query = supabase
-    .from('crm_messages')
-    .select('*', { count: 'exact' })
-    .is('deleted_at', null);
-
-  if (contactId)  query = query.eq('contact_id', contactId);
-  if (prospectId) query = query.eq('prospect_id', prospectId);
-  if (dealId)     query = query.eq('deal_id', dealId);
-  if (instanceId) query = query.eq('instance_id', instanceId);
-  if (direction)  query = query.eq('direction', direction);
-  if (search)     query = query.ilike('content', `%${escapeIlike(search)}%`);
-
-  query = query.order('sent_at', { ascending: sortOrder === 'asc' });
-
-  if (page && perPage) {
-    const from = (page - 1) * perPage;
-    query = query.range(from, from + perPage - 1);
-  }
-
-  const { data, error, count } = await query;
-  if (error) {
-    toast(`Erro ao buscar mensagens: ${error.message}`, 'error');
-    return { data: [], count: 0 };
-  }
-  return { data: (data || []).map(dbToCrmMessage), count: count || 0 };
-}
 
 /**
  * Mensagens de uma conversa (contato ou prospect), pra UI do chat.
@@ -264,39 +226,3 @@ export async function markCrmMessagesAsRead(messageIds = []) {
   return { ok: true };
 }
 
-export async function toggleCrmMessageStarred(messageId, starred) {
-  const { error } = await supabase
-    .from('crm_messages')
-    .update({ is_starred: !!starred })
-    .eq('id', messageId);
-  if (error) {
-    toast(`Erro: ${error.message}`, 'error');
-    return { ok: false };
-  }
-  return { ok: true };
-}
-
-export async function markCrmMessageAsSpam(messageId) {
-  const { error } = await supabase
-    .from('crm_messages')
-    .update({ is_spam: true })
-    .eq('id', messageId);
-  if (error) {
-    toast(`Erro: ${error.message}`, 'error');
-    return { ok: false };
-  }
-  toast('Mensagem marcada como spam', 'success');
-  return { ok: true };
-}
-
-export async function softDeleteCrmMessage(messageId) {
-  const { error } = await supabase
-    .from('crm_messages')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', messageId);
-  if (error) {
-    toast(`Erro ao excluir: ${error.message}`, 'error');
-    return { ok: false };
-  }
-  return { ok: true };
-}

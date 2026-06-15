@@ -22,7 +22,6 @@ export function useCrmRealtime(options = {}) {
       crmQueryKeys.deals,
       crmQueryKeys.dashboard,
       ['crm', 'pipelineDeals'],
-      ['crm', 'dealsByPipeline'],
     ],
     {
       enabled,
@@ -70,7 +69,7 @@ export function useCrmRealtime(options = {}) {
   // Messages — atualiza inbox WhatsApp e conversa aberta
   useRealtimeSubscription(
     'crm_messages',
-    [crmQueryKeys.messages, ['crm', 'conversation'], ['crm', 'inbox']],
+    [['crm', 'conversation'], ['crm', 'inbox']],
     { enabled }
   );
 
@@ -79,22 +78,5 @@ export function useCrmRealtime(options = {}) {
     'crm_whatsapp_instances',
     [crmQueryKeys.whatsappInstances, ['crm', 'whatsappInstance']],
     { enabled }
-  );
-}
-
-/**
- * Hook para Realtime especifico de um pipeline (Kanban view).
- * Refina invalidacao para o pipeline sendo visualizado.
- */
-export function useCrmRealtimePipeline(pipelineId, enabled = true) {
-  useRealtimeSubscription(
-    'crm_deals',
-    [
-      crmQueryKeys.deals,
-      crmQueryKeys.pipelineDeals(pipelineId),
-      crmQueryKeys.dealsByPipeline(pipelineId),
-      crmQueryKeys.dashboard,
-    ],
-    { enabled: enabled && !!pipelineId }
   );
 }

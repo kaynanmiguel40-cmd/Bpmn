@@ -87,7 +87,9 @@ export async function getCrmActivities(filters = {}) {
     query = query.eq('completed', completed);
   }
 
-  query = query.order(sortBy || 'start_date', { ascending: sortOrder === 'asc' });
+  // Whitelist camelCase (UI) -> coluna real; chave desconhecida cai no default
+  const SORT_COLUMNS = { title: 'title', startDate: 'start_date', start_date: 'start_date', type: 'type', completed: 'completed' };
+  query = query.order(SORT_COLUMNS[sortBy] || 'start_date', { ascending: sortOrder === 'asc' });
 
   if (page && perPage) {
     const from = (page - 1) * perPage;
@@ -103,33 +105,6 @@ export async function getCrmActivities(filters = {}) {
     data: (data || []).map(dbToCrmActivity),
     count: count || 0,
   };
-}
-
-export async function getActivitiesForCalendar(startDate, endDate) {
-  // Intersecao de [start_date, end_date] com [startDate, endDate].
-  // Evento ponta (sem end_date) entra se start_date estiver no intervalo.
-  let query = supabase
-    .from('crm_activities')
-    .select('*, crm_contacts(id, name, avatar_color), crm_deals(id, title)')
-    .is('deleted_at', null)
-    .order('start_date');
-
-  if (endDate) {
-    query = query.lte('start_date', endDate);
-  }
-  if (startDate) {
-    // end_date >= startDate OU (end_date null E start_date >= startDate)
-    query = query.or(
-      `end_date.gte.${startDate},and(end_date.is.null,start_date.gte.${startDate})`
-    );
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    toast(`Erro ao buscar atividades do calendario: ${error.message}`, 'error');
-    return [];
-  }
-  return (data || []).map(dbToCrmActivity);
 }
 
 // Mapeamento tipo atividade CRM → tipo evento agenda

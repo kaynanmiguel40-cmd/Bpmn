@@ -47,7 +47,7 @@ const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 
 export function TrafficFormModal({ open, onClose, entry = null }) {
-  const isEdit = !!entry;
+  const isEdit = !!entry?.id;
   const createMutation = useCreateCrmTraffic();
   const updateMutation = useUpdateCrmTraffic();
   const isPending = createMutation.isPending || updateMutation.isPending;

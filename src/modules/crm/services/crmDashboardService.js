@@ -6,7 +6,6 @@ import { toast } from '../../../contexts/ToastContext';
  * @param {{ start?: string, end?: string }} [range] - Periodo (ISO). Default = mes atual.
  *   Afeta: receita, taxa de conversao e leads perdidos.
  *   NAO afeta: pipeline aberto, funil (sempre atuais) e revenue chart (12 meses trailing).
- * @returns {Promise<import('../types/crmTypes').CrmDashboardKPIs>}
  */
 export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
   try {
@@ -69,7 +68,6 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
     // Executar todas as queries em paralelo
     const [
       contactsRes,
-      leadsRes,
       companiesRes,
       openDealsRes,
       wonThisMonthRes,
@@ -82,18 +80,14 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       staleDealsRes,
       wonLast12Res,
       previousClosedRes,
+      goalsForChartRes,
       totalLostRes,
       hotDealsRes,
-      nurturingPipelineRes,
       meetingsTodayRes,
       meetingsWeekRes,
-      goalsForChartRes,
     ] = await Promise.all([
       // Total contatos ativos
       supabase.from('crm_contacts').select('id', { count: 'exact', head: true }).is('deleted_at', null),
-
-      // Total de Leads (contatos com status='lead')
-      supabase.from('crm_contacts').select('id', { count: 'exact', head: true }).eq('status', 'lead').is('deleted_at', null),
 
       // Total empresas
       supabase.from('crm_companies').select('id', { count: 'exact', head: true }).is('deleted_at', null),
@@ -191,10 +185,6 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
         .not('expected_close_date', 'is', null)
         .lte('expected_close_date', hotDealThreshold)
         .is('deleted_at', null),
-
-      // (placeholder mantido p/ nao alterar a ordem do destructure) — nurturing
-      // agora vem de `nurturingIds` calculado acima.
-      Promise.resolve({ data: [] }),
 
       // Reunioes agendadas pra hoje (type=meeting OR call, nao concluidas)
       supabase.from('crm_activities')
@@ -641,63 +631,3 @@ export async function getBonificacaoProgress(startDate, endDate) {
   }
 }
 
-/**
- * Retorna ranking de vendedores por valor de deals ganhos no periodo.
- * @param {string} startDate - ISO date string (inicio do periodo)
- * @param {string} endDate - ISO date string (fim do periodo)
- * @returns {Promise<Array<{name: string, color: string, totalValue: number, dealsWon: number, avgTicket: number}>>}
- */
-export async function getSalesRanking(startDate, endDate) {
-  try {
-    const [dealsRes, membersRes] = await Promise.all([
-      supabase.from('crm_deals')
-        .select('created_by, value')
-        .eq('status', 'won')
-        .gte('closed_at', startDate)
-        .lte('closed_at', endDate)
-        .is('deleted_at', null),
-      supabase.from('team_members')
-        .select('name, color, auth_user_id'),
-    ]);
-
-    const deals = dealsRes.data || [];
-    const members = membersRes.data || [];
-
-    // Map auth_user_id -> member info
-    const memberMap = {};
-    for (const m of members) {
-      if (m.auth_user_id) memberMap[m.auth_user_id] = { name: m.name, color: m.color };
-    }
-
-    // Agrupar deals por created_by
-    const grouped = {};
-    for (const deal of deals) {
-      const uid = deal.created_by;
-      if (!uid) continue;
-      if (!grouped[uid]) grouped[uid] = { totalValue: 0, dealsWon: 0 };
-      grouped[uid].totalValue += deal.value || 0;
-      grouped[uid].dealsWon += 1;
-    }
-
-    // Montar ranking
-    const ranking = Object.entries(grouped).map(([uid, stats]) => {
-      const member = memberMap[uid];
-      return {
-        name: member?.name || 'Desconhecido',
-        color: member?.color || '#94a3b8',
-        totalValue: stats.totalValue,
-        dealsWon: stats.dealsWon,
-        avgTicket: stats.dealsWon > 0 ? stats.totalValue / stats.dealsWon : 0,
-      };
-    });
-
-    // Ordenar por valor total (desc)
-    ranking.sort((a, b) => b.totalValue - a.totalValue);
-
-    return ranking;
-  } catch (err) {
-    console.error('[CRM Ranking] Erro ao buscar ranking:', err);
-    toast('Erro ao carregar ranking de vendedores', 'error');
-    return [];
-  }
-}

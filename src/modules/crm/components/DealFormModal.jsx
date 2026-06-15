@@ -249,7 +249,7 @@ function CompanyField({ freeValue, onFreeChange, linkedId, onLinkChange }) {
 }
 
 export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = null, defaultStageId = null }) {
-  const isEdit = !!deal;
+  const isEdit = !!deal?.id;
   const createMutation = useCreateCrmDeal();
   const updateMutation = useUpdateCrmDeal();
   const createCompanyMutation = useCreateCrmCompany();

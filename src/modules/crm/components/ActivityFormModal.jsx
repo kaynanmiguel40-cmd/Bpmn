@@ -82,7 +82,7 @@ function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField 
 }
 
 export function ActivityFormModal({ open, onClose, activity = null, defaultDealId = null, defaultContactId = null }) {
-  const isEdit = !!activity;
+  const isEdit = !!activity?.id;
   const createMutation = useCreateCrmActivity();
   const updateMutation = useUpdateCrmActivity();
   const isPending = createMutation.isPending || updateMutation.isPending;

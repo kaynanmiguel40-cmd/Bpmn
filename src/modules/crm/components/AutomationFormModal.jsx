@@ -43,7 +43,7 @@ function emptyForm() {
 }
 
 export function AutomationFormModal({ open, onClose, automation }) {
-  const isEdit = !!automation;
+  const isEdit = !!automation?.id;
   const [form, setForm] = useState(emptyForm());
 
   const { data: pipelinesData } = useCrmPipelines();

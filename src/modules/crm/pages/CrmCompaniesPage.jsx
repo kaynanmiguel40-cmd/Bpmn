@@ -73,7 +73,7 @@ export function CrmCompaniesPage({ embedded = false } = {}) {
     search: debouncedSearch,
     segment: segmentFilter || undefined,
     sortBy: sortConfig.key,
-    sortDir: sortConfig.direction,
+    sortOrder: sortConfig.direction,
   };
 
   const { data, isLoading } = useCrmCompanies(filters);

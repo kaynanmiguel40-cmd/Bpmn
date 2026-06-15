@@ -19,6 +19,7 @@ import { useCrmRealtime } from '../../hooks/useCrmRealtime';
 // Mapa de titulos CRM
 const crmRouteTitles = {
   '/crm': 'Dashboard',
+  '/crm/daily': 'Daily do Time',
   '/crm/pipeline': 'Pipeline',
   '/crm/deals': 'Negocios',
   '/crm/cadastros': 'Cadastros',
@@ -43,7 +44,9 @@ function CrmTopbar({ onToggleMobileMenu }) {
   const { isDark, toggleTheme } = useTheme();
 
   const getTitle = () => {
-    for (const [path, title] of Object.entries(crmRouteTitles)) {
+    // Mais especifico primeiro — senao '/crm' (Dashboard) casa com toda subpagina
+    const entries = Object.entries(crmRouteTitles).sort((a, b) => b[0].length - a[0].length);
+    for (const [path, title] of entries) {
       if (location.pathname === path || location.pathname.startsWith(path + '/')) {
         return title;
       }

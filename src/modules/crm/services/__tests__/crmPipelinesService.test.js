@@ -13,7 +13,6 @@ vi.mock('../../../../lib/validation', () => ({
 }));
 vi.mock('../../schemas/crmValidation', () => ({
   crmPipelineSchema: {},
-  crmPipelineStageSchema: {},
 }));
 
 import { dbToPipeline, dbToStage } from '../crmPipelinesService';
@@ -31,7 +30,6 @@ describe('dbToStage', () => {
       position: 2,
       color: '#abcdef',
       is_win_stage: true,
-      triggers_meeting: true,
       created_at: '2026-01-01',
     });
     expect(r.id).toBe('s1');
@@ -40,14 +38,12 @@ describe('dbToStage', () => {
     expect(r.position).toBe(2);
     expect(r.color).toBe('#abcdef');
     expect(r.isWinStage).toBe(true);
-    expect(r.triggersMeeting).toBe(true);
   });
 
-  it('aplica defaults: color, isWinStage=false, triggersMeeting=false', () => {
+  it('aplica defaults: color, isWinStage=false', () => {
     const r = dbToStage({ id: 's1', pipeline_id: 'p1', name: 'X', position: 1 });
     expect(r.color).toBe('#6366f1');
     expect(r.isWinStage).toBe(false);
-    expect(r.triggersMeeting).toBe(false);
   });
 });
 

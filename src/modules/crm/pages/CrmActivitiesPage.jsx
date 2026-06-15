@@ -92,12 +92,13 @@ export function CrmActivitiesPage() {
   };
 
   const handleSort = useCallback((key) => {
-    setSortConfig(prev =>
-      prev.key === key
-        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: 'asc' }
-    );
-  }, []);
+    if (key === sortKey) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }, [sortKey, sortDir, setSortKey, setSortDir]);
 
   const columns = [
     {

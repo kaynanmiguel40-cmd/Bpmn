@@ -2,8 +2,7 @@
  * Suplemento de crmDealsService.test.js — cobre as funcoes que o teste
  * original deixa de fora: getCrmDeals, getDealsByPipeline, getCrmDealById,
  * createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage,
- * markDealAsWon, updateDealMeeting, getDealActivities, getDealStageHistory,
- * getDealsWithMeetings, schedulePartnerMeeting.
+ * markDealAsWon, getDealActivities, getDealStageHistory.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -53,24 +52,18 @@ vi.mock('../../../../lib/serviceFactory', () => ({
 vi.mock('../crmAutomationsService', () => ({ triggerAutomationsForDeal: mockTriggerAutomations }));
 vi.mock('../crmActivitiesService', () => ({ createCrmActivity: mockCreateActivity }));
 vi.mock('../../schemas/crmValidation', () => ({ crmDealSchema: {} }));
-
-// agendaService e importado dinamicamente via `await import` em schedulePartnerMeeting.
 vi.mock('../../../../lib/agendaService', () => ({ createAgendaEvent: mockCreateAgenda }));
 
 import {
   getCrmDeals,
-  getDealsByPipeline,
   getCrmDealById,
   createCrmDeal,
   updateCrmDeal,
   softDeleteCrmDeal,
   moveDealToStage,
   markDealAsWon,
-  updateDealMeeting,
   getDealActivities,
   getDealStageHistory,
-  getDealsWithMeetings,
-  schedulePartnerMeeting,
 } from '../crmDealsService';
 import { supabase } from '../../../../lib/supabase';
 
@@ -251,37 +244,6 @@ describe('getCrmDeals', () => {
 });
 
 // ============================================================================
-// getDealsByPipeline
-// ============================================================================
-
-describe('getDealsByPipeline', () => {
-  it('filtra por pipeline_id, status=open e nao deletados', async () => {
-    const { chain, captured } = makeChain({
-      data: [{ id: 'd1', title: 'X', created_at: 'a', updated_at: 'b', status: 'open' }],
-      error: null,
-    });
-    mockedSupabase.from.mockReturnValue(chain);
-
-    const result = await getDealsByPipeline('p1');
-
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe('d1');
-    expect(captured.eqCalls).toContainEqual(['pipeline_id', 'p1']);
-    expect(captured.eqCalls).toContainEqual(['status', 'open']);
-    expect(captured.isCalls).toContainEqual(['deleted_at', null]);
-  });
-
-  it('retorna [] quando supabase erra', async () => {
-    const { chain } = makeChain({ data: null, error: { message: 'fail' } });
-    mockedSupabase.from.mockReturnValue(chain);
-
-    const result = await getDealsByPipeline('p1');
-
-    expect(result).toEqual([]);
-  });
-});
-
-// ============================================================================
 // getCrmDealById
 // ============================================================================
 
@@ -368,13 +330,43 @@ describe('createCrmDeal', () => {
 // ============================================================================
 
 describe('updateCrmDeal', () => {
-  it('delega pro dealService.update', async () => {
+  it('delega pro dealService.update sem mexer quando status nao muda', async () => {
     mockUpdate.mockResolvedValueOnce({ id: 'd1', title: 'updated' });
 
     const result = await updateCrmDeal('d1', { title: 'updated' });
 
     expect(mockUpdate).toHaveBeenCalledWith('d1', { title: 'updated' });
     expect(result?.title).toBe('updated');
+  });
+
+  it('status=won injeta closedAt + probability (nao some dos relatorios)', async () => {
+    mockUpdate.mockResolvedValueOnce({ id: 'd1', status: 'won' });
+
+    await updateCrmDeal('d1', { status: 'won' });
+
+    const passed = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(passed.status).toBe('won');
+    expect(passed.probability).toBe(100);
+    expect(passed.closedAt).toEqual(expect.any(String));
+  });
+
+  it('status=lost injeta closedAt + probability 0', async () => {
+    mockUpdate.mockResolvedValueOnce({ id: 'd1', status: 'lost' });
+
+    await updateCrmDeal('d1', { status: 'lost' });
+
+    const passed = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(passed.closedAt).toEqual(expect.any(String));
+    expect(passed.probability).toBe(0);
+  });
+
+  it('status=open (reabrir) limpa closedAt', async () => {
+    mockUpdate.mockResolvedValueOnce({ id: 'd1', status: 'open' });
+
+    await updateCrmDeal('d1', { status: 'open' });
+
+    const passed = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(passed.closedAt).toBeNull();
   });
 });
 
@@ -551,20 +543,6 @@ describe('moveDealToStage', () => {
     await expect(moveDealToStage('d1', 's_new')).rejects.toThrow('permission denied');
   });
 
-  it('seta _triggersMeeting=false no resultado (placeholder pra UI)', async () => {
-    setupMove({
-      current: { stage_id: 's_old', pipeline_id: 'p1', status: 'open' },
-      targetStage: { is_win_stage: false, name: 'X' },
-      updated: {
-        id: 'd1', title: 'X', status: 'open', stage_id: 's_new', pipeline_id: 'p1',
-        created_at: 'a', updated_at: 'b',
-      },
-    });
-
-    const result = await moveDealToStage('d1', 's_new');
-
-    expect(result?._triggersMeeting).toBe(false);
-  });
 });
 
 // ============================================================================
@@ -589,63 +567,36 @@ describe('markDealAsWon', () => {
     expect(result?.status).toBe('won');
   });
 
+  it('move pro win stage, grava history e dispara automations (== arrastar)', async () => {
+    const dealSelect = makeChain({ data: { stage_id: 's_old', pipeline_id: 'p1' }, error: null });
+    const winStageSelect = makeChain({ data: { id: 's_win' }, error: null });
+    const dealUpdate = makeChain({
+      data: { id: 'd1', title: 'X', status: 'won', stage_id: 's_win', pipeline_id: 'p1', created_at: 'a', updated_at: 'b' },
+      error: null,
+    });
+    const history = makeChain({ data: null, error: null });
+
+    mockedSupabase.from
+      .mockImplementationOnce(() => dealSelect.chain)
+      .mockImplementationOnce(() => winStageSelect.chain)
+      .mockImplementationOnce(() => dealUpdate.chain)
+      .mockImplementation(() => history.chain);
+
+    const result = await markDealAsWon('d1');
+
+    const payload = dealUpdate.captured.updateArgs?.[0] as Record<string, unknown>;
+    expect(payload.status).toBe('won');
+    expect(payload.stage_id).toBe('s_win'); // moveu pra coluna de vitoria
+    // history (4a chamada) + automations disparadas
+    expect(mockedSupabase.from).toHaveBeenCalledTimes(4);
+    expect(mockTriggerAutomations).toHaveBeenCalledWith(result, 's_win');
+  });
+
   it('joga erro quando update falha', async () => {
     const { chain } = makeChain({ data: null, error: { message: 'denied' } });
     mockedSupabase.from.mockReturnValue(chain);
 
     await expect(markDealAsWon('d1')).rejects.toThrow('denied');
-  });
-});
-
-// ============================================================================
-// updateDealMeeting
-// ============================================================================
-
-describe('updateDealMeeting', () => {
-  it('seta meeting_agenda_event_id, meeting_date, meeting_city', async () => {
-    const { chain, captured } = makeChain({
-      data: { id: 'd1', title: 'X', created_at: 'a', updated_at: 'b' },
-      error: null,
-    });
-    mockedSupabase.from.mockReturnValue(chain);
-
-    await updateDealMeeting('d1', {
-      agendaEventId: 'evt-1',
-      meetingDate: '2026-06-01T10:00:00Z',
-      meetingCity: 'SP',
-    });
-
-    const payload = captured.updateArgs?.[0] as Record<string, unknown>;
-    expect(payload.meeting_agenda_event_id).toBe('evt-1');
-    expect(payload.meeting_date).toBe('2026-06-01T10:00:00Z');
-    expect(payload.meeting_city).toBe('SP');
-  });
-
-  it('normaliza agendaEventId/meetingCity vazios para null', async () => {
-    const { chain, captured } = makeChain({
-      data: { id: 'd1', title: 'X', created_at: 'a', updated_at: 'b' },
-      error: null,
-    });
-    mockedSupabase.from.mockReturnValue(chain);
-
-    await updateDealMeeting('d1', {
-      agendaEventId: '',
-      meetingDate: '2026-06-01T10:00:00Z',
-      meetingCity: '',
-    });
-
-    const payload = captured.updateArgs?.[0] as Record<string, unknown>;
-    expect(payload.meeting_agenda_event_id).toBeNull();
-    expect(payload.meeting_city).toBeNull();
-  });
-
-  it('joga erro quando update falha', async () => {
-    const { chain } = makeChain({ data: null, error: { message: 'failure' } });
-    mockedSupabase.from.mockReturnValue(chain);
-
-    await expect(
-      updateDealMeeting('d1', { agendaEventId: 'e1', meetingDate: 'x' }),
-    ).rejects.toThrow('failure');
   });
 });
 
@@ -773,177 +724,5 @@ describe('getDealStageHistory', () => {
     expect(result[0].stage).toBeNull();
     expect(result[0].fromStageId).toBe('s_old');
     expect(result[0].toStageId).toBe('s_new');
-  });
-});
-
-// ============================================================================
-// getDealsWithMeetings
-// ============================================================================
-
-describe('getDealsWithMeetings', () => {
-  it('retorna deals com meeting_date nao null e nao deletados', async () => {
-    const { chain, captured } = makeChain({
-      data: [
-        { id: 'd1', title: 'Deal X', meeting_date: '2026-06-01T10:00:00Z', created_at: 'a', updated_at: 'b' },
-      ],
-      error: null,
-    });
-    mockedSupabase.from.mockReturnValue(chain);
-
-    const result = await getDealsWithMeetings();
-
-    expect(result).toHaveLength(1);
-    expect(result[0].meetingDate).toBe('2026-06-01T10:00:00Z');
-    expect(captured.notCalls.length).toBeGreaterThan(0);
-    expect(captured.isCalls).toContainEqual(['deleted_at', null]);
-  });
-
-  it('retorna [] em erro', async () => {
-    const { chain } = makeChain({ data: null, error: { message: 'fail' } });
-    mockedSupabase.from.mockReturnValue(chain);
-
-    const result = await getDealsWithMeetings();
-    expect(result).toEqual([]);
-  });
-});
-
-// ============================================================================
-// schedulePartnerMeeting
-// ============================================================================
-
-describe('schedulePartnerMeeting', () => {
-  it('cria evento na agenda, atividade CRM e atualiza deal com meeting_date', async () => {
-    // 1) getCrmDealById -> deal
-    const dealSelect = makeChain({
-      data: {
-        id: 'd1',
-        title: 'Negocio',
-        contact_id: 'c1',
-        crm_companies: { id: 'co1', name: 'Acme Co' },
-        created_at: 'a',
-        updated_at: 'b',
-      },
-      error: null,
-    });
-
-    // 2) select team_members onde crm_role=gestor
-    const gestoresSelect = makeChain({
-      data: [{ id: 'tm1', name: 'Gestor Um', auth_user_id: 'au1' }],
-      error: null,
-    });
-
-    // 3) updateDealMeeting -> update deal
-    const dealUpdate = makeChain({
-      data: { id: 'd1', title: 'Negocio', meeting_date: 'x', created_at: 'a', updated_at: 'b' },
-      error: null,
-    });
-
-    mockedSupabase.from
-      .mockImplementationOnce(() => dealSelect.chain) // getCrmDealById
-      .mockImplementationOnce(() => gestoresSelect.chain) // team_members
-      .mockImplementationOnce(() => dealUpdate.chain); // updateDealMeeting
-
-    mockCreateAgenda.mockResolvedValueOnce({ id: 'evt-1' });
-    mockCreateActivity.mockResolvedValueOnce({ id: 'act-1' });
-
-    const result = await schedulePartnerMeeting('d1', {
-      date: '2026-06-10',
-      time: '14:00',
-      notes: 'Discutir contrato',
-      city: 'Rio',
-    });
-
-    // Agenda foi criada com titulo + cidade + participantes
-    expect(mockCreateAgenda).toHaveBeenCalledTimes(1);
-    const agendaPayload = mockCreateAgenda.mock.calls[0][0];
-    expect(agendaPayload.title).toContain('Acme Co');
-    expect(agendaPayload.title).toContain('Rio');
-    expect(agendaPayload.attendees).toEqual(['tm1']);
-    expect(agendaPayload.assignee).toBe('tm1');
-
-    // Atividade CRM criada
-    expect(mockCreateActivity).toHaveBeenCalledTimes(1);
-    const activityPayload = mockCreateActivity.mock.calls[0][0];
-    expect(activityPayload.dealId).toBe('d1');
-    expect(activityPayload.contactId).toBe('c1');
-    expect(activityPayload.type).toBe('meeting');
-
-    // Deal atualizado com info da reuniao
-    const dealUpdatePayload = dealUpdate.captured.updateArgs?.[0] as Record<string, unknown>;
-    expect(dealUpdatePayload.meeting_agenda_event_id).toBe('evt-1');
-    expect(dealUpdatePayload.meeting_city).toBe('Rio');
-
-    expect(result).toEqual({ id: 'evt-1' });
-  });
-
-  it('joga erro quando deal nao existe', async () => {
-    const dealSelect = makeChain({ data: null, error: { message: 'not found' } });
-    mockedSupabase.from.mockImplementationOnce(() => dealSelect.chain);
-
-    await expect(
-      schedulePartnerMeeting('inexistent', { date: '2026-06-10', time: '14:00' }),
-    ).rejects.toThrow('Deal nao encontrado');
-
-    expect(mockCreateAgenda).not.toHaveBeenCalled();
-    expect(mockCreateActivity).not.toHaveBeenCalled();
-  });
-
-  it('usa deal.title quando company.name nao existe', async () => {
-    const dealSelect = makeChain({
-      data: {
-        id: 'd1',
-        title: 'Fallback Title',
-        contact_id: null,
-        created_at: 'a',
-        updated_at: 'b',
-      },
-      error: null,
-    });
-    const gestoresSelect = makeChain({ data: [], error: null });
-    const dealUpdate = makeChain({
-      data: { id: 'd1', title: 'Fallback Title', created_at: 'a', updated_at: 'b' },
-      error: null,
-    });
-
-    mockedSupabase.from
-      .mockImplementationOnce(() => dealSelect.chain)
-      .mockImplementationOnce(() => gestoresSelect.chain)
-      .mockImplementationOnce(() => dealUpdate.chain);
-
-    mockCreateAgenda.mockResolvedValueOnce({ id: 'evt-1' });
-    mockCreateActivity.mockResolvedValueOnce({ id: 'act-1' });
-
-    await schedulePartnerMeeting('d1', { date: '2026-06-10', time: '14:00' });
-
-    const agendaPayload = mockCreateAgenda.mock.calls[0][0];
-    expect(agendaPayload.title).toContain('Fallback Title');
-    expect(agendaPayload.assignee).toBeNull();
-  });
-
-  it('endDate e startDate + 1h', async () => {
-    const dealSelect = makeChain({
-      data: { id: 'd1', title: 'X', contact_id: null, created_at: 'a', updated_at: 'b' },
-      error: null,
-    });
-    const gestoresSelect = makeChain({ data: [], error: null });
-    const dealUpdate = makeChain({
-      data: { id: 'd1', title: 'X', created_at: 'a', updated_at: 'b' },
-      error: null,
-    });
-
-    mockedSupabase.from
-      .mockImplementationOnce(() => dealSelect.chain)
-      .mockImplementationOnce(() => gestoresSelect.chain)
-      .mockImplementationOnce(() => dealUpdate.chain);
-
-    mockCreateAgenda.mockResolvedValueOnce({ id: 'evt-1' });
-    mockCreateActivity.mockResolvedValueOnce({ id: 'act-1' });
-
-    await schedulePartnerMeeting('d1', { date: '2026-06-10', time: '14:00' });
-
-    const agendaPayload = mockCreateAgenda.mock.calls[0][0];
-    const startMs = new Date(agendaPayload.startDate).getTime();
-    const endMs = new Date(agendaPayload.endDate).getTime();
-    expect(endMs - startMs).toBe(60 * 60 * 1000); // 1 hora
   });
 });

@@ -14,7 +14,6 @@ import { useUrlState } from '../../../hooks/useUrlState';
 import { supabase } from '../../../lib/supabase';
 import { DealFormModal } from '../components/DealFormModal';
 import { LostReasonModal } from '../components/LostReasonModal';
-import { ScheduleMeetingModal } from '../components/ScheduleMeetingModal';
 import { ImportLeadsModal } from '../components/ImportLeadsModal';
 
 const formatCurrency = (val) =>
@@ -868,7 +867,6 @@ export function CrmPipelinePage() {
   const [importOpen, setImportOpen] = useState(false);
   const [deleteDealTarget, setDeleteDealTarget] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [meetingModalData, setMeetingModalData] = useState(null); // { dealId, dealTitle, dealCity }
   const draggingDealId = useRef(null);
 
   // View mode (kanban ou lista) — persiste em URL e tambem em localStorage
@@ -958,23 +956,11 @@ export function CrmPipelinePage() {
 
   const handleDrop = (dealId, newStageId) => {
     if (draggingDealId.current === dealId) {
-      // Find the deal info for meeting modal
-      const allDeals = (pipelineData?.stages || []).flatMap(s => s.deals || []);
-      const deal = allDeals.find(d => d.id === dealId);
-
       moveMutation.mutate({ dealId, stageId: newStageId }, {
         onSuccess: (data) => {
           if (data?.status === 'won') {
             setShowConfetti(true);
             playWinSound();
-          }
-          // Se a stage alvo tem triggers_meeting, abrir modal de agendamento
-          if (data?._triggersMeeting && deal) {
-            setMeetingModalData({
-              dealId: deal.id,
-              dealTitle: deal.title,
-              dealCity: deal.company?.city || deal.contact?.city || '',
-            });
           }
         },
       });
@@ -1177,14 +1163,6 @@ export function CrmPipelinePage() {
             onSuccess: () => setLostModalDealId(null),
           });
         }}
-      />
-
-      <ScheduleMeetingModal
-        open={!!meetingModalData}
-        onClose={() => setMeetingModalData(null)}
-        dealId={meetingModalData?.dealId}
-        dealTitle={meetingModalData?.dealTitle}
-        dealCity={meetingModalData?.dealCity}
       />
 
       <ImportLeadsModal

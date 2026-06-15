@@ -82,7 +82,9 @@ export async function getCrmContacts(filters = {}) {
     query = query.contains('tags', [tag]);
   }
 
-  query = query.order(sortBy || 'name', { ascending: sortOrder !== 'desc' });
+  // Whitelist camelCase (UI) -> coluna real; chave desconhecida cai no default
+  const SORT_COLUMNS = { name: 'name', createdAt: 'created_at', created_at: 'created_at', status: 'status' };
+  query = query.order(SORT_COLUMNS[sortBy] || 'name', { ascending: sortOrder !== 'desc' });
 
   if (page && perPage) {
     const from = (page - 1) * perPage;

@@ -701,10 +701,6 @@ export async function createCrmCall(input) {
   return call;
 }
 
-export async function updateCrmCall(id, updates) {
-  return callService.update(id, updates);
-}
-
 export async function softDeleteCrmCall(id) {
   const { error } = await supabase
     .from('crm_calls')

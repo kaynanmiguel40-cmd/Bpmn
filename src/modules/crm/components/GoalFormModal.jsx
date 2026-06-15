@@ -42,7 +42,7 @@ const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 
 export function GoalFormModal({ open, onClose, goal = null, defaultType = 'individual' }) {
-  const isEdit = !!goal;
+  const isEdit = !!goal?.id;
   const createMutation = useCreateCrmGoal();
   const updateMutation = useUpdateCrmGoal();
   const isPending = createMutation.isPending || updateMutation.isPending;

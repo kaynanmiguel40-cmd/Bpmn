@@ -104,24 +104,17 @@ export default function CrmDailyPage() {
   const agendaOverdue = briefing?.agenda?.overdue || [];
   const goal = briefing?.goal || { hasGoal: false, target: 0, current: 0, pct: 0 };
 
-  // OVERRIDE TEMPORARIO: numeros de ONTEM cravados pra apresentacao da daily
-  // (o time ainda nao registra tudo no CRM). "Hoje" usa os dados reais.
-  // Quando o registro estiver em dia, remover este bloco.
+  // Briefing ("hoje o time precisa") so faz sentido olhando pro dia atual
   const isYesterday = offset === -1;
-  const cards = isYesterday
-    ? { calls: totals.calls, messages: 57, meetings: 3, contracts: 1 }
-    : { calls: totals.calls, messages: totals.messages, meetings: totals.meetings, contracts: 0 };
-  const pipe = isYesterday
-    ? { value: 2412, subtitle: 'em aberto no funil' }
-    : { value: month.openValue, subtitle: `${month.openCount} ${month.openCount === 1 ? 'negócio aberto' : 'negócios abertos'}` };
-  // Fechado no mes: 4 vendas (3 semana passada + 1 ontem) = R$ 3.216
-  const closed = isYesterday
-    ? { value: 3216, subtitle: '4 negócios ganhos' }
-    : { value: month.wonValue, subtitle: `${month.wonCount} ${month.wonCount === 1 ? 'negócio ganho' : 'negócios ganhos'}` };
-  // Meta do mes: 12 clientes = R$ 9.648 | realizado 4 vendas = R$ 3.216 (33%)
-  const goalView = isYesterday
-    ? { hasGoal: true, title: '12 clientes', target: 9648, current: 3216, pct: 33 }
-    : goal;
+  const cards = {
+    calls: totals.calls,
+    messages: totals.messages,
+    meetings: totals.meetings,
+    contracts: data?.day?.wonCount || 0,
+  };
+  const pipe = { value: month.openValue, subtitle: `${month.openCount} ${month.openCount === 1 ? 'negócio aberto' : 'negócios abertos'}` };
+  const closed = { value: month.wonValue, subtitle: `${month.wonCount} ${month.wonCount === 1 ? 'negócio ganho' : 'negócios ganhos'}` };
+  const goalView = goal;
 
   return (
     <div className="max-w-6xl mx-auto">

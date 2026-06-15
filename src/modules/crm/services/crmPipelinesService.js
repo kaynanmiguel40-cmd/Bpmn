@@ -1,7 +1,7 @@
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
-import { validateAndSanitize, validatePartial } from '../../../lib/validation';
-import { crmPipelineSchema, crmPipelineStageSchema } from '../schemas/crmValidation';
+import { validateAndSanitize } from '../../../lib/validation';
+import { crmPipelineSchema } from '../schemas/crmValidation';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -29,7 +29,6 @@ export function dbToStage(row) {
     position: row.position,
     color: row.color || '#6366f1',
     isWinStage: row.is_win_stage || false,
-    triggersMeeting: row.triggers_meeting || false,
     createdAt: row.created_at,
   };
 }
@@ -198,13 +197,14 @@ export async function createCrmPipeline(data) {
     return null;
   }
 
-  // Criar stages padrao se nenhum fornecido
+  // Criar stages padrao se nenhum fornecido (Fechamento marca vitoria — sem
+  // win stage o kanban nunca fecha deal como ganho)
   const defaultStages = data.stages || [
     { name: 'Prospecção', position: 1, color: '#94a3b8' },
     { name: 'Qualificação', position: 2, color: '#6366f1' },
     { name: 'Proposta', position: 3, color: '#f59e0b' },
     { name: 'Negociação', position: 4, color: '#f97316' },
-    { name: 'Fechamento', position: 5, color: '#10b981' },
+    { name: 'Fechamento', position: 5, color: '#10b981', isWinStage: true },
   ];
 
   const stageRows = defaultStages.map(s => ({
@@ -213,7 +213,6 @@ export async function createCrmPipeline(data) {
     position: s.position,
     color: s.color || '#6366f1',
     is_win_stage: s.isWinStage || false,
-    triggers_meeting: s.triggersMeeting || false,
   }));
 
   const { error: stagesError } = await supabase.from('crm_pipeline_stages').insert(stageRows);
@@ -232,31 +231,6 @@ export async function createCrmPipeline(data) {
   return dbToPipeline(fullPipeline || pipeline);
 }
 
-export async function updateCrmPipeline(id, updates) {
-  const validation = validatePartial(crmPipelineSchema, updates);
-  if (!validation.success) {
-    toast(validation.error, 'error');
-    return null;
-  }
-
-  const updateData = {};
-  if (validation.data.name !== undefined) updateData.name = validation.data.name;
-  if (validation.data.isDefault !== undefined) updateData.is_default = validation.data.isDefault;
-
-  const { data, error } = await supabase
-    .from('crm_pipelines')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    toast(`Erro ao atualizar pipeline: ${error.message}`, 'error');
-    return null;
-  }
-  return dbToPipeline(data);
-}
-
 export async function deleteCrmPipeline(id) {
   // CASCADE deleta os stages automaticamente
   const { error } = await supabase
@@ -269,54 +243,6 @@ export async function deleteCrmPipeline(id) {
     return false;
   }
   return true;
-}
-
-export async function reorderCrmStages(stageUpdates) {
-  // stageUpdates = [{ id, position, name?, color?, isWinStage? }, ...]
-  const results = await Promise.all(
-    stageUpdates.map(s => {
-      const update = { position: s.position };
-      if (s.name) update.name = s.name;
-      if (s.color) update.color = s.color;
-      if (s.isWinStage !== undefined) update.is_win_stage = s.isWinStage;
-      if (s.triggersMeeting !== undefined) update.triggers_meeting = s.triggersMeeting;
-      return supabase.from('crm_pipeline_stages').update(update).eq('id', s.id);
-    })
-  );
-
-  const hasError = results.some(r => r.error);
-  if (hasError) {
-    toast('Erro ao reordenar etapas', 'error');
-    return false;
-  }
-  return true;
-}
-
-export async function addCrmStage(pipelineId, stageData) {
-  const validation = validateAndSanitize(crmPipelineStageSchema, { ...stageData, pipelineId });
-  if (!validation.success) {
-    toast(validation.error, 'error');
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from('crm_pipeline_stages')
-    .insert([{
-      pipeline_id: pipelineId,
-      name: validation.data.name,
-      position: validation.data.position,
-      color: validation.data.color,
-      is_win_stage: validation.data.isWinStage || false,
-      triggers_meeting: validation.data.triggersMeeting || false,
-    }])
-    .select()
-    .single();
-
-  if (error) {
-    toast(`Erro ao criar etapa: ${error.message}`, 'error');
-    return null;
-  }
-  return dbToStage(data);
 }
 
 // ==================== PIPELINE PARCEIROS ====================
@@ -338,26 +264,13 @@ export async function ensurePartnersPipeline() {
     stages: [
       { name: 'Identificado', position: 1, color: '#94a3b8' },
       { name: 'Contato Feito', position: 2, color: '#6366f1' },
-      { name: 'Reuniao Agendada', position: 3, color: '#3b82f6', triggersMeeting: true },
+      { name: 'Reuniao Agendada', position: 3, color: '#3b82f6' },
       { name: 'Em Negociacao', position: 4, color: '#f97316' },
       { name: 'Parceria Fechada', position: 5, color: '#10b981', isWinStage: true },
     ],
   });
 
   return { id: pipeline?.id, created: true };
-}
-
-export async function deleteCrmStage(stageId) {
-  const { error } = await supabase
-    .from('crm_pipeline_stages')
-    .delete()
-    .eq('id', stageId);
-
-  if (error) {
-    toast(`Erro ao excluir etapa: ${error.message}`, 'error');
-    return false;
-  }
-  return true;
 }
 
 // ==================== LIMPEZA COMPLETA CRM ====================
@@ -446,10 +359,10 @@ export async function seedCommercialPipelines() {
         { name: 'Tentativas 4-6',       position: 3,  color: '#3b82f6', isWinStage: false },
         { name: 'Tentativas 7-9',       position: 4,  color: '#2563eb', isWinStage: false },
         { name: 'Break-up Enviado',     position: 5,  color: '#64748b', isWinStage: false },
-        { name: 'Conectou (AIDA)',      position: 6,  color: '#6366f1', isWinStage: false, triggersMeeting: true },
+        { name: 'Conectou (AIDA)',      position: 6,  color: '#6366f1', isWinStage: false },
         { name: 'Demo (SPIN)',          position: 7,  color: '#4f46e5', isWinStage: false },
         { name: 'Proposta Enviada',     position: 8,  color: '#f59e0b', isWinStage: false },
-        { name: 'Trial 7 Dias',         position: 9,  color: '#f97316', isWinStage: false, triggersMeeting: true },
+        { name: 'Trial 7 Dias',         position: 9,  color: '#f97316', isWinStage: false },
         { name: 'Negociacao Final',     position: 10, color: '#ef4444', isWinStage: false },
         { name: 'Cliente Ativo',        position: 11, color: '#10b981', isWinStage: true  },
         { name: 'Excluida',             position: 12, color: '#ef4444', isWinStage: false },
@@ -518,7 +431,7 @@ export async function seedEarlyStagePipelines() {
       { name: 'A contatar',     position: 1, color: '#94a3b8', isWinStage: false },
       { name: 'Em cadência',    position: 2, color: '#06b6d4', isWinStage: false },
       { name: 'Respondeu',      position: 3, color: '#a78bfa', isWinStage: false },
-      { name: 'Reunião / Demo', position: 4, color: '#3b82f6', isWinStage: false, triggersMeeting: true },
+      { name: 'Reunião / Demo', position: 4, color: '#3b82f6', isWinStage: false },
       { name: 'Proposta',       position: 5, color: '#f59e0b', isWinStage: false },
       { name: 'Cliente',        position: 6, color: '#10b981', isWinStage: true  },
     ],
@@ -531,7 +444,7 @@ export async function seedEarlyStagePipelines() {
       { name: 'Mapeado',               position: 1, color: '#94a3b8', isWinStage: false },
       { name: 'Em cadência',           position: 2, color: '#06b6d4', isWinStage: false },
       { name: 'Respondeu',             position: 3, color: '#a78bfa', isWinStage: false },
-      { name: 'Reunião / Apresentação',position: 4, color: '#3b82f6', isWinStage: false, triggersMeeting: true },
+      { name: 'Reunião / Apresentação',position: 4, color: '#3b82f6', isWinStage: false },
       { name: 'Topou a parceria',      position: 5, color: '#f59e0b', isWinStage: false },
       { name: 'Parceiro ativo',        position: 6, color: '#10b981', isWinStage: true  },
     ],
@@ -546,7 +459,7 @@ export async function seedEarlyStagePipelines() {
       { name: 'Indicado',       position: 1, color: '#94a3b8', isWinStage: false },
       { name: 'Em cadência',    position: 2, color: '#06b6d4', isWinStage: false },
       { name: 'Respondeu',      position: 3, color: '#a78bfa', isWinStage: false },
-      { name: 'Reunião / Demo', position: 4, color: '#3b82f6', isWinStage: false, triggersMeeting: true },
+      { name: 'Reunião / Demo', position: 4, color: '#3b82f6', isWinStage: false },
       { name: 'Proposta',       position: 5, color: '#f59e0b', isWinStage: false },
       { name: 'Cliente',        position: 6, color: '#10b981', isWinStage: true  },
     ],
@@ -557,27 +470,4 @@ export async function seedEarlyStagePipelines() {
     toast(`${created.length} pipelines criadas (Vendas + Parceiros + Leads de Parceiros)`, 'success');
   }
   return created;
-}
-
-export async function setWinStage(stageId, pipelineId) {
-  // Desmarcar todos os estagios de vitoria do pipeline
-  await supabase
-    .from('crm_pipeline_stages')
-    .update({ is_win_stage: false })
-    .eq('pipeline_id', pipelineId);
-
-  // Marcar o estagio selecionado (se houver)
-  if (stageId) {
-    const { error } = await supabase
-      .from('crm_pipeline_stages')
-      .update({ is_win_stage: true })
-      .eq('id', stageId);
-
-    if (error) {
-      toast(`Erro ao definir estagio de vitoria: ${error.message}`, 'error');
-      return false;
-    }
-  }
-
-  return true;
 }

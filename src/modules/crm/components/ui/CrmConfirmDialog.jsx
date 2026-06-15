@@ -4,7 +4,7 @@
  * Props:
  * - open: boolean
  * - onConfirm: () => void
- * - onCancel: () => void
+ * - onCancel / onClose: () => void (aliases — paginas usam os dois nomes)
  * - title: string
  * - message: string
  * - confirmLabel: string (default: "Confirmar")
@@ -40,6 +40,7 @@ export function CrmConfirmDialog({
   open,
   onConfirm,
   onCancel,
+  onClose,
   title = 'Confirmar acao',
   message = 'Tem certeza que deseja continuar?',
   confirmLabel = 'Confirmar',
@@ -48,12 +49,13 @@ export function CrmConfirmDialog({
 }) {
   const config = variantConfig[variant] || variantConfig.danger;
   const IconComponent = config.icon;
+  const handleCancel = onCancel || onClose;
 
   return (
-    <CrmModal open={open} onClose={onCancel} title={title} size="sm" footer={
+    <CrmModal open={open} onClose={handleCancel} title={title} size="sm" footer={
       <>
         <button
-          onClick={onCancel}
+          onClick={handleCancel}
           disabled={loading}
           className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white/60 dark:bg-white/5 backdrop-blur border border-slate-300/70 dark:border-white/10 rounded-xl hover:bg-white/80 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
         >

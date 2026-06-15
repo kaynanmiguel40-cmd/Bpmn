@@ -56,7 +56,7 @@ function json(body: unknown, status = 200) {
 }
 
 interface SendBody {
-  instanceName: string
+  instanceName?: string
   phone: string
   content?: string
   mediaUrl?: string
@@ -206,20 +206,28 @@ serve(async (req) => {
   }
 
   const { instanceName, phone, content, mediaUrl, mediaType, mediaCaption } = body
-  if (!instanceName || !phone) return json({ ok: false, error: 'instanceName e phone obrigatorios' }, 400)
+  // instanceName e OPCIONAL: quando ausente (ex: automacoes), caimos no
+  // fallback abaixo que resolve a primeira instance 'connected'. So `phone`
+  // e realmente obrigatorio aqui.
+  if (!phone) return json({ ok: false, error: 'phone obrigatorio' }, 400)
   if (!content && !mediaUrl) return json({ ok: false, error: 'content ou mediaUrl obrigatorios' }, 400)
   if (!body.contactId && !body.prospectId) return json({ ok: false, error: 'contactId ou prospectId obrigatorio' }, 400)
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-  // 1) Resolve instance. Se a passada nao existe, fallback pra primeira
-  // 'connected' (resolve problema de cliente com .env stale)
-  let { data: instance } = await supabase
-    .from('crm_whatsapp_instances')
-    .select('id, status, phone_number, instance_name')
-    .eq('instance_name', instanceName)
-    .is('deleted_at', null)
-    .maybeSingle()
+  // 1) Resolve instance. Se um instanceName foi passado, tenta ele primeiro;
+  // se nao veio (automacoes) ou nao existe, fallback pra primeira 'connected'
+  // (resolve problema de cliente com .env stale e envio sem instance fixa).
+  let instance = null
+  if (instanceName) {
+    const lookup = await supabase
+      .from('crm_whatsapp_instances')
+      .select('id, status, phone_number, instance_name')
+      .eq('instance_name', instanceName)
+      .is('deleted_at', null)
+      .maybeSingle()
+    instance = lookup.data
+  }
 
   if (!instance) {
     const fallback = await supabase
@@ -236,7 +244,7 @@ serve(async (req) => {
     }
   }
 
-  if (!instance) return json({ ok: false, error: `Nenhuma instance conectada encontrada (tentou '${instanceName}')` }, 404)
+  if (!instance) return json({ ok: false, error: `Nenhuma instance conectada encontrada${instanceName ? ` (tentou '${instanceName}')` : ''}` }, 404)
   if (instance.status !== 'connected') {
     return json({ ok: false, error: `Instance esta '${instance.status}', precisa estar 'connected'` }, 409)
   }

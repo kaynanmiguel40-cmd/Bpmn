@@ -58,7 +58,7 @@ const PIN_NEON = {
   lead:     { fill: '#22d3ee', stroke: '#06b6d4', glow: '#22d3ee60' },
 };
 
-const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, colorMode = COLOR_MODES.REGION, meetingPins = [] }, ref) {
+const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, colorMode = COLOR_MODES.REGION }, ref) {
   // Dados geograficos
   const [statesGeo, setStatesGeo] = useState(null);
   const [municipalitiesGeo, setMunicipalitiesGeo] = useState(null);
@@ -74,7 +74,6 @@ const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, 
   const [activeStateUf, setActiveStateUf] = useState(null);
   const [activeMunicipality, setActiveMunicipality] = useState(null); // { code, name, feature }
   const [hoveredFeature, setHoveredFeature] = useState(null);
-  const [hoveredPin, setHoveredPin] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
   const svgRef = useRef(null);
@@ -554,85 +553,11 @@ const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, 
           );
         })}
 
-        {/* ════════════ MEETING PINS: Country view ════════════ */}
-        {view === 'country' && meetingPins.length > 0 && (() => {
-          const meetingsByState = {};
-          meetingPins.forEach(pin => {
-            if (pin.uf) meetingsByState[pin.uf] = (meetingsByState[pin.uf] || 0) + 1;
-          });
-          return stateFeatures
-            .filter(sf => meetingsByState[sf.uf])
-            .map(sf => (
-              <g key={`mp-${sf.uf}`} style={{ pointerEvents: 'none' }}>
-                <circle cx={sf.cx + 14} cy={sf.cy - 12} r={7} fill="#60a5fa" fillOpacity={0.35} stroke="#60a5fa" strokeWidth={1.2} filter="url(#neon-glow)" />
-                <circle cx={sf.cx + 14} cy={sf.cy - 12} r={4.5} fill="#60a5fa" stroke="#fff" strokeWidth={0.8} />
-                <text x={sf.cx + 14} y={sf.cy - 11.5} textAnchor="middle" dominantBaseline="central" fill="#fff" fontSize={6} fontWeight="bold" className="select-none">
-                  {meetingsByState[sf.uf]}
-                </text>
-              </g>
-            ));
-        })()}
-
-        {/* ════════════ MEETING PINS: State view ════════════ */}
-        {view === 'state' && meetingPins.length > 0 && meetingPins
-          .filter(pin => pin.uf === activeStateUf && pin.city)
-          .map(pin => {
-            const norm = normalizeText(pin.city);
-            const mf = municipalityFeatures.find(m => normalizeText(m.name) === norm);
-            if (!mf) return null;
-            const isHovered = hoveredPin === pin.dealId;
-            return (
-              <g
-                key={`mp-${pin.dealId}`}
-                onMouseEnter={() => { setHoveredPin(pin.dealId); setHoveredFeature(null); }}
-                onMouseLeave={() => setHoveredPin(null)}
-                className="cursor-pointer"
-              >
-                {/* Outer glow */}
-                <circle cx={mf.cx} cy={mf.cy} r={isHovered ? 14 : 10} fill="#60a5fa" fillOpacity={0.2} stroke="#60a5fa" strokeWidth={1} filter="url(#neon-glow)" style={{ pointerEvents: 'none' }} />
-                {/* Inner pin */}
-                <circle cx={mf.cx} cy={mf.cy} r={isHovered ? 7 : 5} fill="#60a5fa" stroke="#fff" strokeWidth={1.5} />
-                {/* Calendar icon indicator */}
-                <text x={mf.cx} y={mf.cy + 0.5} textAnchor="middle" dominantBaseline="central" fill="#fff" fontSize={isHovered ? 8 : 6} fontWeight="bold" className="select-none" style={{ pointerEvents: 'none' }}>
-                  ●
-                </text>
-              </g>
-            );
-          })
-        }
-
         {/* Municipality view now uses Google Maps — rendered outside SVG */}
       </svg>
 
-      {/* ── Meeting pin tooltip ── */}
-      {hoveredPin && view === 'state' && (() => {
-        const pin = meetingPins.find(p => p.dealId === hoveredPin);
-        if (!pin) return null;
-        const dateStr = pin.meetingDate ? new Date(pin.meetingDate).toLocaleDateString('pt-BR') : '';
-        return (
-          <div
-            className="absolute z-50 pointer-events-none"
-            style={{
-              left: `${tooltipPos.x}px`,
-              top: `${tooltipPos.y}px`,
-              transform: 'translate(-50%, -100%)',
-            }}
-          >
-            <div className="bg-slate-800/95 backdrop-blur-sm rounded-lg border border-blue-500/30 shadow-lg shadow-blue-500/10 px-3 py-2 text-center min-w-[160px]">
-              <p className="text-[10px] text-blue-400 font-semibold uppercase tracking-wider">Reuniao Agendada</p>
-              <p className="text-sm font-bold text-white mt-0.5">{pin.companyName}</p>
-              <p className="text-[11px] text-slate-400">{pin.city}</p>
-              {dateStr && <p className="text-[11px] text-blue-300 mt-0.5">{dateStr}</p>}
-            </div>
-            <div className="flex justify-center">
-              <div className="w-2 h-2 bg-slate-800/95 border-r border-b border-blue-500/30 transform rotate-45 -mt-1" />
-            </div>
-          </div>
-        );
-      })()}
-
       {/* ── Tooltip (country + state views only) ── */}
-      {tooltipData && !hoveredPin && view !== 'municipality' && (
+      {tooltipData && view !== 'municipality' && (
         <div
           className="absolute z-50 pointer-events-none"
           style={{
@@ -706,13 +631,6 @@ const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, 
                   </span>
                 </div>
               ))}
-              {/* Meeting pin legend */}
-              {meetingPins.length > 0 && (
-                <div className="flex items-center gap-2 mt-1 pt-1 border-t border-slate-700/50">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#60a5fa', border: '1px solid #93c5fd', boxShadow: '0 0 4px #60a5fa60' }} />
-                  <span className="text-[11px] text-slate-300">Reuniao agendada</span>
-                </div>
-              )}
             </div>
           )}
         </div>

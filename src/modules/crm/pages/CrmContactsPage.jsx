@@ -84,7 +84,7 @@ export function CrmContactsPage({ embedded = false } = {}) {
     companyId: companyFilter || undefined,
     tag: tagFilter || undefined,
     sortBy: sortConfig.key,
-    sortDir: sortConfig.direction,
+    sortOrder: sortConfig.direction,
   };
 
   const { data, isLoading } = useCrmContacts(filters);

@@ -142,18 +142,6 @@ describe('dbToCrmDeal', () => {
     expect(result.owner).toBeNull();
   });
 
-  it('mapeia campos de reuniao', () => {
-    const result = dbToCrmDeal({
-      id: 'd1',
-      title: 'X',
-      meeting_agenda_event_id: 'e1',
-      meeting_date: '2026-05-15T14:00:00Z',
-      meeting_city: 'Sao Paulo',
-    });
-    expect(result.meetingAgendaEventId).toBe('e1');
-    expect(result.meetingDate).toBe('2026-05-15T14:00:00Z');
-    expect(result.meetingCity).toBe('Sao Paulo');
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

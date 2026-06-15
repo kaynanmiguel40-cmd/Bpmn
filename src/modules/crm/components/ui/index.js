@@ -8,4 +8,3 @@ export { CrmConfirmDialog } from './CrmConfirmDialog';
 export { CrmEmptyState } from './CrmEmptyState';
 export { CrmBadge } from './CrmBadge';
 export { CrmAvatar } from './CrmAvatar';
-export { CrmFormField } from './CrmFormField';
