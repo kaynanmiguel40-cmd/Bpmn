@@ -483,7 +483,7 @@ export default function Editor() {
   return (
     <div className="h-screen flex flex-col bg-slate-100 overflow-hidden">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 shadow-sm flex-shrink-0 z-30">
+      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-glass flex-shrink-0 z-30">
         <div className="px-4 py-3 flex items-center justify-between">
           {/* Left: Back + Project Name */}
           <div className="flex items-center gap-4">

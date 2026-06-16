@@ -7,7 +7,6 @@ import { getNotifications, markAsRead, markAllAsRead, deleteNotification, getUnr
 import { getClients, createClient, updateClient, deleteClient } from '../lib/clientService';
 import { getAllActivities } from '../lib/activityLogService';
 import { getHistory as getKPIHistory } from '../lib/kpiSnapshotService';
-import { getEapFolders, createEapFolder, updateEapFolder, deleteEapFolder, getEapProjects, createEapProject, updateEapProject, deleteEapProject, getEapTasks, createEapTask, updateEapTask, deleteEapTask } from '../lib/eapService';
 import { getCommentsByOrder, addComment, getChatSummaries, markConversationRead, getConversationReads } from '../lib/commentService';
 import { getPenalties, createPenalty, deletePenalty } from '../lib/penaltyService';
 import { getContentPosts, createContentPost, updateContentPost, deleteContentPost } from '../lib/contentService';
@@ -59,9 +58,6 @@ export const queryKeys = {
   activities: ['activities'],
   clients: ['clients'],
   kpiHistory: ['kpiHistory'],
-  eapFolders: ['eapFolders'],
-  eapProjects: ['eapProjects'],
-  eapTasks: ['eapTasks'],
   contentPosts: ['contentPosts'],
   processOrders: ['processOrders'],
   googleCalendarStatus: ['googleCalendarStatus'],
@@ -284,40 +280,6 @@ export function useKPIHistory(limit = 12) {
     staleTime: 120_000,
   });
 }
-
-// ==================== EAP FOLDERS ====================
-
-export const useEapFolders = makeQueryHook(queryKeys.eapFolders, getEapFolders, 30_000);
-export const useCreateEapFolder = makeMutationHook(createEapFolder, queryKeys.eapFolders);
-export const useUpdateEapFolder = makeUpdateHook(updateEapFolder, queryKeys.eapFolders);
-export const useDeleteEapFolder = makeMutationHook(deleteEapFolder, queryKeys.eapFolders);
-
-// ==================== EAP PROJECTS ====================
-
-export const useEapProjects = makeQueryHook(queryKeys.eapProjects, getEapProjects, 30_000);
-export const useCreateEapProject = makeMutationHook(createEapProject, queryKeys.eapProjects);
-export const useUpdateEapProject = makeUpdateHook(updateEapProject, queryKeys.eapProjects);
-export const useDeleteEapProject = makeMutationHook(deleteEapProject, queryKeys.eapProjects);
-
-// ==================== EAP TASKS ====================
-
-export const useEapTasks = makeQueryHook(queryKeys.eapTasks, getEapTasks, 15_000);
-export const useCreateEapTask = makeMutationHook(createEapTask, queryKeys.eapTasks);
-
-// Custom: skipInvalidation para operacoes batch (auto-scheduling, undo)
-export function useUpdateEapTask() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }) => updateEapTask(id, updates),
-    onSuccess: (_, variables) => {
-      if (!variables.skipInvalidation) {
-        qc.invalidateQueries({ queryKey: queryKeys.eapTasks });
-      }
-    },
-  });
-}
-
-export const useDeleteEapTask = makeMutationHook(deleteEapTask, queryKeys.eapTasks);
 
 // ==================== MEMBER AVATARS ====================
 

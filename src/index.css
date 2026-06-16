@@ -60,6 +60,36 @@
   .crm-stagger > *:nth-child(8)  { animation-delay: 0.32s; }
   .crm-stagger > *:nth-child(9)  { animation-delay: 0.36s; }
   .crm-stagger > *:nth-child(n+10) { animation-delay: 0.40s; }
+
+  /* ===== Design system app-wide (mesmos tokens premium do CRM, nomes neutros) =====
+     Use estas classes fora do CRM pra manter UMA linguagem visual em todo o sistema. */
+  .glass {
+    @apply bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border border-white/60 dark:border-white/10;
+    box-shadow: 0 1px 1px rgba(15, 23, 42, 0.04), 0 8px 24px -8px rgba(15, 23, 42, 0.12);
+  }
+  .dark .glass {
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25), 0 8px 24px -8px rgba(0, 0, 0, 0.55);
+  }
+  .glass-hover { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+  .glass-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 1px 1px rgba(15, 23, 42, 0.05), 0 24px 48px -12px rgba(15, 23, 42, 0.18);
+  }
+  .dark .glass-hover:hover {
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3), 0 24px 48px -12px rgba(0, 0, 0, 0.7);
+  }
+  .app-mesh {
+    background-image:
+      radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.10) 0px, transparent 50%),
+      radial-gradient(at 98% 2%, rgba(139, 92, 246, 0.10) 0px, transparent 45%),
+      radial-gradient(at 50% 100%, rgba(56, 189, 248, 0.08) 0px, transparent 55%);
+  }
+  .dark .app-mesh {
+    background-image:
+      radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.16) 0px, transparent 50%),
+      radial-gradient(at 98% 2%, rgba(139, 92, 246, 0.16) 0px, transparent 45%),
+      radial-gradient(at 50% 100%, rgba(56, 189, 248, 0.10) 0px, transparent 55%);
+  }
 }
 
 /* keyframe usado pelo .crm-stagger (espelha o animate-fade-up do tailwind) */
@@ -83,7 +113,8 @@
   .animate-shimmer {
     animation: none !important;
   }
-  .crm-glass-hover {
+  .crm-glass-hover,
+  .glass-hover {
     transition: none !important;
   }
   /* Stagger desligado: revela os filhos imediatamente (senao ficariam opacity:0) */
@@ -709,6 +740,8 @@ html.dark body {
 
 /* ========== PRINT STYLES ========== */
 @media print {
+  /* Sem mesh decorativo no print */
+  .app-mesh { background-image: none !important; }
   html, body, #root {
     height: auto !important;
     overflow: visible !important;
@@ -1075,6 +1108,8 @@ iframe[src*="supabase.io"] {
   padding-left: 1.5em;
   margin: 0.25em 0;
 }
+.notion-editor-content ul { list-style-type: disc; }
+.notion-editor-content ol { list-style-type: decimal; }
 .notion-editor-content li {
   margin: 0.1em 0;
 }
@@ -1182,3 +1217,88 @@ iframe[src*="supabase.io"] {
 .notion-editor-content em { font-style: italic; }
 .notion-editor-content u { text-decoration: underline; }
 .notion-editor-content s { text-decoration: line-through; opacity: 0.7; }
+
+/* Tabelas no editor (Tiptap) */
+.notion-editor-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0;
+  table-layout: fixed;
+  overflow: hidden;
+}
+.notion-editor-content th,
+.notion-editor-content td {
+  border: 1px solid #e2e8f0;
+  padding: 0.4em 0.6em;
+  text-align: left;
+  vertical-align: top;
+  min-width: 4em;
+  position: relative;
+}
+.dark .notion-editor-content th,
+.dark .notion-editor-content td {
+  border-color: #475569;
+}
+.notion-editor-content th {
+  background: #f1f5f9;
+  font-weight: 600;
+}
+.dark .notion-editor-content th {
+  background: #334155;
+}
+.notion-editor-content .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(59, 130, 246, 0.12);
+  pointer-events: none;
+}
+.notion-editor-content .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #3b82f6;
+  cursor: col-resize;
+}
+
+/* Imagens no editor */
+.notion-editor-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.5em 0;
+  display: block;
+}
+.notion-editor-content img.ProseMirror-selectednode {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Links no editor */
+.notion-editor-content a {
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.dark .notion-editor-content a { color: #60a5fa; }
+
+/* Marca-texto */
+.notion-editor-content mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  color: #1e293b;
+}
+
+/* Video (YouTube) */
+.notion-editor-content div[data-youtube-video] {
+  margin: 0.6em 0;
+}
+.notion-editor-content div[data-youtube-video] iframe {
+  max-width: 100%;
+  width: 100%;
+  border-radius: 8px;
+  aspect-ratio: 16 / 9;
+  height: auto;
+}

@@ -1,19 +1,17 @@
 import { useState, useEffect } from 'react';
 import { getTemplates } from '../../lib/templateService';
+import { BUILTIN_OS_TEMPLATES } from '../../lib/osTemplatesSeed';
 
 export function TemplatePicker({ onSelect, className = '' }) {
-  const [templates, setTemplates] = useState([]);
+  const [saved, setSaved] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      getTemplates().then(setTemplates);
-    }
+    getTemplates().then(setSaved).catch(() => setSaved([]));
   }, [isOpen]);
 
-  if (templates.length === 0 && !isOpen) {
-    return null;
-  }
+  // Modelos prontos (builtin) primeiro, depois os salvos pelo usuario.
+  const templates = [...BUILTIN_OS_TEMPLATES, ...saved];
 
   return (
     <div className={`relative ${className}`}>
@@ -29,24 +27,36 @@ export function TemplatePicker({ onSelect, className = '' }) {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full mt-1 left-0 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-          {templates.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-slate-400 dark:text-slate-500 text-center">
-              Nenhum template salvo
-            </div>
-          ) : (
-            templates.map(tpl => (
-              <button
-                key={tpl.id}
-                onClick={() => { onSelect(tpl); setIsOpen(false); }}
-                className="w-full px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0"
-              >
-                <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{tpl.name}</div>
-                <div className="text-xs text-slate-400 dark:text-slate-500 truncate">{tpl.title || tpl.description || 'Sem titulo'}</div>
-              </button>
-            ))
-          )}
-        </div>
+        <>
+          {/* Clique fora fecha */}
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute top-full mt-1 left-0 w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 max-h-72 overflow-y-auto">
+            {templates.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-slate-400 dark:text-slate-500 text-center">
+                Nenhum template
+              </div>
+            ) : (
+              templates.map(tpl => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => { onSelect(tpl); setIsOpen(false); }}
+                  className="w-full px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{tpl.name}</span>
+                    {tpl.builtin && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-fyness-primary/10 text-fyness-primary shrink-0">pronto</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-400 dark:text-slate-500">
+                    {(tpl.checklist?.length || 0) > 0 ? `${tpl.checklist.length} tarefas` : 'Sem tarefas'}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </>
       )}
     </div>
   );

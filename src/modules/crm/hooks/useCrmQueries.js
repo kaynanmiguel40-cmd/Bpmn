@@ -7,13 +7,14 @@ import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, 
 import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
 import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal } from '../services/crmActivitiesService';
-import { getCrmDashboardKPIs, getBonificacaoProgress } from '../services/crmDashboardService';
+import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel } from '../services/crmDashboardService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
 import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
-import { getSalesReport, getFunnelReport, getForecastReport, getActivitiesReport, getLearnedProbabilities, getSellersReport } from '../services/crmReportsService';
+import { getSalesReport, getFunnelReport, getForecastReport, getLearnedProbabilities } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
 import { getCrmCalendarActivities, getLeadTimeline } from '../services/crmAgendaService';
+import { getLeadReport, saveLeadReport, getDailyReport, getWeeklyReport } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
 import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead } from '../services/crmMessagesService';
@@ -33,6 +34,9 @@ export const crmQueryKeys = {
   activities: ['crm', 'activities'],
   calendarActivities: (start, end) => ['crm', 'calendarActivities', start, end],
   leadTimeline: (key) => ['crm', 'leadTimeline', key],
+  leadReport: (key) => ['crm', 'leadReport', key],
+  dailyReport: (date) => ['crm', 'dailyReport', date],
+  weeklyReport: (weekStart) => ['crm', 'weeklyReport', weekStart],
   goals: ['crm', 'goals'],
   goalsProgress: ['crm', 'goalsProgress'],
   dashboard: ['crm', 'dashboard'],
@@ -41,8 +45,6 @@ export const crmQueryKeys = {
   funnelReport: (id) => ['crm', 'funnelReport', id],
   forecastReport: ['crm', 'forecastReport'],
   learnedProbabilities: (pipelineId) => ['crm', 'learnedProbabilities', pipelineId || 'all'],
-  activitiesReport: (start, end) => ['crm', 'activitiesReport', start, end],
-  sellersReport: (start, end) => ['crm', 'sellersReport', start, end],
   dailyScoreboard: (start, end) => ['crm', 'dailyScoreboard', start, end],
   dailyBriefing: ['crm', 'dailyBriefing'],
   traffic: ['crm', 'traffic'],
@@ -565,6 +567,51 @@ export function useLeadTimeline({ dealId = null, contactId = null } = {}) {
   });
 }
 
+// Relato diario que o vendedor escreve sobre um lead (painel da Agenda).
+export function useLeadDailyReport({ dealId = null, contactId = null, date } = {}) {
+  return useQuery({
+    queryKey: crmQueryKeys.leadReport(`${dealId || ''}:${contactId || ''}:${date || ''}`),
+    queryFn: () => getLeadReport({ dealId, contactId, date }),
+    enabled: !!(dealId || contactId) && !!date,
+    staleTime: 10_000,
+  });
+}
+
+export function useSaveLeadReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: saveLeadReport,
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.leadReport(`${vars.dealId || ''}:${vars.contactId || ''}:${vars.date || ''}`) });
+      qc.invalidateQueries({ queryKey: ['crm', 'dailyReport'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'weeklyReport'] });
+    },
+    onError: (err) => toast(`Erro ao salvar relato: ${err.message}`, 'error'),
+  });
+}
+
+// Relatorio consolidado do dia (leads atendidos + contadores + relatos).
+export function useDailyReport(date) {
+  return useQuery({
+    queryKey: crmQueryKeys.dailyReport(date),
+    queryFn: () => getDailyReport(date),
+    enabled: !!date,
+    staleTime: 15_000,
+  });
+}
+
+// Relatorio semanal: junta os relatos diarios da semana + metricas (reunioes,
+// vendas, conversao).
+export function useWeeklyReport(weekStart) {
+  return useQuery({
+    queryKey: crmQueryKeys.weeklyReport(weekStart),
+    queryFn: () => getWeeklyReport(weekStart),
+    enabled: !!weekStart,
+    staleTime: 15_000,
+  });
+}
+
+
 export function useCreateCrmActivity() {
   const qc = useQueryClient();
   return useMutation({
@@ -762,6 +809,15 @@ export function useBonificacaoProgress(startDate, endDate) {
   });
 }
 
+// Funil de conversão atividade -> venda (ligações -> reuniões -> leads -> clientes).
+export function useSalesFunnel(range, scope = 'sales') {
+  return useQuery({
+    queryKey: [...crmQueryKeys.dashboard, 'funnel', range || null, scope],
+    queryFn: () => getSalesFunnel(range, scope),
+    staleTime: 60_000,
+  });
+}
+
 // ==================== REPORTS ====================
 
 export function useSalesReport(startDate, endDate) {
@@ -794,24 +850,6 @@ export function useLearnedProbabilities(pipelineId = null) {
   return useQuery({
     queryKey: crmQueryKeys.learnedProbabilities(pipelineId),
     queryFn: () => getLearnedProbabilities(pipelineId),
-    staleTime: 120_000,
-  });
-}
-
-export function useActivitiesReport(startDate, endDate) {
-  return useQuery({
-    queryKey: crmQueryKeys.activitiesReport(startDate, endDate),
-    queryFn: () => getActivitiesReport(startDate, endDate),
-    enabled: !!startDate && !!endDate,
-    staleTime: 120_000,
-  });
-}
-
-export function useSellersReport(startDate, endDate) {
-  return useQuery({
-    queryKey: crmQueryKeys.sellersReport(startDate, endDate),
-    queryFn: () => getSellersReport(startDate, endDate),
-    enabled: !!startDate && !!endDate,
     staleTime: 120_000,
   });
 }

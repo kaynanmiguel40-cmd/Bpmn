@@ -119,7 +119,7 @@ export default function ReportPage() {
       </div>
 
       {/* Filtros */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+      <div className="glass rounded-2xl p-6">
         <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-4">Filtros do Relatorio</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -164,7 +164,7 @@ export default function ReportPage() {
 
       {/* Preview KPIs */}
       {preview && (
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+        <div className="glass rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-4">Preview dos Indicadores</h2>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -260,7 +260,7 @@ export default function ReportPage() {
       </div>
 
       {/* Agendamentos */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+      <div className="glass rounded-2xl p-6">
         <ScheduleForm members={members} />
       </div>
     </div>

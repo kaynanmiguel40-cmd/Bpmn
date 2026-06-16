@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import logoFyness from '../../assets/logo-fyness.png';
 
@@ -18,7 +19,7 @@ export function LoginPage() {
   const [localError, setLocalError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const from = location.state?.from?.pathname || '/dashboard';
+  const from = location.state?.from?.pathname || '/financial';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,54 +37,64 @@ export function LoginPage() {
     setIsSubmitting(false);
   };
 
+  const busy = isSubmitting || loading;
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-950 app-mesh px-4 py-12">
+      {/* Orbs decorativos — profundidade/atmosfera */}
+      <div aria-hidden className="pointer-events-none absolute -top-32 -left-24 w-96 h-96 rounded-full bg-fyness-primary/20 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-40 -right-24 w-[28rem] h-[28rem] rounded-full bg-violet-500/15 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute top-1/3 right-1/4 w-72 h-72 rounded-full bg-sky-400/10 blur-3xl" />
+
+      <div className="relative w-full max-w-md animate-scale-in">
         {/* Logo */}
-        <div className="text-center">
-          <img src={logoFyness} alt="Fyness" className="mx-auto w-20 h-20 mb-4 object-contain" />
-          <h2 className="text-3xl font-bold text-white">
-            Fyness OS
-          </h2>
-          <p className="mt-2 text-sm text-slate-400">
-            Sistema Operacional da Empresa
-          </p>
+        <div className="text-center mb-8">
+          <div className="relative inline-flex items-center justify-center mb-5">
+            <div aria-hidden className="absolute inset-0 rounded-2xl bg-fyness-primary/40 blur-2xl" />
+            <img src={logoFyness} alt="Fyness" className="relative w-16 h-16 object-contain drop-shadow-lg" />
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-white">Fyness OS</h1>
+          <p className="mt-1.5 text-sm text-slate-400">Sistema Operacional da Empresa</p>
         </div>
 
-        {/* Form */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-xl" role="region" aria-label="Formulario de login">
-          <form onSubmit={handleSubmit} className="space-y-6" role="form" aria-label="Login">
+        {/* Card */}
+        <div
+          className="rounded-3xl border border-white/10 bg-white/[0.06] backdrop-blur-2xl p-8 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.6)]"
+          role="region"
+          aria-label="Formulario de login"
+        >
+          <form onSubmit={handleSubmit} className="space-y-5" role="form" aria-label="Login">
             {/* Error Alert */}
             {(localError || error) && (
-              <div role="alert" className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm">
+              <div role="alert" className="p-3.5 bg-red-500/15 border border-red-500/40 rounded-xl text-red-200 text-sm animate-fade-up">
                 {localError || error}
               </div>
             )}
 
             {/* Email */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                aria-required="true"
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
-                placeholder="seu@email.com"
-              />
+              <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
+              <div className="relative">
+                <Mail aria-hidden className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  aria-required="true"
+                  className="w-full pl-11 pr-4 py-3 bg-white/[0.04] border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fyness-primary/70 focus:border-transparent focus:bg-white/[0.07] transition-colors"
+                  placeholder="seu@email.com"
+                />
+              </div>
             </div>
 
             {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
-                Senha
-              </label>
+              <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1.5">Senha</label>
               <div className="relative">
+                <Lock aria-hidden className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
@@ -92,76 +103,54 @@ export function LoginPage() {
                   required
                   autoComplete="current-password"
                   aria-required="true"
-                  className="w-full px-4 py-3 pr-12 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent"
+                  className="w-full pl-11 pr-12 py-3 bg-white/[0.04] border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fyness-primary/70 focus:border-transparent focus:bg-white/[0.07] transition-colors"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-200 transition-colors"
                   aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                 >
-                  {showPassword ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>
 
-            {/* Forgot Password */}
+            {/* Remember + Forgot */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center">
+              <label htmlFor="remember" className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer select-none">
                 <input
                   id="remember"
                   type="checkbox"
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-fyness-primary focus:ring-fyness-primary"
+                  className="h-4 w-4 rounded border-white/20 bg-white/5 text-fyness-primary focus:ring-fyness-primary/70 focus:ring-offset-0"
                 />
-                <label htmlFor="remember" className="ml-2 text-sm text-slate-400">
-                  Lembrar de mim
-                </label>
-              </div>
-              <a href="#" className="text-sm text-fyness-primary hover:text-fyness-secondary">
+                Lembrar de mim
+              </label>
+              <a href="#" className="text-sm font-medium text-fyness-accent hover:text-white transition-colors">
                 Esqueceu a senha?
               </a>
             </div>
 
-            {/* Submit Button */}
+            {/* Submit */}
             <button
               type="submit"
-              disabled={isSubmitting || loading}
-              className="w-full py-3 px-4 bg-fyness-primary text-white font-medium rounded-lg hover:bg-fyness-secondary focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:ring-offset-2 focus:ring-offset-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={busy}
+              className="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-white bg-gradient-to-r from-fyness-primary to-fyness-secondary shadow-glow-blue hover:shadow-[0_12px_40px_-8px_rgba(59,130,246,0.6)] focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:ring-offset-2 focus:ring-offset-slate-950 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none"
             >
-              {isSubmitting ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Entrando...
-                </span>
+              {busy ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Entrando...</>
               ) : (
-                'Entrar'
+                <>Entrar <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" /></>
               )}
             </button>
           </form>
-
         </div>
 
         {/* Footer */}
-        <p className="text-center text-sm text-slate-500">
+        <p className="mt-6 text-center text-sm text-slate-500">
           Nao tem uma conta?{' '}
-          <span className="text-fyness-primary font-medium">
-            Fale com o administrador
-          </span>
+          <span className="text-slate-300 font-medium">Fale com o administrador</span>
         </p>
       </div>
     </div>

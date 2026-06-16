@@ -10,12 +10,12 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Calendar as CalIcon, Link2 } from 'lucide-react';
+import { Plus, Link2, Eye, EyeOff, FileText } from 'lucide-react';
 import { CrmPageHeader } from '../components/ui';
 import CrmCalendar from '../components/agenda/CrmCalendar';
 import LeadHistoryPanel from '../components/agenda/LeadHistoryPanel';
 import { ActivityFormModal } from '../components/ActivityFormModal';
-import { useCrmCalendarActivities } from '../hooks/useCrmQueries';
+import { useCrmCalendarActivities, useCompleteCrmActivity } from '../hooks/useCrmQueries';
 import { useGCalEvents, useGCalStatus } from '../../../hooks/queries';
 import { connectGCal } from '../../../lib/googleCalendarService';
 
@@ -24,6 +24,10 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 
 // Recorte de datas que o calendário precisa carregar, por visão.
 function computeRange(view, date) {
+  if (view === 'agenda') {
+    const s = startOfDay(date);
+    return [s, addDays(s, 31)]; // lista cobre ~30 dias à frente
+  }
   if (view === 'day') {
     const s = startOfDay(date);
     return [s, addDays(s, 1)];
@@ -49,10 +53,11 @@ function dedupeKey(title, startDate) {
 export default function CrmAgendaPage() {
   const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState('month');
+  const [view, setView] = useState('agenda');
   const [selected, setSelected] = useState(null); // { dealId, contactId }
   const [formOpen, setFormOpen] = useState(false);
   const [formInitial, setFormInitial] = useState(null);
+  const [showGoogle, setShowGoogle] = useState(true); // camada Google Agenda visível
 
   const [rangeStart, rangeEnd] = useMemo(() => computeRange(view, currentDate), [view, currentDate]);
   const startISO = rangeStart.toISOString();
@@ -60,6 +65,7 @@ export default function CrmAgendaPage() {
 
   // Atividades do CRM no recorte
   const { data: crmActivities = [] } = useCrmCalendarActivities(startISO, endISO);
+  const completeMutation = useCompleteCrmActivity();
 
   // Google Calendar (pull). Só dispara se conectado.
   const { data: gcalStatus } = useGCalStatus();
@@ -75,14 +81,18 @@ export default function CrmAgendaPage() {
       endDate: a.endDate,
       color: a.color,
       source: 'crm',
+      typeKey: a.type,
+      activityId: a.id,
       leadName: a.leadName,
+      stageName: a.stageName,
       completed: a.completed,
+      completedAt: a.completedAt,
       typeLabel: a.typeLabel,
       dealId: a.dealId,
       contactId: a.contactId,
       leadKey: `${a.dealId || ''}:${a.contactId || ''}`,
     }));
-    if (!gcalConnected || gcalEvents.length === 0) return crm;
+    if (!gcalConnected || !showGoogle || gcalEvents.length === 0) return crm;
 
     const seen = new Set(crm.map(e => dedupeKey(e.title, e.startDate)));
     const google = gcalEvents
@@ -100,7 +110,7 @@ export default function CrmAgendaPage() {
         leadKey: null,
       }));
     return [...crm, ...google];
-  }, [crmActivities, gcalEvents, gcalConnected]);
+  }, [crmActivities, gcalEvents, gcalConnected, showGoogle]);
 
   // Navegação do calendário
   const handleNavigate = useCallback((dir) => {
@@ -108,6 +118,7 @@ export default function CrmAgendaPage() {
       const d = new Date(prev);
       if (view === 'month') d.setMonth(d.getMonth() + dir);
       else if (view === 'week') d.setDate(d.getDate() + dir * 7);
+      else if (view === 'agenda') d.setDate(d.getDate() + dir * 30);
       else d.setDate(d.getDate() + dir);
       return d;
     });
@@ -149,10 +160,23 @@ export default function CrmAgendaPage() {
               </button>
             )}
             {gcalConnected && (
-              <span className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full">
-                <CalIcon size={12} /> Google conectado
-              </span>
+              <button
+                onClick={() => setShowGoogle(v => !v)}
+                title={showGoogle ? 'Ocultar eventos do Google Agenda' : 'Mostrar eventos do Google Agenda'}
+                className={`flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium rounded-lg border transition-colors ${
+                  showGoogle
+                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
+                    : 'text-slate-400 dark:text-slate-500 border-slate-200/70 dark:border-white/10 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+              >
+                {showGoogle ? <Eye size={14} /> : <EyeOff size={14} />} Google Agenda
+              </button>
             )}
+            <button onClick={() => navigate('/crm/relatorio-diario')}
+              title="Relatório diário dos leads atendidos"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200/70 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5">
+              <FileText size={15} /> Relatório do dia
+            </button>
             <button onClick={openNewTask}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg shadow-sm">
               <Plus size={16} /> Nova tarefa
@@ -172,6 +196,7 @@ export default function CrmAgendaPage() {
             onToday={() => setCurrentDate(new Date())}
             onSelectEvent={handleSelectEvent}
             onSelectSlot={handleSelectSlot}
+            onCompleteTask={(ev) => ev.activityId && completeMutation.mutate(ev.activityId)}
             selectedLeadKey={selectedLeadKey}
           />
         </div>

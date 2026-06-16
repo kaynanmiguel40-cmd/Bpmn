@@ -270,7 +270,7 @@ export function SettingsPage() {
       {activeTab === 'profile' && (
         <div className="space-y-6">
           {/* Avatar */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+          <div className="glass rounded-2xl p-6">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-4">Foto</h3>
             <div className="flex items-center gap-5">
               <div className="relative group">
@@ -305,7 +305,7 @@ export function SettingsPage() {
           </div>
 
           {/* Dados pessoais */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+          <div className="glass rounded-2xl p-6">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-4">Dados Pessoais</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -339,7 +339,7 @@ export function SettingsPage() {
           </div>
 
           {/* Financeiro */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+          <div className="glass rounded-2xl p-6">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-4">Financeiro</h3>
             {/* Cards de exibicao - todos veem */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -391,7 +391,7 @@ export function SettingsPage() {
           </div>
 
           {/* Empresas */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+          <div className="glass rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Empresas</h3>
               <div className="flex items-center gap-3">
@@ -1445,7 +1445,7 @@ export function SettingsPage() {
 
       {/* === TAB: Notificacoes === */}
       {activeTab === 'notifications' && (
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+        <div className="glass rounded-2xl p-6">
           <NotificationPreferences />
         </div>
       )}

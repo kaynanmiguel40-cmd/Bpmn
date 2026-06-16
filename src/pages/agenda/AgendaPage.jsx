@@ -1115,7 +1115,7 @@ export default function AgendaPage() {
       </div>
 
       {/* Calendar Views */}
-      <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+      <div className="flex-1 glass rounded-2xl overflow-hidden">
         {view === 'month' && <MonthView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onDayClick={(d) => { setCurrentDate(d); setView('day'); }} onEventClick={openEditModal} allMembers={allMembers} />}
         {view === 'week' && <WeekView currentDate={currentDate} today={today} getEventsForDay={getEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} />}
         {view === 'day' && <DayView currentDate={currentDate} today={today} getAllEventsForDay={getAllEventsForDay} onEventClick={openEditModal} onSlotClick={(d) => openCreateModal(d)} allMembers={allMembers} businessHours={businessHours} dayViewMember={dayViewMember} setDayViewMember={setDayViewMember} updateEventMutation={updateEventMutation} />}
@@ -1894,9 +1894,9 @@ function UnifiedEventModal({ form, setForm, editing, onSave, onClose, onDelete, 
   const dayName = DAYS_FULL_PT[dayOfWeek];
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="w-[460px] max-w-[92vw] max-h-[90vh] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col"
+        className="w-[460px] max-w-[92vw] max-h-[90vh] bg-white dark:bg-slate-800 rounded-2xl shadow-glass-lg border border-white/60 dark:border-white/10 overflow-hidden flex flex-col animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Barra colorida do tipo */}

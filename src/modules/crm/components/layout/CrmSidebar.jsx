@@ -12,16 +12,13 @@ import {
   Kanban,
   Users,
   Building2,
-  CalendarCheck,
   CalendarDays,
+  CalendarRange,
   FileText,
-  BarChart3,
   Settings,
-  TrendingUp,
   ArrowLeft,
   Target,
   Trophy,
-  Megaphone,
   Crosshair,
   Zap,
   PhoneCall,
@@ -43,18 +40,26 @@ const crmNavItems = [
   { to: '/crm/discador', icon: PhoneCall, label: 'Discador' },
   { to: '/crm/inbox', icon: MessageCircle, label: 'Inbox WhatsApp' },
   { to: '/crm/agenda', icon: CalendarDays, label: 'Agenda' },
-  { to: '/crm/activities', icon: CalendarCheck, label: 'Atividades' },
+  // Atividades agora vivem dentro da Agenda — item oculto da sidebar.
+  // A rota /crm/activities e a página seguem ativas (lista, filtros, editar,
+  // concluir). Pra religar: re-importe CalendarCheck e adicione aqui:
+  //   { to: '/crm/activities', icon: CalendarCheck, label: 'Atividades' },
   { section: 'Prospecao' },
   { to: '/crm/prospects', icon: Crosshair, label: 'Gerador de Lista' },
-  { to: '/crm/traffic', icon: Megaphone, label: 'Trafego Pago' },
+  // Tráfego Pago oculto por enquanto (a rota /crm/traffic e a página seguem ativas).
+  // Pra religar: re-importe Megaphone do lucide-react e adicione aqui:
+  //   { to: '/crm/traffic', icon: Megaphone, label: 'Trafego Pago' },
   { to: '/crm/automations', icon: Zap, label: 'Automacoes' },
   { section: 'Cadastros' },
   { to: '/crm/cadastros', icon: Users, label: 'Cadastros' },
   { section: 'Gestao' },
+  { to: '/crm/relatorio-diario', icon: FileText, label: 'Relatório Diário' },
+  { to: '/crm/relatorio-semanal', icon: CalendarRange, label: 'Relatório Semanal' },
   { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { to: '/crm/goals', icon: Trophy, label: 'Metas' },
-  { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },
-  { to: '/crm/reports', icon: BarChart3, label: 'Relatorios' },
+  // Forecast oculto por enquanto (a rota /crm/forecast e a página seguem ativas).
+  // Pra religar: re-importe TrendingUp do lucide-react e adicione aqui:
+  //   { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },
   { divider: true },
   { to: '/crm/settings', icon: Settings, label: 'Configuracoes' },
 ];
@@ -141,7 +146,7 @@ export function CrmSidebar() {
       {/* Voltar ao Fyness */}
       <div className="px-2 pt-2 pb-0.5">
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/financial')}
           className={`
             flex items-center gap-2 w-full px-2.5 py-1 rounded-md text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors
             ${isCollapsed ? 'justify-center px-2' : ''}

@@ -16,6 +16,7 @@ describe('getCrmWorkspaceSettings', () => {
       lostTargetPipelineId: null,
       lostTargetStageId: null,
       discardStageId: null,
+      mrrGoalMonthly: 0,
     });
   });
 

@@ -8,7 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Pencil, Mail, Phone, MapPin, Building2, Tag,
   CalendarCheck, Target, FileText, StickyNote,
-  CheckSquare, Video, Coffee,
+  CheckSquare, Video, Coffee, MessageCircle,
 } from 'lucide-react';
 import { CrmAvatar, CrmBadge } from '../components/ui';
 import { useCrmContact, useUpdateCrmContact } from '../hooks/useCrmQueries';
@@ -28,7 +28,7 @@ const DEAL_STATUS = {
 };
 
 const activityIcons = {
-  call: Phone, email: Mail, meeting: Video,
+  call: Phone, email: Mail, message: MessageCircle, meeting: Video,
   task: CheckSquare, follow_up: Coffee, visit: MapPin,
 };
 

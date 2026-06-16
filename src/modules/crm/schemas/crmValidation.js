@@ -51,6 +51,7 @@ export const crmPipelineSchema = z.object({
 export const crmDealSchema = z.object({
   title: z.string().min(1, 'Titulo do negocio e obrigatorio'),
   value: z.number().min(0).default(0),
+  mrr: z.number().min(0).default(0),
   probability: z.number().min(0).max(100).default(50),
   segment: nullableStr,
   contactName: nullableStr,
@@ -94,12 +95,15 @@ export const crmCallSchema = z.object({
 export const crmActivitySchema = z.object({
   title: z.string().min(1, 'Titulo da atividade e obrigatorio'),
   description: z.string().optional().default(''),
-  type: z.enum(['call', 'email', 'meeting', 'task', 'lunch', 'visit']).default('task'),
+  type: z.enum(['call', 'email', 'message', 'meeting', 'task', 'lunch', 'visit']).default('task'),
   contactId: z.string().nullable().optional().default(null),
   dealId: z.string().nullable().optional().default(null),
   startDate: z.string().min(1, 'Data de inicio e obrigatoria'),
   endDate: z.string().nullable().optional().default(null),
   completed: z.boolean().optional().default(false),
+  // Convidados (e-mails) — só pra eventos; vão pro Google Calendar como
+  // attendees e recebem o convite por e-mail. Não persistem em crm_activities.
+  attendees: z.array(z.string()).optional().default([]),
 }).passthrough();
 
 // ==================== GOAL ====================

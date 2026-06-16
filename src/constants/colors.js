@@ -80,13 +80,6 @@ export const OS_STATUS_LABELS = {
   done: 'Concluida',
 };
 
-export const EAP_STATUS_LABELS = {
-  planning: { label: 'Planejamento', color: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300' },
-  active: { label: 'Ativo', color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' },
-  completed: { label: 'Concluido', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
-  on_hold: { label: 'Pausado', color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' },
-};
-
 // ─── Paletas Hex (para graficos e seletores) ────────────────────
 
 /** Cores hex para setores */

@@ -49,11 +49,10 @@ describe('searchAll', () => {
 
   // ==================== PAGINAS ====================
 
-  it('encontra pagina Dashboard por nome', async () => {
+  it('nao surge o Dashboard de O.S. (oculto) na busca', async () => {
     const results = await searchAll('dashboard');
-    const page = results.find(r => r.type === 'page' && r.label === 'Dashboard');
-    expect(page).toBeDefined();
-    expect(page.route).toBe('/dashboard');
+    const page = results.find(r => r.type === 'page' && r.route === '/dashboard');
+    expect(page).toBeUndefined();
   });
 
   it('encontra pagina por keyword', async () => {

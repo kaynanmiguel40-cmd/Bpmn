@@ -19,18 +19,46 @@ import { getDealStageHistory } from './crmDealsService';
 
 // Tipo de atividade -> rotulo + cor + acento visual. Fonte unica pro calendario
 // e pra timeline (mantem consistencia de cor entre as duas visoes).
+// Paleta com matizes BEM distintos entre si (antes havia 2 verdes e 2
+// laranjas que se confundiam). Cada tipo tem um tom claramente separado.
+//
+// kind separa o que é TAREFA (to-do que o vendedor faz; tem "concluir";
+// vira checkbox riscável na agenda) do que é EVENTO (compromisso com hora
+// marcada; vira bloco). Ambos sincronizam com o Google Calendar.
 export const ACTIVITY_META = {
-  call:      { label: 'Ligação',   color: '#f59e0b' },
-  email:     { label: 'E-mail',    color: '#6366f1' },
-  meeting:   { label: 'Reunião',   color: '#3b82f6' },
-  visit:     { label: 'Visita',    color: '#22c55e' },
-  task:      { label: 'Tarefa',    color: '#64748b' },
-  lunch:     { label: 'Almoço',    color: '#f97316' },
-  follow_up: { label: 'Follow-up', color: '#8b5cf6' },
+  call:      { label: 'Ligação',   color: '#f59e0b', kind: 'task' },  // âmbar
+  message:   { label: 'Mensagem',  color: '#22c55e', kind: 'task' },  // verde (WhatsApp)
+  email:     { label: 'E-mail',    color: '#8b5cf6', kind: 'task' },  // violeta
+  follow_up: { label: 'Follow-up', color: '#a855f7', kind: 'task' },  // roxo
+  task:      { label: 'Tarefa',    color: '#64748b', kind: 'task' },  // cinza (neutro)
+  meeting:   { label: 'Reunião',   color: '#3b82f6', kind: 'event' }, // azul
+  visit:     { label: 'Visita',    color: '#06b6d4', kind: 'event' }, // ciano
+  lunch:     { label: 'Almoço',    color: '#ec4899', kind: 'event' }, // rosa
 };
 
 export function activityMeta(type) {
-  return ACTIVITY_META[type] || { label: type || 'Atividade', color: '#64748b' };
+  return ACTIVITY_META[type] || { label: type || 'Atividade', color: '#64748b', kind: 'task' };
+}
+
+/** 'task' (to-do, checkbox) ou 'event' (compromisso, bloco). Ambos → Google Calendar. */
+export function activityKind(type) {
+  return ACTIVITY_META[type]?.kind || 'task';
+}
+
+/**
+ * Compara o horário PREVISTO (agendado) com o REALIZADO (concluído) de uma
+ * atividade e descreve o desvio. Tolerância de 5min conta como "no horário".
+ * @returns {{ state: 'on_time'|'late'|'early', label: string, diffMin: number } | null}
+ */
+export function scheduleTiming(plannedISO, doneISO) {
+  if (!plannedISO || !doneISO) return null;
+  const diffMin = Math.round((new Date(doneISO).getTime() - new Date(plannedISO).getTime()) / 60000);
+  const abs = Math.abs(diffMin);
+  if (abs < 5) return { state: 'on_time', label: 'no horário', diffMin };
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  const dur = h > 0 ? `${h}h${m ? String(m).padStart(2, '0') : ''}` : `${m}min`;
+  return { state: diffMin > 0 ? 'late' : 'early', label: `${diffMin > 0 ? '+' : '−'}${dur}`, diffMin };
 }
 
 /** Nome curto do lead a partir de uma atividade (deal tem prioridade sobre contato). */
@@ -49,7 +77,7 @@ function leadLabel({ deal, contact }) {
 export async function getCrmCalendarActivities({ start, end } = {}) {
   let query = supabase
     .from('crm_activities')
-    .select('*, crm_contacts(id, name, avatar_color), crm_deals(id, title, value, stage_id, pipeline_id)')
+    .select('*, crm_contacts(id, name, avatar_color), crm_deals(id, title, value, crm_pipeline_stages(name, color))')
     .is('deleted_at', null)
     .order('start_date', { ascending: true });
 
@@ -68,12 +96,14 @@ export async function getCrmCalendarActivities({ start, end } = {}) {
   return (data || []).map(row => {
     const a = dbToCrmActivity(row);
     const meta = activityMeta(a.type);
+    const stage = row.crm_deals?.crm_pipeline_stages;
     return {
       ...a,
       source: 'crm',
       color: meta.color,
       typeLabel: meta.label,
       leadName: leadLabel(a),
+      stageName: stage?.name || null,
     };
   });
 }
@@ -179,8 +209,16 @@ export async function getLeadTimeline({ dealId = null, contactId = null } = {}) 
   const nowMs = Date.now();
   const items = [];
 
+  // Cada ligacao registrada cria uma atividade-espelho (type='call') pra
+  // alimentar o calendario. Na timeline NAO queremos as duas: o item 'call'
+  // ja traz resultado/notas/duracao, entao pulamos a atividade-espelho dela.
+  const mirroredActivityIds = new Set(
+    (callsRes.data || []).map(r => r.activity_id).filter(Boolean)
+  );
+
   // Atividades — passadas (feitas) e futuras (agendadas)
   (actsRes.data || []).forEach(row => {
+    if (mirroredActivityIds.has(row.id)) return; // espelho de ligacao — a call ja entra
     const a = dbToCrmActivity(row);
     const meta = activityMeta(a.type);
     const when = a.startDate;
@@ -192,6 +230,7 @@ export async function getLeadTimeline({ dealId = null, contactId = null } = {}) 
       title: a.title,
       detail: a.description || '',
       date: when,
+      completedAt: a.completedAt || null,
       color: meta.color,
       typeLabel: meta.label,
       done: a.completed,

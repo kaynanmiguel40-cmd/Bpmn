@@ -18,7 +18,7 @@ import { supabase } from '../../lib/supabase';
 import logoFyness from '../../assets/logo-fyness.png';
 import {
   DashboardIcon, SalesIcon, KanbanIcon, AgendaIcon,
-  FinancialIcon, ReportIcon, EapIcon, CrmIcon,
+  FinancialIcon, ReportIcon, CrmIcon,
   SettingsIcon, LogoutIcon, CollapseIcon, ExpandIcon,
 } from '../icons/NavIcons';
 
@@ -36,8 +36,8 @@ function NavItem({ to, icon: Icon, label, isCollapsed, badge, onClick }) {
       className={`
         flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200
         ${isActive
-          ? 'bg-fyness-primary/15 dark:bg-fyness-primary/20 text-fyness-primary dark:text-blue-400 font-medium border-l-[3px] border-fyness-primary'
-          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+          ? 'bg-gradient-to-r from-fyness-primary/15 to-fyness-primary/5 dark:from-fyness-primary/25 dark:to-fyness-primary/10 text-fyness-primary dark:text-blue-400 font-semibold border-l-[3px] border-fyness-primary shadow-sm'
+          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
         }
         ${isCollapsed ? 'justify-center' : ''}
       `}
@@ -64,14 +64,6 @@ function NavItem({ to, icon: Icon, label, isCollapsed, badge, onClick }) {
     </NavLink>
   );
 }
-
-// Icone de organograma (estrutura organizacional)
-const OrgChartIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-      d="M12 4v4m0 0H6a2 2 0 00-2 2v2m8-4h6a2 2 0 012 2v2M4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-  </svg>
-);
 
 // Icone de pin/fixar
 const PinIcon = ({ pinned }) => (
@@ -172,7 +164,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
         onMouseEnter={() => { if (!isPinned && !mobileOpen) setIsCollapsed(false); }}
         onMouseLeave={() => { if (!isPinned && !mobileOpen) setIsCollapsed(true); }}
         className={`
-          flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 transition-all duration-300 h-screen
+          flex flex-col bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border-r border-slate-200/70 dark:border-white/10 transition-all duration-300 h-screen
           ${effectiveCollapsed ? 'w-16' : 'w-64'}
           ${mobileOpen
             ? 'fixed top-0 left-0 z-50 shadow-xl'
@@ -221,18 +213,17 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto" role="navigation" aria-label="Menu principal">
-          <NavItem to="/dashboard" icon={DashboardIcon} label="Dashboard" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
+          {/* Dashboard oculto temporariamente — reativar removendo o comentario das duas linhas abaixo */}
+          {/* <NavItem to="/dashboard" icon={DashboardIcon} label="Dashboard" isCollapsed={effectiveCollapsed} onClick={handleNavClick} /> */}
           <NavItem to="/financial" icon={FinancialIcon} label="Ordens de Servico" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/agenda" icon={AgendaIcon} label="Agenda" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/routine" icon={KanbanIcon} label="Minha Rotina" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
-          <NavItem to="/eap" icon={EapIcon} label="EAP" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
 
           <div className="my-4 border-t border-slate-200 dark:border-slate-700" />
 
           <NavItem to="/crm" icon={CrmIcon} label="CRM" isCollapsed={effectiveCollapsed} badge={newLeadsCount > 0 ? newLeadsCount : undefined} onClick={handleNavClick} />
           <NavItem to="/sales" icon={SalesIcon} label="Processos" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/reports" icon={ReportIcon} label="Relatorios" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
-          <NavItem to="/equipe/estrutura" icon={OrgChartIcon} label="Estrutura" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/settings" icon={SettingsIcon} label="Configuracoes" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
         </nav>
 

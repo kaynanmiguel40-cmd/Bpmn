@@ -18,10 +18,7 @@ const RoutinePage = lazy(() => import('./pages/routine/RoutinePage'))
 const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage'))
 const FinancialPage = lazy(() => import('./pages/financial/FinancialPage'))
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'))
-const OrgStructurePage = lazy(() => import('./pages/team/OrgStructurePage'))
 const ReportPage = lazy(() => import('./pages/reports/ReportPage'))
-const EapPage = lazy(() => import('./pages/eap/EapPage'))
-const EapGanttPage = lazy(() => import('./pages/eap/EapGanttPage'))
 
 // CRM Module (lazy loaded — app dentro do app)
 const CrmLayout = lazy(() => import('./modules/crm/components/layout/CrmLayout'))
@@ -36,8 +33,9 @@ const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage
 const CrmCompanyDetailPage = lazy(() => import('./modules/crm/pages/CrmCompanyDetailPage'))
 const CrmActivitiesPage = lazy(() => import('./modules/crm/pages/CrmActivitiesPage'))
 const CrmAgendaPage = lazy(() => import('./modules/crm/pages/CrmAgendaPage'))
+const CrmDailyReportPage = lazy(() => import('./modules/crm/pages/CrmDailyReportPage'))
+const CrmWeeklyReportPage = lazy(() => import('./modules/crm/pages/CrmWeeklyReportPage'))
 const CrmGoalsPage = lazy(() => import('./modules/crm/pages/CrmGoalsPage'))
-const CrmReportsPage = lazy(() => import('./modules/crm/pages/CrmReportsPage'))
 const CrmForecastPage = lazy(() => import('./modules/crm/pages/CrmForecastPage'))
 const CrmTrafficPage = lazy(() => import('./modules/crm/pages/CrmTrafficPage'))
 const CrmProspectsPage = lazy(() => import('./modules/crm/pages/CrmProspectsPage'))
@@ -63,8 +61,8 @@ function UnauthorizedPage() {
       <div className="text-6xl font-bold text-slate-300 dark:text-slate-600">403</div>
       <h1 className="text-xl font-semibold text-slate-700 dark:text-slate-200">Acesso Negado</h1>
       <p className="text-slate-500 dark:text-slate-400">Voce nao tem permissao para acessar esta pagina.</p>
-      <a href="/dashboard" className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors">
-        Voltar ao Dashboard
+      <a href="/financial" className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors">
+        Voltar ao Inicio
       </a>
     </div>
   )
@@ -115,11 +113,12 @@ function App() {
                 <Route path="companies/:id" element={<ErrorBoundary><CrmCompanyDetailPage /></ErrorBoundary>} />
                 <Route path="activities" element={<ErrorBoundary><CrmActivitiesPage /></ErrorBoundary>} />
                 <Route path="agenda" element={<ErrorBoundary><CrmAgendaPage /></ErrorBoundary>} />
+                <Route path="relatorio-diario" element={<ErrorBoundary><CrmDailyReportPage /></ErrorBoundary>} />
+                <Route path="relatorio-semanal" element={<ErrorBoundary><CrmWeeklyReportPage /></ErrorBoundary>} />
                 <Route path="discador" element={<ErrorBoundary><CrmDialerPage /></ErrorBoundary>} />
                 <Route path="discador/historico" element={<ErrorBoundary><CrmCallHistoryPage /></ErrorBoundary>} />
                 <Route path="inbox" element={<ErrorBoundary><CrmInboxPage /></ErrorBoundary>} />
                 <Route path="whatsapp" element={<ErrorBoundary><CrmWhatsAppSetupPage /></ErrorBoundary>} />
-                <Route path="reports" element={<ErrorBoundary><CrmReportsPage /></ErrorBoundary>} />
                 <Route path="forecast" element={<ErrorBoundary><CrmForecastPage /></ErrorBoundary>} />
                 <Route path="goals" element={<ErrorBoundary><CrmGoalsPage /></ErrorBoundary>} />
                 <Route path="traffic" element={<ErrorBoundary><CrmTrafficPage /></ErrorBoundary>} />
@@ -133,16 +132,13 @@ function App() {
             {/* Cada pagina tem ErrorBoundary individual para nao crashar o app inteiro */}
             <Route element={<ProtectedRoute />}>
               <Route element={<MainLayout />}>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/" element={<Navigate to="/financial" replace />} />
                 <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
                 <Route path="/sales" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
                 <Route path="/routine" element={<ErrorBoundary><RoutinePage /></ErrorBoundary>} />
                 <Route path="/agenda" element={<ErrorBoundary><AgendaPage /></ErrorBoundary>} />
                 <Route path="/financial" element={<ErrorBoundary><FinancialPage /></ErrorBoundary>} />
-                <Route path="/eap" element={<ErrorBoundary><EapPage /></ErrorBoundary>} />
-                <Route path="/eap/:projectId" element={<ErrorBoundary><EapGanttPage /></ErrorBoundary>} />
                 <Route path="/reports" element={<ErrorBoundary><ReportPage /></ErrorBoundary>} />
-                <Route path="/equipe/estrutura" element={<ErrorBoundary><OrgStructurePage /></ErrorBoundary>} />
                 <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
               </Route>
             </Route>

@@ -128,7 +128,7 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO) {
 // Sempre referente ao dia de HOJE (independe do toggle ontem/hoje da tela).
 
 const ACTIVITY_TYPE_LABELS = {
-  call: 'Ligação', email: 'E-mail', meeting: 'Reunião',
+  call: 'Ligação', email: 'E-mail', message: 'Mensagem', meeting: 'Reunião',
   visit: 'Visita', task: 'Tarefa', follow_up: 'Follow-up', lunch: 'Almoço',
 };
 

@@ -315,6 +315,17 @@ function fynessToGoogle(event) {
       .map(a => ({ email: a.email, displayName: a.name || '' }));
   }
 
+  // Reunião sem evento no Google ainda → pede um Google Meet na criação.
+  // (no update o google_event_id já existe, então não recriamos o Meet)
+  if (event.type === 'meeting' && !event.google_event_id) {
+    gcalEvent.conferenceData = {
+      createRequest: {
+        requestId: `meet_${event.id || Date.now()}`,
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+      },
+    };
+  }
+
   return gcalEvent;
 }
 
@@ -422,7 +433,7 @@ export async function pushEventToGCal(eventId, action) {
       if (!event || event.sync_source === 'google') return null;
 
       const gcalEvent = fynessToGoogle(event);
-      const res = await gcalFetch(`${GCAL_API}/calendars/${calendarId}/events`, {
+      const res = await gcalFetch(`${GCAL_API}/calendars/${calendarId}/events?conferenceDataVersion=1&sendUpdates=all`, {
         method: 'POST',
         body: JSON.stringify(gcalEvent),
       });
@@ -468,7 +479,7 @@ export async function pushEventToGCal(eventId, action) {
         return { success: true };
       }
 
-      const res = await gcalFetch(`${GCAL_API}/calendars/${calendarId}/events/${event.google_event_id}`, {
+      const res = await gcalFetch(`${GCAL_API}/calendars/${calendarId}/events/${event.google_event_id}?sendUpdates=all`, {
         method: 'PATCH',
         body: JSON.stringify(gcalEvent),
       });

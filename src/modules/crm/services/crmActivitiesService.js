@@ -107,20 +107,23 @@ export async function getCrmActivities(filters = {}) {
   };
 }
 
-// Mapeamento tipo atividade CRM → tipo evento agenda
+// Mapeamento tipo atividade CRM → tipo evento agenda. Toda atividade vira um
+// evento no Google Calendar; só 'meeting' (reunião) ganha Google Meet no sync.
 const ACTIVITY_TO_AGENDA_TYPE = {
   call: 'task',
   email: 'task',
+  message: 'task',
   meeting: 'meeting',
-  visit: 'meeting',
+  visit: 'other',
   task: 'task',
-  lunch: 'meeting',
+  lunch: 'other',
   follow_up: 'reminder',
 };
 
 const ACTIVITY_TO_AGENDA_COLOR = {
   call: '#f59e0b',
   email: '#6366f1',
+  message: '#10b981',
   meeting: '#3b82f6',
   visit: '#22c55e',
   task: '#64748b',
@@ -133,7 +136,7 @@ export async function createCrmActivity(data) {
   const userId = session.data?.session?.user?.id;
   const activity = await activityService.create(data, { created_by: userId });
 
-  // Criar evento na agenda (sincroniza automaticamente com Google Calendar)
+  // Toda atividade (tarefa ou evento) vira um evento no Google Calendar.
   if (activity?.id && data.startDate) {
     try {
       const { createAgendaEvent } = await import('../../../lib/agendaService');
@@ -148,20 +151,19 @@ export async function createCrmActivity(data) {
         endDate,
         type: ACTIVITY_TO_AGENDA_TYPE[data.type] || 'task',
         color: ACTIVITY_TO_AGENDA_COLOR[data.type] || '#3b82f6',
+        // Convidados (e-mails) → attendees do evento; Google envia o convite
+        attendees: (data.attendees || []).map(email => ({ email, name: '' })),
       });
 
-      // Guardar agenda_event_id na atividade CRM para sync futuro (update/delete)
       if (agendaEvent?.id) {
         await supabase.from('crm_activities')
           .update({ agenda_event_id: agendaEvent.id })
           .eq('id', activity.id);
         activity.agendaEventId = agendaEvent.id;
-
-        // Push para Google Calendar
-        pushEventToGCal(agendaEvent.id, 'create').catch(err => console.warn('[GCal Sync] Falha ao sincronizar atividade CRM:', err?.message || err));
+        pushEventToGCal(agendaEvent.id, 'create').catch(err => console.warn('[GCal Sync] Falha ao sincronizar evento:', err?.message || err));
       }
     } catch {
-      // Nao bloqueia a criacao da atividade se falhar a criacao do evento
+      // Nao bloqueia a criacao se o sync do Calendar falhar
     }
   }
 
@@ -237,6 +239,9 @@ export async function updateCrmActivity(id, updates) {
         agendaUpdates.type = ACTIVITY_TO_AGENDA_TYPE[updates.type] || 'task';
         agendaUpdates.color = ACTIVITY_TO_AGENDA_COLOR[updates.type] || '#3b82f6';
       }
+      if ('attendees' in updates) {
+        agendaUpdates.attendees = (updates.attendees || []).map(email => ({ email, name: '' }));
+      }
 
       if (Object.keys(agendaUpdates).length > 0) {
         await updateAgendaEvent(result.agendaEventId, agendaUpdates);
@@ -252,7 +257,7 @@ export async function updateCrmActivity(id, updates) {
 }
 
 export async function softDeleteCrmActivity(id) {
-  // Buscar agenda_event_id antes de apagar pra propagar exclusao na agenda
+  // Buscar id do evento da agenda antes de apagar pra propagar a exclusao
   const { data: current } = await supabase
     .from('crm_activities')
     .select('agenda_event_id')
@@ -300,5 +305,7 @@ export async function completeCrmActivity(id) {
     toast(`Erro ao concluir atividade: ${error.message}`, 'error');
     return null;
   }
-  return dbToCrmActivity(data);
+
+  const result = dbToCrmActivity(data);
+  return result;
 }

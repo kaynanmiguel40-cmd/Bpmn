@@ -31,13 +31,16 @@ import logoFyness from '../../assets/logo-fyness.png';
 import { useRealtimeOSOrders, useRealtimeTeamMembers } from '../../hooks/useRealtimeSubscription';
 import OSChatPanel from '../../components/chat/OSChatPanel';
 import AutoTextarea from '../../components/ui/AutoTextarea';
-import NotionEditor from '../../components/ui/NotionEditor';
+import NotionEditor, { stripHtml } from '../../components/ui/NotionEditor';
+import SaveAsTemplate from '../../components/templates/SaveAsTemplate';
+import TemplatePicker from '../../components/templates/TemplatePicker';
 import DeleteModal from './components/DeleteModal';
 import PauseAdder from './components/PauseAdder';
 import ProjectFormModal from './components/ProjectFormModal';
 import SectorFormModal from './components/SectorFormModal';
 import OSPreviewDocument from './components/OSPreviewDocument';
 import RichTextDisplay from './components/RichTextDisplay';
+import BriefingDrawer from './components/BriefingDrawer';
 import { formatHM, getOrderAssigneeNames, calcOSCost, calcOSHours, getMemberHourlyRate } from './components/helpers';
 import { sanitizeRichText, validateStatusTransition } from '../../lib/validation';
 import {
@@ -121,7 +124,7 @@ export default function FinancialPage() {
   const [viewingOrder, setViewingOrder] = useState(null);
   const openedFromExternalRef = useRef(false);
 
-  // Auto-abrir OS quando navegado da Rotina/Agenda/EAP com state.openOsId
+  // Auto-abrir OS quando navegado da Rotina/Agenda com state.openOsId
   useEffect(() => {
     const osId = location.state?.openOsId;
     if (!osId || loading) return;
@@ -262,32 +265,16 @@ export default function FinancialPage() {
     );
   }, [doneOrders, doneSearch]);
 
-  const isEapProject = selectedProject?.eapProjectId;
-
   const ordersByColumn = useMemo(() => {
     const grouped = {};
     PRIORITY_COLUMNS.forEach(col => {
       grouped[col.id] = activeOrders
         .filter(o => col.priorities.includes(o.priority))
-        .sort((a, b) => {
-          // Projeto EAP: ordenar por WBS (ordem de execucao da EAP)
-          if (isEapProject && a.wbsPath && b.wbsPath) {
-            const wbsA = a.wbsPath.split(' — ')[0] || '';
-            const wbsB = b.wbsPath.split(' — ')[0] || '';
-            const partsA = wbsA.split('.').map(Number);
-            const partsB = wbsB.split('.').map(Number);
-            for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
-              const na = partsA[i] ?? 0;
-              const nb = partsB[i] ?? 0;
-              if (na !== nb) return na - nb;
-            }
-          }
-          // Ordenar por data de conclusao prevista (estimatedEnd)
-          return sortByDeadline(a, b);
-        });
+        // Ordenar por data de conclusao prevista (estimatedEnd)
+        .sort((a, b) => sortByDeadline(a, b));
     });
     return grouped;
-  }, [activeOrders, isEapProject]);
+  }, [activeOrders]);
 
   // Contagem continua: urgente/alta -> media -> baixa
   const sequenceMap = useMemo(() => {
@@ -335,6 +322,37 @@ export default function FinancialPage() {
     setShowCreateForm(true);
   };
 
+  // Reconstroi o CSV de NOMES que o seletor "Atribuir a" usa, a partir do estado real
+  // da O.S. (a coluna assigned_to guarda UUID; o form trabalha com nomes).
+  const assignedNamesFromOrder = (order) => {
+    if (order?.participants?.length) return order.participants.map(p => p.name).filter(Boolean).join(', ');
+    if (order?.assignee) return order.assignee;
+    if (order?.assignedTo) {
+      const m = teamMembers.find(tm => tm.authUserId === order.assignedTo);
+      if (m) return m.name;
+    }
+    return '';
+  };
+
+  // Converte o CSV de nomes do form em mode/participants/assignee/assignedTo pra persistir.
+  // assigned_to e UUID de auth.users; em team participants[] e a fonte de verdade.
+  const deriveAssignment = (assignedToCsv) => {
+    const memberNames = (assignedToCsv || '').split(',').map(s => s.trim()).filter(Boolean);
+    const members = memberNames
+      .map(n => teamMembers.find(m => namesMatch(m.name, n)))
+      .filter(Boolean)
+      .map(m => ({ id: m.authUserId || null, name: m.name }));
+    let mode = 'pool';
+    if (members.length === 1) mode = 'solo';
+    else if (members.length >= 2) mode = 'team';
+    const assignment = mode === 'team'
+      ? { assignedTo: null, assignee: null }
+      : mode === 'solo'
+        ? { assignedTo: members[0].id, assignee: members[0].name }
+        : { assignedTo: null, assignee: null };
+    return { mode, participants: members, ...assignment };
+  };
+
   const openEdit = (order) => {
     setEditingOrder(order);
     setForm({
@@ -347,7 +365,7 @@ export default function FinancialPage() {
       clientId: order.clientId || '',
       location: order.location || '',
       notes: order.notes || '',
-      assignedTo: order.assignedTo || '',
+      assignedTo: assignedNamesFromOrder(order),
       supervisor: order.supervisor || '',
       estimatedStart: toDatetimeLocal(order.estimatedStart),
       estimatedEnd: toDatetimeLocal(order.estimatedEnd),
@@ -383,7 +401,7 @@ export default function FinancialPage() {
       clientId: order.clientId || '',
       location: order.location || '',
       notes: order.notes || '',
-      assignedTo: order.assignedTo || '',
+      assignedTo: assignedNamesFromOrder(order),
       supervisor: order.supervisor || '',
       estimatedStart: order.estimatedStart || '',
       estimatedEnd: order.estimatedEnd || '',
@@ -413,8 +431,9 @@ export default function FinancialPage() {
     try {
 
     if (editingOrder) {
-      // Edicao: salva direto
-      const updated = await updateOSOrder(editingOrder.id, currentForm);
+      // Edicao: converte o CSV de nomes do form em mode/participants/assignee/assignedTo.
+      const editPayload = { ...currentForm, ...deriveAssignment(currentForm.assignedTo) };
+      const updated = await updateOSOrder(editingOrder.id, editPayload);
       if (updated) {
         queryClient.setQueryData(queryKeys.osOrders, prev => (prev || []).map(o => o.id === editingOrder.id ? updated : o));
         if (viewingOrder?.id === editingOrder.id) {
@@ -465,33 +484,8 @@ export default function FinancialPage() {
     if (!pendingOrder) return;
     const { id: _previewId, ...orderData } = pendingOrder;
 
-    // Deriva participantes do form (campo "assignedTo" e CSV de nomes).
-    // O id em members[] e o UUID de auth.users (col team_members.auth_user_id),
-    // NAO o id local "member_<ts>" — colunas assigned_to/assignee_id sao UUID.
-    const memberNames = (orderData.assignedTo || '')
-      .split(',').map(s => s.trim()).filter(Boolean);
-    const members = memberNames
-      .map(n => teamMembers.find(m => namesMatch(m.name, n)))
-      .filter(Boolean)
-      .map(m => ({ id: m.authUserId || null, name: m.name }));
-
-    let mode = 'pool';
-    if (members.length === 1) mode = 'solo';
-    else if (members.length >= 2) mode = 'team';
-
-    const payload = {
-      ...orderData,
-      mode,
-      // participants[] e a fonte unica de verdade pra "quem trabalha aqui".
-      // A UI le participants quando mode==='team'; assignedTo fica null porque
-      // assigned_to e UUID (nao aceita CSV) e em team nao tem 1 dono unico.
-      participants: members,
-      ...(mode === 'team'
-        ? { assignedTo: null, assignee: null }
-        : mode === 'solo'
-          ? { assignedTo: members[0].id, assignee: members[0].name }
-          : { assignedTo: null, assignee: null }),
-    };
+    // Converte o CSV de nomes do form em mode/participants/assignee/assignedTo.
+    const payload = { ...orderData, ...deriveAssignment(orderData.assignedTo) };
 
     const newOrder = await createOSOrder(payload);
     if (newOrder) {
@@ -936,6 +930,7 @@ export default function FinancialPage() {
             teamMembers={allMembers}
             clients={clients}
             onSave={handleSave}
+            profileName={profile.name || ''}
             onClose={() => { setShowCreateForm(false); setEditingOrder(null); setEmergencyFormMode(false); }}
             onDelete={canDeleteOS && editingOrder ? () => { setShowDeleteModal(editingOrder.id); setShowCreateForm(false); } : null}
             isEmergency={emergencyFormMode}
@@ -1054,19 +1049,6 @@ export default function FinancialPage() {
         {/* Area scrollavel com todo o conteudo */}
         <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
 
-        {/* Botao "Ver na EAP" para projetos vinculados */}
-        {isEapProject && (
-          <div className="mb-3 flex items-center gap-2">
-            <button
-              onClick={() => navigate(`/eap/${selectedProject.eapProjectId}`)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-              Ver na EAP (Gantt)
-            </button>
-          </div>
-        )}
-
         {/* Secao Emergencial */}
         {emergencyOrders.length > 0 && (
           <div className="mb-4 rounded-xl border-2 border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-950/30 overflow-hidden animate-pulse-subtle">
@@ -1105,10 +1087,10 @@ export default function FinancialPage() {
             return (
               <div
                 key={column.id}
-                className={`flex flex-col rounded-xl border-2 overflow-hidden ${
+                className={`flex flex-col rounded-2xl border overflow-hidden transition-all duration-200 ${
                   isOver
-                    ? 'border-fyness-primary bg-fyness-primary/5 shadow-lg'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
+                    ? 'border-fyness-primary bg-fyness-primary/10 shadow-lg ring-1 ring-fyness-primary/30'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-900/40 shadow-sm'
                 }`}
                 onDragOver={(e) => { e.preventDefault(); setDragOverCol(column.id); }}
                 onDragEnter={(e) => { e.preventDefault(); setDragOverCol(column.id); }}
@@ -1484,6 +1466,7 @@ export default function FinancialPage() {
             teamMembers={allMembers}
             clients={clients}
             onSave={handleSave}
+            profileName={profile.name || ''}
             onClose={() => { setShowCreateForm(false); setEmergencyFormMode(false); }}
             onDelete={canDeleteOS && editingOrder ? () => { setShowDeleteModal(editingOrder.id); setShowCreateForm(false); } : null}
             isEmergency={emergencyFormMode}
@@ -1610,13 +1593,6 @@ export default function FinancialPage() {
             {sector.label}
           </span>
         )}
-        {project.eapProjectId && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 mb-2 ml-1">
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-            EAP
-          </span>
-        )}
-
         <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mb-2">
           <span className="font-medium">{total} O.S.</span>
           <span className="text-slate-300 dark:text-slate-600">|</span>
@@ -1837,6 +1813,13 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
       ? 'bg-blue-500'
       : 'bg-green-500';
 
+  // Listra de status na lateral do card — leitura instantanea de "em que pe esta"
+  const statusAccent = order.status === 'available'
+    ? 'border-l-slate-300 dark:border-l-slate-600'
+    : order.status === 'in_progress'
+      ? 'border-l-blue-500'
+      : 'border-l-emerald-500';
+
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1861,11 +1844,11 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
         onDragEnd={!isEmergency ? onDragEnd : undefined}
         onDragOver={!isEmergency ? handleDragOver : undefined}
         onClick={onClick}
-        className={`rounded-lg p-3 transition-shadow group ${
+        className={`rounded-xl p-3.5 transition-all duration-200 group ${
           isEmergency
-            ? `bg-white dark:bg-slate-800 border-l-4 border-red-500 border-t border-r border-b border-t-red-200 dark:border-t-red-800/50 border-r-red-200 dark:border-r-red-800/50 border-b-red-200 dark:border-b-red-800/50 cursor-pointer hover:shadow-md hover:shadow-red-100 dark:hover:shadow-red-900/20 w-72`
-            : `bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-grab active:cursor-grabbing ${
-              isDragging ? 'opacity-40 scale-95 shadow-none' : 'hover:shadow-md'
+            ? `bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/40 border-l-4 border-l-red-500 shadow-sm cursor-pointer hover:-translate-y-0.5 hover:shadow-lg w-72`
+            : `bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 border-l-4 ${statusAccent} shadow-sm cursor-grab active:cursor-grabbing ${
+              isDragging ? 'opacity-40 scale-95 shadow-none' : 'hover:-translate-y-0.5 hover:shadow-lg'
             }`
         }`}
       >
@@ -1899,7 +1882,7 @@ const OSCard = memo(function OSCard({ order, onClick, isDragging, dropPosition, 
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           )}
-          <h4 className={`text-sm font-semibold mb-0 ${isEmergency ? 'text-red-700 dark:text-red-300' : 'text-slate-800 dark:text-slate-100 group-hover:text-fyness-primary'} transition-colors`}>{order.title}</h4>
+          <h4 className={`text-[15px] font-bold leading-snug line-clamp-2 ${isEmergency ? 'text-red-700 dark:text-red-300' : 'text-slate-900 dark:text-white group-hover:text-fyness-primary'} transition-colors`}>{order.title}</h4>
         </div>
         {isEmergency && parentOrder && (
           <p className="text-[10px] text-red-400 dark:text-red-500 mb-1">
@@ -2055,6 +2038,27 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
     onUpdateOrder(order.id, { checklist: [...latestCl, newItem] });
   };
 
+  // Briefing por tarefa — painel lateral estilo Notion.
+  // Rascunho local; salva ao FECHAR (evita escrever na rede a cada tecla).
+  const [briefingItemId, setBriefingItemId] = useState(null);
+  const [briefingDraft, setBriefingDraft] = useState('');
+  const briefingItem = briefingItemId != null ? (checklistRef.current.find(i => i.id === briefingItemId) || null) : null;
+  const openBriefing = (item) => { setBriefingDraft(item.briefing || ''); setBriefingItemId(item.id); };
+  const closeBriefing = () => {
+    if (briefingItem && onUpdateOrder && briefingDraft !== (briefingItem.briefing || '')) {
+      const hasContent = !!stripHtml(briefingDraft);
+      const updated = checklistRef.current.map(i => {
+        if (i.id !== briefingItem.id) return i;
+        const next = { ...i, briefing: briefingDraft };
+        if (!hasContent) { next.briefingBy = null; next.briefingAt = null; }
+        else if (!i.briefingBy) { next.briefingBy = profileName || 'Voce'; next.briefingAt = new Date().toISOString(); }
+        return next;
+      });
+      onUpdateOrder(order.id, { checklist: updated });
+    }
+    setBriefingItemId(null);
+  };
+
   const teamMember = teamMembers.find(m => m.id === order.assignee || namesMatch(m.name, order.assignee));
   const member = teamMember || (order.assignee ? { id: order.assignee, name: order.assignee, color: '#3b82f6' } : null);
   const priority = PRIORITIES.find(p => p.id === order.priority) || PRIORITIES[1];
@@ -2072,6 +2076,19 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
 
   return (
     <div className="h-full flex flex-col print:block print:h-auto">
+      {briefingItem && (
+        <BriefingDrawer
+          key={briefingItem.id}
+          title={briefingItem.text}
+          editable={canEditOS}
+          content={canEditOS ? briefingDraft : briefingItem.briefing}
+          author={briefingItem.briefingBy}
+          authorAt={briefingItem.briefingAt}
+          onChange={setBriefingDraft}
+          onClose={closeBriefing}
+        />
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4 print:hidden">
         <button onClick={onBack} className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 transition-colors">
@@ -2172,6 +2189,28 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             </div>
           </div>
 
+          {/* Resumo no topo — titulo + status (o que importa primeiro) */}
+          <div className="px-8 py-5 border-b border-slate-200 dark:border-slate-700 print:px-8">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight print:text-slate-900">{order.title}</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                order.status === 'available' ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300' :
+                order.status === 'in_progress' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  order.status === 'available' ? 'bg-slate-400' :
+                  order.status === 'in_progress' ? 'bg-blue-500' : 'bg-green-500'
+                }`} />
+                {STATUS_LABELS[order.status]}
+              </span>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${priority.color}`}>
+                <span className={`w-2 h-2 rounded-full ${priority.dot}`} />
+                {priority.label}
+              </span>
+            </div>
+          </div>
+
           {/* Vinculo emergencial */}
           {isEmergency && parentOrder && (
             <div className="bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-800/50 px-6 py-3 flex items-center gap-2">
@@ -2208,90 +2247,6 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             </div>
           )}
 
-          {/* Origem EAP — mini Gantt de rastreabilidade */}
-          {order.wbsPath && (() => {
-            const parts = order.wbsPath.split(' — ');
-            const wbsNumber = parts[0] || '';
-            const namePath = parts[1] || parts[0] || '';
-            const pathNodes = namePath.split(' > ');
-            if (pathNodes.length === 0) return null;
-            // Projeto como raiz, depois atividades ate a tarefa
-            const nodes = projectName ? [projectName, ...pathNodes] : pathNodes;
-            const wbsParts = wbsNumber.split('.');
-            const total = nodes.length;
-            return (
-              <div className="border-b border-slate-200 dark:border-slate-700 px-6 py-4">
-                <div className="flex items-center gap-1.5 mb-3">
-                  <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Origem EAP</span>
-                </div>
-                <div className="space-y-0">
-                  {nodes.map((node, i) => {
-                    const isLast = i === total - 1;
-                    const isRoot = projectName && i === 0;
-                    const wbsIdx = projectName ? i - 1 : i;
-                    const nodeWbs = isRoot ? '' : wbsParts.slice(0, wbsIdx + 1).join('.');
-                    return (
-                      <div key={i} className="relative" style={{ paddingLeft: i * 24 }}>
-                        {/* Conector vertical + curva */}
-                        {i > 0 && (
-                          <div className="absolute" style={{ left: (i * 24) - 12, top: -2 }}>
-                            <div className="w-3 h-[18px] border-l-2 border-b-2 border-slate-300 dark:border-slate-600 rounded-bl-lg" />
-                          </div>
-                        )}
-                        {/* Barra Gantt */}
-                        <div
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium my-[2px] ${
-                            isLast
-                              ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-sm'
-                              : i === 0
-                                ? 'bg-gradient-to-r from-slate-500 to-slate-600 dark:from-slate-500 dark:to-slate-600 text-white'
-                                : 'bg-gradient-to-r from-slate-300 to-slate-400 dark:from-slate-600 dark:to-slate-700 text-white'
-                          }`}
-                        >
-                          {nodeWbs && (
-                            <span className="text-[9px] font-mono font-bold px-1 py-0.5 rounded bg-white/15">{nodeWbs}</span>
-                          )}
-                          <span>{node}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Info grid */}
-          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Status</label>
-              <div className="mt-1">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                  order.status === 'available' ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300' :
-                  order.status === 'in_progress' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                  'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                }`}>
-                  <span className={`w-2 h-2 rounded-full ${
-                    order.status === 'available' ? 'bg-slate-400' :
-                    order.status === 'in_progress' ? 'bg-blue-500' :
-                    'bg-green-500'
-                  }`} />
-                  {STATUS_LABELS[order.status]}
-                </span>
-              </div>
-            </div>
-            <div className="p-4">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prioridade</label>
-              <div className="mt-1">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${priority.color}`}>
-                  <span className={`w-2 h-2 rounded-full ${priority.dot}`} />
-                  {priority.label}
-                </span>
-              </div>
-            </div>
-          </div>
-
           {(order.estimatedStart || order.estimatedEnd) && (
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
@@ -2306,18 +2261,10 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
           )}
 
           {(order.status === 'blocked' && order.blockReason) && (
-          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
+          <div className="border-b border-slate-200 dark:border-slate-700">
+            <div className="p-4">
               <label className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">Motivo do Bloqueio</label>
               <p className="text-sm text-orange-600 dark:text-orange-400 mt-1 font-medium">{(BLOCK_REASONS.find(b => b.id === order.blockReason) || {}).label || order.blockReason}</p>
-            </div>
-            <div className="p-4">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Categoria</label>
-              <div className="mt-1">
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).color}`}>
-                  {(CATEGORIES.find(c => c.id === order.category) || CATEGORIES[0]).label}
-                </span>
-              </div>
             </div>
           </div>
           )}
@@ -2334,17 +2281,6 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             </div>
           </div>
           )}
-
-          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Cliente / Solicitante</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.client || '-'}</p>
-            </div>
-            <div className="p-4">
-              <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Local / Ambiente</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.location || '-'}</p>
-            </div>
-          </div>
 
           <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
             <div className="p-4 border-r border-slate-200 dark:border-slate-700">
@@ -2400,12 +2336,6 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             ) : (
               <p className="text-sm text-slate-400 dark:text-slate-500 ml-1 italic">Nenhum</p>
             )}
-          </div>
-
-          {/* Titulo */}
-          <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-            <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Titulo do Servico</label>
-            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">{order.title}</h3>
           </div>
 
           {/* Descricao */}
@@ -2763,6 +2693,17 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                           }}
                                         />
                                       </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); openBriefing(item); }}
+                                        title={item.briefing ? 'Ver/editar briefing' : 'Adicionar briefing'}
+                                        className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-colors ${item.briefing ? 'text-fyness-primary border-fyness-primary/30 bg-fyness-primary/10 hover:bg-fyness-primary/20' : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:border-fyness-primary hover:text-fyness-primary'}`}
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                        Briefing
+                                      </button>
                                       {item.done && realDuration(item) > 0 && (
                                         <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(realDuration(item))}</span>
                                       )}
@@ -3152,8 +3093,50 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
 
 // ==================== MODAL FORMULARIO O.S. ====================
 
-function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose, onDelete, teamMembers, isEmergency = false, emergencyNumber = 1, allOrders = [], clients = [], saving = false }) {
+function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose, onDelete, teamMembers, isEmergency = false, emergencyNumber = 1, allOrders = [], clients = [], saving = false, profileName = '' }) {
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+
+  // Briefing por tarefa JA NA CRIACAO — painel lateral estilo Notion.
+  // Rascunho local; grava no checklist do form ao fechar (vai junto ao salvar a O.S.).
+  const [briefingItemId, setBriefingItemId] = useState(null);
+  const [briefingDraft, setBriefingDraft] = useState('');
+  const briefingItem = briefingItemId != null ? ((form.checklist || []).find(i => i.id === briefingItemId) || null) : null;
+  const openBriefing = (item) => { setBriefingDraft(item.briefing || ''); setBriefingItemId(item.id); };
+  const closeBriefing = () => {
+    if (briefingItem && briefingDraft !== (briefingItem.briefing || '')) {
+      const hasContent = !!stripHtml(briefingDraft);
+      update('checklist', (form.checklist || []).map(i => {
+        if (i.id !== briefingItem.id) return i;
+        const next = { ...i, briefing: briefingDraft };
+        if (!hasContent) { next.briefingBy = null; next.briefingAt = null; }
+        else if (!i.briefingBy) { next.briefingBy = profileName || 'Voce'; next.briefingAt = new Date().toISOString(); }
+        return next;
+      }));
+    }
+    setBriefingItemId(null);
+  };
+
+  // Aplica um MODELO no form: titulo/descricao/prioridade/notas + checklist
+  // (tarefas e briefings prontos, com ids novos e estado de execucao zerado).
+  const applyTemplate = (tpl) => {
+    if (!tpl) return;
+    setForm(prev => ({
+      ...prev,
+      title: tpl.title || prev.title || '',
+      description: tpl.description || prev.description || '',
+      priority: tpl.priority || prev.priority || 'medium',
+      notes: tpl.notes || prev.notes || '',
+      checklist: (tpl.checklist || []).map((it, i) => ({
+        id: Date.now() + i + Math.random(),
+        text: it.text || '',
+        group: it.group || null,
+        briefing: it.briefing || '',
+        done: false, startedAt: null, completedAt: null, durationMin: null, pausedAt: null, accumulatedMin: 0,
+      })),
+    }));
+    toast.success(`Modelo "${tpl.name}" aplicado`);
+  };
+
   const inProgressOrders = allOrders.filter(o => o.type !== 'emergency' && (o.status === 'in_progress' || o.status === 'available'));
   const [linkUrl, setLinkUrl] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
@@ -3273,8 +3256,8 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label="Formulario de Ordem de Servico" onClick={safeClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label="Formulario de Ordem de Servico" onClick={safeClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-white/60 dark:border-white/10 shadow-glass-lg max-w-lg w-full mx-4 overflow-hidden max-h-[90vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
         <div className={`p-6 border-b ${isEmergency ? 'border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-950/20' : 'border-slate-200 dark:border-slate-700'} flex items-center justify-between shrink-0`}>
           <h3 className={`text-lg font-semibold ${isEmergency ? 'text-red-700 dark:text-red-300' : 'text-slate-800 dark:text-slate-100'}`}>
             {isEmergency
@@ -3513,7 +3496,10 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
 
           {/* Bloco de Tarefas - Visual Builder */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">Bloco de Tarefas</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Bloco de Tarefas</label>
+              {!editing && <TemplatePicker onSelect={applyTemplate} />}
+            </div>
 
             {/* Builder visual */}
             {(() => {
@@ -3671,6 +3657,17 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                                 onFocus={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                                 className={`text-sm flex-1 bg-transparent border-none outline-none focus:ring-0 p-0 hover:bg-slate-100 dark:hover:bg-slate-700/40 focus:bg-slate-100 dark:focus:bg-slate-700/40 rounded px-1 -mx-1 transition-colors resize-none overflow-hidden ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200'}`}
                               />
+                              <button
+                                type="button"
+                                onClick={() => openBriefing(item)}
+                                title={item.briefing ? 'Ver/editar briefing' : 'Adicionar briefing'}
+                                className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-colors ${item.briefing ? 'text-fyness-primary border-fyness-primary/30 bg-fyness-primary/10 hover:bg-fyness-primary/20' : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:border-fyness-primary hover:text-fyness-primary'}`}
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Briefing
+                              </button>
                               <button type="button" onClick={() => removeTask(item.id)} className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 md:opacity-0 md:group-hover:opacity-100 transition-all">
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                               </button>
@@ -3978,9 +3975,12 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
         </div>
 
         <div className="p-6 bg-slate-50 dark:bg-slate-900 flex items-center justify-between shrink-0">
-          <div>
+          <div className="flex items-center gap-1">
             {onDelete && (
               <button onClick={onDelete} className="px-3 py-2 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-sm font-medium">Excluir</button>
+            )}
+            {(form.title?.trim() || (form.checklist || []).length > 0) && (
+              <SaveAsTemplate order={form} />
             )}
           </div>
           <div className="flex gap-3">
@@ -4012,6 +4012,19 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
             </div>
           </div>
         </div>
+      )}
+
+      {briefingItem && (
+        <BriefingDrawer
+          key={briefingItem.id}
+          title={briefingItem.text}
+          editable
+          content={briefingDraft}
+          author={briefingItem.briefingBy}
+          authorAt={briefingItem.briefingAt}
+          onChange={setBriefingDraft}
+          onClose={closeBriefing}
+        />
       )}
     </div>
   );

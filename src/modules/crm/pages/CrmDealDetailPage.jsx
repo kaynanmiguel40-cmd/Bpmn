@@ -65,12 +65,12 @@ const STATUS_MAP = {
 };
 
 const ACTIVITY_ICONS = {
-  call: Phone, email: Mail, meeting: Video,
+  call: Phone, email: Mail, message: MessageCircle, meeting: Video,
   task: CheckSquare, follow_up: Coffee, visit: MapPin,
 };
 
 const ACTIVITY_LABELS = {
-  call: 'Ligacao', email: 'Email', meeting: 'Reuniao',
+  call: 'Ligacao', email: 'Email', message: 'Mensagem', meeting: 'Reuniao',
   task: 'Tarefa', follow_up: 'Follow-up', visit: 'Visita',
 };
 

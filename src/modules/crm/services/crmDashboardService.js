@@ -34,6 +34,8 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
     const endOfWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    // Janela passada de 7 dias — pro RITMO de ligações do time (atividade ja feita).
+    const last7dStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // ===== Escopo de VENDAS =====================================================
     // O dashboard e de vendas. Pipelines de AQUISICAO DE PARCEIROS ("Parceiros")
@@ -85,6 +87,8 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       hotDealsRes,
       meetingsTodayRes,
       meetingsWeekRes,
+      callsTodayRes,
+      callsWeekRes,
     ] = await Promise.all([
       // Total contatos ativos
       supabase.from('crm_contacts').select('id', { count: 'exact', head: true }).is('deleted_at', null),
@@ -95,8 +99,8 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       // Deals abertos (valor total + count + pipeline_id pra excluir nurturing) — pipeline atual, nao filtra periodo
       supabase.from('crm_deals').select('id, value, pipeline_id').eq('status', 'open').is('deleted_at', null),
 
-      // Deals ganhos no periodo selecionado (so vendas)
-      supabase.from('crm_deals').select('id, value').eq('status', 'won').in('pipeline_id', scopedIds).gte('closed_at', periodStart).lte('closed_at', periodEnd).is('deleted_at', null),
+      // Deals ganhos no periodo selecionado (so vendas) — value (contrato), mrr (mensalidade) e datas pra ticket/ciclo
+      supabase.from('crm_deals').select('id, value, mrr, created_at, closed_at').eq('status', 'won').in('pipeline_id', scopedIds).gte('closed_at', periodStart).lte('closed_at', periodEnd).is('deleted_at', null),
 
       // Deals fechados (won + lost) no periodo — para taxa de conversao (so vendas)
       supabase.from('crm_deals').select('id, status').in('status', ['won', 'lost']).in('pipeline_id', scopedIds).gte('closed_at', periodStart).lte('closed_at', periodEnd).is('deleted_at', null),
@@ -203,6 +207,18 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
         .gte('start_date', startOfToday)
         .lte('start_date', endOfWeek)
         .is('deleted_at', null),
+
+      // Ritmo do time: ligacoes feitas hoje (todas, nao so do usuario logado)
+      supabase.from('crm_calls')
+        .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .gte('started_at', startOfToday),
+
+      // Ritmo do time: ligacoes feitas nos ultimos 7 dias
+      supabase.from('crm_calls')
+        .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .gte('started_at', last7dStart),
     ]);
 
     // Calcular KPIs
@@ -221,6 +237,17 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
     const activeDealsValue = activeOpenDeals.reduce((sum, d) => sum + (d.value || 0), 0);
     const pipelineValue = openDeals.reduce((sum, d) => sum + (d.value || 0), 0); // mantido pra retrocompat
     const periodRevenue = wonInPeriod.reduce((sum, d) => sum + (d.value || 0), 0);
+    // MRR novo = soma da mensalidade (mrr) dos negocios ganhos no periodo. Metrica-chave SaaS.
+    const periodNewMrr = wonInPeriod.reduce((sum, d) => sum + (d.mrr || 0), 0);
+    const periodWonDeals = wonInPeriod.length;
+    const avgTicket = periodWonDeals > 0 ? periodRevenue / periodWonDeals : 0;
+    // Ciclo medio de venda: dias entre criacao e fechamento dos deals ganhos no periodo.
+    const cycleDaysList = wonInPeriod
+      .map(d => (d.created_at && d.closed_at) ? (new Date(d.closed_at) - new Date(d.created_at)) / 86400000 : null)
+      .filter(v => v != null && v >= 0);
+    const avgCycleDays = cycleDaysList.length
+      ? Math.round(cycleDaysList.reduce((a, b) => a + b, 0) / cycleDaysList.length)
+      : 0;
     const hotDealsValue = hotDeals.reduce((sum, d) => sum + (d.value || 0), 0);
     const nurturingValue = nurturingDeals.reduce((sum, d) => sum + (d.value || 0), 0);
 
@@ -435,6 +462,10 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       activeDealsValue,
       pipelineValue, // legado (inclui nurturing)
       periodRevenue,
+      periodNewMrr,
+      periodWonDeals,
+      avgTicket,
+      avgCycleDays,
       periodLostLeads: lostCount,
       totalLostLeads: totalLostRes.count || 0,
       hotDeals: hotDeals.length,
@@ -443,6 +474,8 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       nurturingValue,
       meetingsToday: meetingsTodayRes.count || 0,
       meetingsWeek: meetingsWeekRes.count || 0,
+      callsToday: callsTodayRes.count || 0,
+      callsWeek: callsWeekRes.count || 0,
       conversionRate,
       trends,
       pendingActivities: pendingActivitiesRes.count || 0,
@@ -465,6 +498,10 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       activeDealsValue: 0,
       pipelineValue: 0,
       periodRevenue: 0,
+      periodNewMrr: 0,
+      periodWonDeals: 0,
+      avgTicket: 0,
+      avgCycleDays: 0,
       periodLostLeads: 0,
       totalLostLeads: 0,
       hotDeals: 0,
@@ -473,6 +510,8 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       nurturingValue: 0,
       meetingsToday: 0,
       meetingsWeek: 0,
+      callsToday: 0,
+      callsWeek: 0,
       conversionRate: 0,
       trends: { revenue: null, conversion: null, lostLeads: null },
       pendingActivities: 0,
@@ -628,6 +667,179 @@ export async function getBonificacaoProgress(startDate, endDate) {
   } catch (err) {
     console.error('[CRM Bonificacao] Erro:', err);
     return [];
+  }
+}
+
+// ============================================================
+// FUNIL DE CONVERSÃO — atividade → venda
+// ============================================================
+//
+// Diferente do funil por-estágio do getCrmDashboardKPIs (retrato dos deals
+// PARADOS em cada etapa hoje), este é o funil de ESFORÇO → RESULTADO que o
+// dono usa pra achar o gargalo:
+//
+//   Ligações → Atendidas → Reuniões → Leads → Qualificados → Clientes
+//
+// Topo (ligações/atendidas/reuniões) = VOLUME de atividade no período.
+// Base (leads/qualificados/clientes) = jornada dos leads CRIADOS no período
+//   (cohort), pra responder "desses leads, quantos qualificaram / fecharam".
+// Há um degrau natural entre os dois (uma reunião pode virar lead em outro
+// mês), mas é o jeito que o dono pensa: quanto entrou de esforço × quanto saiu.
+
+// Outcomes de ligação que contam como "conversou de fato" (atendeu).
+// Espelha ANSWERED_OUTCOMES do crmCallsService.
+const FUNNEL_ANSWERED_OUTCOMES = new Set([
+  'answered', 'callback_scheduled', 'meeting_scheduled', 'not_interested', 'deal_advanced',
+]);
+
+// Primeiro estágio que marca um lead como "qualificado" (engajou de verdade).
+// Daí pra frente tudo conta como qualificado. Robusto aos vocabulários das
+// pipelines (Outbound Manual, IA Inbound/Outbound, Vendedor, Parceiros).
+const QUALIFIED_STAGE_RE = /respond|qualifica|reuni|demo|engaj|conect|icp|proposta|negocia|trial|topou|cliente|ativo/i;
+
+/**
+ * Monta o funil a partir de dados já carregados. PURA e testável.
+ *
+ * @param {object}   p
+ * @param {Array}    p.calls            - linhas crm_calls do período ({ outcome }).
+ * @param {number}   p.meetingsCount    - nº de reuniões (crm_activities type=meeting) no período.
+ * @param {Array}    p.leadDeals        - deals criados no período ({ status, value, stage_id, pipeline_id }).
+ * @param {object}   p.stagePosById     - { [stage_id]: position }.
+ * @param {object}   p.qualPosByPipeline- { [pipeline_id]: position a partir da qual conta qualificado }.
+ */
+export function buildSalesFunnel({
+  calls = [],
+  meetingsCount = 0,
+  leadDeals = [],
+  stagePosById = {},
+  qualPosByPipeline = {},
+} = {}) {
+  const callsTotal = calls.length;
+  const answered = calls.filter(c => FUNNEL_ANSWERED_OUTCOMES.has(c.outcome)).length;
+
+  const leads = leadDeals.length;
+  let qualified = 0;
+  let clients = 0;
+  let revenue = 0;
+  for (const d of leadDeals) {
+    const isWon = d.status === 'won';
+    const pos = stagePosById[d.stage_id];
+    const qualPos = qualPosByPipeline[d.pipeline_id];
+    const reachedQual = typeof pos === 'number' && typeof qualPos === 'number' && pos >= qualPos;
+    if (isWon || reachedQual) qualified++;
+    if (isWon) { clients++; revenue += d.value || 0; }
+  }
+
+  const rawSteps = [
+    { key: 'calls',     label: 'Ligações',     count: callsTotal },
+    { key: 'answered',  label: 'Atendidas',    count: answered },
+    { key: 'meetings',  label: 'Reuniões',     count: meetingsCount },
+    { key: 'leads',     label: 'Leads',        count: leads },
+    { key: 'qualified', label: 'Qualificados', count: qualified },
+    { key: 'clients',   label: 'Clientes',     count: clients, value: revenue },
+  ];
+
+  const top = rawSteps[0].count || 0;
+  const steps = rawSteps.map((s, i) => {
+    const prevCount = i > 0 ? rawSteps[i - 1].count : null;
+    const fromPrev = i === 0 ? null : (prevCount > 0 ? Math.round((s.count / prevCount) * 100) : null);
+    const fromTop = top > 0 ? Math.round((s.count / top) * 100) : 0;
+    return { ...s, fromPrev, fromTop };
+  });
+
+  // Razão "a cada quantos X sai 1 Y" (1 casa decimal). null se denominador 0.
+  const ratio = (a, b) => (b > 0 ? Math.round((a / b) * 10) / 10 : null);
+  const ratios = {
+    callsPerMeeting: ratio(callsTotal, meetingsCount), // "X ligações por reunião"
+    answerRate: callsTotal > 0 ? Math.round((answered / callsTotal) * 100) : 0,
+    meetingsPerClient: ratio(meetingsCount, clients),
+    winRate: leads > 0 ? Math.round((clients / leads) * 100) : 0,
+  };
+
+  return { steps, ratios, revenue, callsTotal, answered, meetings: meetingsCount, leads, qualified, clients };
+}
+
+/**
+ * Carrega e monta o funil de conversão do período/escopo.
+ * @param {{ start?: string, end?: string }} [range] - Período ISO. Default = mês atual.
+ * @param {'sales'|'partners'|'all'} [scope]
+ */
+export async function getSalesFunnel(range = {}, scope = 'sales') {
+  try {
+    const now = new Date();
+    const periodStart = range.start || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const periodEnd = range.end || now.toISOString();
+
+    // Escopo de pipelines (mesma lógica do getCrmDashboardKPIs).
+    const { data: allPipelines = [] } = await supabase.from('crm_pipelines').select('id, name, is_default');
+    const isNurturing  = p => /nurturing|nutri/i.test(p.name || '');
+    const isPartnerAcq = p => /^\s*parceiros\s*$/i.test(p.name || ''); // exatamente "Parceiros"
+    const partnerIds       = (allPipelines || []).filter(isPartnerAcq).map(p => p.id);
+    const salesPipelineIds = (allPipelines || []).filter(p => !isNurturing(p) && !isPartnerAcq(p)).map(p => p.id);
+
+    let targetIds;
+    if (scope === 'all') targetIds = (allPipelines || []).map(p => p.id);
+    else if (scope === 'partners') targetIds = partnerIds;
+    else targetIds = salesPipelineIds;
+    const scopedIds = targetIds.length ? targetIds : ['00000000-0000-0000-0000-000000000000'];
+
+    const [stagesRes, callsRes, meetingsRes, leadDealsRes] = await Promise.all([
+      // Estágios das pipelines do escopo (pra detectar a posição de "qualificado")
+      supabase.from('crm_pipeline_stages')
+        .select('id, pipeline_id, name, position, is_win_stage')
+        .in('pipeline_id', scopedIds),
+
+      // Ligações do período (só precisamos do outcome)
+      supabase.from('crm_calls')
+        .select('outcome')
+        .is('deleted_at', null)
+        .gte('started_at', periodStart)
+        .lte('started_at', periodEnd),
+
+      // Reuniões agendadas no período (atividades type=meeting)
+      supabase.from('crm_activities')
+        .select('id', { count: 'exact', head: true })
+        .eq('type', 'meeting')
+        .is('deleted_at', null)
+        .gte('start_date', periodStart)
+        .lte('start_date', periodEnd),
+
+      // Leads = deals criados no período (escopo de venda)
+      supabase.from('crm_deals')
+        .select('id, status, value, stage_id, pipeline_id')
+        .in('pipeline_id', scopedIds)
+        .is('deleted_at', null)
+        .gte('created_at', periodStart)
+        .lte('created_at', periodEnd),
+    ]);
+
+    const stages = stagesRes.data || [];
+    const calls = callsRes.data || [];
+    const meetingsCount = meetingsRes.count || 0;
+    const leadDeals = leadDealsRes.data || [];
+
+    // Mapa stage_id -> position + posição de qualificação por pipeline.
+    const stagePosById = {};
+    const stagesByPipeline = {};
+    for (const s of stages) {
+      stagePosById[s.id] = s.position ?? 0;
+      (stagesByPipeline[s.pipeline_id] = stagesByPipeline[s.pipeline_id] || []).push(s);
+    }
+    const qualPosByPipeline = {};
+    for (const [pid, list] of Object.entries(stagesByPipeline)) {
+      const ordered = list.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+      const match = ordered.find(s => QUALIFIED_STAGE_RE.test(s.name || ''));
+      // Fallback: meio da pipeline se nenhum nome casar.
+      qualPosByPipeline[pid] = match
+        ? (match.position ?? 0)
+        : (ordered[Math.floor(ordered.length / 2)]?.position ?? 0);
+    }
+
+    return buildSalesFunnel({ calls, meetingsCount, leadDeals, stagePosById, qualPosByPipeline });
+  } catch (err) {
+    console.error('[CRM Funil] Erro ao calcular funil:', err);
+    toast('Erro ao carregar funil de conversão', 'error');
+    return buildSalesFunnel({});
   }
 }
 

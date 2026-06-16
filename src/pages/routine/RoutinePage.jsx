@@ -554,10 +554,10 @@ export function RoutinePage() {
             return (
               <div
                 key={column.id}
-                className={`flex flex-col min-h-0 rounded-xl overflow-hidden border-2 transition-all duration-200 ${
+                className={`flex flex-col min-h-0 rounded-2xl overflow-hidden border-2 transition-all duration-200 ${
                   isColOver
-                    ? 'border-fyness-primary bg-fyness-primary/5 shadow-lg'
-                    : 'border-transparent'
+                    ? 'border-fyness-primary bg-fyness-primary/5 shadow-glass-lg'
+                    : 'border-transparent shadow-glass'
                 }`}
                 onDragOver={(e) => { e.preventDefault(); setDragOverCol(column.id); }}
                 onDragEnter={(e) => { e.preventDefault(); setDragOverCol(column.id); }}
@@ -587,7 +587,7 @@ export function RoutinePage() {
                 </div>
 
                 {/* Cards */}
-                <div className={`flex-1 bg-slate-50 dark:bg-slate-900 p-3 space-y-0 overflow-y-auto border border-t-0 border-slate-200 dark:border-slate-700 min-h-[100px] ${isColOver ? 'bg-fyness-primary/5' : ''}`}>
+                <div className={`flex-1 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md p-3 space-y-0 overflow-y-auto border border-t-0 border-slate-200/60 dark:border-white/10 min-h-[100px] ${isColOver ? 'bg-fyness-primary/5' : ''}`}>
                   {items.length === 0 && (
                     <div className={`flex items-center justify-center h-32 text-sm ${isColOver ? 'text-fyness-primary font-medium' : 'text-slate-400 dark:text-slate-500 italic'}`}>
                       {isColOver ? 'Soltar aqui' : column.emptyText}
@@ -668,7 +668,7 @@ export function RoutinePage() {
                                 onClick={() => {
                                   if (!draggingId) navigate('/financial', { state: { openOsId: order.id } });
                                 }}
-                                className={`bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 transition-all group cursor-pointer ${
+                                className={`bg-white/90 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl border border-slate-200/80 dark:border-slate-700/70 shadow-glass hover:shadow-glass-lg p-3 transition-all duration-200 group cursor-pointer ${
                                   isDragging ? 'opacity-40 scale-95 shadow-none' : 'hover:shadow-md hover:border-fyness-primary/30'
                                 }`}
                               >
@@ -765,7 +765,7 @@ export function RoutinePage() {
                           onClick={() => {
                             if (!draggingId) navigate('/financial', { state: { openOsId: order.id } });
                           }}
-                          className={`bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 transition-all group cursor-pointer ${
+                          className={`bg-white/90 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl border border-slate-200/80 dark:border-slate-700/70 shadow-glass hover:shadow-glass-lg p-3 transition-all duration-200 group cursor-pointer ${
                             isDragging ? 'opacity-40 scale-95 shadow-none' : 'hover:shadow-md hover:border-fyness-primary/30'
                           }`}
                         >

@@ -12,11 +12,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  AreaChart, Area, BarChart, Bar, Cell, ComposedChart, Line, Legend,
-} from 'recharts';
-import {
-  DollarSign,
   TrendingUp,
   TrendingDown,
   Target,
@@ -27,17 +22,14 @@ import {
   Zap,
   Globe,
   User,
-  Users,
-  Flame,
-  Sprout,
-  XCircle,
-  CalendarCheck,
-  BarChart3,
+  DollarSign,
+  Phone,
 } from 'lucide-react';
 import { CrmKpiCard, CrmAvatar, CrmBadge, CrmPanel } from '../components/ui';
-import { useCrmDashboardKPIs, useCrmGoals, useGoalsProgress, useBonificacaoProgress } from '../hooks/useCrmQueries';
-import { BonificacaoSection } from '../components/BonificacaoSection';
+import { useCrmDashboardKPIs, useCrmGoals, useGoalsProgress } from '../hooks/useCrmQueries';
 import { useProfile } from '../../../hooks/useProfile';
+import SalesFunnel from '../../../components/dashboard/SalesFunnel';
+import { getCrmWorkspaceSettings, saveCrmWorkspaceSettings } from '../lib/workspaceSettings';
 
 // ==================== HELPERS ====================
 
@@ -49,15 +41,6 @@ const formatCurrencyFull = (val) =>
 
 const formatNumber = (val) =>
   new Intl.NumberFormat('pt-BR').format(val || 0);
-
-const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-function getMonthLabel(monthKey) {
-  if (!monthKey || monthKey === 'sem_data') return '?';
-  const parts = monthKey.split('-');
-  const idx = parseInt(parts[1], 10) - 1;
-  return monthNames[idx] || parts[1];
-}
 
 function getDaysRemaining(dateStr) {
   if (!dateStr) return 999;
@@ -84,9 +67,6 @@ const attentionMeta = {
     bg: 'bg-slate-500/10',
   },
 };
-
-// Stage bar colors
-const stageColors = ['#818cf8', '#a78bfa', '#c084fc', '#e879f9', '#f472b6', '#fb923c', '#34d399', '#38bdf8'];
 
 // ==================== SKELETON ====================
 
@@ -124,57 +104,6 @@ function DashboardSkeleton() {
             <div className="h-72 bg-slate-100/70 dark:bg-slate-800/70 rounded-xl" />
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-// ==================== CHART TOOLTIPS ====================
-
-const REVENUE_SERIES_META = {
-  realizado: { label: 'Realizado', color: '#10b981' },
-  previsto:  { label: 'Previsto',  color: '#f59e0b' },
-  projetado: { label: 'Projetado', color: '#6366f1' },
-};
-
-function RevenueTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl border border-white/60 dark:border-white/10 rounded-xl shadow-glass-lg px-3 py-2 min-w-[180px]">
-      <p className="text-xs font-medium text-slate-700 dark:text-slate-200 mb-1">{label}</p>
-      {payload.map(p => {
-        const meta = REVENUE_SERIES_META[p.dataKey] || { label: p.dataKey, color: p.color };
-        return (
-          <div key={p.dataKey} className="flex items-center justify-between gap-3 text-xs py-0.5">
-            <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta.color }} />
-              {meta.label}
-            </span>
-            <span className="font-semibold text-slate-800 dark:text-slate-100 tnum">{formatCurrencyFull(p.value)}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function StageTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null;
-  const data = payload[0].payload;
-  return (
-    <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl border border-white/60 dark:border-white/10 rounded-xl shadow-glass-lg px-3 py-2 min-w-[200px]">
-      <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{data.stageName}</p>
-      <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-0.5 tnum">{data.conversionFromTop}%</p>
-      <p className="text-[11px] text-slate-500 dark:text-slate-400">do topo do funil</p>
-      <div className="mt-1 pt-1 border-t border-slate-100 dark:border-slate-700">
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          {data.count} negocio{data.count !== 1 ? 's' : ''} · {formatCurrency(data.value)}
-        </p>
-        {typeof data.conversion === 'number' && (
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-            {data.conversion}% vs etapa anterior
-          </p>
-        )}
       </div>
     </div>
   );
@@ -246,47 +175,55 @@ function getGoalHealth(goal, currentProgress) {
   return { label: 'Meta Leve', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-500/10', barColor: 'bg-blue-500', icon: Zap };
 }
 
+// Stat compacto pra usar DENTRO dos paineis (sem glass/sombra propria — nada de
+// card flutuante; é um numero ancorado no painel).
+const STAT_TONE = {
+  slate:   'text-slate-800 dark:text-slate-100',
+  emerald: 'text-emerald-600 dark:text-emerald-400',
+  blue:    'text-blue-600 dark:text-blue-400',
+  sky:     'text-sky-600 dark:text-sky-400',
+  amber:   'text-amber-600 dark:text-amber-400',
+  rose:    'text-rose-600 dark:text-rose-400',
+  violet:  'text-violet-600 dark:text-violet-400',
+  orange:  'text-orange-600 dark:text-orange-400',
+};
+
+function MiniStat({ label, value, sub, tone = 'slate' }) {
+  return (
+    <div className="min-w-0">
+      <div className={`text-xl sm:text-2xl font-bold tnum leading-none ${STAT_TONE[tone] || STAT_TONE.slate}`}>{value}</div>
+      <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-1 truncate">{label}</div>
+      {sub && <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{sub}</div>}
+    </div>
+  );
+}
+
 // ==================== MAIN COMPONENT ====================
 
 export function CrmDashboardPage() {
   const [period, setPeriod] = useState('month');
   const [scope, setScope] = useState('sales'); // 'sales' | 'partners' | 'all'
+  const [mrrGoal, setMrrGoal] = useState(() => getCrmWorkspaceSettings().mrrGoalMonthly || 0);
+  const [editingMrrGoal, setEditingMrrGoal] = useState(false);
+  const [mrrGoalDraft, setMrrGoalDraft] = useState('');
   const range = useMemo(() => getPeriodRange(period), [period]);
   const { data: kpis, isLoading } = useCrmDashboardKPIs(range, scope);
   const { profile } = useProfile();
-  const periodLabel = getPeriodLabel(period);
+
+  // Meta de MRR novo (alvo mensal, guardado nas configs do CRM).
+  const mrrPct = mrrGoal > 0 ? Math.min(100, Math.round(((kpis?.periodNewMrr || 0) / mrrGoal) * 100)) : 0;
+  const openMrrGoalEditor = () => { setMrrGoalDraft(mrrGoal ? String(mrrGoal) : ''); setEditingMrrGoal(true); };
+  const saveMrrGoal = () => {
+    const n = Math.max(0, parseFloat(mrrGoalDraft) || 0);
+    saveCrmWorkspaceSettings({ mrrGoalMonthly: n });
+    setMrrGoal(n);
+    setEditingMrrGoal(false);
+  };
 
   // Metas ativas
   const { data: goalsData } = useCrmGoals({ status: 'active' });
   const activeGoals = useMemo(() => goalsData?.data || [], [goalsData]);
   const { data: progressMap = {} } = useGoalsProgress(activeGoals);
-
-  // Bonificacao Ouro/Prata/Bronze do periodo
-  const { data: bonificacao = [], isLoading: bonificacaoLoading } = useBonificacaoProgress(range.start, range.end);
-
-  // Dados formatados para o ComposedChart de receita (3 series)
-  const revenueChartData = useMemo(() => {
-    return (kpis?.revenueByMonth || []).map(m => ({
-      month: getMonthLabel(m.month),
-      realizado: m.realizado ?? m.value ?? 0,
-      previsto:  m.previsto ?? 0,
-      projetado: m.projetado ?? 0,
-    }));
-  }, [kpis?.revenueByMonth]);
-
-  const hasGoalsForChart = useMemo(
-    () => revenueChartData.some(m => m.projetado > 0),
-    [revenueChartData],
-  );
-
-  // Dados formatados para o FunnelChart (pipeline default, stages em ordem
-  // de posicao). Ja vem com conversion e conversionFromTop pre-calculados.
-  const funnelChartData = useMemo(() => {
-    return (kpis?.funnel || []).map((s, i) => ({
-      ...s,
-      fill: stageColors[i % stageColors.length],
-    }));
-  }, [kpis?.funnel]);
 
   // Data de hoje
   const todayStr = new Date().toLocaleDateString('pt-BR', {
@@ -340,109 +277,113 @@ export function CrmDashboardPage() {
         </div>
       </div>
 
-      {/* KPI Cards — operacional (linha 1) */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <CrmKpiCard
-          title="Total Leads"
-          rawValue={kpis?.totalLeads || 0}
-          format={formatNumber}
-          subtitle={`${formatNumber(kpis?.activeOpenDeals)} em negociacao`}
-          icon={Users}
-          color="blue"
-        />
-        <CrmKpiCard
-          title="Deals Abertos"
-          rawValue={kpis?.activeOpenDeals || 0}
-          format={formatNumber}
-          subtitle={`${formatNumber(kpis?.totalLostLeads)} perdidos no total`}
-          icon={Target}
-          color="emerald"
-        />
-        <CrmKpiCard
-          title="Negociacoes Quentes"
-          rawValue={kpis?.hotDeals || 0}
-          format={formatNumber}
-          subtitle={`${formatCurrency(kpis?.hotDealsValue)} fechando em 30d`}
-          icon={Flame}
-          color="orange"
-        />
-        <CrmKpiCard
-          title="Leads em Nutricao"
-          rawValue={kpis?.nurturingLeads || 0}
-          format={formatNumber}
-          subtitle={`${formatCurrency(kpis?.nurturingValue)} em pipeline Nurturing`}
-          icon={Sprout}
-          color="violet"
-        />
-      </div>
-
-      {/* KPI Cards — financeiro (linha 2) */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <CrmKpiCard
-          title="Valor Negociacoes Ativas"
-          rawValue={kpis?.activeDealsValue || 0}
-          format={formatCurrency}
-          subtitle="open, exceto Nurturing"
-          icon={DollarSign}
-          color="emerald"
-        />
-        <CrmKpiCard
-          title="Receita"
-          rawValue={kpis?.periodRevenue || 0}
-          format={formatCurrency}
-          subtitle={`vs ${periodLabel.toLowerCase()} anterior`}
-          trend={kpis?.trends?.revenue}
-          icon={TrendingUp}
-          color="green"
-        />
-        <CrmKpiCard
-          title="Taxa de Conversao"
-          rawValue={kpis?.conversionRate || 0}
-          format={(n) => `${Math.round(n)}%`}
-          subtitle={`vs ${periodLabel.toLowerCase()} anterior`}
-          trend={kpis?.trends?.conversion}
-          icon={Target}
-          color="amber"
-        />
-        <CrmKpiCard
-          title="Leads Perdidos"
-          rawValue={kpis?.periodLostLeads || 0}
-          format={formatNumber}
-          subtitle={`${periodLabel.toLowerCase()}`}
-          trend={kpis?.trends?.lostLeads}
-          icon={XCircle}
-          color="rose"
-        />
-      </div>
-
-      {/* Reunioes Marcadas — destaque */}
-      <Link
-        to="/crm/activities"
-        className="group crm-glass crm-glass-hover rounded-2xl p-5 flex items-center gap-4"
+      {/* Resultado do Mês — MRR novo (métrica SaaS) */}
+      <CrmPanel
+        title="Resultado do Mês"
+        icon={DollarSign}
+        accent="emerald"
+        action={
+          <button
+            type="button"
+            onClick={openMrrGoalEditor}
+            className="text-[11px] text-slate-400 dark:text-slate-500 hover:text-fyness-primary transition-colors"
+          >
+            {mrrGoal > 0 ? `Meta: ${formatCurrency(mrrGoal)}/mês ✎` : 'Definir meta de MRR ✎'}
+          </button>
+        }
       >
-        <div className="w-12 h-12 rounded-xl bg-sky-500/10 ring-1 ring-sky-500/20 flex items-center justify-center shrink-0">
-          <CalendarCheck size={22} className="text-sky-600 dark:text-sky-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-0.5">
-            Reunioes marcadas
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl font-bold text-slate-900 dark:text-white tnum leading-none">
+                {formatCurrency(kpis?.periodNewMrr)}
+              </span>
+              <span className="text-sm font-medium text-slate-400 dark:text-slate-500">MRR novo</span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              {formatNumber(kpis?.periodWonDeals)} {(kpis?.periodWonDeals === 1 ? 'cliente novo' : 'clientes novos')} · {formatCurrency(kpis?.periodRevenue)} em contratos
+            </p>
           </div>
-          <div className="flex items-baseline gap-4 flex-wrap">
-            <span>
-              <span className="text-2xl font-bold text-slate-900 dark:text-white tnum">{formatNumber(kpis?.meetingsToday)}</span>
-              <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">hoje</span>
-            </span>
-            <span>
-              <span className="text-2xl font-bold text-slate-900 dark:text-white tnum">{formatNumber(kpis?.meetingsWeek)}</span>
-              <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">semana</span>
-            </span>
-          </div>
+          {mrrGoal > 0 && (
+            <div className="sm:w-72 shrink-0">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-slate-500 dark:text-slate-400">Meta de MRR</span>
+                <span className="font-bold text-slate-700 dark:text-slate-200 tnum">{mrrPct}%</span>
+              </div>
+              <div className="h-2.5 bg-slate-200/60 dark:bg-slate-800/80 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${mrrPct}%` }} />
+              </div>
+              <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 tnum">
+                {formatCurrency(kpis?.periodNewMrr)} / {formatCurrency(mrrGoal)}
+              </div>
+            </div>
+          )}
         </div>
-        <ChevronRight size={18} className="text-slate-300 dark:text-slate-600 shrink-0 transition-colors group-hover:text-fyness-primary" />
-      </Link>
 
-      {/* Progresso de Bonificacao (Ouro/Prata/Bronze) */}
-      <BonificacaoSection rows={bonificacao} loading={bonificacaoLoading} />
+        {/* Editor inline da meta de MRR */}
+        {editingMrrGoal && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-500 dark:text-slate-400">Meta de MRR novo por mês (R$):</span>
+            <input
+              type="number"
+              min="0"
+              step="100"
+              autoFocus
+              value={mrrGoalDraft}
+              onChange={(e) => setMrrGoalDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveMrrGoal(); if (e.key === 'Escape') setEditingMrrGoal(false); }}
+              className="w-32 px-2 py-1 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+            />
+            <button type="button" onClick={saveMrrGoal}
+              className="px-2.5 py-1 text-xs font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg">Salvar</button>
+            <button type="button" onClick={() => setEditingMrrGoal(false)}
+              className="px-2 py-1 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">Cancelar</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-200/70 dark:border-slate-700/70">
+          <MiniStat label="Ticket médio (contrato)" value={formatCurrency(kpis?.avgTicket)} tone="emerald" />
+          <MiniStat label="Win rate" value={`${Math.round(kpis?.conversionRate || 0)}%`} tone="blue" />
+          <MiniStat label="Ciclo médio" value={kpis?.avgCycleDays ? `${kpis.avgCycleDays}d` : '—'} tone="violet" />
+        </div>
+      </CrmPanel>
+
+      {/* Funil de Conversão — atividade -> venda (herói do dashboard comercial) */}
+      <SalesFunnel range={range} scope={scope} />
+
+      {/* Ritmo do time + Saúde do pipeline */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <CrmPanel title="Ritmo do Time" icon={Phone} accent="blue">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+            <MiniStat label="Ligações hoje" value={formatNumber(kpis?.callsToday)} tone="blue" />
+            <MiniStat label="Ligações · últimos 7d" value={formatNumber(kpis?.callsWeek)} tone="slate" />
+            <MiniStat label="Reuniões hoje" value={formatNumber(kpis?.meetingsToday)} tone="sky" />
+            <MiniStat label="Reuniões · próx. 7d" value={formatNumber(kpis?.meetingsWeek)} tone="slate" />
+          </div>
+        </CrmPanel>
+
+        <CrmPanel title="Pipeline" icon={Target} accent="violet">
+          <div className="grid grid-cols-3 gap-3">
+            <MiniStat
+              label="Em negociação"
+              value={formatCurrency(kpis?.activeDealsValue)}
+              sub={`${formatNumber(kpis?.activeOpenDeals)} deals`}
+              tone="violet"
+            />
+            <MiniStat
+              label="Quentes (30d)"
+              value={formatNumber(kpis?.hotDeals)}
+              sub={formatCurrency(kpis?.hotDealsValue)}
+              tone="orange"
+            />
+            <MiniStat
+              label="Perdidos no período"
+              value={formatNumber(kpis?.periodLostLeads)}
+              tone="rose"
+            />
+          </div>
+        </CrmPanel>
+      </div>
 
       {/* Progresso das Metas */}
       {activeGoals.length > 0 && (
@@ -499,136 +440,6 @@ export function CrmDashboardPage() {
           </div>
         </CrmPanel>
       )}
-
-      {/* Charts — 2 colunas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* % por Estagio — bar chart horizontal */}
-        <CrmPanel
-          title="% por Estagio de Negociacao"
-          icon={BarChart3}
-          accent="violet"
-          action={kpis?.funnelPipelineName && (
-            <span className="text-[11px] text-slate-400 dark:text-slate-500">{kpis.funnelPipelineName}</span>
-          )}
-        >
-          {funnelChartData.length === 0 ? (
-            <div className="h-64 flex items-center justify-center">
-              <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum dado de pipeline</p>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={Math.max(funnelChartData.length * 36, 280)}>
-              <BarChart
-                data={funnelChartData}
-                layout="vertical"
-                margin={{ top: 8, right: 50, left: 0, bottom: 8 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(148,163,184,0.15)" />
-                <XAxis
-                  type="number"
-                  domain={[0, 100]}
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => `${v}%`}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="stageName"
-                  tick={{ fontSize: 11, fill: '#64748b' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={140}
-                />
-                <Tooltip content={<StageTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
-                <Bar dataKey="conversionFromTop" radius={[0, 6, 6, 0]} barSize={18}>
-                  {funnelChartData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </CrmPanel>
-
-        {/* Receita Mensal — Realizado vs Previsto vs Projetado */}
-        <CrmPanel
-          title="Receita Mensal"
-          icon={TrendingUp}
-          accent="emerald"
-          action={!hasGoalsForChart && (
-            <span className="text-[11px] text-slate-400 dark:text-slate-500">sem metas no periodo</span>
-          )}
-        >
-          {revenueChartData.length === 0 ? (
-            <div className="h-64 flex items-center justify-center">
-              <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum dado de receita</p>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <ComposedChart data={revenueChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="realizadoGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148,163,184,0.15)" />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-                  width={50}
-                />
-                <Tooltip content={<RevenueTooltip />} cursor={{ stroke: 'rgba(148,163,184,0.25)' }} />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-                  formatter={(value) => REVENUE_SERIES_META[value]?.label || value}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="realizado"
-                  stroke="#10b981"
-                  strokeWidth={2.5}
-                  fill="url(#realizadoGradient)"
-                  dot={false}
-                  activeDot={{ r: 5, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }}
-                />
-                {hasGoalsForChart && (
-                  <Line
-                    type="monotone"
-                    dataKey="previsto"
-                    stroke="#f59e0b"
-                    strokeWidth={2}
-                    strokeDasharray="6 4"
-                    dot={false}
-                    activeDot={{ r: 4, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }}
-                  />
-                )}
-                {hasGoalsForChart && (
-                  <Line
-                    type="monotone"
-                    dataKey="projetado"
-                    stroke="#6366f1"
-                    strokeWidth={1.5}
-                    dot={false}
-                    activeDot={{ r: 4, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }}
-                  />
-                )}
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </CrmPanel>
-      </div>
 
       {/* Bottom row — Deals vencendo + Atividades recentes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

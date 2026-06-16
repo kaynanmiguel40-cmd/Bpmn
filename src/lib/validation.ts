@@ -212,53 +212,6 @@ export const clientSchema = z.object({
   notes: z.string().optional().default(''),
 }).passthrough();
 
-// ==================== EAP / GANTT ====================
-
-export const eapFolderSchema = z.object({
-  name: z.string().min(1, 'Nome do projeto e obrigatorio'),
-  description: z.string().optional().default(''),
-  color: z.string().optional().default('#3b82f6'),
-  status: z.enum(['planning', 'active', 'completed', 'on_hold']).default('planning'),
-  createdBy: z.string().optional().default(''),
-}).passthrough();
-
-export const eapProjectSchema = z.object({
-  name: z.string().min(1, 'Nome do projeto e obrigatorio'),
-  description: z.string().optional().default(''),
-  startDate: z.string().nullable().optional().default(null),
-  endDate: z.string().nullable().optional().default(null),
-  status: z.enum(['planning', 'active', 'completed', 'on_hold']).default('planning'),
-  color: z.string().optional().default('#3b82f6'),
-  createdBy: z.string().optional().default(''),
-  folderId: z.string().nullable().optional().default(null),
-}).passthrough();
-
-export const eapTaskSchema = z.object({
-  name: z.string().min(1, 'Nome da tarefa e obrigatorio'),
-  projectId: z.string().min(1, 'Projeto e obrigatorio'),
-  wbsNumber: z.string().optional().default(''),
-  parentId: z.string().nullable().optional().default(null),
-  sortOrder: z.number().optional().default(0),
-  level: z.number().optional().default(0),
-  isMilestone: z.boolean().optional().default(false),
-  startDate: z.string().nullable().optional().default(null),
-  endDate: z.string().nullable().optional().default(null),
-  durationDays: z.number().min(0).optional().default(1),
-  estimatedHours: z.number().nullable().optional().default(null),
-  progress: z.number().min(0).max(100).optional().default(0),
-  assignedTo: z.string().optional().default(''),
-  supervisor: z.string().optional().default(''),
-  predecessors: z.array(z.object({
-    taskId: z.string(),
-    type: z.enum(['FS', 'SS', 'FF', 'SF']).default('FS'),
-    lag: z.number().default(0),
-  })).optional().default([]),
-  notes: z.string().optional().default(''),
-  attachments: z.array(z.any()).optional().default([]),
-  color: z.string().optional().default(''),
-  osOrderId: z.string().nullable().optional().default(null),
-}).passthrough();
-
 export const contentPostSchema = z.object({
   title: z.string().min(1, 'Titulo e obrigatorio'),
   description: z.string().optional().default(''),
@@ -327,9 +280,6 @@ export type Comment = z.infer<typeof commentSchema>;
 export type Sector = z.infer<typeof sectorSchema>;
 export type OSProject = z.infer<typeof osProjectSchema>;
 export type Client = z.infer<typeof clientSchema>;
-export type EAPFolder = z.infer<typeof eapFolderSchema>;
-export type EAPProject = z.infer<typeof eapProjectSchema>;
-export type EAPTask = z.infer<typeof eapTaskSchema>;
 export type ContentPost = z.infer<typeof contentPostSchema>;
 export type ProcessOrder = z.infer<typeof processOrderSchema>;
 

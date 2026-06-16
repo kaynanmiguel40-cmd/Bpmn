@@ -18,6 +18,8 @@ const EMPTY_SETTINGS = {
   lostTargetPipelineId: null,
   lostTargetStageId: null,
   discardStageId: null,
+  // Alvo mensal de MRR novo (R$/mes) — meta do dashboard comercial (SaaS).
+  mrrGoalMonthly: 0,
 };
 
 export function getCrmWorkspaceSettings() {

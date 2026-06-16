@@ -12,6 +12,7 @@ function dbToTemplate(row) {
     priority: row.priority || 'medium',
     notes: row.notes || '',
     expenses: Array.isArray(row.expenses) ? row.expenses : [],
+    checklist: Array.isArray(row.checklist) ? row.checklist : [],
     createdAt: row.created_at,
   };
 }
@@ -30,6 +31,7 @@ const templateService = createCRUDService({
     priority: 'priority',
     notes: 'notes',
     expenses: 'expenses',
+    checklist: 'checklist',
   },
   orderBy: 'created_at',
   orderAsc: false,
@@ -43,6 +45,12 @@ export const updateTemplate = (id, updates) => templateService.update(id, update
 export const deleteTemplate = templateService.remove;
 
 export async function createFromOrder(name, order) {
+  // Guarda so a ESTRUTURA da tarefa (texto, grupo, briefing) — sem estado de execucao.
+  const checklist = (order.checklist || []).map((it) => ({
+    text: it.text || '',
+    group: it.group || null,
+    briefing: it.briefing || '',
+  }));
   return templateService.create({
     name,
     title: order.title || '',
@@ -50,5 +58,6 @@ export async function createFromOrder(name, order) {
     priority: order.priority || 'medium',
     notes: order.notes || '',
     expenses: order.expenses || [],
+    checklist,
   });
 }

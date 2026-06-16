@@ -101,8 +101,8 @@ export async function searchAll(query) {
   // ==================== PAGINAS ====================
 
   const pages = [
-    { label: 'Dashboard', route: '/dashboard', keywords: ['dashboard', 'inicio', 'home', 'painel'] },
-    { label: 'Ordens de Servico', route: '/financial', keywords: ['ordens', 'servico', 'os', 'kanban'] },
+    // Dashboard de O.S./RH (/dashboard) fica oculto — nao listar na busca.
+    { label: 'Ordens de Servico', route: '/financial', keywords: ['ordens', 'servico', 'os', 'kanban', 'inicio', 'home', 'painel'] },
     { label: 'Agenda', route: '/agenda', keywords: ['agenda', 'calendario', 'eventos'] },
     { label: 'Minha Rotina', route: '/routine', keywords: ['rotina', 'tarefas', 'routine'] },
     { label: 'Processos (BPMN)', route: '/sales', keywords: ['processos', 'bpmn', 'fluxo'] },

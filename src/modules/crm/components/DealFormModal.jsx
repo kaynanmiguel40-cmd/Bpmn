@@ -262,7 +262,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   const { register, handleSubmit, control, reset, watch, setValue, getValues, formState: { errors } } = useForm({
     resolver: zodResolver(crmDealSchema),
     defaultValues: {
-      title: '', value: 0, probability: 0, segment: '',
+      title: '', value: 0, mrr: 0, probability: 0, segment: '',
       contactName: '', contactPhone: '', contactEmail: '', contactId: null,
       companyName: '', companyId: null, pipelineId: null, stageId: null,
       expectedCloseDate: null, status: 'open', lostReason: '',
@@ -289,6 +289,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
       reset({
         title: deal.title || '',
         value: deal.value || 0,
+        mrr: deal.mrr || 0,
         probability: deal.probability ?? 0,
         segment: deal.segment || '',
         contactName: deal.contactName || deal.contact?.name || '',
@@ -307,7 +308,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
     } else {
       setIsCustomSegment(false);
       reset({
-        title: '', value: 0, probability: 0, segment: '',
+        title: '', value: 0, mrr: 0, probability: 0, segment: '',
         contactName: '', contactPhone: '', contactEmail: '', contactId: null,
         companyId: null, pipelineId: null, stageId: null,
         expectedCloseDate: null, status: 'open', lostReason: '',
@@ -400,10 +401,10 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
           {errors.title && <p className="text-xs text-rose-500 mt-0.5">{errors.title.message}</p>}
         </div>
 
-        {/* Valor + Probabilidade */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Contrato (total) + Mensalidade (MRR) + Probabilidade */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Valor</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Contrato (total)</label>
             <Controller name="value" control={control}
               render={({ field }) => (
                 <input
@@ -422,6 +423,25 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
                   }}
                   placeholder="R$ 0,00"
                   className={fieldClass('value')}
+                />
+              )} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mensalidade (MRR)</label>
+            <Controller name="mrr" control={control}
+              render={({ field }) => (
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatCurrencyInput(field.value)}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '');
+                    if (!digits) { field.onChange(0); return; }
+                    const cents = parseInt(digits.slice(0, 12), 10);
+                    field.onChange(cents / 100);
+                  }}
+                  placeholder="R$ 0,00"
+                  className={fieldClass('mrr')}
                 />
               )} />
           </div>

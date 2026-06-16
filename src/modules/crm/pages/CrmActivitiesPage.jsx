@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  CalendarCheck, Plus, Phone, Mail, Video, FileText, MapPin, Coffee,
+  CalendarCheck, Plus, Phone, Mail, Video, FileText, MapPin, Coffee, MessageCircle,
   Pencil, Trash2, CheckCircle, Search, X,
 } from 'lucide-react';
 import { CrmPageHeader, CrmDataTable, CrmBadge, CrmConfirmDialog } from '../components/ui';
@@ -15,19 +15,21 @@ import { ActivityFormModal } from '../components/ActivityFormModal';
 const typeIcons = {
   call: Phone,
   email: Mail,
+  message: MessageCircle,
   meeting: Video,
   visit: MapPin,
   task: FileText,
-  follow_up: Coffee,
+  lunch: Coffee,
 };
 
 const typeLabels = {
   call: 'Ligacao',
   email: 'Email',
+  message: 'Mensagem',
   meeting: 'Reuniao',
   visit: 'Visita',
   task: 'Tarefa',
-  follow_up: 'Follow-up',
+  lunch: 'Almoco',
 };
 
 const formatDate = (dateStr) => {

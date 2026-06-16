@@ -15,6 +15,7 @@ export interface CrmDeal {
   id: string;
   title: string;
   value: number;
+  mrr: number;
   probability: number;
   contactId: string | null;
   contactName: string | null;
@@ -45,6 +46,7 @@ export interface CrmDealRow {
   id: string;
   title: string;
   value?: number | null;
+  mrr?: number | null;
   probability?: number | null;
   contact_id?: string | null;
   contact_name?: string | null;
@@ -92,6 +94,7 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
     id: row.id,
     title: row.title,
     value: row.value || 0,
+    mrr: row.mrr || 0,
     probability: row.probability ?? 50,
     contactId: row.contact_id || null,
     contactName: row.contact_name || null,
@@ -146,6 +149,7 @@ const dealService = createCRUDService<CrmDeal, CrmDealRow>({
   fieldMap: {
     title: 'title',
     value: 'value',
+    mrr: 'mrr',
     probability: 'probability',
     contactId: 'contact_id',
     contactName: 'contact_name',

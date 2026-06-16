@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed } from 'lucide-react';
+import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { crmActivitySchema } from '../schemas/crmValidation';
 import {
@@ -26,13 +26,16 @@ function toLocalDatetimeInput(val) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Tipos de atividade. Todos viram evento no Google Calendar; meeting/visit/lunch
+// aceitam convidados e a reunião ainda ganha link do Google Meet.
 const ACTIVITY_TYPES = [
-  { value: 'call', label: 'Ligacao', icon: Phone, color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700' },
-  { value: 'email', label: 'Email', icon: Mail, color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 border-violet-300 dark:border-violet-700' },
-  { value: 'meeting', label: 'Reuniao', icon: Video, color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700' },
-  { value: 'task', label: 'Tarefa', icon: FileText, color: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700' },
-  { value: 'lunch', label: 'Almoco', icon: UtensilsCrossed, color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700' },
-  { value: 'visit', label: 'Visita', icon: MapPin, color: 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-700' },
+  { value: 'call', label: 'Ligacao', icon: Phone, kind: 'task', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700' },
+  { value: 'message', label: 'Mensagem', icon: MessageCircle, kind: 'task', color: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-300 dark:border-green-700' },
+  { value: 'email', label: 'Email', icon: Mail, kind: 'task', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 border-violet-300 dark:border-violet-700' },
+  { value: 'task', label: 'Tarefa', icon: FileText, kind: 'task', color: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700' },
+  { value: 'meeting', label: 'Reuniao', icon: Video, kind: 'event', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700' },
+  { value: 'visit', label: 'Visita', icon: MapPin, kind: 'event', color: 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-700' },
+  { value: 'lunch', label: 'Almoco', icon: UtensilsCrossed, kind: 'event', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700' },
 ];
 
 function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField = 'name', labelField }) {
@@ -81,6 +84,44 @@ function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField 
   );
 }
 
+// Convidados por e-mail (chips). Vira attendees do evento no Google Calendar.
+function AttendeesInput({ value = [], onChange }) {
+  const [draft, setDraft] = useState('');
+  const add = () => {
+    const email = draft.trim().toLowerCase();
+    const valid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+    if (valid && !value.includes(email)) onChange([...value, email]);
+    setDraft('');
+  };
+  return (
+    <div>
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
+          {value.map(em => (
+            <span key={em} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800/40">
+              {em}
+              <button type="button" onClick={() => onChange(value.filter(e => e !== em))} className="hover:text-blue-900 dark:hover:text-blue-100">
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        type="email"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } }}
+        onBlur={add}
+        placeholder="email@convidado.com — Enter pra adicionar"
+        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+      />
+    </div>
+  );
+}
+
+const EVENT_TYPE_VALUES = ['meeting', 'visit', 'lunch'];
+
 export function ActivityFormModal({ open, onClose, activity = null, defaultDealId = null, defaultContactId = null }) {
   const isEdit = !!activity?.id;
   const createMutation = useCreateCrmActivity();
@@ -92,7 +133,7 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
     defaultValues: {
       title: '', description: '', type: 'call',
       contactId: null, dealId: null,
-      startDate: '', endDate: null, completed: false,
+      startDate: '', endDate: null, completed: false, attendees: [],
     },
   });
 
@@ -109,6 +150,7 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
         startDate: toLocalDatetimeInput(activity.startDate),
         endDate: toLocalDatetimeInput(activity.endDate),
         completed: activity.completed || false,
+        attendees: Array.isArray(activity.attendees) ? activity.attendees : [],
       });
     } else if (open) {
       // Default: agora, arredondado pra proxima meia-hora, duracao 30min
@@ -122,6 +164,7 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
         startDate: toLocalDatetimeInput(now),
         endDate: toLocalDatetimeInput(end),
         completed: false,
+        attendees: [],
       });
     }
   }, [open, activity, reset, defaultDealId, defaultContactId]);
@@ -164,9 +207,9 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
         </>
       }>
       <form id="activity-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        {/* Tipo (toggle buttons) */}
+        {/* Tipo da atividade */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Tipo *</label>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1.5">Tipo</p>
           <div className="flex flex-wrap gap-2">
             {ACTIVITY_TYPES.map(t => {
               const Icon = t.icon;
@@ -229,6 +272,25 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
               )} />
           </div>
         </div>
+
+        {/* Convidados — só pra eventos (reunião/visita/almoço) */}
+        {EVENT_TYPE_VALUES.includes(selectedType) && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+              <UserPlus size={14} /> Convidados
+              <span className="font-normal text-xs text-slate-400">recebem convite por e-mail</span>
+            </label>
+            <Controller name="attendees" control={control}
+              render={({ field }) => (
+                <AttendeesInput value={field.value || []} onChange={field.onChange} />
+              )} />
+            {selectedType === 'meeting' && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-1">
+                <Video size={11} /> Reunião gera link do Google Meet automaticamente.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Descricao */}
         <div>

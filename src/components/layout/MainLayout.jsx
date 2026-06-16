@@ -25,9 +25,7 @@ const routeTitles = {
   '/routine': 'Minha Rotina',
   '/agenda': 'Agenda',
   '/financial': 'Ordens de Servico',
-  '/eap': 'EAP - Projetos',
   '/reports': 'Relatorios',
-  '/my-day': 'Meu Dia',
   '/settings': 'Configuracoes'
 };
 
@@ -138,7 +136,7 @@ function Header({ onMenuToggle, mobileOpen }) {
   const breadcrumb = getBreadcrumb();
 
   return (
-    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 flex items-center justify-between">
+    <header className="h-16 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border-b border-slate-200/70 dark:border-white/10 px-4 md:px-6 flex items-center justify-between">
       {/* Mobile menu + Breadcrumb */}
       <div className="flex items-center gap-3">
         {/* Hamburger - mobile only */}
@@ -250,7 +248,7 @@ export function MainLayout() {
   useDeadlineChecker();
 
   return (
-    <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 print:block print:bg-white">
+    <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 app-mesh print:block print:bg-white">
       {/* Sidebar */}
       <div className="print:hidden">
         <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
