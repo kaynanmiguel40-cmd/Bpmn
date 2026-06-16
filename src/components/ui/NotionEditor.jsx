@@ -16,14 +16,40 @@ import { Color } from '@tiptap/extension-color';
 import { Youtube } from '@tiptap/extension-youtube';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { FULL_BRIEFINGS, TABLE_SNIPPETS } from '../../lib/briefingTemplates';
+import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details';
+import { SlashCommand } from './SlashCommand';
+import { uploadOSImage } from '../../lib/uploadOSImage';
 
 const CALLOUT_HTML = `<blockquote><p>&#128161; <strong>Dica:</strong> </p></blockquote>`;
+
+// Teto de tamanho por imagem. Com Storage o normal nem inflaria o registro,
+// mas o fallback base64 (quando o Storage falha) ficaria inline — entao o teto
+// limita o pior caso. 5MB cobre print de tela tranquilo.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 // ==================== HELPERS ====================
 
 export function stripHtml(html) {
   if (!html) return '';
   return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+}
+
+/** Troca o src de UM no de imagem (do base64 recem-colado pra URL do Storage)
+ *  sem mexer no resto do documento — preserva posicao, ordem e demais atributos.
+ *  Casa pelo proprio base64 (unico por colagem), entao funciona ate com a mesma
+ *  imagem colada 2x (cada upload troca o no base64 que ainda restou). */
+function replaceImageSrc(editor, oldSrc, newSrc) {
+  if (!editor || editor.isDestroyed) return;
+  const { state, view } = editor;
+  let found = null;
+  state.doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (node.type.name === 'image' && node.attrs?.src === oldSrc) { found = { node, pos }; return false; }
+    return true;
+  });
+  if (found === null) return;
+  const tr = state.tr.setNodeMarkup(found.pos, undefined, { ...found.node.attrs, src: newSrc });
+  view.dispatch(tr);
 }
 
 function buildExtensions(placeholderText) {
@@ -48,12 +74,16 @@ function buildExtensions(placeholderText) {
     Color,
     Youtube.configure({ width: 480, height: 270, nocookie: true }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    Details.configure({ persist: true, HTMLAttributes: { class: 'editor-details' } }),
+    DetailsSummary,
+    DetailsContent,
+    SlashCommand,
   ];
 }
 
 // ==================== TOOLBAR ====================
 
-function NotionToolbar({ editor }) {
+function NotionToolbar({ editor, onPickImage }) {
   const [tplOpen, setTplOpen] = useState(false);
   if (!editor) return null;
 
@@ -159,6 +189,9 @@ function NotionToolbar({ editor }) {
         <Btn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Linha divisoria">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/></svg>
         </Btn>
+        <Btn active={editor.isActive('details')} onClick={() => editor.chain().focus().setDetails().run()} title="Toggle (secao recolhivel)">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+        </Btn>
 
         <Sep />
 
@@ -198,10 +231,8 @@ function NotionToolbar({ editor }) {
               const file = e.target.files?.[0];
               e.target.value = '';
               if (!file) return;
-              if (file.size > 3 * 1024 * 1024) { alert('Imagem muito grande (max 3MB).'); return; }
-              const reader = new FileReader();
-              reader.onload = (ev) => editor.chain().focus().setImage({ src: ev.target.result }).run();
-              reader.readAsDataURL(file);
+              // Mesmo caminho do paste/drop: Storage primeiro, base64 de fallback.
+              onPickImage?.(file);
             }}
           />
         </label>
@@ -264,25 +295,37 @@ function NotionToolbar({ editor }) {
 
 // ==================== EDITOR ====================
 
-export default function NotionEditor({ content, onChange, placeholder, minHeight = '200px' }) {
+export default function NotionEditor({ content, onChange, placeholder, minHeight = '200px', fill = false }) {
   const editorRef = useRef(null);
   const insertImageFile = (file) => {
     if (!file || !file.type?.startsWith('image/')) return;
-    if (file.size > 3 * 1024 * 1024) { alert('Imagem muito grande (max 3MB).'); return; }
+    if (file.size > MAX_IMAGE_BYTES) { alert('Imagem muito grande (max 5MB).'); return; }
     const reader = new FileReader();
-    reader.onload = (ev) => editorRef.current?.chain().focus().setImage({ src: ev.target.result }).run();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result;
+      const ed = editorRef.current;
+      if (!ed || ed.isDestroyed || !dataUrl) return;
+      // 1) Insere o base64 NA HORA: preview instantaneo, posicao e ordem corretas,
+      //    e mata o paste duplicado (a pessoa ve a imagem aparecer no ato).
+      ed.chain().focus().setImage({ src: dataUrl }).run();
+      // 2) Sobe pro Storage em background e troca o src pela URL (deixa o registro
+      //    leve). Se o upload falhar, o base64 permanece como fallback.
+      uploadOSImage(file).then((url) => {
+        if (url) replaceImageSrc(editorRef.current, dataUrl, url);
+      });
+    };
     reader.readAsDataURL(file);
   };
   const editor = useEditor({
     extensions: buildExtensions(placeholder),
     content: content || '',
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      onChange?.(editor.getHTML());
     },
     editorProps: {
       attributes: {
         class: `notion-editor-content prose prose-sm dark:prose-invert max-w-none focus:outline-none px-4 py-3`,
-        style: `min-height: ${minHeight}`,
+        style: fill ? 'min-height: 100%' : `min-height: ${minHeight}`,
       },
       handlePaste: (view, event) => {
         const items = event.clipboardData?.items;
@@ -309,10 +352,10 @@ export default function NotionEditor({ content, onChange, placeholder, minHeight
   }, [content]);
 
   return (
-    <div className="border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 overflow-hidden">
-      <NotionToolbar editor={editor} />
-      <div className="max-h-[50vh] overflow-y-auto">
-        <EditorContent editor={editor} />
+    <div className={`border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 overflow-hidden ${fill ? 'flex flex-col h-full' : ''}`}>
+      <NotionToolbar editor={editor} onPickImage={insertImageFile} />
+      <div className={fill ? 'flex-1 min-h-0 overflow-y-auto' : 'max-h-[50vh] overflow-y-auto'}>
+        <EditorContent editor={editor} className={fill ? 'h-full' : ''} />
       </div>
     </div>
   );

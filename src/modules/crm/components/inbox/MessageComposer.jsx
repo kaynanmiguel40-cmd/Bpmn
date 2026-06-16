@@ -15,10 +15,11 @@ import { toast } from '../../../../contexts/ToastContext';
  *
  * Props:
  *   - conversation: { contactId?, prospectId?, otherPhone, dealId? }
+ *   - instanceName: nome da instancia/numero por onde enviar (roteia a resposta)
  *   - disabled: bool (ex: instance desconectada)
  *   - placeholder
  */
-export function MessageComposer({ conversation, disabled, placeholder = 'Mensagem...' }) {
+export function MessageComposer({ conversation, instanceName, disabled, placeholder = 'Mensagem...' }) {
   const [text, setText] = useState('');
   const [attachment, setAttachment] = useState(null);  // { file, preview, mediaType }
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
@@ -83,6 +84,7 @@ export function MessageComposer({ conversation, disabled, placeholder = 'Mensage
     removeAttachment();
 
     await sendMutation.mutateAsync({
+      instanceName,
       phone:      conversation.otherPhone,
       content:    mediaPayload.mediaUrl ? undefined : content,
       ...mediaPayload,
@@ -155,9 +157,10 @@ export function MessageComposer({ conversation, disabled, placeholder = 'Mensage
       <div className="flex items-end gap-2">
         <button
           type="button"
-          disabled
-          title="Envio de mídia requer WAHA Plus (upgrade da Evolution API)"
-          className="p-2 rounded-md text-slate-300 dark:text-slate-600 cursor-not-allowed"
+          onClick={() => setAttachMenuOpen((v) => !v)}
+          disabled={disabled || isSending}
+          title="Anexar imagem ou documento"
+          className="p-2 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Paperclip size={18} />
         </button>
@@ -199,7 +202,7 @@ export function MessageComposer({ conversation, disabled, placeholder = 'Mensage
         </button>
       </div>
       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-        Enter envia · Shift+Enter quebra linha · Anexo disponível com WAHA Plus
+        Enter envia · Shift+Enter quebra linha
       </p>
     </div>
   );

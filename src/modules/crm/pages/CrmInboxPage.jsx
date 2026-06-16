@@ -11,7 +11,7 @@ import { ConversationList } from '../components/inbox/ConversationList';
 import { MessageThread } from '../components/inbox/MessageThread';
 import { MessageComposer } from '../components/inbox/MessageComposer';
 import { WhatsAppStatusBanner } from '../components/inbox/WhatsAppStatusBanner';
-import { useCrmInboxConversations, useCrmWhatsAppInstance } from '../hooks/useCrmQueries';
+import { useCrmInboxConversations, useCrmWhatsAppInstances } from '../hooks/useCrmQueries';
 
 export function CrmInboxPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -19,7 +19,7 @@ export function CrmInboxPage() {
   const prospectParam = searchParams.get('prospect');
 
   const { data: conversations = [] } = useCrmInboxConversations();
-  const { data: instance } = useCrmWhatsAppInstance();
+  const { data: instances = [] } = useCrmWhatsAppInstances();
 
   // Conversa ativa: busca na lista pelo param da URL
   const activeConversation = useMemo(() => {
@@ -52,17 +52,27 @@ export function CrmInboxPage() {
     [setSearchParams]
   );
 
-  const composerDisabled = !instance || instance.status !== 'connected';
+  // Instancia da conversa ativa = de qual numero ela veio (pra resposta sair
+  // pelo numero certo). Sem conversa/sem historico, cai na 1a conectada.
+  const activeInstance = useMemo(() => {
+    const byId = activeConversation?.instanceId
+      ? instances.find((i) => i.id === activeConversation.instanceId)
+      : null;
+    return byId || instances.find((i) => i.status === 'connected') || instances[0] || null;
+  }, [activeConversation, instances]);
+
+  const composerDisabled = !activeInstance || activeInstance.status !== 'connected';
 
   return (
     <div className="-m-4 md:-m-6 flex flex-col h-[calc(100vh-3.5rem)]">
-      <WhatsAppStatusBanner instanceName={instance?.instanceName} />
+      <WhatsAppStatusBanner instanceName={activeInstance?.instanceName} />
       <div className="flex-1 flex min-h-0">
         <ConversationList activeKey={activeKey} onSelect={handleSelect} />
         <MessageThread conversation={activeConversation}>
           {activeConversation && (
             <MessageComposer
               conversation={activeConversation}
+              instanceName={activeInstance?.instanceName}
               disabled={composerDisabled}
             />
           )}

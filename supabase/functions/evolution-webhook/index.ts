@@ -33,6 +33,7 @@ const SUPABASE_SERVICE_KEY      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const WEBHOOK_SECRET            = Deno.env.get('EVOLUTION_WEBHOOK_SECRET') || ''
 const EVOLUTION_URL             = Deno.env.get('EVOLUTION_URL') || ''
 const EVOLUTION_API_KEY         = Deno.env.get('EVOLUTION_API_KEY') || ''
+const PROVIDER                  = (Deno.env.get('EVOLUTION_PROVIDER') || 'evolution').toLowerCase()
 
 /**
  * Busca pushname (nome do contato) via API do WAHA.
@@ -129,6 +130,90 @@ async function wahaGetProfilePicture(session: string, chatId: string): Promise<s
   }
 }
 
+// ============= Evolution: helpers de midia/contato =============
+
+/**
+ * Baixa a midia inbound da Evolution em base64.
+ * A Evolution serve midia recebida como URL criptografada (.enc) que nao
+ * renderiza no browser; o jeito robusto e pedir o base64 pela message key.
+ */
+async function evolutionGetMediaBase64(
+  instance: string,
+  messageId: string,
+): Promise<{ base64: string; mimetype: string | null } | null> {
+  if (!EVOLUTION_URL || !EVOLUTION_API_KEY || !messageId) return null
+  try {
+    const r = await fetch(
+      `${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+        body: JSON.stringify({ message: { key: { id: messageId } }, convertToMp4: false }),
+      },
+    )
+    if (!r.ok) return null
+    const data = await r.json().catch(() => null)
+    const base64 = data?.base64 || data?.media || null
+    if (!base64) return null
+    return { base64, mimetype: data?.mimetype || null }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Re-hospeda midia (base64) no bucket crm-whatsapp-media e devolve URL publica.
+ */
+async function uploadBase64ToStorage(
+  supabase: SupabaseClient,
+  base64: string,
+  mime: string | null,
+): Promise<string | null> {
+  try {
+    const contentType = mime || 'application/octet-stream'
+    const extMap: Record<string, string> = {
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+      'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
+      'audio/mpeg': 'mp3', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/wav': 'wav',
+      'application/pdf': 'pdf',
+    }
+    const ext = extMap[contentType] || 'bin'
+    const clean = base64.includes(',') ? base64.split(',').pop()! : base64
+    const bytes = Uint8Array.from(atob(clean), (c) => c.charCodeAt(0))
+    const path = `inbound/${crypto.randomUUID()}.${ext}`
+    const { error: upErr } = await supabase.storage
+      .from('crm-whatsapp-media')
+      .upload(path, bytes, { contentType, upsert: false })
+    if (upErr) return null
+    const { data: pub } = supabase.storage.from('crm-whatsapp-media').getPublicUrl(path)
+    return pub.publicUrl
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Busca a foto de perfil via API da Evolution (URL do CDN do WhatsApp, expira).
+ */
+async function evolutionFetchProfilePicture(instance: string, number: string): Promise<string | null> {
+  if (!EVOLUTION_URL || !EVOLUTION_API_KEY || !number) return null
+  try {
+    const r = await fetch(
+      `${EVOLUTION_URL}/chat/fetchProfilePictureUrl/${encodeURIComponent(instance)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+        body: JSON.stringify({ number }),
+      },
+    )
+    if (!r.ok) return null
+    const data = await r.json().catch(() => null)
+    return data?.profilePictureUrl || data?.profilePicUrl || data?.url || null
+  } catch {
+    return null
+  }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
@@ -167,9 +252,12 @@ interface EvolutionPayload {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  // Auth via shared secret (se configurado)
+  // Auth via shared secret (se configurado). Aceita no header x-webhook-secret
+  // OU na query (?secret=...) — o webhook GLOBAL da Evolution v2 nao manda
+  // header custom, entao usamos a query (igual ao padrao da propria Evolution).
   if (WEBHOOK_SECRET) {
-    const provided = req.headers.get('x-webhook-secret') || ''
+    const url = new URL(req.url)
+    const provided = req.headers.get('x-webhook-secret') || url.searchParams.get('secret') || ''
     if (provided !== WEBHOOK_SECRET) {
       return json({ ok: false, error: 'invalid webhook secret' }, 401)
     }
@@ -318,22 +406,24 @@ async function handleMessagesUpsert(
       contactId = await findContactByPhone(supabase, otherPhone)
       if (!contactId) {
         const chatId = remoteJid.replace('@s.whatsapp.net', '@lid')
+        // Evolution ja manda pushName no proprio evento; WAHA precisa buscar.
         let pushName: string | null = (m.pushName as string) || null
-        if (!pushName) {
+        if (!pushName && PROVIDER === 'waha') {
           pushName = await wahaGetContactName(instanceName, chatId)
         }
-        // Tenta buscar avatar. Se WAHA ainda nao sincronizou (timing), retorna null
-        // e o findOrCreate vai tentar atualizar na proxima mensagem.
-        const avatarUrl = await wahaGetProfilePicture(instanceName, chatId)
+        // Avatar: pode vir null por timing; findOrCreate tenta atualizar depois.
+        const avatarUrl = PROVIDER === 'waha'
+          ? await wahaGetProfilePicture(instanceName, chatId)
+          : await evolutionFetchProfilePicture(instanceName, otherPhone)
         const r = await findOrCreateProspectByPhoneWithError(supabase, otherPhone, pushName, avatarUrl)
         prospectId = r.id
         prospectError = r.error
 
-        // Refresh: se o prospect ja existia mas sem avatar, e agora temos um, atualiza.
-        // (Trata caso onde primeira msg chegou mas WAHA nao tinha sincronizado a foto)
+        // Refresh: se criou/existia sem avatar e agora temos um, atualiza.
         if (prospectId && !avatarUrl) {
-          // Re-tenta pegar foto (pode ter sincronizado entre o create e agora)
-          const retryAvatar = await wahaGetProfilePicture(instanceName, chatId)
+          const retryAvatar = PROVIDER === 'waha'
+            ? await wahaGetProfilePicture(instanceName, chatId)
+            : await evolutionFetchProfilePicture(instanceName, otherPhone)
           if (retryAvatar) {
             await supabase
               .from('crm_prospects')
@@ -358,17 +448,27 @@ async function handleMessagesUpsert(
       continue
     }
 
-    // Espelha midia inbound no Storage. WAHA serve via /api/files/* protegido por
-    // X-Api-Key e <img> nao pode mandar header. Sem mirror, URL quebra no browser.
-    if (direction === 'inbound' && mediaUrl && (mediaUrl.startsWith('/') || mediaUrl.includes('localhost'))) {
-      const mirroredUrl = await mirrorWahaMediaToStorage(supabase, mediaUrl, mediaType, mediaMime)
-      if (mirroredUrl) {
-        mediaUrl = mirroredUrl
+    // Espelha midia inbound no Supabase Storage pra renderizar no browser.
+    //  - WAHA: serve via /api/files/* protegido por X-Api-Key; baixa e re-hospeda.
+    //  - Evolution: URL vem criptografada (.enc); baixa o base64 via
+    //    getBase64FromMediaMessage e re-hospeda.
+    if (direction === 'inbound' && mediaType && mediaUrl) {
+      let localized: string | null = mediaUrl
+      if (PROVIDER === 'waha') {
+        if (mediaUrl.startsWith('/') || mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1')) {
+          localized = await mirrorWahaMediaToStorage(supabase, mediaUrl, mediaType, mediaMime)
+        }
       } else {
-        // Sem mirror, nao adianta gravar URL quebrada — pula mensagem
-        debug.push({ skip: 'media_mirror_failed', direction, evolutionMessageId, originalUrl: mediaUrl })
+        const media = await evolutionGetMediaBase64(instanceName, evolutionMessageId)
+        localized = media
+          ? await uploadBase64ToStorage(supabase, media.base64, media.mimetype || mediaMime)
+          : null
+      }
+      if (!localized) {
+        debug.push({ skip: 'media_mirror_failed', direction, evolutionMessageId, provider: PROVIDER })
         continue
       }
+      mediaUrl = localized
     }
 
     const timestamp = m.messageTimestamp

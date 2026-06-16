@@ -273,14 +273,17 @@ export default function OSPreviewDocument({ order, projectName, profileName, pro
                           {groupItems.map((item) => {
                             const arrIdx = cl.findIndex(i => i.id === item.id);
                             return (
-                              <div key={item.id} className="flex items-center gap-3 px-2.5 py-2">
+                              <div key={item.id} className="flex items-center gap-2 px-2.5 py-2 flex-wrap">
                                 <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${item.done ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 dark:border-slate-600'}`}>
                                   {item.done && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                                 </div>
                                 <span className="text-xs text-slate-400 font-mono w-5 shrink-0">{arrIdx + 1}.</span>
-                                <span className={`text-sm flex-1 ${item.done ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{item.text}</span>
+                                <span className={`text-sm flex-1 min-w-[120px] ${item.done ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{item.text}</span>
+                                {item.assigneeName && <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 px-1.5 py-0.5 rounded shrink-0">{item.assigneeName}</span>}
+                                {item.startAt && <span className="text-[10px] text-slate-400 shrink-0">início {fmtHour(item.startAt)}</span>}
+                                {item.dueAt && <span className="text-[10px] text-slate-400 shrink-0">entrega {fmtHour(item.dueAt)}</span>}
                                 {item.done && realDuration(item) > 0 && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(realDuration(item))}</span>}
-                                {item.done && item.completedAt && <span className="text-[10px] text-slate-400 shrink-0">{fmtHour(item.completedAt)}</span>}
+                                {item.done && item.completedAt && <span className="text-[10px] text-emerald-600 shrink-0">real {fmtHour(item.completedAt)}</span>}
                               </div>
                             );
                           })}

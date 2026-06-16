@@ -1302,3 +1302,36 @@ iframe[src*="supabase.io"] {
   aspect-ratio: 16 / 9;
   height: auto;
 }
+
+/* Toggle (secao recolhivel — extension-details) */
+.notion-editor-content .editor-details {
+  display: flex;
+  gap: 0.4rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  margin: 0.5em 0;
+}
+.dark .notion-editor-content .editor-details { border-color: #475569; }
+.notion-editor-content .editor-details > button {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 1.2rem;
+  height: 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+}
+.notion-editor-content .editor-details > button::before {
+  content: '\25B6';
+  font-size: 0.65rem;
+  transition: transform 0.15s ease;
+}
+.notion-editor-content .editor-details.is-open > button::before { transform: rotate(90deg); }
+.notion-editor-content .editor-details > div { flex: 1 1 auto; min-width: 0; }
+.notion-editor-content .editor-details [data-type="detailsSummary"] { font-weight: 600; }
+.notion-editor-content .editor-details:not(.is-open) [data-type="detailsContent"] { display: none; }

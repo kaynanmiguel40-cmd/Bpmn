@@ -1,8 +1,8 @@
 /**
  * Supabase Edge Function: evolution-send
  *
- * Envia mensagem WhatsApp via WAHA (devlikeapro/waha) ou Evolution API.
- * Detecta provider via env `EVOLUTION_PROVIDER` (default: 'waha').
+ * Envia mensagem WhatsApp via Evolution API (v2) ou WAHA (devlikeapro/waha).
+ * Detecta provider via env `EVOLUTION_PROVIDER` (default: 'evolution').
  *
  * Workflow:
  *   1. Resolve chatId real via check-exists (WhatsApp v2 migrou pra @lid).
@@ -27,9 +27,10 @@
  *   }
  *
  * Envs:
- *   EVOLUTION_URL=https://evo.fyness.com.br
+ *   EVOLUTION_URL=https://sua-evo.easypanel.host
  *   EVOLUTION_API_KEY=...
- *   EVOLUTION_PROVIDER=waha (ou 'evolution')
+ *   EVOLUTION_PROVIDER=evolution (ou 'waha' p/ legado)
+ *   EVOLUTION_INSTANCE_DEFAULT=fyness-principal (opcional; default p/ envios sem instancia)
  *
  * Deploy: supabase functions deploy evolution-send
  */
@@ -41,7 +42,10 @@ const SUPABASE_URL          = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const EVOLUTION_URL         = Deno.env.get('EVOLUTION_URL')!
 const EVOLUTION_API_KEY     = Deno.env.get('EVOLUTION_API_KEY')!
-const PROVIDER              = (Deno.env.get('EVOLUTION_PROVIDER') || 'waha').toLowerCase()
+const PROVIDER              = (Deno.env.get('EVOLUTION_PROVIDER') || 'evolution').toLowerCase()
+// Instancia default pra envios sem instanceName (ex: automacoes). Com 2 numeros,
+// evita o "primeira conectada" nao-deterministico — manda pelo numero da empresa.
+const DEFAULT_INSTANCE      = Deno.env.get('EVOLUTION_INSTANCE_DEFAULT') || ''
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -136,7 +140,40 @@ async function wahaSendMedia(
   return { ok: r.ok, status: r.status, data }
 }
 
-// ============= Evolution: helpers (legado) =============
+// ============= Evolution: helpers (v2) =============
+
+// Infere mimetype + fileName a partir da URL/tipo (sendMedia v2 exige ambos).
+function guessMimeAndName(url: string, mediaType: string): { mime: string; fileName: string } {
+  let path = url
+  try { path = new URL(url).pathname } catch { /* mantem url */ }
+  const base = (path.split('/').pop() || 'arquivo').split('?')[0]
+  const ext = (base.includes('.') ? base.split('.').pop() : '')?.toLowerCase() || ''
+  const mimeByExt: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+    mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', ogg: 'audio/ogg', wav: 'audio/wav',
+    pdf: 'application/pdf', doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    txt: 'text/plain', csv: 'text/csv',
+  }
+  const fallbackByType: Record<string, string> = {
+    image: 'image/jpeg', video: 'video/mp4', audio: 'audio/mpeg', document: 'application/octet-stream',
+  }
+  const mime = mimeByExt[ext] || fallbackByType[mediaType] || 'application/octet-stream'
+  const fileName = base.includes('.') ? base : `${base}.${ext || 'bin'}`
+  return { mime, fileName }
+}
+
+// Resolve o campo `number` da v2. Numeros lid (privacidade do WhatsApp v2) levam
+// sufixo @lid; numeros BR normais vao so com digitos.
+function evolutionResolveNumber(phone: string): string {
+  if (phone.includes('@')) return phone
+  const numericPhone = phone.replace(/\D/g, '')
+  const isLikelyLid = numericPhone.length > 13 || !numericPhone.startsWith('55')
+  return isLikelyLid ? `${numericPhone}@lid` : numericPhone
+}
 
 async function evolutionSend(
   instanceName: string,
@@ -146,45 +183,36 @@ async function evolutionSend(
   mediaType: string | undefined,
   mediaCaption: string | undefined,
 ) {
-  const isMedia = !!mediaUrl
-  const endpoint = isMedia
-    ? `${EVOLUTION_URL}/message/sendMedia/${encodeURIComponent(instanceName)}`
-    : `${EVOLUTION_URL}/message/sendText/${encodeURIComponent(instanceName)}`
+  const number = evolutionResolveNumber(phone)
+  const headers = { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY }
 
-  // Se phone parece lid (>13 digitos ou nao comeca com codigo pais conhecido)
-  // adiciona sufixo @lid pra que o Evolution use addressingMode='lid' e
-  // resolva via remoteJidAlt no Baileys novo (suporte adicionado no fork
-  // ativo evoapicloud/evolution-api).
-  const numericPhone = phone.replace(/\D/g, '')
-  const isLikelyLid = numericPhone.length > 13 || !numericPhone.startsWith('55')
-  const numberField = phone.includes('@')
-    ? phone
-    : isLikelyLid
-      ? `${numericPhone}@lid`
-      : numericPhone
+  let endpoint: string
+  let payload: Record<string, unknown>
 
-  // Evolution v1.x usa payload aninhado em textMessage/mediaMessage.
-  const payload = isMedia
-    ? {
-        number: numberField,
-        options: { delay: 0, presence: 'composing' },
-        mediaMessage: {
-          mediatype: mediaType || 'image',
-          media:     mediaUrl,
-          caption:   mediaCaption || content || undefined,
-        },
-      }
-    : {
-        number: numberField,
-        options: { delay: 0, presence: 'composing' },
-        textMessage: { text: content || '' },
-      }
+  if (mediaUrl && mediaType === 'audio') {
+    // Audio (voz) tem endpoint proprio na v2.
+    endpoint = `${EVOLUTION_URL}/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`
+    payload = { number, audio: mediaUrl, delay: 0 }
+  } else if (mediaUrl) {
+    // Imagem / video / documento. v2 = payload plano com mimetype + fileName.
+    const { mime, fileName } = guessMimeAndName(mediaUrl, mediaType || 'document')
+    endpoint = `${EVOLUTION_URL}/message/sendMedia/${encodeURIComponent(instanceName)}`
+    payload = {
+      number,
+      mediatype: mediaType || 'document',
+      mimetype:  mime,
+      media:     mediaUrl,
+      caption:   mediaCaption || content || '',
+      fileName,
+      delay:     0,
+    }
+  } else {
+    // Texto. v2 = { number, text } plano (v1 usava textMessage.text aninhado).
+    endpoint = `${EVOLUTION_URL}/message/sendText/${encodeURIComponent(instanceName)}`
+    payload = { number, text: content || '', delay: 0 }
+  }
 
-  const r = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-    body: JSON.stringify(payload),
-  })
+  const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) })
   const data = await r.json().catch(() => ({}))
   return { ok: r.ok, status: r.status, data }
 }
@@ -230,15 +258,31 @@ serve(async (req) => {
   }
 
   if (!instance) {
-    const fallback = await supabase
-      .from('crm_whatsapp_instances')
-      .select('id, status, phone_number, instance_name')
-      .eq('status', 'connected')
-      .is('deleted_at', null)
-      .limit(1)
-      .maybeSingle()
-    if (fallback.data) {
-      instance = fallback.data
+    // 1) Prefere a instance default (numero da empresa), se configurada e conectada.
+    if (DEFAULT_INSTANCE) {
+      const def = await supabase
+        .from('crm_whatsapp_instances')
+        .select('id, status, phone_number, instance_name')
+        .eq('instance_name', DEFAULT_INSTANCE)
+        .eq('status', 'connected')
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (def.data) instance = def.data
+    }
+    // 2) Senao, pega a conectada mais antiga (deterministico — evita alternar
+    //    entre os 2 numeros a cada envio).
+    if (!instance) {
+      const fallback = await supabase
+        .from('crm_whatsapp_instances')
+        .select('id, status, phone_number, instance_name')
+        .eq('status', 'connected')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (fallback.data) instance = fallback.data
+    }
+    if (instance) {
       // Atualiza o instanceName usado nas chamadas pro provider
       ;(body as SendBody).instanceName = instance.instance_name
     }
@@ -301,7 +345,7 @@ serve(async (req) => {
         success = true
       }
     } else {
-      // Evolution API (legado)
+      // Evolution API (v2) — resposta { key: { id }, ... }
       const result = await evolutionSend(effectiveInstanceName, phone, content, mediaUrl, mediaType, mediaCaption)
       if (!result.ok) {
         errorMessage = result.data?.message || `HTTP ${result.status}`

@@ -8,12 +8,20 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { z } from 'zod';
 import { crmActivitySchema } from '../schemas/crmValidation';
+
+// No modal, INÍCIO e ENTREGA são obrigatórios. (No schema base endDate fica
+// opcional pra não quebrar cadência/criações automáticas.)
+const activityFormSchema = crmActivitySchema.extend({
+  endDate: z.string().min(1, 'Data de entrega é obrigatória'),
+});
 import {
   useCrmContacts,
   useCrmDeals,
   useCreateCrmActivity,
   useUpdateCrmActivity,
+  useReportOwners,
 } from '../hooks/useCrmQueries';
 
 // Converte Date ou ISO string para formato aceito pelo <input type="datetime-local">:
@@ -129,15 +137,26 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
-    resolver: zodResolver(crmActivitySchema),
+    resolver: zodResolver(activityFormSchema),
     defaultValues: {
       title: '', description: '', type: 'call',
       contactId: null, dealId: null,
       startDate: '', endDate: null, completed: false, attendees: [],
+      assignedTo: null, assignedToName: null,
     },
   });
 
   const selectedType = watch('type');
+  const assignedTo = watch('assignedTo');
+  const { data: owners = [] } = useReportOwners();
+
+  // Em tarefa NOVA, responsável já vem como você (quando a lista de vendedores carrega).
+  useEffect(() => {
+    if (open && !isEdit && owners.length && !assignedTo) {
+      const me = owners.find(o => o.isMe) || owners[0];
+      if (me) { setValue('assignedTo', me.authUserId); setValue('assignedToName', me.name); }
+    }
+  }, [open, isEdit, owners, assignedTo, setValue]);
 
   useEffect(() => {
     if (open && activity) {
@@ -151,6 +170,8 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
         endDate: toLocalDatetimeInput(activity.endDate),
         completed: activity.completed || false,
         attendees: Array.isArray(activity.attendees) ? activity.attendees : [],
+        assignedTo: activity.assignedTo || null,
+        assignedToName: activity.assignedToName || null,
       });
     } else if (open) {
       // Default: agora, arredondado pra proxima meia-hora, duracao 30min
@@ -165,6 +186,7 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
         endDate: toLocalDatetimeInput(end),
         completed: false,
         attendees: [],
+        assignedTo: null, assignedToName: null,
       });
     }
   }, [open, activity, reset, defaultDealId, defaultContactId]);
@@ -243,13 +265,14 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
         {/* Data + Hora */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Inicio *</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Início *</label>
             <input type="datetime-local" {...register('startDate')} className={fieldClass('startDate')} />
             {errors.startDate && <p className="text-xs text-rose-500 mt-0.5">{errors.startDate.message}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Fim</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Entrega *</label>
             <input type="datetime-local" {...register('endDate')} className={fieldClass('endDate')} />
+            {errors.endDate && <p className="text-xs text-rose-500 mt-0.5">{errors.endDate.message}</p>}
           </div>
         </div>
 
@@ -271,6 +294,25 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
                   placeholder="Buscar negocio..." useQueryHook={useCrmDeals} nameField="title" />
               )} />
           </div>
+        </div>
+
+        {/* Responsável pela tarefa (vendedor) — pode ser != quem cria */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Responsável</label>
+          <select
+            value={assignedTo || ''}
+            onChange={(e) => {
+              const o = owners.find(x => x.authUserId === e.target.value);
+              setValue('assignedTo', o ? o.authUserId : null);
+              setValue('assignedToName', o ? o.name : null);
+            }}
+            className={fieldClass('assignedTo')}
+          >
+            <option value="">— Selecionar responsável —</option>
+            {owners.map(o => (
+              <option key={o.authUserId} value={o.authUserId}>{o.name}{o.isMe ? ' (você)' : ''}</option>
+            ))}
+          </select>
         </div>
 
         {/* Convidados — só pra eventos (reunião/visita/almoço) */}

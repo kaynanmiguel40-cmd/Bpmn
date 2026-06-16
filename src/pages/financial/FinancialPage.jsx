@@ -17,7 +17,7 @@ import {
   createOSOrder, updateOSOrder, deleteOSOrder, updateOSOrdersBatch,
   clearProjectFromOrders, clearSectorFromProjects,
   toggleGroupAssignee, getGroupAssignees,
-  setGroupDueAt, setItemDueAt,
+  setItemDueAt,
 } from '../../lib/osService';
 import { startTimer, closeOpenSession } from '../../lib/timeEntryService';
 import { toast } from '../../contexts/ToastContext';
@@ -25,7 +25,7 @@ import { useProfile } from '../../hooks/useProfile';
 import { shortName } from '../../lib/teamService';
 import { namesMatch, calcWorkingHoursBetween, calcChecklistItemMinutes } from '../../lib/kpiUtils';
 import { MANAGER_ROLES } from '../../lib/roleUtils';
-import { notifyOSAssigned, notifyOSCompleted, notifyOSBlocked, notifyOSUpdated, notifyOSCreated } from '../../lib/notificationTriggers';
+import { notifyOSAssigned, notifyOSCompleted, notifyOSBlocked, notifyOSUpdated, notifyOSCreated, notifyTaskReady } from '../../lib/notificationTriggers';
 import { usePermissions } from '../../contexts/PermissionContext';
 import logoFyness from '../../assets/logo-fyness.png';
 import { useRealtimeOSOrders, useRealtimeTeamMembers } from '../../hooks/useRealtimeSubscription';
@@ -515,12 +515,15 @@ export default function FinancialPage() {
       location: pendingOrder.location || '',
       notes: pendingOrder.notes || '',
       assignedTo: pendingOrder.assignedTo || '',
+      supervisor: pendingOrder.supervisor || '',
       estimatedStart: pendingOrder.estimatedStart || '',
       estimatedEnd: pendingOrder.estimatedEnd || '',
       attachments: pendingOrder.attachments || [],
       projectId: pendingOrder.projectId || null,
       parentOrderId: pendingOrder.parentOrderId || null,
       blockReason: pendingOrder.blockReason || null,
+      scheduledPauses: pendingOrder.scheduledPauses || [],
+      dependsOn: pendingOrder.dependsOn || [],
     });
     setPendingOrder(null);
     setShowCreateForm(true);
@@ -2042,21 +2045,61 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
   // Rascunho local; salva ao FECHAR (evita escrever na rede a cada tecla).
   const [briefingItemId, setBriefingItemId] = useState(null);
   const [briefingDraft, setBriefingDraft] = useState('');
+  const [deliveryDraft, setDeliveryDraft] = useState('');
+  const [briefingTab, setBriefingTab] = useState('briefing');
   const briefingItem = briefingItemId != null ? (checklistRef.current.find(i => i.id === briefingItemId) || null) : null;
-  const openBriefing = (item) => { setBriefingDraft(item.briefing || ''); setBriefingItemId(item.id); };
+  const openBriefing = (item, tab = 'briefing') => {
+    setBriefingDraft(item.briefing || '');
+    setDeliveryDraft(item.delivery || '');
+    setBriefingTab(tab);
+    setBriefingItemId(item.id);
+  };
   const closeBriefing = () => {
-    if (briefingItem && onUpdateOrder && briefingDraft !== (briefingItem.briefing || '')) {
-      const hasContent = !!stripHtml(briefingDraft);
-      const updated = checklistRef.current.map(i => {
-        if (i.id !== briefingItem.id) return i;
-        const next = { ...i, briefing: briefingDraft };
-        if (!hasContent) { next.briefingBy = null; next.briefingAt = null; }
-        else if (!i.briefingBy) { next.briefingBy = profileName || 'Voce'; next.briefingAt = new Date().toISOString(); }
-        return next;
-      });
-      onUpdateOrder(order.id, { checklist: updated });
+    if (briefingItem && onUpdateOrder) {
+      const briefingChanged = briefingDraft !== (briefingItem.briefing || '');
+      const deliveryChanged = deliveryDraft !== (briefingItem.delivery || '');
+      if (briefingChanged || deliveryChanged) {
+        const now = new Date().toISOString();
+        // "Tem conteudo" = texto OU midia (print colado, tabela, video). Uma
+        // entrega que e so um print nao pode ser tratada como vazia, senao perde
+        // o carimbo de quem entregou.
+        const hasMeaning = (html) => !!stripHtml(html) || /<(img|table|iframe)/i.test(html || '');
+        const updated = checklistRef.current.map(i => {
+          if (i.id !== briefingItem.id) return i;
+          const next = { ...i };
+          if (briefingChanged) {
+            next.briefing = briefingDraft;
+            const hasContent = hasMeaning(briefingDraft);
+            if (!hasContent) { next.briefingBy = null; next.briefingAt = null; }
+            else if (!i.briefingBy) { next.briefingBy = profileName || 'Voce'; next.briefingAt = now; }
+          }
+          if (deliveryChanged) {
+            next.delivery = deliveryDraft;
+            const hasDelivery = hasMeaning(deliveryDraft);
+            if (!hasDelivery) { next.deliveryBy = null; next.deliveryAt = null; }
+            else if (!i.deliveryBy) { next.deliveryBy = profileName || 'Voce'; next.deliveryAt = now; }
+          }
+          return next;
+        });
+        onUpdateOrder(order.id, { checklist: updated });
+        toast.success(deliveryChanged && !briefingChanged ? 'Entrega salva' : 'Briefing salvo');
+      }
     }
     setBriefingItemId(null);
+  };
+
+  // Status de revisao da tarefa (Rascunho -> Pronto pra revisar -> Aprovado / Ajustar).
+  const setTaskReview = (itemId, status) => {
+    if (!onUpdateOrder) return;
+    const now = new Date().toISOString();
+    const updated = checklistRef.current.map(i =>
+      i.id === itemId ? { ...i, reviewStatus: status, reviewBy: profileName || 'Voce', reviewAt: now } : i
+    );
+    onUpdateOrder(order.id, { checklist: updated });
+    if (status === 'review') {
+      const it = updated.find(i => i.id === itemId);
+      notifyTaskReady(order, it?.text || '', order.supervisor, teamMembers, profileName, profileId);
+    }
   };
 
   const teamMember = teamMembers.find(m => m.id === order.assignee || namesMatch(m.name, order.assignee));
@@ -2084,8 +2127,18 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
           content={canEditOS ? briefingDraft : briefingItem.briefing}
           author={briefingItem.briefingBy}
           authorAt={briefingItem.briefingAt}
+          reviewStatus={briefingItem.reviewStatus}
+          reviewBy={briefingItem.reviewBy}
+          reviewAt={briefingItem.reviewAt}
+          onReview={canEditOS ? (status) => setTaskReview(briefingItem.id, status) : undefined}
           onChange={setBriefingDraft}
           onClose={closeBriefing}
+          showDelivery={!!briefingItem.done}
+          initialTab={briefingTab}
+          deliveryContent={canEditOS ? deliveryDraft : briefingItem.delivery}
+          onDeliveryChange={setDeliveryDraft}
+          deliveryAuthor={briefingItem.deliveryBy}
+          deliveryAt={briefingItem.deliveryAt}
         />
       )}
 
@@ -2256,6 +2309,9 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             <div className="p-4">
               <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Previsao de Entrega</label>
               <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.estimatedEnd ? formatDate(order.estimatedEnd) : '-'}</p>
+              {(order.checklist || []).some(i => i.dueAt) && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Segue o maior prazo das tarefas</p>
+              )}
             </div>
           </div>
           )}
@@ -2468,9 +2524,11 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                   );
                 }
               } else {
-                // Desmarcar: limpar tudo
+                // Desmarcar: para o cronometro ao vivo mas PRESERVA o tempo ja
+                // acumulado (accumulatedMin) — desmarcar sem querer nao apaga o
+                // trabalho registrado. Reconcluir continua somando a partir dele.
                 updated = latestCl.map(i => {
-                  if (i.id === item.id) return { ...i, done: false, completedAt: null, durationMin: null, accumulatedMin: 0, pausedAt: null, startedAt: null };
+                  if (i.id === item.id) return { ...i, done: false, completedAt: null, durationMin: null, pausedAt: null, startedAt: null };
                   return i;
                 });
               }
@@ -2508,7 +2566,6 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                       const isGrouped = groupKey !== '__ungrouped__';
                       const groupDone = groupItems.filter(i => i.done).length;
                       const allGroupDone = groupDone === groupItems.length;
-                      const groupTime = groupItems.reduce((sum, i) => sum + realDuration(i), 0);
                       const isCollapsed = collapsedGroups.has(groupKey);
                       const grpOutput = getGroupOutput(groupKey);
                       const hasAttachments = (grpOutput.links?.length > 0) || (grpOutput.files?.length > 0) || grpOutput.text;
@@ -2544,8 +2601,9 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                 </span>
                               )}
                             </button>
-                            {/* Seletor de responsaveis + prazo da pasta. Funciona tanto em
-                                pasta nomeada quanto na pseudo-pasta "Tarefas" (__ungrouped__). */}
+                            {/* Seletor de responsaveis da pasta. Funciona tanto em
+                                pasta nomeada quanto na pseudo-pasta "Tarefas" (__ungrouped__).
+                                Prazo fica so nas tarefas e no total da O.S. (derivado). */}
                             {editingGroupKey !== groupKey && order.mode === 'team' && (order.participants || []).length > 0 && (() => {
                               const cg = (order.checklistGroups || []).find(g => g.name === groupKey);
                               const currentAssignees = getGroupAssignees(cg);
@@ -2562,20 +2620,6 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                       } catch (err) {
                                         console.error('[GROUP_ASSIGN] falhou:', err);
                                         toast.error(`Erro ao atribuir: ${err?.message || err}`);
-                                      }
-                                    }}
-                                  />
-                                  <DueDateButton
-                                    dueAt={cg?.dueAt || null}
-                                    done={allGroupDone}
-                                    disabled={!canEditOS}
-                                    size="sm"
-                                    onChange={async (iso) => {
-                                      try {
-                                        await setGroupDueAt(order.id, groupKey, iso);
-                                        queryClient.invalidateQueries({ queryKey: ['osOrders'] });
-                                      } catch (err) {
-                                        toast.error(`Erro ao salvar prazo: ${err?.message || err}`);
                                       }
                                     }}
                                   />
@@ -2620,9 +2664,6 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 </button>
                               </div>
-                            )}
-                            {groupTime > 0 && (
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{fmtTime(groupTime)}</span>
                             )}
                             {hasAttachments && (
                               <span className="flex items-center gap-0.5 text-[10px] text-violet-500 dark:text-violet-400 shrink-0">
@@ -2676,7 +2717,10 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                       </div>
                                       <span className="text-xs text-slate-400 dark:text-slate-500 font-mono w-5 shrink-0">{arrIdx + 1}.</span>
                                       <span className={`text-sm flex-1 ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : 'text-blue-700 dark:text-blue-300 font-medium'}`}>{item.text}</span>
-                                      {/* Prazo individual do item */}
+                                      {item.assigneeName && (
+                                        <span className="shrink-0 text-[10px] font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded-md" title="Responsável">{item.assigneeName}</span>
+                                      )}
+                                      {/* Prazo individual do item (data de entrega) */}
                                       <div onClick={(e) => e.stopPropagation()}>
                                         <DueDateButton
                                           dueAt={item.dueAt || null}
@@ -2695,7 +2739,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                       </div>
                                       <button
                                         type="button"
-                                        onClick={(e) => { e.stopPropagation(); openBriefing(item); }}
+                                        onClick={(e) => { e.stopPropagation(); openBriefing(item, 'briefing'); }}
                                         title={item.briefing ? 'Ver/editar briefing' : 'Adicionar briefing'}
                                         className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-colors ${item.briefing ? 'text-fyness-primary border-fyness-primary/30 bg-fyness-primary/10 hover:bg-fyness-primary/20' : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:border-fyness-primary hover:text-fyness-primary'}`}
                                       >
@@ -2704,6 +2748,28 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                         </svg>
                                         Briefing
                                       </button>
+                                      {item.done && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); openBriefing(item, 'entrega'); }}
+                                          title={item.delivery ? 'Ver/editar entrega' : 'Anexar entrega (o que foi feito + print)'}
+                                          className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-colors ${item.delivery ? 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20' : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400'}`}
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                          </svg>
+                                          Entrega
+                                        </button>
+                                      )}
+                                      {item.reviewStatus && item.reviewStatus !== 'draft' && (
+                                        <span className={`shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                                          item.reviewStatus === 'approved' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                          item.reviewStatus === 'changes' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' :
+                                          'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+                                        }`}>
+                                          {item.reviewStatus === 'approved' ? 'Aprovado' : item.reviewStatus === 'changes' ? 'Ajustar' : 'Em revisao'}
+                                        </span>
+                                      )}
                                       {item.done && realDuration(item) > 0 && (
                                         <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">{fmtTime(realDuration(item))}</span>
                                       )}
@@ -3328,7 +3394,7 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
           <div className="grid grid-cols-2 gap-3">
             {/* Atribuir a (multiplos) */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Atribuir a <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Atribuir a <span className="text-slate-400 dark:text-slate-500 font-normal">(opcional — vazio vai pro pool)</span></label>
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {(form.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean).map(name => (
                   <span key={name} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded-full">

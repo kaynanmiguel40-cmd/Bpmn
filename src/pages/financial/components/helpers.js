@@ -18,14 +18,27 @@ export function formatHM(min) {
   return `${r}min`;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Lista de nomes a renderizar como chips de "atribuidos".
  *  Em team: usa participants[] (fonte unica de verdade).
- *  Em solo/pool: cai no CSV legado de assignedTo. */
+ *  Em solo/pool: cai no CSV legado de assignedTo — mas no solo o assignedTo
+ *  guarda o UUID do auth (deriveAssignment), entao se os tokens parecerem UUID
+ *  usamos o nome legivel de `assignee`/participants em vez de cuspir o UUID. */
 export function getOrderAssigneeNames(order) {
   if (order?.mode === 'team' && Array.isArray(order.participants) && order.participants.length > 0) {
     return order.participants.map(p => p?.name).filter(Boolean);
   }
-  return (order?.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean);
+  const tokens = (order?.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (tokens.length > 0 && tokens.every(t => UUID_RE.test(t))) {
+    const byAssignee = (order?.assignee || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (byAssignee.length > 0) return byAssignee;
+    if (Array.isArray(order?.participants) && order.participants.length > 0) {
+      return order.participants.map(p => p?.name).filter(Boolean);
+    }
+    return []; // so temos UUID e nenhum nome — melhor nada do que um UUID
+  }
+  return tokens;
 }
 
 /** Calcula horas trabalhadas em uma O.S. (horas uteis seg-sex 9-18h). */

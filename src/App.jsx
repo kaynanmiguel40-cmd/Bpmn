@@ -19,6 +19,7 @@ const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage'))
 const FinancialPage = lazy(() => import('./pages/financial/FinancialPage'))
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'))
 const ReportPage = lazy(() => import('./pages/reports/ReportPage'))
+const ArquivosPage = lazy(() => import('./pages/arquivos/ArquivosPage'))
 
 // CRM Module (lazy loaded — app dentro do app)
 const CrmLayout = lazy(() => import('./modules/crm/components/layout/CrmLayout'))
@@ -33,9 +34,8 @@ const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage
 const CrmCompanyDetailPage = lazy(() => import('./modules/crm/pages/CrmCompanyDetailPage'))
 const CrmActivitiesPage = lazy(() => import('./modules/crm/pages/CrmActivitiesPage'))
 const CrmAgendaPage = lazy(() => import('./modules/crm/pages/CrmAgendaPage'))
-const CrmDailyReportPage = lazy(() => import('./modules/crm/pages/CrmDailyReportPage'))
-const CrmWeeklyReportPage = lazy(() => import('./modules/crm/pages/CrmWeeklyReportPage'))
 const CrmGoalsPage = lazy(() => import('./modules/crm/pages/CrmGoalsPage'))
+const ComparativoPage = lazy(() => import('./modules/crm/pages/ComparativoPage'))
 const CrmForecastPage = lazy(() => import('./modules/crm/pages/CrmForecastPage'))
 const CrmTrafficPage = lazy(() => import('./modules/crm/pages/CrmTrafficPage'))
 const CrmProspectsPage = lazy(() => import('./modules/crm/pages/CrmProspectsPage'))
@@ -113,14 +113,13 @@ function App() {
                 <Route path="companies/:id" element={<ErrorBoundary><CrmCompanyDetailPage /></ErrorBoundary>} />
                 <Route path="activities" element={<ErrorBoundary><CrmActivitiesPage /></ErrorBoundary>} />
                 <Route path="agenda" element={<ErrorBoundary><CrmAgendaPage /></ErrorBoundary>} />
-                <Route path="relatorio-diario" element={<ErrorBoundary><CrmDailyReportPage /></ErrorBoundary>} />
-                <Route path="relatorio-semanal" element={<ErrorBoundary><CrmWeeklyReportPage /></ErrorBoundary>} />
                 <Route path="discador" element={<ErrorBoundary><CrmDialerPage /></ErrorBoundary>} />
                 <Route path="discador/historico" element={<ErrorBoundary><CrmCallHistoryPage /></ErrorBoundary>} />
                 <Route path="inbox" element={<ErrorBoundary><CrmInboxPage /></ErrorBoundary>} />
                 <Route path="whatsapp" element={<ErrorBoundary><CrmWhatsAppSetupPage /></ErrorBoundary>} />
                 <Route path="forecast" element={<ErrorBoundary><CrmForecastPage /></ErrorBoundary>} />
                 <Route path="goals" element={<ErrorBoundary><CrmGoalsPage /></ErrorBoundary>} />
+                <Route path="comparativo" element={<ErrorBoundary><ComparativoPage /></ErrorBoundary>} />
                 <Route path="traffic" element={<ErrorBoundary><CrmTrafficPage /></ErrorBoundary>} />
                 <Route path="prospects" element={<ErrorBoundary><CrmProspectsPage /></ErrorBoundary>} />
                 <Route path="settings" element={<ErrorBoundary><CrmSettingsPage /></ErrorBoundary>} />
@@ -139,6 +138,7 @@ function App() {
                 <Route path="/agenda" element={<ErrorBoundary><AgendaPage /></ErrorBoundary>} />
                 <Route path="/financial" element={<ErrorBoundary><FinancialPage /></ErrorBoundary>} />
                 <Route path="/reports" element={<ErrorBoundary><ReportPage /></ErrorBoundary>} />
+                <Route path="/arquivos" element={<ErrorBoundary><ArquivosPage /></ErrorBoundary>} />
                 <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
               </Route>
             </Route>

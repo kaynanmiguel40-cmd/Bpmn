@@ -26,6 +26,7 @@ const routeTitles = {
   '/agenda': 'Agenda',
   '/financial': 'Ordens de Servico',
   '/reports': 'Relatorios',
+  '/arquivos': 'Arquivos',
   '/settings': 'Configuracoes'
 };
 

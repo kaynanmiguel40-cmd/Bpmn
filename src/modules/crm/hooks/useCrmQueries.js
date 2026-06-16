@@ -14,7 +14,7 @@ import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsP
 import { getSalesReport, getFunnelReport, getForecastReport, getLearnedProbabilities } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
 import { getCrmCalendarActivities, getLeadTimeline } from '../services/crmAgendaService';
-import { getLeadReport, saveLeadReport, getDailyReport, getWeeklyReport } from '../services/crmLeadReportsService';
+import { getLeadReport, saveLeadReport, getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
 import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead } from '../services/crmMessagesService';
@@ -35,8 +35,11 @@ export const crmQueryKeys = {
   calendarActivities: (start, end) => ['crm', 'calendarActivities', start, end],
   leadTimeline: (key) => ['crm', 'leadTimeline', key],
   leadReport: (key) => ['crm', 'leadReport', key],
-  dailyReport: (date) => ['crm', 'dailyReport', date],
-  weeklyReport: (weekStart) => ['crm', 'weeklyReport', weekStart],
+  dailyReport: (date, ownerId) => ['crm', 'dailyReport', date, ownerId || 'me'],
+  weeklyReport: (weekStart, ownerId) => ['crm', 'weeklyReport', weekStart, ownerId || 'me'],
+  monthlyReport: (monthStart, ownerId) => ['crm', 'monthlyReport', monthStart, ownerId || 'me'],
+  reportOwners: ['crm', 'reportOwners'],
+  ownerReportIndex: (ownerId) => ['crm', 'ownerReportIndex', ownerId],
   goals: ['crm', 'goals'],
   goalsProgress: ['crm', 'goalsProgress'],
   dashboard: ['crm', 'dashboard'],
@@ -585,29 +588,60 @@ export function useSaveLeadReport() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.leadReport(`${vars.dealId || ''}:${vars.contactId || ''}:${vars.date || ''}`) });
       qc.invalidateQueries({ queryKey: ['crm', 'dailyReport'] });
       qc.invalidateQueries({ queryKey: ['crm', 'weeklyReport'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'monthlyReport'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'ownerReportIndex'] });
     },
     onError: (err) => toast(`Erro ao salvar relato: ${err.message}`, 'error'),
   });
 }
 
 // Relatorio consolidado do dia (leads atendidos + contadores + relatos).
-export function useDailyReport(date) {
+// ownerId opcional: relatorio de outro vendedor (arquivo). Default = logado.
+export function useDailyReport(date, ownerId = null) {
   return useQuery({
-    queryKey: crmQueryKeys.dailyReport(date),
-    queryFn: () => getDailyReport(date),
+    queryKey: crmQueryKeys.dailyReport(date, ownerId),
+    queryFn: () => getDailyReport(date, ownerId),
     enabled: !!date,
     staleTime: 15_000,
   });
 }
 
 // Relatorio semanal: junta os relatos diarios da semana + metricas (reunioes,
-// vendas, conversao).
-export function useWeeklyReport(weekStart) {
+// vendas, conversao). ownerId opcional (arquivo).
+export function useWeeklyReport(weekStart, ownerId = null) {
   return useQuery({
-    queryKey: crmQueryKeys.weeklyReport(weekStart),
-    queryFn: () => getWeeklyReport(weekStart),
+    queryKey: crmQueryKeys.weeklyReport(weekStart, ownerId),
+    queryFn: () => getWeeklyReport(weekStart, ownerId),
     enabled: !!weekStart,
     staleTime: 15_000,
+  });
+}
+
+// Relatorio mensal (mesma estrutura do semanal). ownerId opcional (arquivo).
+export function useMonthlyReport(monthStart, ownerId = null) {
+  return useQuery({
+    queryKey: crmQueryKeys.monthlyReport(monthStart, ownerId),
+    queryFn: () => getMonthlyReport(monthStart, ownerId),
+    enabled: !!monthStart,
+    staleTime: 15_000,
+  });
+}
+
+// Arquivo de relatorios: pessoas (pastas) + indice de datas por pessoa.
+export function useReportOwners() {
+  return useQuery({
+    queryKey: crmQueryKeys.reportOwners,
+    queryFn: listReportOwners,
+    staleTime: 60_000,
+  });
+}
+
+export function useOwnerReportIndex(ownerId) {
+  return useQuery({
+    queryKey: crmQueryKeys.ownerReportIndex(ownerId),
+    queryFn: () => getOwnerReportIndex(ownerId),
+    enabled: !!ownerId,
+    staleTime: 30_000,
   });
 }
 
@@ -810,10 +844,10 @@ export function useBonificacaoProgress(startDate, endDate) {
 }
 
 // Funil de conversão atividade -> venda (ligações -> reuniões -> leads -> clientes).
-export function useSalesFunnel(range, scope = 'sales') {
+export function useSalesFunnel(range, scope = 'sales', ownerId = null) {
   return useQuery({
-    queryKey: [...crmQueryKeys.dashboard, 'funnel', range || null, scope],
-    queryFn: () => getSalesFunnel(range, scope),
+    queryKey: [...crmQueryKeys.dashboard, 'funnel', range || null, scope, ownerId || 'all'],
+    queryFn: () => getSalesFunnel(range, scope, ownerId),
     staleTime: 60_000,
   });
 }

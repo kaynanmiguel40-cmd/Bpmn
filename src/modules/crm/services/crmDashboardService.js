@@ -671,72 +671,59 @@ export async function getBonificacaoProgress(startDate, endDate) {
 }
 
 // ============================================================
-// FUNIL DE CONVERSÃO — atividade → venda
+// FUNIL DE CONVERSÃO — pipeline (Lead → Qualificado → Reunião → Fechamento)
 // ============================================================
 //
-// Diferente do funil por-estágio do getCrmDashboardKPIs (retrato dos deals
-// PARADOS em cada etapa hoje), este é o funil de ESFORÇO → RESULTADO que o
-// dono usa pra achar o gargalo:
+// Funil de jornada do LEAD: pega os negócios CRIADOS no período (cohort) e
+// mede quantos avançaram em cada etapa do pipeline. Conversões coerentes
+// ("desses leads, quantos qualificaram / tiveram reunião / fecharam").
 //
-//   Ligações → Atendidas → Reuniões → Leads → Qualificados → Clientes
-//
-// Topo (ligações/atendidas/reuniões) = VOLUME de atividade no período.
-// Base (leads/qualificados/clientes) = jornada dos leads CRIADOS no período
-//   (cohort), pra responder "desses leads, quantos qualificaram / fecharam".
-// Há um degrau natural entre os dois (uma reunião pode virar lead em outro
-// mês), mas é o jeito que o dono pensa: quanto entrou de esforço × quanto saiu.
+// As etapas reais variam por pipeline, então detectamos por nome:
+//   Qualificado = primeiro estágio de engajamento (Respondeu / Qualificação...)
+//   Reunião     = estágio de reunião / demo / apresentação
+//   Fechamento  = estágio de vitória (is_win_stage) ou status 'won'
 
-// Outcomes de ligação que contam como "conversou de fato" (atendeu).
-// Espelha ANSWERED_OUTCOMES do crmCallsService.
-const FUNNEL_ANSWERED_OUTCOMES = new Set([
-  'answered', 'callback_scheduled', 'meeting_scheduled', 'not_interested', 'deal_advanced',
-]);
-
-// Primeiro estágio que marca um lead como "qualificado" (engajou de verdade).
-// Daí pra frente tudo conta como qualificado. Robusto aos vocabulários das
-// pipelines (Outbound Manual, IA Inbound/Outbound, Vendedor, Parceiros).
-const QUALIFIED_STAGE_RE = /respond|qualifica|reuni|demo|engaj|conect|icp|proposta|negocia|trial|topou|cliente|ativo/i;
+const QUAL_STAGE_RE    = /respond|qualifica|engaj|conect|icp/i;
+const MEETING_STAGE_RE = /reuni|demo|apresenta/i;
 
 /**
- * Monta o funil a partir de dados já carregados. PURA e testável.
+ * Monta o funil de pipeline a partir de dados já carregados. PURA e testável.
  *
- * @param {object}   p
- * @param {Array}    p.calls            - linhas crm_calls do período ({ outcome }).
- * @param {number}   p.meetingsCount    - nº de reuniões (crm_activities type=meeting) no período.
- * @param {Array}    p.leadDeals        - deals criados no período ({ status, value, stage_id, pipeline_id }).
- * @param {object}   p.stagePosById     - { [stage_id]: position }.
- * @param {object}   p.qualPosByPipeline- { [pipeline_id]: position a partir da qual conta qualificado }.
+ * Mede pela JORNADA REAL: `reachedPosByDeal` é a maior posição de estágio que
+ * cada negócio já alcançou (do histórico + estágio atual). Assim um lead conta
+ * em "Qualificado"/"Reunião" se passou DE FATO por lá, mesmo que tenha voltado.
+ *
+ * @param {object} p
+ * @param {Array}  p.leadDeals            - deals criados no período ({ id, status, value, pipeline_id }).
+ * @param {object} p.reachedPosByDeal     - { [deal_id]: maior posição já alcançada }.
+ * @param {object} p.qualPosByPipeline    - { [pipeline_id]: posição mínima de "qualificado" }.
+ * @param {object} p.meetingPosByPipeline - { [pipeline_id]: posição mínima de "reunião" }.
  */
 export function buildSalesFunnel({
-  calls = [],
-  meetingsCount = 0,
   leadDeals = [],
-  stagePosById = {},
+  reachedPosByDeal = {},
   qualPosByPipeline = {},
+  meetingPosByPipeline = {},
 } = {}) {
-  const callsTotal = calls.length;
-  const answered = calls.filter(c => FUNNEL_ANSWERED_OUTCOMES.has(c.outcome)).length;
-
-  const leads = leadDeals.length;
-  let qualified = 0;
-  let clients = 0;
-  let revenue = 0;
+  let lead = 0, qualified = 0, meeting = 0, closing = 0, revenue = 0;
   for (const d of leadDeals) {
-    const isWon = d.status === 'won';
-    const pos = stagePosById[d.stage_id];
-    const qualPos = qualPosByPipeline[d.pipeline_id];
-    const reachedQual = typeof pos === 'number' && typeof qualPos === 'number' && pos >= qualPos;
-    if (isWon || reachedQual) qualified++;
-    if (isWon) { clients++; revenue += d.value || 0; }
+    lead++;
+    const won = d.status === 'won';
+    const pos = reachedPosByDeal[d.id];
+    const qp = qualPosByPipeline[d.pipeline_id];
+    const mp = meetingPosByPipeline[d.pipeline_id];
+    const reachedQual    = typeof pos === 'number' && typeof qp === 'number' && pos >= qp;
+    const reachedMeeting = typeof pos === 'number' && typeof mp === 'number' && pos >= mp;
+    if (won || reachedQual)    qualified++;
+    if (won || reachedMeeting) meeting++;
+    if (won) { closing++; revenue += d.value || 0; }
   }
 
   const rawSteps = [
-    { key: 'calls',     label: 'Ligações',     count: callsTotal },
-    { key: 'answered',  label: 'Atendidas',    count: answered },
-    { key: 'meetings',  label: 'Reuniões',     count: meetingsCount },
-    { key: 'leads',     label: 'Leads',        count: leads },
-    { key: 'qualified', label: 'Qualificados', count: qualified },
-    { key: 'clients',   label: 'Clientes',     count: clients, value: revenue },
+    { key: 'lead',      label: 'Lead',        count: lead },
+    { key: 'qualified', label: 'Qualificado', count: qualified },
+    { key: 'meeting',   label: 'Reunião',     count: meeting },
+    { key: 'closing',   label: 'Fechamento',  count: closing, value: revenue },
   ];
 
   const top = rawSteps[0].count || 0;
@@ -747,24 +734,22 @@ export function buildSalesFunnel({
     return { ...s, fromPrev, fromTop };
   });
 
-  // Razão "a cada quantos X sai 1 Y" (1 casa decimal). null se denominador 0.
-  const ratio = (a, b) => (b > 0 ? Math.round((a / b) * 10) / 10 : null);
+  const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
   const ratios = {
-    callsPerMeeting: ratio(callsTotal, meetingsCount), // "X ligações por reunião"
-    answerRate: callsTotal > 0 ? Math.round((answered / callsTotal) * 100) : 0,
-    meetingsPerClient: ratio(meetingsCount, clients),
-    winRate: leads > 0 ? Math.round((clients / leads) * 100) : 0,
+    qualRate: pct(qualified, lead),        // % dos leads que qualificaram
+    meetingToClose: pct(closing, meeting), // % das reuniões que fecharam
+    winRate: pct(closing, lead),           // win rate geral (lead → cliente)
   };
 
-  return { steps, ratios, revenue, callsTotal, answered, meetings: meetingsCount, leads, qualified, clients };
+  return { steps, ratios, revenue, lead, qualified, meeting, closing };
 }
 
 /**
- * Carrega e monta o funil de conversão do período/escopo.
+ * Carrega e monta o funil de pipeline do período/escopo.
  * @param {{ start?: string, end?: string }} [range] - Período ISO. Default = mês atual.
  * @param {'sales'|'partners'|'all'} [scope]
  */
-export async function getSalesFunnel(range = {}, scope = 'sales') {
+export async function getSalesFunnel(range = {}, scope = 'sales', ownerId = null) {
   try {
     const now = new Date();
     const periodStart = range.start || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -783,42 +768,27 @@ export async function getSalesFunnel(range = {}, scope = 'sales') {
     else targetIds = salesPipelineIds;
     const scopedIds = targetIds.length ? targetIds : ['00000000-0000-0000-0000-000000000000'];
 
-    const [stagesRes, callsRes, meetingsRes, leadDealsRes] = await Promise.all([
-      // Estágios das pipelines do escopo (pra detectar a posição de "qualificado")
+    // Leads = deals criados no período (escopo de venda). Opcionalmente de 1 dono.
+    let leadDealsQuery = supabase.from('crm_deals')
+      .select('id, status, value, stage_id, pipeline_id')
+      .in('pipeline_id', scopedIds)
+      .is('deleted_at', null)
+      .gte('created_at', periodStart)
+      .lte('created_at', periodEnd);
+    if (ownerId) leadDealsQuery = leadDealsQuery.eq('created_by', ownerId);
+
+    const [stagesRes, leadDealsRes] = await Promise.all([
+      // Estágios das pipelines do escopo (pra detectar posições de qualificado/reunião)
       supabase.from('crm_pipeline_stages')
         .select('id, pipeline_id, name, position, is_win_stage')
         .in('pipeline_id', scopedIds),
-
-      // Ligações do período (só precisamos do outcome)
-      supabase.from('crm_calls')
-        .select('outcome')
-        .is('deleted_at', null)
-        .gte('started_at', periodStart)
-        .lte('started_at', periodEnd),
-
-      // Reuniões agendadas no período (atividades type=meeting)
-      supabase.from('crm_activities')
-        .select('id', { count: 'exact', head: true })
-        .eq('type', 'meeting')
-        .is('deleted_at', null)
-        .gte('start_date', periodStart)
-        .lte('start_date', periodEnd),
-
-      // Leads = deals criados no período (escopo de venda)
-      supabase.from('crm_deals')
-        .select('id, status, value, stage_id, pipeline_id')
-        .in('pipeline_id', scopedIds)
-        .is('deleted_at', null)
-        .gte('created_at', periodStart)
-        .lte('created_at', periodEnd),
+      leadDealsQuery,
     ]);
 
     const stages = stagesRes.data || [];
-    const calls = callsRes.data || [];
-    const meetingsCount = meetingsRes.count || 0;
     const leadDeals = leadDealsRes.data || [];
 
-    // Mapa stage_id -> position + posição de qualificação por pipeline.
+    // Mapa stage_id -> position + posições de qualificado/reunião por pipeline.
     const stagePosById = {};
     const stagesByPipeline = {};
     for (const s of stages) {
@@ -826,16 +796,49 @@ export async function getSalesFunnel(range = {}, scope = 'sales') {
       (stagesByPipeline[s.pipeline_id] = stagesByPipeline[s.pipeline_id] || []).push(s);
     }
     const qualPosByPipeline = {};
+    const meetingPosByPipeline = {};
     for (const [pid, list] of Object.entries(stagesByPipeline)) {
       const ordered = list.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-      const match = ordered.find(s => QUALIFIED_STAGE_RE.test(s.name || ''));
-      // Fallback: meio da pipeline se nenhum nome casar.
-      qualPosByPipeline[pid] = match
-        ? (match.position ?? 0)
-        : (ordered[Math.floor(ordered.length / 2)]?.position ?? 0);
+      const n = ordered.length;
+      const qualMatch = ordered.find(s => QUAL_STAGE_RE.test(s.name || ''));
+      const meetMatch = ordered.find(s => MEETING_STAGE_RE.test(s.name || ''));
+      const winIdx = ordered.findIndex(s => s.is_win_stage);
+
+      const qualPos = qualMatch
+        ? (qualMatch.position ?? 0)
+        : (ordered[Math.max(0, Math.floor(n * 0.33))]?.position ?? 0);
+      const meetPosRaw = meetMatch
+        ? (meetMatch.position ?? 0)
+        : (winIdx > 0 ? (ordered[Math.max(0, winIdx - 1)]?.position ?? 0)
+                      : (ordered[Math.max(0, Math.floor(n * 0.66))]?.position ?? 0));
+
+      qualPosByPipeline[pid] = qualPos;
+      // Reunião nunca antes de qualificado (garante funil monotônico).
+      meetingPosByPipeline[pid] = Math.max(meetPosRaw, qualPos);
     }
 
-    return buildSalesFunnel({ calls, meetingsCount, leadDeals, stagePosById, qualPosByPipeline });
+    // Jornada real: maior posição que cada negócio JÁ alcançou. Começa pelo
+    // estágio atual e sobe com o histórico de transições — assim um lead que
+    // avançou e depois voltou ainda conta na etapa mais funda que tocou.
+    const reachedPosByDeal = {};
+    for (const d of leadDeals) {
+      reachedPosByDeal[d.id] = stagePosById[d.stage_id] ?? 0;
+    }
+    const dealIds = leadDeals.map(d => d.id);
+    if (dealIds.length) {
+      const { data: history } = await supabase
+        .from('crm_deal_stage_history')
+        .select('deal_id, to_stage_id')
+        .in('deal_id', dealIds);
+      for (const h of (history || [])) {
+        const pos = stagePosById[h.to_stage_id];
+        if (typeof pos === 'number' && pos > (reachedPosByDeal[h.deal_id] ?? -1)) {
+          reachedPosByDeal[h.deal_id] = pos;
+        }
+      }
+    }
+
+    return buildSalesFunnel({ leadDeals, reachedPosByDeal, qualPosByPipeline, meetingPosByPipeline });
   } catch (err) {
     console.error('[CRM Funil] Erro ao calcular funil:', err);
     toast('Erro ao carregar funil de conversão', 'error');

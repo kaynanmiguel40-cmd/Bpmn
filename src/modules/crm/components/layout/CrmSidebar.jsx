@@ -13,8 +13,6 @@ import {
   Users,
   Building2,
   CalendarDays,
-  CalendarRange,
-  FileText,
   Settings,
   ArrowLeft,
   Target,
@@ -53,9 +51,8 @@ const crmNavItems = [
   { section: 'Cadastros' },
   { to: '/crm/cadastros', icon: Users, label: 'Cadastros' },
   { section: 'Gestao' },
-  { to: '/crm/relatorio-diario', icon: FileText, label: 'Relatório Diário' },
-  { to: '/crm/relatorio-semanal', icon: CalendarRange, label: 'Relatório Semanal' },
   { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { to: '/crm/comparativo', icon: Target, label: 'Comparativo' },
   { to: '/crm/goals', icon: Trophy, label: 'Metas' },
   // Forecast oculto por enquanto (a rota /crm/forecast e a página seguem ativas).
   // Pra religar: re-importe TrendingUp do lucide-react e adicione aqui:

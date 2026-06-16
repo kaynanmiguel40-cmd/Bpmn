@@ -179,7 +179,10 @@ const orderService = createCRUDService({
   idPrefix: 'os',
   transform: dbToOrder,
   schema: osOrderSchema,
-  richFields: ['description', 'notes'],
+  // briefing/delivery sao HTML rico DENTRO dos itens do checklist (array aninhado).
+  // sanitizeObject propaga richFields na recursao, entao esses campos preservam
+  // tabelas/imagens/links em vez de virarem texto puro ao salvar.
+  richFields: ['description', 'notes', 'briefing', 'delivery'],
   fieldMap: {
     number: 'number',
     title: 'title',
@@ -413,14 +416,17 @@ export async function joinOSOrder(orderId, member) {
 
   // Caso 1: pool -> solo do novo membro
   if (row.mode === 'pool' || (!row.assigned_to && !row.assignee && currentParticipants.length === 0)) {
-    return updateOSOrder(orderId, {
+    const patch = {
       mode: 'solo',
       assignee: member.name || '',
       assignedTo: member.id,
       participants: [{ id: member.id, name: member.name || '' }],
       status: row.status === 'available' ? 'in_progress' : row.status,
-      actualStart: row.status === 'available' ? now : undefined,
-    });
+    };
+    // So define actualStart ao iniciar de fato. Passar undefined viraria null em
+    // normalizeTimestamps e apagaria o actual_start de uma O.S. ja iniciada.
+    if (row.status === 'available') patch.actualStart = now;
+    return updateOSOrder(orderId, patch);
   }
 
   // Caso 2: solo do proprio usuario -> claim
@@ -569,6 +575,12 @@ export async function setGroupDueAt(orderOrId, groupName, dueAt) {
 
 /**
  * Atualiza o prazo de UM item do checklist (granularidade fina).
+ *
+ * A "Previsao de Entrega" da O.S. (estimatedEnd) e RESPONSIVA: vira sempre o
+ * maior prazo entre as tarefas. Se mexer no prazo de uma tarefa, o prazo
+ * previsto da O.S. acompanha. So sobrescreve quando ha ao menos uma tarefa com
+ * prazo — se nenhuma tarefa tem prazo, preserva o prazo manual da O.S. (nao
+ * apaga silenciosamente).
  */
 export async function setItemDueAt(orderOrId, itemId, dueAt) {
   const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
@@ -577,7 +589,14 @@ export async function setItemDueAt(orderOrId, itemId, dueAt) {
   const next = checklist.map(i =>
     i.id === itemId ? { ...i, dueAt: dueAt || null } : i
   );
-  return updateOSOrder(orderId, { checklist: next });
+  const updates = { checklist: next };
+  const dues = next.map(i => i.dueAt).filter(Boolean);
+  if (dues.length > 0) {
+    updates.estimatedEnd = dues.reduce((a, b) =>
+      new Date(a).getTime() >= new Date(b).getTime() ? a : b
+    );
+  }
+  return updateOSOrder(orderId, updates);
 }
 
 /**

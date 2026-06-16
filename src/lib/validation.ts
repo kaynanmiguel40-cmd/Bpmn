@@ -32,15 +32,45 @@ const RICH_TEXT_TAGS = [
   'p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre',
   'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'hr',
   'span', 'div', 'label', 'input',
+  // estrutura rica do editor (briefing/entrega): links, imagens (print base64),
+  // marca-texto, tabelas (templates 5W2H/RACI/ER), toggles e video do YouTube.
+  'a', 'img', 'mark',
+  'table', 'thead', 'tbody', 'tr', 'th', 'td', 'colgroup', 'col',
+  'details', 'summary',
+  'iframe',
 ];
 const RICH_TEXT_ATTRS = [
   'class', 'data-type', 'data-checked', 'type', 'checked',
+  'href', 'target', 'rel',
+  'src', 'alt', 'width', 'height',
+  'colspan', 'rowspan', 'colwidth', 'style',
+  'open',
+  'allow', 'allowfullscreen', 'frameborder',
 ];
+
+// iframe e permitido (video), mas SO de dominios do YouTube. Sem isso, qualquer
+// membro poderia salvar <iframe src="https://evil.com"> num briefing/entrega que
+// e re-renderizado pra outros usuarios (XSS armazenado / clickjacking / phishing).
+const YOUTUBE_SRC_RE = /^https:\/\/(www\.)?(youtube(-nocookie)?\.com|youtu\.be)\//i;
+let iframeHookInstalled = false;
+function ensureIframeHook(): void {
+  if (iframeHookInstalled) return;
+  const p = purify as unknown as { addHook?: (h: string, fn: (node: Element, data: { tagName: string }) => void) => void };
+  if (!p || typeof p.addHook !== 'function') return;
+  p.addHook('uponSanitizeElement', (node, data) => {
+    if (data.tagName === 'iframe') {
+      const src = (node.getAttribute && node.getAttribute('src')) || '';
+      if (!YOUTUBE_SRC_RE.test(src)) node.parentNode?.removeChild(node);
+    }
+  });
+  iframeHookInstalled = true;
+}
 
 /** Sanitiza HTML permitindo tags seguras de formatacao (para TipTap). */
 export function sanitizeRichText(text: unknown): unknown {
   if (typeof text !== 'string') return text;
   if (purify && typeof purify.sanitize === 'function') {
+    ensureIframeHook();
     return purify.sanitize(text, {
       ALLOWED_TAGS: RICH_TEXT_TAGS,
       ALLOWED_ATTR: RICH_TEXT_ATTRS,
@@ -65,10 +95,10 @@ function sanitizeObject<T>(obj: T, richFields: Set<string> | null = null): T {
     } else if (Array.isArray(value)) {
       result[key] = value.map(item =>
         typeof item === 'string' ? sanitize(item) :
-        typeof item === 'object' && item !== null ? sanitizeObject(item) : item
+        typeof item === 'object' && item !== null ? sanitizeObject(item, richFields) : item
       );
     } else if (typeof value === 'object' && value !== null) {
-      result[key] = sanitizeObject(value);
+      result[key] = sanitizeObject(value, richFields);
     } else {
       result[key] = value;
     }

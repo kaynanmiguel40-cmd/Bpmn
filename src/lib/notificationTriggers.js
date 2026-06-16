@@ -14,7 +14,14 @@ import { shortName } from './teamService';
 
 function findMemberByName(name, teamMembers) {
   if (!name || !teamMembers?.length) return null;
-  return teamMembers.find(m => namesMatch(m.name, name));
+  // Roteamento de notificacao: match EXATO normalizado primeiro (evita mandar
+  // pra pessoa errada quando ha nomes parecidos — "Ana" x "Ana Paula").
+  // namesMatch (fuzzy/substring) so como fallback.
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const target = norm(name);
+  const exact = teamMembers.find(m => norm(m.name) === target);
+  if (exact) return exact;
+  return teamMembers.find(m => namesMatch(m.name, name)) || null;
 }
 
 function getManagers(teamMembers) {
@@ -44,6 +51,30 @@ export async function notifyOSAssigned(order, newAssigneeName, teamMembers, trig
       entityId: order.id,
     });
   } catch { /* silenciar */ }
+}
+
+// ==================== TAREFA PRONTA PRA REVISAR ====================
+
+/**
+ * Notifica o(s) supervisor(es) da O.S. quando uma tarefa e marcada "pronta pra revisar".
+ */
+export async function notifyTaskReady(order, taskText, supervisorNames, teamMembers, triggeredByName, triggeredByUserId) {
+  if (!supervisorNames || !teamMembers?.length) return;
+  const names = String(supervisorNames).split(',').map(s => s.trim()).filter(Boolean);
+  for (const name of names) {
+    const member = findMemberByName(name, teamMembers);
+    if (!member?.authUserId || member.authUserId === triggeredByUserId) continue;
+    try {
+      await notify({
+        userId: member.authUserId,
+        type: 'task_review',
+        title: 'Tarefa pronta pra revisar',
+        message: `${shortName(triggeredByName)} marcou "${taskText}" (O.S. #${order.number || ''}) pra sua revisao`,
+        entityType: 'os_order',
+        entityId: order.id,
+      });
+    } catch { /* silenciar */ }
+  }
 }
 
 // ==================== 2. OS CONCLUIDA ====================

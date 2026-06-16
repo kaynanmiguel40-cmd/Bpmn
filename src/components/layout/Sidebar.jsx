@@ -15,12 +15,16 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { getProfile } from '../../lib/profileService';
 import { supabase } from '../../lib/supabase';
+import { Folder } from 'lucide-react';
 import logoFyness from '../../assets/logo-fyness.png';
 import {
   DashboardIcon, SalesIcon, KanbanIcon, AgendaIcon,
   FinancialIcon, ReportIcon, CrmIcon,
   SettingsIcon, LogoutIcon, CollapseIcon, ExpandIcon,
 } from '../icons/NavIcons';
+
+// Ícone do menu Arquivos (lucide, no tamanho dos NavIcons)
+const ArquivosIcon = () => <Folder className="w-5 h-5" />;
 
 // Item de navegacao
 function NavItem({ to, icon: Icon, label, isCollapsed, badge, onClick }) {
@@ -224,6 +228,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
           <NavItem to="/crm" icon={CrmIcon} label="CRM" isCollapsed={effectiveCollapsed} badge={newLeadsCount > 0 ? newLeadsCount : undefined} onClick={handleNavClick} />
           <NavItem to="/sales" icon={SalesIcon} label="Processos" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/reports" icon={ReportIcon} label="Relatorios" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
+          <NavItem to="/arquivos" icon={ArquivosIcon} label="Arquivos" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/settings" icon={SettingsIcon} label="Configuracoes" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
         </nav>
 

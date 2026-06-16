@@ -127,6 +127,7 @@ export async function getInboxConversations({ limit = 100 } = {}) {
       key,
       contactId:    m.contact_id || null,
       prospectId:   m.prospect_id || null,
+      instanceId:   m.instance_id || null,  // de qual numero veio a ultima msg (roteia a resposta)
       avatarColor:  contact?.avatar_color || null,
       avatarUrl:    contact?.avatar_url || prospect?.avatar_url || null,
       otherName,

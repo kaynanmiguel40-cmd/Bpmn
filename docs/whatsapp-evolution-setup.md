@@ -1,6 +1,47 @@
 # Inbox WhatsApp via Evolution API — Setup
 
-Guia operacional pra subir a Evolution API no VPS e ligar no CRM Fyness.
+Guia operacional pra subir a Evolution API e ligar no CRM Fyness.
+
+## Quickstart — EasyPanel + 2 numeros (Evolution v2)
+
+Se a Evolution **ja esta no ar no EasyPanel** (URL HTTPS + API key em maos), pula o
+docker-compose abaixo e faz so isto:
+
+1. **Secrets no Supabase** (Dashboard → Edge Functions → Secrets):
+   ```
+   EVOLUTION_URL=https://sua-evo.easypanel.host
+   EVOLUTION_API_KEY=<AUTHENTICATION_API_KEY da Evolution>
+   EVOLUTION_PROVIDER=evolution
+   EVOLUTION_INSTANCE_DEFAULT=fyness-principal
+   EVOLUTION_WEBHOOK_SECRET=<gere: openssl rand -hex 24>
+   ```
+
+2. **Deploy das Edge Functions** (payload v2 + midia inbound da Evolution):
+   ```bash
+   supabase functions deploy evolution-send
+   supabase functions deploy evolution-webhook
+   ```
+
+3. **Cria as 2 instancias na Evolution ja com webhook** (roda local):
+   ```powershell
+   $env:EVOLUTION_URL="https://sua-evo.easypanel.host"
+   $env:EVOLUTION_API_KEY="<API key>"
+   $env:WEBHOOK_URL="https://SEU_PROJETO.supabase.co/functions/v1/evolution-webhook"
+   $env:WEBHOOK_SECRET="<mesmo EVOLUTION_WEBHOOK_SECRET>"
+   node scripts/evolutionSetup.mjs
+   ```
+
+4. **`.env` do frontend** (VPS): `VITE_EVOLUTION_URL` + `VITE_EVOLUTION_INSTANCE_DEFAULT=fyness-principal`. Rebuild/deploy do front.
+
+5. **Escaneia o QR** de `fyness-principal` (numero da Fyness) e `lorena-consultora`
+   (numero da Lorena) em **/crm/whatsapp** → Aparelhos conectados → Conectar aparelho.
+
+Pronto: mensagens dos 2 numeros entram no Inbox e a resposta sai pelo numero da
+propria conversa.
+
+---
+
+> O restante deste doc cobre o **self-host via docker-compose** (alternativa ao EasyPanel).
 
 ## 0. Pre-requisitos no VPS
 

@@ -90,14 +90,14 @@ const leadName = (deal, contact) => deal?.title || contact?.name || 'Sem víncul
  * @param {string} date - 'YYYY-MM-DD'
  * @returns {Promise<{ date, summary, leads: object[] }>}
  */
-export async function getDailyReport(date) {
+export async function getDailyReport(date, ownerId = null) {
   const empty = { date, summary: { leads: 0, withReport: 0, calls: 0, messages: 0, activities: 0 }, leads: [] };
   if (!date) return empty;
-  const uid = await currentUserId();
+  const uid = ownerId || await currentUserId();
   if (!uid) return empty;
   const { startISO, endISO } = dayBounds(date);
 
-  const [actsRes, callsRes, msgsRes, reportsRes] = await Promise.all([
+  const [actsRes, callsRes, msgsRes, reportsRes, meetingsRes, dealsRes] = await Promise.all([
     supabase.from('crm_activities')
       .select('id, title, type, start_date, completed_at, deal_id, contact_id, crm_deals(id, title, crm_pipeline_stages(name, color)), crm_contacts(id, name)')
       .eq('completed', true).eq('created_by', uid)
@@ -111,8 +111,18 @@ export async function getDailyReport(date) {
       .eq('created_by', uid)
       .gte('sent_at', startISO).lt('sent_at', endISO),
     supabase.from('crm_lead_daily_reports')
-      .select('lead_key, deal_id, contact_id, content')
+      .select('lead_key, deal_id, contact_id, content, crm_deals(id, title, crm_pipeline_stages(name, color)), crm_contacts(id, name)')
       .eq('report_date', date).eq('created_by', uid),
+    // Reuniões MARCADAS no dia (por quando foram agendadas = created_at)
+    supabase.from('crm_activities')
+      .select('id, title, start_date, completed, deal_id, contact_id, crm_deals(id, title, crm_pipeline_stages(name, color)), crm_contacts(id, name)')
+      .eq('type', 'meeting').eq('created_by', uid)
+      .gte('created_at', startISO).lt('created_at', endISO).is('deleted_at', null),
+    // Negócios FECHADOS no dia (ganho/perdido)
+    supabase.from('crm_deals')
+      .select('id, title, value, status, closed_at, contact_id, crm_pipeline_stages(name, color)')
+      .in('status', ['won', 'lost']).eq('created_by', uid)
+      .gte('closed_at', startISO).lt('closed_at', endISO).is('deleted_at', null),
   ]);
 
   // Agrupa por leadKey: contadores + nome/estágio + eventos detalhados do dia.
@@ -149,18 +159,29 @@ export async function getDailyReport(date) {
     l.events.push({ id: `m_${r.id}`, kind: 'message', time: r.sent_at, direction: r.direction || 'outbound', detail: r.content || (r.media_type ? `[${r.media_type}]` : '') });
   });
 
+  // Reuniões marcadas no dia (pula as já contadas como atividade concluída)
+  const completedActIds = new Set((actsRes.data || []).map(r => r.id));
+  (meetingsRes.data || []).forEach(r => {
+    if (completedActIds.has(r.id)) return;
+    const l = touch(r.deal_id, r.contact_id, r.crm_deals, r.crm_contacts);
+    l.events.push({
+      id: `mt_${r.id}`, kind: 'meeting', time: r.start_date,
+      detail: r.start_date ? new Date(r.start_date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }) : '',
+    });
+  });
+
+  // Negócios fechados no dia (ganho/perdido) — o marco "fechou algo"
+  (dealsRes.data || []).forEach(r => {
+    const l = touch(r.id, r.contact_id, { id: r.id, title: r.title, crm_pipeline_stages: r.crm_pipeline_stages }, null);
+    l.events.push({ id: `d_${r.id}`, kind: 'deal', time: r.closed_at, status: r.status, value: r.value || 0 });
+  });
+
   // Anexa os relatos (e garante que um lead só relatado, sem atendimento
-  // registrado, ainda apareça no relatório)
+  // registrado, ainda apareça no relatório — com nome/estágio corretos)
   (reportsRes.data || []).forEach(r => {
-    const key = r.lead_key || leadKeyOf(r.deal_id, r.contact_id);
-    if (!map.has(key)) {
-      map.set(key, {
-        leadKey: key, dealId: r.deal_id || null, contactId: r.contact_id || null,
-        name: 'Lead', stage: null, stageColor: null,
-        counts: { calls: 0, messages: 0, activities: 0 }, events: [], report: '',
-      });
-    }
-    map.get(key).report = r.content || '';
+    if (!r.content) return;
+    const l = touch(r.deal_id, r.contact_id, r.crm_deals, r.crm_contacts);
+    l.report = r.content;
   });
 
   // Ordena os eventos de cada lead por hora (cronológico)
@@ -174,13 +195,22 @@ export async function getDailyReport(date) {
     return vb - va;
   });
 
-  const summary = leads.reduce((acc, l) => ({
+  const base = leads.reduce((acc, l) => ({
     leads: acc.leads + 1,
     withReport: acc.withReport + (l.report ? 1 : 0),
     calls: acc.calls + l.counts.calls,
     messages: acc.messages + l.counts.messages,
     activities: acc.activities + l.counts.activities,
   }), { leads: 0, withReport: 0, calls: 0, messages: 0, activities: 0 });
+
+  const wonDeals = (dealsRes.data || []).filter(d => d.status === 'won');
+  const summary = {
+    ...base,
+    meetings: (meetingsRes.data || []).length,
+    sales: wonDeals.length,
+    lost: (dealsRes.data || []).filter(d => d.status === 'lost').length,
+    revenue: wonDeals.reduce((s, d) => s + (d.value || 0), 0),
+  };
 
   return { date, summary, leads };
 }
@@ -210,23 +240,12 @@ const emptyWeek = (weekStart) => ({
 });
 
 /**
- * Monta o relatório semanal do autor logado: junta os relatos diários da semana
- * (por lead, dia a dia) + contadores de atividade + métricas da semana:
- * reuniões marcadas, vendas feitas (deals ganhos), receita e taxa de conversão
- * (ganhos / fechados na semana). Tudo do vendedor logado, igual ao diário.
- *
- * @param {string} weekStart - 'YYYY-MM-DD' (1º dia da semana, ex.: segunda)
- * @returns {Promise<{ weekStart, weekEnd, metrics, summary, leads: object[] }>}
+ * Núcleo comum dos relatórios de período (semana/mês): consolida relatos diários
+ * por lead + contadores + métricas (reuniões marcadas, vendas, receita,
+ * conversão). reportStart/reportEnd são 'YYYY-MM-DD' (inclusivos) pros relatos.
  */
-export async function getWeeklyReport(weekStart) {
-  if (!weekStart) return emptyWeek(weekStart);
-  const uid = await currentUserId();
-  if (!uid) return emptyWeek(weekStart);
-  const { startISO, endISO } = weekBounds(weekStart);
-  const reportStart = weekStart;            // 'YYYY-MM-DD'
-  const reportEnd = shiftDay(weekStart, 6); // inclusivo
-
-  const [actsRes, callsRes, msgsRes, reportsRes, meetingsRes, wonRes, closedRes] = await Promise.all([
+async function periodReport(uid, startISO, endISO, reportStart, reportEnd) {
+  const [actsRes, callsRes, msgsRes, reportsRes, meetingsRes, wonRes, closedRes, openTasksRes] = await Promise.all([
     supabase.from('crm_activities')
       .select('deal_id, contact_id, crm_deals(id, title, crm_pipeline_stages(name, color)), crm_contacts(id, name)')
       .eq('completed', true).eq('created_by', uid)
@@ -240,25 +259,27 @@ export async function getWeeklyReport(weekStart) {
       .eq('direction', 'outbound').eq('created_by', uid)
       .gte('sent_at', startISO).lt('sent_at', endISO),
     supabase.from('crm_lead_daily_reports')
-      .select('lead_key, deal_id, contact_id, content, report_date')
+      .select('lead_key, deal_id, contact_id, content, report_date, crm_deals(id, title, crm_pipeline_stages(name, color)), crm_contacts(id, name)')
       .eq('created_by', uid)
       .gte('report_date', reportStart).lte('report_date', reportEnd),
-    // Reuniões MARCADAS na semana (por start_date, concluídas ou não)
     supabase.from('crm_activities')
       .select('id', { count: 'exact', head: true })
       .eq('type', 'meeting').eq('created_by', uid)
       .gte('start_date', startISO).lt('start_date', endISO).is('deleted_at', null),
-    // Vendas FEITAS na semana (deals ganhos)
     supabase.from('crm_deals')
       .select('value').eq('status', 'won').eq('created_by', uid)
       .gte('closed_at', startISO).lt('closed_at', endISO).is('deleted_at', null),
-    // Deals FECHADOS na semana (won + lost) → denominador da conversão
     supabase.from('crm_deals')
       .select('status').in('status', ['won', 'lost']).eq('created_by', uid)
       .gte('closed_at', startISO).lt('closed_at', endISO).is('deleted_at', null),
+    // Tarefas EM ABERTO do período (não concluídas), por start_date
+    supabase.from('crm_activities')
+      .select('id, title, type, start_date, deal_id, contact_id, crm_deals(id, title), crm_contacts(id, name)')
+      .eq('completed', false).eq('created_by', uid)
+      .gte('start_date', startISO).lt('start_date', endISO).is('deleted_at', null)
+      .order('start_date', { ascending: true }),
   ]);
 
-  // ----- Consolidação por lead (atividade + relatos dia a dia) -----
   const map = new Map();
   const touch = (dealId, contactId, deal, contact) => {
     const key = leadKeyOf(dealId, contactId);
@@ -282,15 +303,8 @@ export async function getWeeklyReport(weekStart) {
   let reportCount = 0;
   (reportsRes.data || []).forEach(r => {
     if (!r.content) return;
-    const key = r.lead_key || leadKeyOf(r.deal_id, r.contact_id);
-    if (!map.has(key)) {
-      map.set(key, {
-        leadKey: key, dealId: r.deal_id || null, contactId: r.contact_id || null,
-        name: 'Lead', stage: null, stageColor: null,
-        counts: { calls: 0, messages: 0, activities: 0 }, reports: [],
-      });
-    }
-    map.get(key).reports.push({ date: r.report_date, content: r.content });
+    const l = touch(r.deal_id, r.contact_id, r.crm_deals, r.crm_contacts);
+    l.reports.push({ date: r.report_date, content: r.content });
     reportCount++;
   });
 
@@ -298,13 +312,12 @@ export async function getWeeklyReport(weekStart) {
 
   const leads = [...map.values()].sort((a, b) => {
     const ar = a.reports.length > 0, br = b.reports.length > 0;
-    if (ar !== br) return br ? 1 : -1; // quem tem relato primeiro
+    if (ar !== br) return br ? 1 : -1;
     const va = a.counts.calls + a.counts.messages + a.counts.activities;
     const vb = b.counts.calls + b.counts.messages + b.counts.activities;
     return vb - va;
   });
 
-  // ----- Métricas da semana -----
   const wonDeals = wonRes.data || [];
   const closed = closedRes.data || [];
   const closedWon = closed.filter(d => d.status === 'won').length;
@@ -334,5 +347,110 @@ export async function getWeeklyReport(weekStart) {
     reports: reportCount,
   };
 
-  return { weekStart, weekEnd: reportEnd, metrics, summary, leads };
+  // Tarefas em aberto (o que não fechou no período) + total concluídas.
+  const openTasks = (openTasksRes.data || []).map(r => ({
+    id: r.id,
+    title: r.title || 'Tarefa',
+    type: r.type,
+    dueAt: r.start_date,
+    leadName: r.crm_deals?.title || r.crm_contacts?.name || null,
+  }));
+  const tasks = { open: openTasks, openCount: openTasks.length, doneCount: (actsRes.data || []).length };
+
+  return { metrics, summary, leads, tasks };
+}
+
+/**
+ * Relatório semanal (segunda→domingo) de um vendedor (logado ou `ownerId`).
+ * @param {string} weekStart - 'YYYY-MM-DD' (1º dia da semana)
+ */
+export async function getWeeklyReport(weekStart, ownerId = null) {
+  if (!weekStart) return emptyWeek(weekStart);
+  const uid = ownerId || await currentUserId();
+  if (!uid) return emptyWeek(weekStart);
+  const { startISO, endISO } = weekBounds(weekStart);
+  const reportEnd = shiftDay(weekStart, 6);
+  const core = await periodReport(uid, startISO, endISO, weekStart, reportEnd);
+  return { weekStart, weekEnd: reportEnd, ...core };
+}
+
+// ==================== RELATÓRIO MENSAL ====================
+
+/** Limites de um mês a partir de 'YYYY-MM' (ou 'YYYY-MM-DD'). */
+function monthBounds(monthStr) {
+  const [y, m] = monthStr.split('-').map(Number);
+  const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+  const end = new Date(y, m, 1, 0, 0, 0, 0); // 1º dia do mês seguinte
+  const last = new Date(y, m, 0);            // último dia do mês
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    startISO: start.toISOString(), endISO: end.toISOString(),
+    reportStart: `${y}-${pad(m)}-01`,
+    reportEnd: `${last.getFullYear()}-${pad(last.getMonth() + 1)}-${pad(last.getDate())}`,
+  };
+}
+
+const emptyMonth = (monthStart) => ({
+  monthStart,
+  metrics: { meetings: 0, sales: 0, revenue: 0, conversionRate: 0, closedDeals: 0, leads: 0, calls: 0, messages: 0, activities: 0 },
+  summary: { leads: 0, withReport: 0, reports: 0 },
+  leads: [],
+});
+
+/**
+ * Relatório mensal de um vendedor (logado ou `ownerId`).
+ * @param {string} monthStart - 'YYYY-MM'
+ */
+export async function getMonthlyReport(monthStart, ownerId = null) {
+  if (!monthStart) return emptyMonth(monthStart);
+  const uid = ownerId || await currentUserId();
+  if (!uid) return emptyMonth(monthStart);
+  const { startISO, endISO, reportStart, reportEnd } = monthBounds(monthStart);
+  const core = await periodReport(uid, startISO, endISO, reportStart, reportEnd);
+  return { monthStart, ...core };
+}
+
+// ============== ARQUIVO DE RELATÓRIOS (pessoas + índice de datas) ==============
+
+/** Segunda-feira ('YYYY-MM-DD') da semana que contém a data. */
+function mondayOfDate(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Pessoas (vendedores) que têm pasta no arquivo de relatórios. */
+export async function listReportOwners() {
+  const me = await currentUserId();
+  const { data: members } = await supabase
+    .from('team_members')
+    .select('id, name, color, auth_user_id, crm_role')
+    .not('crm_role', 'is', null)
+    .not('auth_user_id', 'is', null);
+
+  const rows = (members || [])
+    .filter(m => m.auth_user_id)
+    .map(m => ({ authUserId: m.auth_user_id, name: m.name || 'Vendedor', color: m.color || '#6366f1', role: m.crm_role || null, isMe: m.auth_user_id === me }));
+
+  if (me && !rows.some(r => r.authUserId === me)) {
+    rows.unshift({ authUserId: me, name: 'Você', color: '#6366f1', role: null, isMe: true });
+  }
+  rows.sort((a, b) => (Number(b.isMe) - Number(a.isMe)) || a.name.localeCompare(b.name));
+  return rows;
+}
+
+/** Índice de relatórios de uma pessoa: dias/semanas/meses com relato escrito. */
+export async function getOwnerReportIndex(ownerId) {
+  const empty = { days: [], weeks: [], months: [] };
+  if (!ownerId) return empty;
+  const { data } = await supabase
+    .from('crm_lead_daily_reports')
+    .select('report_date')
+    .eq('created_by', ownerId);
+
+  const days = [...new Set((data || []).map(r => r.report_date).filter(Boolean))].sort().reverse();
+  const weeks = [...new Set(days.map(mondayOfDate))].sort().reverse();
+  const months = [...new Set(days.map(d => d.slice(0, 7)))].sort().reverse();
+  return { days, weeks, months };
 }

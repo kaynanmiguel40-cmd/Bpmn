@@ -31,6 +31,9 @@ export function dbToCrmActivity(row) {
     completedAt: row.completed_at || null,
     agendaEventId: row.agenda_event_id || null,
     createdBy: row.created_by || null,
+    assignedTo: row.assigned_to || null,
+    assignedToName: row.assigned_to_name || null,
+    completedBy: row.completed_by || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at || null,
@@ -56,6 +59,8 @@ const activityService = createCRUDService({
     completed: 'completed',
     completedAt: 'completed_at',
     agendaEventId: 'agenda_event_id',
+    assignedTo: 'assigned_to',
+    assignedToName: 'assigned_to_name',
   },
   orderBy: 'start_date',
   orderAsc: false,
@@ -294,9 +299,11 @@ export async function softDeleteCrmActivity(id) {
 
 export async function completeCrmActivity(id) {
   const now = new Date().toISOString();
+  const session = await supabase.auth.getSession();
+  const completedBy = session.data?.session?.user?.id || null;
   const { data, error } = await supabase
     .from('crm_activities')
-    .update({ completed: true, completed_at: now, updated_at: now })
+    .update({ completed: true, completed_at: now, completed_by: completedBy, updated_at: now })
     .eq('id', id)
     .select()
     .single();

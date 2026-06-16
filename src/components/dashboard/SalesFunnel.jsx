@@ -14,7 +14,7 @@
 
 import { useMemo, useState } from 'react';
 import {
-  Phone, PhoneCall, CalendarCheck, UserPlus, BadgeCheck, Crown, Filter,
+  UserPlus, BadgeCheck, CalendarCheck, Crown, Filter,
 } from 'lucide-react';
 import { useSalesFunnel } from '../../modules/crm/hooks/useCrmQueries';
 
@@ -71,12 +71,10 @@ function computeWidths(steps) {
 
 // Metadados por degrau: ícone, gradiente (marca) e o verbo da transição.
 const STEP_META = {
-  calls:     { icon: Phone,         from: '#93c5fd', to: '#60a5fa', toNext: 'atenderam' },
-  answered:  { icon: PhoneCall,     from: '#60a5fa', to: '#3b82f6', toNext: 'viraram reunião' },
-  meetings:  { icon: CalendarCheck, from: '#38bdf8', to: '#0ea5e9', toNext: 'viraram lead' },
-  leads:     { icon: UserPlus,      from: '#818cf8', to: '#6366f1', toNext: 'qualificaram' },
-  qualified: { icon: BadgeCheck,    from: '#fbbf24', to: '#f59e0b', toNext: 'fecharam' },
-  clients:   { icon: Crown,         from: '#34d399', to: '#10b981', toNext: null },
+  lead:      { icon: UserPlus,      from: '#60a5fa', to: '#3b82f6', toNext: 'qualificaram' },
+  qualified: { icon: BadgeCheck,    from: '#818cf8', to: '#6366f1', toNext: 'foram à reunião' },
+  meeting:   { icon: CalendarCheck, from: '#fbbf24', to: '#f59e0b', toNext: 'fecharam' },
+  closing:   { icon: Crown,         from: '#34d399', to: '#10b981', toNext: null },
 };
 
 // ─── Sub-componentes ──────────────────────────────────────────────
@@ -111,7 +109,7 @@ function FunnelRow({ step, prevStep, topW, botW, index }) {
       <div className="w-[88px] sm:w-36 flex items-center justify-end gap-2 pr-3 text-right shrink-0">
         <div className="min-w-0">
           <div className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{step.label}</div>
-          {step.key === 'clients' && step.value > 0 && (
+          {step.key === 'closing' && step.value > 0 && (
             <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium tnum truncate">{fmtCurrency(step.value)}</div>
           )}
         </div>
@@ -171,18 +169,18 @@ function FunnelSkeleton() {
 
 // ─── Componente principal ─────────────────────────────────────────
 
-export function SalesFunnel({ range: controlledRange, scope = 'sales' }) {
+export function SalesFunnel({ range: controlledRange, scope = 'sales', ownerId = null }) {
   const [period, setPeriod] = useState('month');
   const internalRange = useMemo(() => getPeriodRange(period), [period]);
   const controlled = !!controlledRange;
   const range = controlledRange || internalRange;
 
-  const { data, isLoading } = useSalesFunnel(range, scope);
+  const { data, isLoading } = useSalesFunnel(range, scope, ownerId);
 
   const steps = data?.steps || [];
   const ratios = data?.ratios || {};
   const widths = useMemo(() => computeWidths(steps), [steps]);
-  const isEmpty = !isLoading && (data?.callsTotal || 0) === 0 && (data?.leads || 0) === 0;
+  const isEmpty = !isLoading && (data?.lead || 0) === 0;
 
   return (
     <section className="glass rounded-2xl overflow-hidden">
@@ -213,11 +211,8 @@ export function SalesFunnel({ range: controlledRange, scope = 'sales' }) {
       <div className="p-5 pt-4 space-y-5">
         {/* Ribbon de razões */}
         <div className="flex items-stretch divide-x divide-slate-200/70 dark:divide-slate-700/70 rounded-xl bg-slate-50/60 dark:bg-slate-800/40 py-3">
-          <RatioStat
-            value={ratios.callsPerMeeting != null ? String(ratios.callsPerMeeting).replace('.', ',') : '—'}
-            label="ligações por reunião"
-          />
-          <RatioStat value={ratios.answerRate ?? 0} suffix="%" label="taxa de atendimento" />
+          <RatioStat value={ratios.qualRate ?? 0} suffix="%" label="taxa de qualificação" />
+          <RatioStat value={ratios.meetingToClose ?? 0} suffix="%" label="reunião → fechamento" />
           <RatioStat value={ratios.winRate ?? 0} suffix="%" label="win rate (lead → cliente)" />
         </div>
 
@@ -228,7 +223,7 @@ export function SalesFunnel({ range: controlledRange, scope = 'sales' }) {
           <div className="py-12 text-center">
             <Filter size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
             <p className="text-sm text-slate-400 dark:text-slate-500">
-              Sem ligações ou leads no período. Registre ligações no Discador pra ver o funil ganhar vida.
+              Sem negócios criados no período. Cadastre leads no pipeline pra ver o funil ganhar vida.
             </p>
           </div>
         ) : (
