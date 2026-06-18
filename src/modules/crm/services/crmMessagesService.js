@@ -89,7 +89,8 @@ export async function getInboxConversations({ limit = 100 } = {}) {
     .select(`
       *,
       crm_contacts(id, name, phone, avatar_color, avatar_url),
-      crm_prospects(id, contact_name, company_name, phone, avatar_url)
+      crm_prospects(id, contact_name, company_name, phone, avatar_url),
+      crm_whatsapp_instances(phone_number, instance_name)
     `)
     .is('deleted_at', null)
     .order('sent_at', { ascending: false })
@@ -125,9 +126,11 @@ export async function getInboxConversations({ limit = 100 } = {}) {
 
     seen.set(key, {
       key,
-      contactId:    m.contact_id || null,
-      prospectId:   m.prospect_id || null,
-      instanceId:   m.instance_id || null,  // de qual numero veio a ultima msg (roteia a resposta)
+      contactId:     m.contact_id || null,
+      prospectId:    m.prospect_id || null,
+      instanceId:    m.instance_id || null,  // de qual numero veio a ultima msg (roteia a resposta)
+      instancePhone: m.crm_whatsapp_instances?.phone_number || null,  // telefone do numero (filtro por numero)
+      instanceName:  m.crm_whatsapp_instances?.instance_name || null,
       avatarColor:  contact?.avatar_color || null,
       avatarUrl:    contact?.avatar_url || prospect?.avatar_url || null,
       otherName,

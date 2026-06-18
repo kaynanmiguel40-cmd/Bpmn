@@ -197,20 +197,139 @@ async function uploadBase64ToStorage(
  */
 async function evolutionFetchProfilePicture(instance: string, number: string): Promise<string | null> {
   if (!EVOLUTION_URL || !EVOLUTION_API_KEY || !number) return null
+  // Contatos no formato novo do WhatsApp sao @lid (numeros longos / sem DDI 55).
+  // Sem o sufixo @lid a Evolution resolve pra @s.whatsapp.net e retorna null.
+  let target = number
+  if (!number.includes('@')) {
+    const n = number.replace(/\D/g, '')
+    target = (n.length > 13 || !n.startsWith('55')) ? `${n}@lid` : n
+  }
+  async function tryFetch(num: string): Promise<string | null> {
+    try {
+      const r = await fetch(
+        `${EVOLUTION_URL}/chat/fetchProfilePictureUrl/${encodeURIComponent(instance)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+          body: JSON.stringify({ number: num }),
+        },
+      )
+      if (!r.ok) return null
+      const data = await r.json().catch(() => null)
+      return data?.profilePictureUrl || data?.profilePicUrl || data?.url || null
+    } catch {
+      return null
+    }
+  }
+  // tenta o alvo resolvido; se nada e nao era @lid, tenta @lid como fallback
+  let url = await tryFetch(target)
+  if (!url && !target.includes('@')) {
+    url = await tryFetch(`${target.replace(/\D/g, '')}@lid`)
+  }
+  return url
+}
+
+/**
+ * Baixa uma imagem (ex: foto de perfil pps.whatsapp.net, que expira) e re-hospeda
+ * no bucket crm-whatsapp-media/avatars. Retorna URL publica permanente, ou null.
+ */
+async function mirrorImageToStorage(
+  supabase: SupabaseClient,
+  url: string | null,
+): Promise<string | null> {
+  if (!url) return null
   try {
-    const r = await fetch(
-      `${EVOLUTION_URL}/chat/fetchProfilePictureUrl/${encodeURIComponent(instance)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-        body: JSON.stringify({ number }),
-      },
-    )
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
     if (!r.ok) return null
-    const data = await r.json().catch(() => null)
-    return data?.profilePictureUrl || data?.profilePicUrl || data?.url || null
+    const blob = await r.blob()
+    const ct = blob.type || 'image/jpeg'
+    const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg'
+    const path = `avatars/${crypto.randomUUID()}.${ext}`
+    const { error } = await supabase.storage
+      .from('crm-whatsapp-media')
+      .upload(path, blob, { contentType: ct, upsert: false })
+    if (error) return null
+    const { data: pub } = supabase.storage.from('crm-whatsapp-media').getPublicUrl(path)
+    return pub.publicUrl
   } catch {
     return null
+  }
+}
+
+/**
+ * Busca a foto de perfil na Evolution E ja re-hospeda no Storage (URL permanente).
+ * Cai pra URL crua se o mirror falhar.
+ */
+async function evolutionFetchAvatarMirrored(
+  instance: string,
+  number: string,
+  supabase: SupabaseClient,
+): Promise<string | null> {
+  const raw = await evolutionFetchProfilePicture(instance, number)
+  if (!raw) return null
+  return (await mirrorImageToStorage(supabase, raw)) || raw
+}
+
+/**
+ * Backfill: re-hospeda as fotos de perfil de prospects/contatos que ainda nao
+ * tem avatar no Storage (null ou URL pps.whatsapp.net que expira).
+ * Disparado via ?action=backfill_avatars. Usa service role.
+ */
+async function runBackfillAvatars(supabase: SupabaseClient) {
+  const { data: inst } = await supabase
+    .from('crm_whatsapp_instances')
+    .select('instance_name')
+    .eq('status', 'connected')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  const instance = inst?.instance_name
+  if (!instance) return { error: 'nenhuma instancia conectada' }
+
+  // Probe diagnostico: chamada crua pra ver URL/key/status reais do ambiente edge.
+  let probe: Record<string, unknown> = {}
+  try {
+    const pr = await fetch(
+      `${EVOLUTION_URL}/chat/fetchProfilePictureUrl/${encodeURIComponent(instance)}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY }, body: JSON.stringify({ number: '211398994968714@lid' }) },
+    )
+    probe = { status: pr.status, body: (await pr.text()).slice(0, 200) }
+  } catch (e) {
+    probe = { error: String(e) }
+  }
+
+  let checked = 0, fetched = 0, mirrored = 0, updated = 0
+  const tables = ['crm_prospects', 'crm_contacts'] as const
+  for (const table of tables) {
+    const { data: rows } = await supabase
+      .from(table)
+      .select('id, phone, avatar_url')
+      .not('phone', 'is', null)
+      .is('deleted_at', null)
+    for (const r of rows || []) {
+      checked++
+      // ja re-hospedado no Storage? pula.
+      if (r.avatar_url && String(r.avatar_url).includes('/storage/v1/')) continue
+      const phone = String(r.phone).replace(/\D/g, '')
+      if (phone.length < 8) continue
+      const raw = await evolutionFetchProfilePicture(instance, phone)
+      if (!raw) continue
+      fetched++
+      const stored = await mirrorImageToStorage(supabase, raw)
+      if (!stored) continue
+      mirrored++
+      const { error: upErr } = await supabase.from(table).update({ avatar_url: stored }).eq('id', r.id)
+      if (upErr) continue
+      updated++
+    }
+  }
+  return {
+    instance,
+    evolutionUrl: EVOLUTION_URL,
+    keyLen: EVOLUTION_API_KEY.length,
+    probe,
+    checked, fetched, mirrored, updated,
   }
 }
 
@@ -261,6 +380,13 @@ serve(async (req) => {
     if (provided !== WEBHOOK_SECRET) {
       return json({ ok: false, error: 'invalid webhook secret' }, 401)
     }
+  }
+
+  // Acao administrativa: backfill de avatares (re-hospeda fotos no Storage).
+  if (new URL(req.url).searchParams.get('action') === 'backfill_avatars') {
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    const result = await runBackfillAvatars(sb)
+    return json({ ok: true, action: 'backfill_avatars', ...result })
   }
 
   let rawPayload: any
@@ -412,9 +538,10 @@ async function handleMessagesUpsert(
           pushName = await wahaGetContactName(instanceName, chatId)
         }
         // Avatar: pode vir null por timing; findOrCreate tenta atualizar depois.
+        // Evolution: ja re-hospeda no Storage (pps.whatsapp.net expira).
         const avatarUrl = PROVIDER === 'waha'
           ? await wahaGetProfilePicture(instanceName, chatId)
-          : await evolutionFetchProfilePicture(instanceName, otherPhone)
+          : await evolutionFetchAvatarMirrored(instanceName, otherPhone, supabase)
         const r = await findOrCreateProspectByPhoneWithError(supabase, otherPhone, pushName, avatarUrl)
         prospectId = r.id
         prospectError = r.error
@@ -423,7 +550,7 @@ async function handleMessagesUpsert(
         if (prospectId && !avatarUrl) {
           const retryAvatar = PROVIDER === 'waha'
             ? await wahaGetProfilePicture(instanceName, chatId)
-            : await evolutionFetchProfilePicture(instanceName, otherPhone)
+            : await evolutionFetchAvatarMirrored(instanceName, otherPhone, supabase)
           if (retryAvatar) {
             await supabase
               .from('crm_prospects')
