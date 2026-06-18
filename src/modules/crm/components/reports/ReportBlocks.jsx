@@ -176,7 +176,18 @@ export function PeriodReportBody({ data, onOpenLead, funnelRange, ownerId }) {
         <div className="space-y-3">
           {leads.map(l => (
             <LeadCard key={l.leadKey} lead={l} onOpen={() => onOpenLead?.(l)}>
-              {l.reports && l.reports.length > 0 ? (
+              {(l.taskReports && l.taskReports.length > 0) ? (
+                <div className="space-y-2 mt-1">
+                  {l.taskReports.map(t => (
+                    <div key={t.id} className="pl-3 border-l-2 border-emerald-300/60 dark:border-emerald-800/50">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                        {t.title}{t.date ? ` · ${new Date(t.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}` : ''}
+                      </div>
+                      <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words">{t.content || '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (l.reports && l.reports.length > 0) ? (
                 <div className="space-y-2 mt-1">
                   {l.reports.map((r, i) => (
                     <div key={i} className="pl-3 border-l-2 border-slate-200 dark:border-white/10">
@@ -186,7 +197,7 @@ export function PeriodReportBody({ data, onOpenLead, funnelRange, ownerId }) {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-slate-400 dark:text-slate-500 italic">Sem relato escrito.</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 italic">Sem entrega registrada.</p>
               )}
             </LeadCard>
           ))}

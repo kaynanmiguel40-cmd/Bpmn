@@ -15,6 +15,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { GlobalSearch } from '../search/GlobalSearch';
 import { useDeadlineChecker } from '../../hooks/useDeadlineChecker';
+import { useReportCloseReminder } from '../../hooks/useReportCloseReminder';
 import { searchAll } from '../../lib/searchService';
 
 // Mapa de titulos por rota
@@ -247,6 +248,8 @@ export function MainLayout() {
 
   // Verificacao periodica de prazos e atrasos
   useDeadlineChecker();
+  // Lembrete de fechamento de relatório (dia/semana/mês)
+  useReportCloseReminder();
 
   return (
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 app-mesh print:block print:bg-white">

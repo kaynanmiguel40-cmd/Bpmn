@@ -10,16 +10,15 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Link2, Eye, EyeOff, FileText, ClipboardList } from 'lucide-react';
+import { Plus, Link2, Eye, EyeOff, FileText } from 'lucide-react';
 import { CrmPageHeader } from '../components/ui';
 import CrmCalendar from '../components/agenda/CrmCalendar';
 import LeadHistoryPanel from '../components/agenda/LeadHistoryPanel';
 import { ActivityFormModal } from '../components/ActivityFormModal';
+import { DeliveryReportModal } from '../components/DeliveryReportModal';
 import { useCrmCalendarActivities, useCompleteCrmActivity } from '../hooks/useCrmQueries';
 import { useGCalEvents, useGCalStatus } from '../../../hooks/queries';
 import { connectGCal } from '../../../lib/googleCalendarService';
-import { syncMyCommercialWeekToOS } from '../services/crmRoutineSyncService';
 
 const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -54,14 +53,13 @@ function dedupeKey(title, startDate) {
 
 export default function CrmAgendaPage() {
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState('agenda');
   const [selected, setSelected] = useState(null); // { dealId, contactId }
   const [formOpen, setFormOpen] = useState(false);
   const [formInitial, setFormInitial] = useState(null);
   const [showGoogle, setShowGoogle] = useState(true); // camada Google Agenda visível
-  const [syncingOS, setSyncingOS] = useState(false);
+  const [deliveryTask, setDeliveryTask] = useState(null); // tarefa pra escrever o relatório de entrega
 
   const [rangeStart, rangeEnd] = useMemo(() => computeRange(view, currentDate), [view, currentDate]);
   const startISO = rangeStart.toISOString();
@@ -148,17 +146,6 @@ export default function CrmAgendaPage() {
 
   const openNewTask = () => { setFormInitial(null); setFormOpen(true); };
 
-  const sendWeekToOS = async () => {
-    setSyncingOS(true);
-    try {
-      const r = await syncMyCommercialWeekToOS();
-      if (r?.ok) {
-        qc.invalidateQueries({ queryKey: ['osOrders'] }); // a O.S. nova entra na lista
-        navigate('/financial', { state: { openOsId: r.osId } }); // abre ELA direto
-      }
-    } finally { setSyncingOS(false); }
-  };
-
   const selectedLeadKey = selected ? `${selected.dealId || ''}:${selected.contactId || ''}` : null;
 
   return (
@@ -192,11 +179,6 @@ export default function CrmAgendaPage() {
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200/70 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5">
               <FileText size={15} /> Relatórios
             </button>
-            <button onClick={sendWeekToOS} disabled={syncingOS}
-              title="Joga as tarefas da semana no grupo 'Tarefas Comerciais' da sua O.S. da semana (gerenciador de rotina)"
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200/70 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-50">
-              {syncingOS ? <span className="w-4 h-4 border-2 border-slate-400/40 border-t-slate-500 rounded-full animate-spin" /> : <ClipboardList size={15} />} O.S. da semana
-            </button>
             <button onClick={openNewTask}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg shadow-sm">
               <Plus size={16} /> Nova tarefa
@@ -217,9 +199,10 @@ export default function CrmAgendaPage() {
             onSelectEvent={handleSelectEvent}
             onSelectSlot={handleSelectSlot}
             onCompleteTask={(ev) => {
-              if (ev.activityId) completeMutation.mutate(ev.activityId);
-              // Concluiu a tarefa → abre o relato do lead pra marcar a entrega na hora.
-              if (ev.dealId || ev.contactId) setSelected({ dealId: ev.dealId || null, contactId: ev.contactId || null });
+              if (!ev.activityId) return;
+              // Concluiu → marca como feito e abre o relatório de ENTREGA da tarefa (entra no relatório do lead).
+              completeMutation.mutate(ev.activityId);
+              setDeliveryTask({ id: ev.activityId, title: ev.title || 'Tarefa', deliveryReport: '' });
             }}
             selectedLeadKey={selectedLeadKey}
           />
@@ -240,6 +223,12 @@ export default function CrmAgendaPage() {
         open={formOpen}
         onClose={() => { setFormOpen(false); setFormInitial(null); }}
         activity={formInitial}
+      />
+
+      <DeliveryReportModal
+        open={!!deliveryTask}
+        task={deliveryTask}
+        onClose={() => setDeliveryTask(null)}
       />
     </div>
   );

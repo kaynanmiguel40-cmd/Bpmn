@@ -1,22 +1,29 @@
 /**
  * ArquivosPage - Arquivo de Relatórios (fora do CRM).
  *
- * Navegação estilo Finder: Pessoas → [Diários / Semanais / Mensais] → datas →
- * relatório. Cada vendedor tem a pasta dele com os relatórios diários, semanais
- * e mensais arquivados por data. Nada se perde: tudo é reconstruído dos relatos
- * salvos no banco. Clicar num lead abre a jornada completa dele.
+ * Navegação estilo Finder: (Pessoa | Setor) → [Diários / Semanais / Mensais] →
+ * datas → relatório. Um interruptor no topo alterna o corte:
+ *   • Pessoas — vendedores do comercial (relatório da agenda) + pessoas da
+ *     operação (relatório das O.S., cada tarefa com chip do setor).
+ *   • Setores — setores da operação (relatório das O.S., cada tarefa com chip
+ *     de quem fez).
+ * Semana = junção dos dias; mês = junção das semanas. "Fechar" marca o período
+ * como entregue (genérico por pessoa OU setor). Clicar num lead abre a jornada.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { Folder, ChevronRight, ArrowLeft, Home, Copy, Sparkles, Trash2 } from 'lucide-react';
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
+import { Folder, ChevronRight, ArrowLeft, Home, Copy, Sparkles, Trash2, Lock, CheckCircle2, Users, Layers } from 'lucide-react';
 import {
   useReportOwners, useOwnerReportIndex, useDailyReport, useWeeklyReport, useMonthlyReport,
 } from '../../modules/crm/hooks/useCrmQueries';
 import { DailyReportBody, PeriodReportBody, eventVisual, hm, money } from '../../modules/crm/components/reports/ReportBlocks';
 import LeadJourneyDrawer from '../../modules/crm/components/LeadJourneyDrawer';
 import { seedWeeklyExample, clearWeeklyExample, hasWeeklyExample } from '../../modules/crm/services/crmDemoWeekService';
+import { getOperationalIndex, getOperationalReport, buildOperationalText } from '../../lib/operationalModel';
+import { listClosings, closeReport, reopenReport } from '../../lib/crmReportClosingsService';
+import OpReport from '../operations/components/OpReport';
 import { toast } from '../../contexts/ToastContext';
 import { FolderGlyph, FileGlyph, FinderItem } from './FinderIcons';
 
@@ -101,7 +108,8 @@ function Crumb({ children, onClick, last }) {
 
 export default function ArquivosPage() {
   const navigate = useNavigate();
-  const [owner, setOwner] = useState(null);   // { authUserId, name, color, role }
+  const [lens, setLens] = useState('person'); // corte operacional: 'person' | 'sector'
+  const [owner, setOwner] = useState(null);   // { kind:'crm'|'op', ... }
   const [period, setPeriod] = useState(null); // 'daily' | 'weekly' | 'monthly'
   const [item, setItem] = useState(null);     // dateKey / mondayKey / monthKey
   const [selectedLead, setSelectedLead] = useState(null);
@@ -109,12 +117,62 @@ export default function ArquivosPage() {
   const [hasExample, setHasExample] = useState(hasWeeklyExample());
   const [seeding, setSeeding] = useState(false);
 
-  const { data: owners = [], isLoading: ownersLoading } = useReportOwners();
-  const { data: index, isLoading: indexLoading } = useOwnerReportIndex(owner?.authUserId);
+  const switchLens = (l) => { setLens(l); setOwner(null); setPeriod(null); setItem(null); };
 
-  const dailyQ = useDailyReport(period === 'daily' ? item : null, owner?.authUserId);
-  const weeklyQ = useWeeklyReport(period === 'weekly' ? item : null, owner?.authUserId);
-  const monthlyQ = useMonthlyReport(period === 'monthly' ? item : null, owner?.authUserId);
+  const { data: crmOwners = [] } = useReportOwners();
+
+  // Camada OPERACIONAL (das O.S.): pessoas OU setores, conforme o interruptor.
+  const opIndex = useMemo(() => getOperationalIndex(lens), [lens]);
+  const opOwners = useMemo(
+    () => opIndex.owners.map((o) => ({ kind: 'op', opLens: lens, id: o.id, name: o.name, color: o.color, sub: o.sub })),
+    [opIndex, lens],
+  );
+  // "Pessoas" = vendedores do comercial (agenda) + pessoas da operação.
+  // "Setores" = só os setores da operação.
+  const owners = useMemo(() => (
+    lens === 'sector' ? opOwners : [...crmOwners.map((o) => ({ kind: 'crm', ...o })), ...opOwners]
+  ), [lens, crmOwners, opOwners]);
+
+  const isOp = owner?.kind === 'op';
+
+  // Índice de períodos (pastas/datas)
+  const crmIndexQ = useOwnerReportIndex(isOp ? null : owner?.authUserId);
+  const index = isOp ? opIndex : crmIndexQ.data;
+  const indexLoading = isOp ? false : crmIndexQ.isLoading;
+
+  // Relatório operacional (montado na hora a partir do modelo, das O.S.)
+  const opReport = useMemo(
+    () => (isOp && period && item ? getOperationalReport(owner.opLens, owner.id, period, item) : null),
+    [isOp, owner, period, item],
+  );
+
+  // Relatórios comerciais (agenda)
+  const dailyQ = useDailyReport(period === 'daily' && !isOp ? item : null, owner?.authUserId);
+  const weeklyQ = useWeeklyReport(period === 'weekly' && !isOp ? item : null, owner?.authUserId);
+  const monthlyQ = useMonthlyReport(period === 'monthly' && !isOp ? item : null, owner?.authUserId);
+
+  // Fechamento (marco) do relatório — genérico: vendedor (authUserId), pessoa ou
+  // setor da operação (namespaced como op:person:<id> / op:sector:<id>).
+  const closingOwnerId = owner ? (isOp ? `op:${owner.opLens}:${owner.id}` : owner.authUserId) : null;
+  const closingsQ = useQuery({
+    queryKey: ['reportClosings', closingOwnerId],
+    queryFn: () => listClosings(closingOwnerId),
+    enabled: !!closingOwnerId,
+    staleTime: 15_000,
+  });
+  const closings = closingsQ.data || [];
+  const closingOf = (p, k) => closings.find((c) => c.period === p && c.periodKey === k) || null;
+
+  const closeMut = useMutation({
+    mutationFn: (vars) => closeReport(vars),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['reportClosings', closingOwnerId] }); toast('Relatório fechado', 'success'); },
+    onError: () => toast('Não consegui fechar', 'error'),
+  });
+  const reopenMut = useMutation({
+    mutationFn: (vars) => reopenReport(vars),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['reportClosings', closingOwnerId] }); toast('Relatório reaberto', 'success'); },
+    onError: () => toast('Não consegui reabrir', 'error'),
+  });
 
   const openLeadJourney = (l) => setSelectedLead({ dealId: l.dealId, contactId: l.contactId });
 
@@ -129,10 +187,26 @@ export default function ArquivosPage() {
         : monthLabel(item);
 
   const activeData = period === 'daily' ? dailyQ.data : period === 'weekly' ? weeklyQ.data : monthlyQ.data;
+  const activeLoading = isOp ? false : (period === 'daily' ? dailyQ.isLoading : period === 'weekly' ? weeklyQ.isLoading : monthlyQ.isLoading);
+  const currentClosing = item ? closingOf(period, item) : null;
+  const periodNoun = period === 'daily' ? 'dia' : period === 'weekly' ? 'semana' : 'mês';
+
   const copyReport = async () => {
-    try { await navigator.clipboard.writeText(buildArchiveText(period, activeData, itemLabel, owner?.name || '')); toast('Relatório copiado', 'success'); }
-    catch { toast('Não consegui copiar', 'error'); }
+    try {
+      const text = isOp
+        ? buildOperationalText(opReport, owner.name, owner.sub, itemLabel)
+        : buildArchiveText(period, activeData, itemLabel, owner?.name || '');
+      await navigator.clipboard.writeText(text); toast('Relatório copiado', 'success');
+    } catch { toast('Não consegui copiar', 'error'); }
   };
+
+  const buildSummary = () => {
+    if (isOp) return opReport?.summary || {};
+    if (period === 'daily') { const s = activeData?.summary || {}; return { leads: s.leads || 0, calls: s.calls || 0, messages: s.messages || 0, meetings: s.meetings || 0, sales: s.sales || 0 }; }
+    const m = activeData?.metrics || {}; return { meetings: m.meetings || 0, sales: m.sales || 0, revenue: m.revenue || 0, conversionRate: m.conversionRate || 0, leads: m.leads || 0 };
+  };
+  const doClose = () => closeMut.mutate({ ownerId: closingOwnerId, period, periodKey: item, summary: buildSummary() });
+  const doReopen = () => reopenMut.mutate({ ownerId: closingOwnerId, period, periodKey: item });
 
   const Breadcrumb = (
     <nav className="flex items-center gap-1.5 text-sm flex-wrap">
@@ -156,40 +230,58 @@ export default function ArquivosPage() {
       <div className="mb-6 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Arquivos</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Todos os relatórios, organizados por pessoa e período — nada se perde.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Relatórios por pessoa e por setor — diário, semanal e mensal.</p>
           <div className="mt-4">{Breadcrumb}</div>
         </div>
-        {!owner && (
-          hasExample ? (
-            <button onClick={runClear} disabled={seeding}
-              title="Remover os dados de exemplo"
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-rose-600 dark:text-rose-400 rounded-lg border border-rose-200/70 dark:border-rose-900/40 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50 shrink-0">
-              {seeding ? <span className="w-4 h-4 border-2 border-rose-400/40 border-t-rose-500 rounded-full animate-spin" /> : <Trash2 size={15} />} Limpar exemplo
-            </button>
-          ) : (
-            <button onClick={runSeed} disabled={seeding}
-              title="Gerar dados de exemplo na sua semana atual (pra demonstração)"
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-violet-600 dark:text-violet-400 rounded-lg border border-violet-200/70 dark:border-violet-900/40 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-50 shrink-0">
-              {seeding ? <span className="w-4 h-4 border-2 border-violet-400/40 border-t-violet-500 rounded-full animate-spin" /> : <Sparkles size={15} />} Gerar exemplo
-            </button>
-          )
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Interruptor de corte: Pessoas | Setores */}
+          <div className="inline-flex p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/70 dark:border-white/10">
+            {[{ k: 'person', label: 'Pessoas', icon: Users }, { k: 'sector', label: 'Setores', icon: Layers }].map((t) => {
+              const Icon = t.icon; const active = lens === t.k;
+              return (
+                <button key={t.k} onClick={() => switchLens(t.k)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md transition ${active ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
+                  <Icon size={15} /> {t.label}
+                </button>
+              );
+            })}
+          </div>
+          {lens === 'person' && !owner && (
+            hasExample ? (
+              <button onClick={runClear} disabled={seeding}
+                title="Remover os dados de exemplo do comercial"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-rose-600 dark:text-rose-400 rounded-lg border border-rose-200/70 dark:border-rose-900/40 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50">
+                {seeding ? <span className="w-4 h-4 border-2 border-rose-400/40 border-t-rose-500 rounded-full animate-spin" /> : <Trash2 size={15} />} Limpar exemplo
+              </button>
+            ) : (
+              <button onClick={runSeed} disabled={seeding}
+                title="Gerar dados de exemplo do comercial na sua semana atual"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-violet-600 dark:text-violet-400 rounded-lg border border-violet-200/70 dark:border-violet-900/40 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-50">
+                {seeding ? <span className="w-4 h-4 border-2 border-violet-400/40 border-t-violet-500 rounded-full animate-spin" /> : <Sparkles size={15} />} Gerar exemplo
+              </button>
+            )
+          )}
+        </div>
       </div>
 
-      {/* Nível 0: Pessoas */}
+      {/* Nível 0: Pessoas ou Setores */}
       {!owner && (
-        ownersLoading ? <Spinner /> : owners.length === 0 ? (
-          <Empty msg="Nenhum vendedor com relatórios ainda." />
+        owners.length === 0 ? (
+          <Empty msg={lens === 'sector' ? 'Nenhum setor com relatórios ainda.' : 'Nenhuma pessoa com relatórios ainda.'} />
         ) : (
           <div className="flex flex-wrap gap-1">
-            {owners.map(o => (
-              <FinderItem key={o.authUserId}
-                glyph={<FolderGlyph color={o.color} badge={(o.name || '?').charAt(0).toUpperCase()} />}
-                label={`${o.name}${o.isMe ? ' (você)' : ''}`}
-                sublabel={o.role || undefined}
-                onClick={() => { setOwner(o); setPeriod(null); setItem(null); }}
-              />
-            ))}
+            {owners.map(o => {
+              const key = o.kind === 'op' ? `op-${o.id}` : o.authUserId;
+              const isSectorFolder = o.kind === 'op' && o.opLens === 'sector';
+              return (
+                <FinderItem key={key}
+                  glyph={<FolderGlyph color={o.color} badge={isSectorFolder ? undefined : (o.name || '?').charAt(0).toUpperCase()} />}
+                  label={`${o.name}${o.kind === 'crm' && o.isMe ? ' (você)' : ''}`}
+                  sublabel={o.kind === 'op' ? o.sub : (o.role || undefined)}
+                  onClick={() => { setOwner(o); setPeriod(null); setItem(null); }}
+                />
+              );
+            })}
           </div>
         )
       )}
@@ -224,6 +316,7 @@ export default function ArquivosPage() {
                 <FinderItem key={k}
                   glyph={<FileGlyph accent={accent} />}
                   label={labelFor(k)}
+                  sublabel={closingOf(period, k) ? '✓ Fechado' : undefined}
                   onClick={() => setItem(k)}
                 />
               ))}
@@ -244,6 +337,21 @@ export default function ArquivosPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {(
+                currentClosing ? (
+                  <button onClick={doReopen} disabled={reopenMut.isPending}
+                    title={`Fechado em ${new Date(currentClosing.closedAt).toLocaleDateString('pt-BR')} — clique pra reabrir`}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 disabled:opacity-50">
+                    <CheckCircle2 size={15} /> Fechado
+                  </button>
+                ) : (
+                  <button onClick={doClose} disabled={closeMut.isPending || activeLoading}
+                    title={`Fechar o relatório ${periodNoun === 'mês' ? 'do mês' : `da/do ${periodNoun}`} e marcar como entregue`}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200/70 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-50">
+                    {closeMut.isPending ? <span className="w-4 h-4 border-2 border-slate-400/40 border-t-slate-500 rounded-full animate-spin" /> : <Lock size={15} />} Fechar {periodNoun}
+                  </button>
+                )
+              )}
               <button onClick={copyReport}
                 className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg shadow-sm">
                 <Copy size={15} /> Copiar
@@ -255,14 +363,20 @@ export default function ArquivosPage() {
             </div>
           </div>
 
-          {period === 'daily' && (
-            dailyQ.isLoading ? <Spinner /> : <DailyReportBody data={dailyQ.data} onOpenLead={openLeadJourney} />
-          )}
-          {period === 'weekly' && (
-            weeklyQ.isLoading ? <Spinner /> : <PeriodReportBody data={weeklyQ.data} onOpenLead={openLeadJourney} funnelRange={periodRange('weekly', item)} ownerId={owner.authUserId} />
-          )}
-          {period === 'monthly' && (
-            monthlyQ.isLoading ? <Spinner /> : <PeriodReportBody data={monthlyQ.data} onOpenLead={openLeadJourney} funnelRange={periodRange('monthly', item)} ownerId={owner.authUserId} />
+          {isOp ? (
+            <OpReport report={opReport} />
+          ) : (
+            <>
+              {period === 'daily' && (
+                dailyQ.isLoading ? <Spinner /> : <DailyReportBody data={dailyQ.data} onOpenLead={openLeadJourney} />
+              )}
+              {period === 'weekly' && (
+                weeklyQ.isLoading ? <Spinner /> : <PeriodReportBody data={weeklyQ.data} onOpenLead={openLeadJourney} funnelRange={periodRange('weekly', item)} ownerId={owner.authUserId} />
+              )}
+              {period === 'monthly' && (
+                monthlyQ.isLoading ? <Spinner /> : <PeriodReportBody data={monthlyQ.data} onOpenLead={openLeadJourney} funnelRange={periodRange('monthly', item)} ownerId={owner.authUserId} />
+              )}
+            </>
           )}
         </div>
       )}

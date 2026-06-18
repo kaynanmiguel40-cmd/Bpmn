@@ -107,6 +107,8 @@ export const crmActivitySchema = z.object({
   // Responsável pela tarefa (vendedor) — pode ser != quem criou.
   assignedTo: z.string().nullable().optional().default(null),
   assignedToName: z.string().nullable().optional().default(null),
+  // Relatório de entrega da tarefa (preenchido ao concluir).
+  deliveryReport: z.string().nullable().optional().default(''),
 }).passthrough();
 
 // ==================== GOAL ====================

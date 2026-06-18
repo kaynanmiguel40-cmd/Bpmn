@@ -99,7 +99,7 @@ export async function getDailyReport(date, ownerId = null) {
 
   const [actsRes, callsRes, msgsRes, reportsRes, meetingsRes, dealsRes] = await Promise.all([
     supabase.from('crm_activities')
-      .select('id, title, type, start_date, completed_at, deal_id, contact_id, crm_deals(id, title, crm_pipeline_stages(name, color)), crm_contacts(id, name)')
+      .select('id, title, type, start_date, completed_at, delivery_report, deal_id, contact_id, crm_deals(id, title, crm_pipeline_stages(name, color)), crm_contacts(id, name)')
       .eq('completed', true).eq('created_by', uid)
       .gte('completed_at', startISO).lt('completed_at', endISO).is('deleted_at', null),
     supabase.from('crm_calls')
@@ -146,7 +146,7 @@ export async function getDailyReport(date, ownerId = null) {
   (actsRes.data || []).forEach(r => {
     const l = touch(r.deal_id, r.contact_id, r.crm_deals, r.crm_contacts);
     l.counts.activities++;
-    l.events.push({ id: `a_${r.id}`, kind: 'activity', activityType: r.type, time: r.completed_at || r.start_date, title: r.title || '', detail: '' });
+    l.events.push({ id: `a_${r.id}`, kind: 'activity', activityType: r.type, time: r.completed_at || r.start_date, title: r.title || '', detail: r.delivery_report || '' });
   });
   (callsRes.data || []).forEach(r => {
     const l = touch(r.deal_id, r.contact_id, r.crm_deals, r.crm_contacts);
@@ -247,7 +247,7 @@ const emptyWeek = (weekStart) => ({
 async function periodReport(uid, startISO, endISO, reportStart, reportEnd) {
   const [actsRes, callsRes, msgsRes, reportsRes, meetingsRes, wonRes, closedRes, openTasksRes] = await Promise.all([
     supabase.from('crm_activities')
-      .select('deal_id, contact_id, crm_deals(id, title, crm_pipeline_stages(name, color)), crm_contacts(id, name)')
+      .select('id, title, completed_at, delivery_report, deal_id, contact_id, crm_deals(id, title, crm_pipeline_stages(name, color)), crm_contacts(id, name)')
       .eq('completed', true).eq('created_by', uid)
       .gte('completed_at', startISO).lt('completed_at', endISO).is('deleted_at', null),
     supabase.from('crm_calls')
@@ -291,12 +291,18 @@ async function periodReport(uid, startISO, endISO, reportStart, reportEnd) {
         stageColor: deal?.crm_pipeline_stages?.color || null,
         counts: { calls: 0, messages: 0, activities: 0 },
         reports: [],
+        taskReports: [],
       });
     }
     return map.get(key);
   };
 
-  (actsRes.data || []).forEach(r => { touch(r.deal_id, r.contact_id, r.crm_deals, r.crm_contacts).counts.activities++; });
+  (actsRes.data || []).forEach(r => {
+    const l = touch(r.deal_id, r.contact_id, r.crm_deals, r.crm_contacts);
+    l.counts.activities++;
+    // Entrega POR TAREFA (agrupa por lead no relatório).
+    l.taskReports.push({ id: r.id, title: r.title || 'Tarefa', content: r.delivery_report || '', date: r.completed_at });
+  });
   (callsRes.data || []).forEach(r => { touch(r.deal_id, r.contact_id, r.crm_deals, r.crm_contacts).counts.calls++; });
   (msgsRes.data || []).forEach(r => { touch(r.deal_id, r.contact_id, r.crm_deals, r.crm_contacts).counts.messages++; });
 

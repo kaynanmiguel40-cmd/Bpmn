@@ -227,7 +227,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
 
           <NavItem to="/crm" icon={CrmIcon} label="CRM" isCollapsed={effectiveCollapsed} badge={newLeadsCount > 0 ? newLeadsCount : undefined} onClick={handleNavClick} />
           <NavItem to="/sales" icon={SalesIcon} label="Processos" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
-          <NavItem to="/reports" icon={ReportIcon} label="Relatorios" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
+          {/* Relatorios oculto na sidebar (rota /reports continua acessivel) */}
           <NavItem to="/arquivos" icon={ArquivosIcon} label="Arquivos" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/settings" icon={SettingsIcon} label="Configuracoes" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
         </nav>
