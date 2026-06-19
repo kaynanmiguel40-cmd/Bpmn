@@ -56,7 +56,7 @@ function LastMessage({ conv }) {
   );
 }
 
-function ConversationItem({ conv, active, onSelect, showNumberTag, numberTag }) {
+function ConversationItem({ conv, active, onSelect }) {
   const unread = conv.unreadCount > 0;
   return (
     <button
@@ -86,11 +86,6 @@ function ConversationItem({ conv, active, onSelect, showNumberTag, numberTag }) 
         <div className="flex items-center justify-between gap-2 mt-0.5">
           <LastMessage conv={conv} />
           <div className="flex items-center gap-1.5 shrink-0">
-            {showNumberTag && numberTag && (
-              <span className="text-[9px] uppercase font-semibold text-slate-400 dark:text-slate-500 border border-slate-300 dark:border-slate-600 rounded px-1 leading-tight">
-                {numberTag}
-              </span>
-            )}
             {conv.prospectId && !conv.contactId && !unread && (
               <span className="text-[9px] uppercase font-bold text-orange-500 tracking-wide">novo</span>
             )}
@@ -139,9 +134,12 @@ export function ConversationList({ activeKey, onSelect }) {
     return m;
   }, [conversations]);
 
+  // Sem "Todos": sempre UM número selecionado (default = 1º da lista = Fyness).
+  const selectedPhone = filterPhone ?? numberTabs[0]?.phone ?? null;
+
   const filtered = useMemo(() => {
     let list = conversations;
-    if (filterPhone) list = list.filter((c) => c.instancePhone === filterPhone);
+    if (selectedPhone) list = list.filter((c) => c.instancePhone === selectedPhone);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((c) =>
@@ -151,13 +149,7 @@ export function ConversationList({ activeKey, onSelect }) {
       );
     }
     return list;
-  }, [conversations, search, filterPhone]);
-
-  const phoneToLabel = useMemo(() => {
-    const m = {};
-    numberTabs.forEach((t) => { m[t.phone] = t.label; });
-    return m;
-  }, [numberTabs]);
+  }, [conversations, search, selectedPhone]);
 
   return (
     <aside className="w-full max-w-sm flex flex-col bg-white dark:bg-[#111b21] border-r border-black/10 dark:border-white/5">
@@ -176,16 +168,15 @@ export function ConversationList({ activeKey, onSelect }) {
           />
         </div>
 
-        {/* abas por número (só quando há mais de 1) */}
+        {/* abas por número — um por vez (sem "Todos") */}
         {numberTabs.length > 1 && (
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            <FilterPill label="Todos" active={filterPhone === null} onClick={() => setFilterPhone(null)} />
             {numberTabs.map((t) => (
               <FilterPill
                 key={t.phone}
                 label={t.label}
                 badge={unreadByPhone[t.phone] || 0}
-                active={filterPhone === t.phone}
+                active={selectedPhone === t.phone}
                 onClick={() => setFilterPhone(t.phone)}
               />
             ))}
@@ -200,7 +191,7 @@ export function ConversationList({ activeKey, onSelect }) {
           <div className="p-6 text-center">
             <MessageSquare className="mx-auto mb-2 text-slate-300 dark:text-slate-600" size={32} />
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {search || filterPhone ? 'Nenhuma conversa aqui' : 'Sem conversas ainda'}
+              {search ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa nesse número ainda'}
             </p>
           </div>
         ) : (
@@ -210,8 +201,6 @@ export function ConversationList({ activeKey, onSelect }) {
               conv={conv}
               active={activeKey === conv.key}
               onSelect={onSelect}
-              showNumberTag={filterPhone === null && numberTabs.length > 1}
-              numberTag={phoneToLabel[conv.instancePhone]}
             />
           ))
         )}
