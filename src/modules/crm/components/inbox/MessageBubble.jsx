@@ -96,7 +96,19 @@ function MediaContent({ message, isOut }) {
   const { mediaType: type, mediaUrl: url, mediaMime: mime, mediaFilename: filename, mediaCaption: caption } = message;
   if (!url) return null;
 
-  if (type === 'image') {
+  const m = mime || '';
+
+  // Figurinha (sticker): webp pequeno, fundo transparente — NUNCA vira "arquivo".
+  if (type === 'sticker') {
+    return (
+      <img src={url} alt="figurinha" loading="lazy"
+        className="w-32 h-32 object-contain" />
+    );
+  }
+
+  // Foto: media_type 'image' OU um "documento" cujo mime e de imagem
+  // (foto enviada "como arquivo" no WhatsApp chega como documentMessage).
+  if (type === 'image' || m.startsWith('image/')) {
     return (
       <a href={url} target="_blank" rel="noreferrer" className="block -mx-1 -mt-1 mb-1">
         <img src={url} alt={caption || 'imagem'} loading="lazy"
@@ -104,14 +116,14 @@ function MediaContent({ message, isOut }) {
       </a>
     );
   }
-  if (type === 'video') {
+  if (type === 'video' || m.startsWith('video/')) {
     return (
       <div className="-mx-1 -mt-1 mb-1">
         <video controls src={url} className="rounded-lg max-w-full max-h-80 w-full bg-black" />
       </div>
     );
   }
-  if (type === 'audio') {
+  if (type === 'audio' || m.startsWith('audio/')) {
     // <audio> nativo: o browser cuida de carregar/decodificar; preload="none"
     // evita carregar metadata do webm no render (gatilho do crash). Robusto.
     return (
@@ -121,7 +133,7 @@ function MediaContent({ message, isOut }) {
     );
   }
 
-  // documento / sticker / outro
+  // documento real (pdf, planilha, etc) / outro
   return (
     <a href={url} target="_blank" rel="noreferrer"
       className="flex items-center gap-3 py-1.5 pr-2 min-w-[180px] group">
@@ -139,17 +151,25 @@ function MediaContent({ message, isOut }) {
 export function MessageBubble({ message }) {
   const isOut = message.direction === 'outbound';
   const hasMedia = !!message.mediaUrl && message.status !== 'failed';
+  const isSticker = hasMedia && message.mediaType === 'sticker';
   const showCaption = !!message.content && message.mediaType !== 'audio';
+  // figurinha: sem horario "grudado"; resto segue a regra antiga.
+  const timeMt = isSticker ? 'mt-0.5' : (hasMedia && !showCaption ? '-mt-0.5' : 'mt-0.5');
 
   return (
     <div className={`flex ${isOut ? 'justify-end' : 'justify-start'} mb-1`}>
       <div
-        className={[
-          'relative max-w-[78%] md:max-w-[65%] rounded-lg px-2 py-1.5 shadow-sm text-[14.5px] leading-snug',
-          isOut
-            ? 'bg-[#d9fdd3] dark:bg-[#005c4b] text-slate-800 dark:text-slate-50 rounded-tr-sm'
-            : 'bg-white dark:bg-[#202c33] text-slate-800 dark:text-slate-50 rounded-tl-sm',
-        ].join(' ')}
+        className={
+          isSticker
+            // figurinha: SEM bolha (fundo transparente), igual ao WhatsApp
+            ? 'relative max-w-[55%]'
+            : [
+                'relative max-w-[78%] md:max-w-[65%] rounded-lg px-2 py-1.5 shadow-sm text-[14.5px] leading-snug',
+                isOut
+                  ? 'bg-[#d9fdd3] dark:bg-[#005c4b] text-slate-800 dark:text-slate-50 rounded-tr-sm'
+                  : 'bg-white dark:bg-[#202c33] text-slate-800 dark:text-slate-50 rounded-tl-sm',
+              ].join(' ')
+        }
       >
         {hasMedia && <MediaContent message={message} isOut={isOut} />}
 
@@ -157,7 +177,7 @@ export function MessageBubble({ message }) {
           <p className="whitespace-pre-wrap break-words px-1">{message.content}</p>
         )}
 
-        <div className={`flex items-center justify-end gap-1 select-none ${hasMedia && !showCaption ? '-mt-0.5' : 'mt-0.5'} pl-2`}>
+        <div className={`flex items-center justify-end gap-1 select-none ${timeMt} ${isSticker ? '' : 'pl-2'}`}>
           <span className="text-[11px] text-slate-500 dark:text-slate-300/70 tabular-nums">
             {formatTime(message.sentAt)}
           </span>
