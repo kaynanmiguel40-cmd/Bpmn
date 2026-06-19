@@ -1,80 +1,29 @@
-const CACHE_NAME = 'fyness-os-v4';
+// Service worker MINIMO — sem intercept de fetch.
+//
+// Historico: o handler de fetch (network-first com cache) estava devolvendo
+// respostas quebradas (undefined / Response.error()) quando uma requisicao
+// falhava/abortava, e isso quebrava a navegacao -> TELA BRANCA, sem erro claro.
+// O ganho era minimo (network-first). Removido pra eliminar essa classe de bug.
+// O navegador cuida das requisicoes nativamente (nginx ja serve o SPA via fallback).
+//
+// Mantido apenas: push notifications.
 
-// Install — NAO pre-cachear HTML (evita servir chunks antigos apos deploy)
-self.addEventListener('install', (event) => {
+const CACHE_NAME = 'fyness-os-v5';
+
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
-// Activate — clean ALL old caches
+// Ativa imediatamente, LIMPA todos os caches antigos e assume o controle.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
-
-// Fetch strategy — network first for everything
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-
-  // Only cache GET requests
-  if (request.method !== 'GET') return;
-
-  const url = new URL(request.url);
-
-  // Skip caching for Vite dev server (HMR, modules, etc.)
-  if (url.pathname.includes('/@') || url.pathname.includes('node_modules') || url.pathname.includes('__vite')) {
-    return;
-  }
-
-  // Skip caching for API/Supabase calls
-  if (url.pathname.startsWith('/rest/') || url.hostname.includes('supabase')) {
-    return;
-  }
-
-  // Skip caching cross-origin (imagens WhatsApp, etc) — evita erros 206 Partial
-  if (url.origin !== self.location.origin) {
-    return;
-  }
-
-  // Navigation — sempre rede; fallback pro index/cache; NUNCA rejeita (evita tela branca)
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).catch(async () =>
-        (await caches.match(request)) ||
-        (await caches.match('/index.html')) ||
-        new Response(
-          '<!doctype html><meta charset="utf-8"><h1>Sem conexao</h1><p>Tente recarregar.</p>',
-          { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-        )
-      )
-    );
-    return;
-  }
-
-  // All other assets — network first, cache as fallback.
-  // IMPORTANTE: o respondWith NUNCA pode resolver pra undefined, senao o browser
-  // dispara "Failed to convert value to 'Response'" e a pagina quebra.
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        // Cache so 200 OK (status 206 Partial Content nao eh suportado pelo Cache API)
-        if (response && response.status === 200 && response.type === 'basic') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, clone).catch(() => {/* swallow: alguns responses nao sao cacheaveis */});
-          });
-        }
-        return response;
-      })
-      .catch(async () => {
-        const cached = await caches.match(request);
-        return cached || Response.error();  // sempre uma Response valida
-      })
+    caches.keys()
+      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
+
+// (sem listener de 'fetch' de proposito — nada de intercept)
 
 // ==================== PUSH NOTIFICATIONS ====================
 
@@ -108,7 +57,6 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      // Se o app ja esta aberto, focar na aba
       for (const client of clients) {
         if (client.url.includes(self.location.origin)) {
           client.focus();
@@ -116,7 +64,6 @@ self.addEventListener('notificationclick', (event) => {
           return;
         }
       }
-      // Senao, abrir nova aba
       return self.clients.openWindow(url);
     })
   );
