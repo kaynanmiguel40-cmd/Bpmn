@@ -111,7 +111,15 @@ function MediaContent({ message, isOut }) {
       </div>
     );
   }
-  if (type === 'audio') return <AudioPlayer url={url} isOut={isOut} />;
+  if (type === 'audio') {
+    // <audio> nativo: o browser cuida de carregar/decodificar; preload="none"
+    // evita carregar metadata do webm no render (gatilho do crash). Robusto.
+    return (
+      <audio controls preload="none" src={url} className="max-w-full mb-1" style={{ minWidth: 220, height: 40 }}>
+        Áudio
+      </audio>
+    );
+  }
 
   // documento / sticker / outro
   return (

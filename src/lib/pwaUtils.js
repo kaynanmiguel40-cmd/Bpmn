@@ -10,30 +10,11 @@ export function registerSW() {
 
   window.addEventListener('load', async () => {
     try {
-      // Limpar todos os SWs antigos e caches antes de registrar
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const reg of registrations) {
-        await reg.unregister();
-      }
-
-      // Limpar todos os caches antigos
-      const cacheNames = await caches.keys();
-      for (const name of cacheNames) {
-        await caches.delete(name);
-      }
-
-      if (registrations.length > 0 || cacheNames.length > 0) {
-        console.log('SW/Caches antigos limpos, recarregando...');
-        window.location.reload();
-        return;
-      }
-
-      // Registrar SW novo
+      // Só registra. A limpeza de cache + reload é feita pelo proprio SW (sw.js v6)
+      // no evento 'activate' — evita reload duplo e nao depende de cleanup aqui.
       const registration = await navigator.serviceWorker.register('/sw.js');
-      console.log('SW registrado:', registration.scope);
-
-      // Verificar atualizacoes periodicamente
-      setInterval(() => registration.update(), 60 * 60 * 1000); // 1h
+      // Verificar atualizacoes periodicamente (pega SW novo apos deploy)
+      setInterval(() => registration.update(), 30 * 60 * 1000); // 30min
     } catch (err) {
       console.log('SW registro falhou:', err);
     }

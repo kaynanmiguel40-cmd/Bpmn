@@ -1,29 +1,33 @@
-// Service worker MINIMO — sem intercept de fetch.
+// Service worker MÍNIMO — sem intercept de fetch (sem cache).
 //
-// Historico: o handler de fetch (network-first com cache) estava devolvendo
-// respostas quebradas (undefined / Response.error()) quando uma requisicao
-// falhava/abortava, e isso quebrava a navegacao -> TELA BRANCA, sem erro claro.
-// O ganho era minimo (network-first). Removido pra eliminar essa classe de bug.
-// O navegador cuida das requisicoes nativamente (nginx ja serve o SPA via fallback).
-//
+// Historico: o handler de fetch (network-first com cache) servia bundle ANTIGO
+// em cache e quebrava a navegacao -> TELA BRANCA com codigo velho preso.
+// Agora: NAO intercepta nada (browser cuida das requisicoes; nginx ja serve o SPA),
+// e ao ATIVAR limpa todos os caches + FORCA reload das abas abertas pra garantir
+// que o usuario pegue o codigo novo de imediato (sem precisar limpar cache na mao).
 // Mantido apenas: push notifications.
 
-const CACHE_NAME = 'fyness-os-v5';
+const CACHE_NAME = 'fyness-os-v6';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
-// Ativa imediatamente, LIMPA todos os caches antigos e assume o controle.
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    // Limpa TODOS os caches antigos.
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+    await self.clients.claim();
+    // Forca reload das abas abertas pra largar qualquer bundle velho em memoria/cache.
+    const clients = await self.clients.matchAll({ type: 'window' });
+    for (const c of clients) {
+      try { c.navigate(c.url); } catch (e) { /* noop */ }
+    }
+  })());
 });
 
-// (sem listener de 'fetch' de proposito — nada de intercept)
+// (sem listener de 'fetch' de proposito — nada de intercept, nada de cache de assets)
 
 // ==================== PUSH NOTIFICATIONS ====================
 
@@ -50,11 +54,9 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// Ao clicar na notificacao, abrir o app na pagina relevante
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = event.notification.data?.url || '/';
-
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
