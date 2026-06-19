@@ -97,9 +97,11 @@ function App() {
               <Route path="/editor/:id?" element={<Editor />} />
             </Route>
 
-            {/* CRM — layout proprio (app dentro do app) — protegido */}
+            {/* CRM — layout proprio (app dentro do app) — protegido.
+                ErrorBoundary em volta do CrmLayout: um crash no shell/pagina do CRM
+                vira "Algo deu errado" (com stack no console) em vez de tela branca total. */}
             <Route element={<ProtectedRoute />}>
-              <Route path="/crm" element={<CrmLayout />}>
+              <Route path="/crm" element={<ErrorBoundary><CrmLayout /></ErrorBoundary>}>
                 <Route index element={<ErrorBoundary><CrmDashboardPage /></ErrorBoundary>} />
                 <Route path="daily" element={<ErrorBoundary><CrmDailyPage /></ErrorBoundary>} />
                 <Route path="pipeline" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />

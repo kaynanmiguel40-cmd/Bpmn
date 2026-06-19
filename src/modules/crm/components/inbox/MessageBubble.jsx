@@ -32,11 +32,29 @@ function AudioPlayer({ url, isOut }) {
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
+  const [failed, setFailed] = useState(false);
+
+  // Fallback: se o navegador nao consegue carregar/decodificar o audio
+  // (ex: nota de voz .webm), degrada pra link em vez de player quebrado.
+  if (failed) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer"
+        className="flex items-center gap-2 py-1.5 pr-2 min-w-[170px] text-sm text-slate-600 dark:text-slate-200 hover:underline">
+        <Mic size={16} className="shrink-0" />
+        <span className="flex-1">Áudio</span>
+        <Download size={14} className="text-slate-400 shrink-0" />
+      </a>
+    );
+  }
 
   const toggle = () => {
     const a = audioRef.current;
     if (!a) return;
-    if (playing) { a.pause(); } else { a.play(); }
+    if (playing) { a.pause(); return; }
+    // play() retorna promise; sem .catch, autoplay bloqueado/decodificacao vira
+    // "Uncaught (in promise)" que pode escapar e derrubar a tela.
+    const p = a.play();
+    if (p && typeof p.catch === 'function') p.catch(() => setPlaying(false));
   };
   const pct = dur ? (cur / dur) * 100 : 0;
   const accent = isOut ? '#1da57a' : '#00a884';
@@ -63,11 +81,12 @@ function AudioPlayer({ url, isOut }) {
         ref={audioRef}
         src={url}
         preload="metadata"
-        onLoadedMetadata={(e) => setDur(e.currentTarget.duration)}
+        onLoadedMetadata={(e) => { const d = e.currentTarget.duration; setDur(Number.isFinite(d) ? d : 0); }}
         onTimeUpdate={(e) => setCur(e.currentTarget.currentTime)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => { setPlaying(false); setCur(0); }}
+        onError={() => setFailed(true)}
       />
     </div>
   );

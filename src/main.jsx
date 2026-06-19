@@ -7,6 +7,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { PermissionProvider } from './contexts/PermissionContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { InstallPrompt } from './components/pwa/InstallPrompt'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { registerSW } from './lib/pwaUtils'
 import App from './App'
 import './index.css'
@@ -68,16 +69,20 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <AuthProvider>
-            <PermissionProvider>
-              <App />
-              <InstallPrompt />
-            </PermissionProvider>
-          </AuthProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
+      {/* ErrorBoundary RAIZ: pega crash/loop ate nos providers (Theme/Auth/Permission)
+          — sem isso, um throw acima do App vira tela branca total. */}
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <AuthProvider>
+              <PermissionProvider>
+                <App />
+                <InstallPrompt />
+              </PermissionProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   </React.StrictMode>,
 )
