@@ -362,6 +362,50 @@ function jidToPhone(jid: string | null | undefined): string {
   return normalizePhone(jid.split('@')[0])
 }
 
+/**
+ * Detecta se um JID/numero e um "@lid" (ID opaco de privacidade do WhatsApp v2):
+ * sufixo @lid OU numero longo (>13 digitos) / sem DDI 55. @lid != numero real,
+ * entao gravar @lid na coluna phone DUPLICA o prospect (nunca casa no .eq('phone')).
+ */
+function isLid(jidOrPhone: string | null | undefined): boolean {
+  if (!jidOrPhone) return false
+  if (jidOrPhone.includes('@lid')) return true
+  const n = normalizePhone(jidOrPhone)
+  return n.length > 13 || (n.length >= 10 && !n.startsWith('55'))
+}
+
+/**
+ * Um numero "real" plausivel (dig-only, 10-13 digitos) — usado pra decidir se um
+ * candidato de campo paralelo serve pra resolver um @lid pro telefone verdadeiro.
+ */
+function looksLikeRealPhone(p: string): boolean {
+  return !!p && p.length >= 10 && p.length <= 13
+}
+
+/**
+ * Quando o remoteJid vem como @lid, o payload do Baileys/Evolution v2 costuma
+ * trazer o numero REAL em campos paralelos (key.senderPn / participantPn /
+ * remoteJidAlt / previousRemoteJid). Tenta extrair o numero real pra NAO criar
+ * um prospect duplicado. Retorna o telefone real (dig-only) ou '' se nao achar.
+ */
+function extractRealPhoneFromLid(m: any): string {
+  const candidates = [
+    m?.key?.senderPn,
+    m?.key?.participantPn,
+    m?.key?.remoteJidAlt,
+    m?.key?.previousRemoteJid,
+    m?.senderPn,
+    m?.participantPn,
+    m?.participantAlt,
+  ]
+  for (const c of candidates) {
+    if (!c || typeof c !== 'string' || c.includes('@lid')) continue
+    const p = jidToPhone(c)
+    if (looksLikeRealPhone(p) && !isLid(p)) return p
+  }
+  return ''
+}
+
 interface EvolutionPayload {
   event?: string
   instance?: string
@@ -387,6 +431,48 @@ serve(async (req) => {
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     const result = await runBackfillAvatars(sb)
     return json({ ok: true, action: 'backfill_avatars', ...result })
+  }
+
+  // Acao administrativa: mescla prospect duplicado (ex: @lid -> numero real).
+  // Repointa crm_messages do 'from' pro 'to' e soft-deleta o 'from'.
+  // Uso: POST/GET ...?action=merge_prospects&from=<dup_id>&to=<canonical_id>&secret=...
+  // (crm_messages eh a UNICA tabela com FK pra crm_prospects — sem outros orfaos.)
+  if (new URL(req.url).searchParams.get('action') === 'merge_prospects') {
+    const u = new URL(req.url)
+    const from = u.searchParams.get('from') || ''
+    const to = u.searchParams.get('to') || ''
+    if (!from || !to || from === to) {
+      return json({ ok: false, error: 'use ?from=<dup_id>&to=<canonical_id> (ids distintos)' }, 400)
+    }
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    // valida que ambos existem
+    const { data: prospects } = await sb
+      .from('crm_prospects')
+      .select('id, contact_name, phone, deleted_at')
+      .in('id', [from, to])
+    const fromP = prospects?.find((p) => p.id === from)
+    const toP = prospects?.find((p) => p.id === to)
+    if (!fromP || !toP) {
+      return json({ ok: false, error: 'from e/ou to nao encontrados', from, to, found: prospects }, 404)
+    }
+    const { count: beforeFrom } = await sb
+      .from('crm_messages').select('id', { count: 'exact', head: true }).eq('prospect_id', from)
+    // repointa mensagens
+    const { error: upErr, count: moved } = await sb
+      .from('crm_messages').update({ prospect_id: to }, { count: 'exact' }).eq('prospect_id', from)
+    if (upErr) return json({ ok: false, error: `repoint messages: ${upErr.message}` }, 500)
+    // soft-delete do duplicado (preserva estrutura/auditoria)
+    const { error: delErr } = await sb
+      .from('crm_prospects').update({ deleted_at: new Date().toISOString() }).eq('id', from)
+    if (delErr) return json({ ok: false, error: `soft-delete: ${delErr.message}` }, 500)
+    const { count: afterTo } = await sb
+      .from('crm_messages').select('id', { count: 'exact', head: true }).eq('prospect_id', to)
+    return json({
+      ok: true, action: 'merge_prospects',
+      from: { id: from, name: fromP.contact_name, phone: fromP.phone },
+      to: { id: to, name: toP.contact_name, phone: toP.phone },
+      movedMessages: moved, beforeFromMsgs: beforeFrom, afterToMsgs: afterTo,
+    })
   }
 
   let rawPayload: any
@@ -488,7 +574,15 @@ async function handleMessagesUpsert(
     const evolutionMessageId = m.key.id
     const fromMe = !!m.key.fromMe
     const remoteJid = m.key.remoteJid as string
-    const otherPhone = jidToPhone(remoteJid)
+    let otherPhone = jidToPhone(remoteJid)
+    // @lid (privacidade WhatsApp v2): o ID opaco != numero real e DUPLICA o
+    // prospect. Se o payload trouxer o numero real num campo paralelo, usa ele
+    // pra casar com o prospect existente em vez de criar um novo.
+    let lidResolved = false
+    if (isLid(remoteJid)) {
+      const real = extractRealPhoneFromLid(m)
+      if (real) { otherPhone = real; lidResolved = true }
+    }
     if (!otherPhone) { debug.push({ skip: 'no_otherPhone', remoteJid }); continue }
 
     // Dedup: ja existe? A Evolution re-emite upsert com o status atualizado
@@ -659,6 +753,8 @@ async function handleMessagesUpsert(
       contactId,
       prospectId,
       otherPhone,
+      lidResolved,
+      remoteJid,
       content: content?.slice(0, 50),
     })
   }
