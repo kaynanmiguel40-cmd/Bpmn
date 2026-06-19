@@ -12,8 +12,22 @@ import { registerSW } from './lib/pwaUtils'
 import App from './App'
 import './index.css'
 
-// Registrar Service Worker para PWA
-registerSW()
+// Service Worker:
+//  - DEV (localhost): NUNCA registra, e DESREGISTRA qualquer SW + limpa caches.
+//    Evita o SW servir codigo velho em cache no localhost (causava "codigo preso").
+//  - PROD: registra o SW (v6, sem cache de assets; so push + auto-limpeza).
+if (import.meta.env.DEV) {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations()
+      .then((rs) => rs.forEach((r) => r.unregister()))
+      .catch(() => {});
+    if (typeof caches !== 'undefined') {
+      caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => {});
+    }
+  }
+} else {
+  registerSW()
+}
 
 // Recarregar automaticamente se um chunk antigo falhar (apos deploy)
 // Evita tela branca quando usuario tem HTML em cache apontando para chunks removidos

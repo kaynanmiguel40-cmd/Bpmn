@@ -144,6 +144,10 @@ function App() {
                 <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
               </Route>
             </Route>
+
+            {/* Catch-all: qualquer URL nao-casada vai pra um destino visivel
+                em vez de renderizar <Routes> vazio (tela branca). */}
+            <Route path="*" element={<Navigate to="/financial" replace />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>

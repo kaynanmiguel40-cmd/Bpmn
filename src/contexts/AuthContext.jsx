@@ -71,13 +71,21 @@ export function AuthProvider({ children }) {
     // Listener para mudancas de auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event);
+        console.log('Auth state changed:', event, !!session);
 
         if (session?.user) {
           setUser(session.user);
           // Perfil carrega em background — não bloqueia transições de auth
           fetchProfile(session.user.id);
-        } else {
+          setLoading(false);
+          return;
+        }
+
+        // session == null. SÓ deslogar em SIGNED_OUT REAL.
+        // TOKEN_REFRESHED / USER_UPDATED / INITIAL_SESSION com session nula é
+        // RUÍDO de refresh de token — antes isso zerava o user, virava
+        // isAuthenticated=false e o ProtectedRoute chutava pro /login (tela branca).
+        if (event === 'SIGNED_OUT') {
           setUser(null);
           setProfile(null);
         }
