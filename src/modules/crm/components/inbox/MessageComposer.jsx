@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Send, Paperclip, Loader2, Image as ImageIcon, FileText, X,
-  Mic, Trash2,
+  Mic, Trash2, Smile,
 } from 'lucide-react';
 import { useSendCrmMessage } from '../../hooks/useCrmQueries';
 import { uploadCrmMedia, detectMediaType } from '../../lib/uploadCrmMedia';
 import { toast } from '../../../../contexts/ToastContext';
+import { EmojiPicker } from './EmojiPicker';
 
 /**
  * MessageComposer - Barra de envio estilo WhatsApp.
@@ -43,7 +44,9 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
   const [text, setText] = useState('');
   const [attachment, setAttachment] = useState(null); // { file, preview, mediaType }
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const rootRef = useRef(null);
 
   // gravação de voz
   const [recording, setRecording] = useState(false);
@@ -60,6 +63,30 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
   const sendMutation = useSendCrmMessage();
 
   useEffect(() => () => stopTracks(), []);
+
+  // Fecha o painel de emoji ao clicar fora do composer.
+  useEffect(() => {
+    if (!emojiOpen) return;
+    const onDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setEmojiOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [emojiOpen]);
+
+  // Insere o emoji na posição do cursor do textarea (mantém o painel aberto).
+  const insertEmoji = (emoji) => {
+    const el = textareaRef.current;
+    if (!el) { setText((t) => t + emoji); return; }
+    const start = el.selectionStart ?? text.length;
+    const end = el.selectionEnd ?? text.length;
+    setText(text.slice(0, start) + emoji + text.slice(end));
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      try { el.setSelectionRange(pos, pos); } catch { /* noop */ }
+    });
+  };
 
   function stopTracks() {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -161,6 +188,7 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
 
   const handleSend = async () => {
     if (!canSendNow) return;
+    setEmojiOpen(false);
     const content = text.trim();
 
     if (attachment) {
@@ -200,7 +228,14 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
   }, [text]);
 
   return (
-    <div className="px-3 py-2.5 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-black/5 dark:border-white/5 relative">
+    <div ref={rootRef} className="px-3 py-2.5 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-black/5 dark:border-white/5 relative">
+      {/* painel de emoji */}
+      {emojiOpen && !recording && (
+        <div className="absolute bottom-[60px] left-3 z-30">
+          <EmojiPicker onPick={insertEmoji} />
+        </div>
+      )}
+
       {/* preview de anexo */}
       {attachment && !recording && (
         <div className="mb-2 flex items-center gap-3 bg-white dark:bg-[#2a3942] rounded-lg p-2 border border-black/5 dark:border-white/10">
@@ -261,7 +296,12 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
       ) : (
         /* barra normal */
         <div className="flex items-end gap-2">
-          <button type="button" onClick={() => setAttachMenuOpen((v) => !v)} disabled={disabled || isSending}
+          <button type="button" onClick={() => { setEmojiOpen((v) => !v); setAttachMenuOpen(false); }} disabled={disabled || isSending}
+            title="Emoji" className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40 shrink-0">
+            <Smile size={22} className={emojiOpen ? 'text-[#00a884]' : 'text-slate-500 dark:text-slate-300'} />
+          </button>
+
+          <button type="button" onClick={() => { setAttachMenuOpen((v) => !v); setEmojiOpen(false); }} disabled={disabled || isSending}
             title="Anexar" className="p-2 rounded-full text-slate-500 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40 shrink-0">
             <Paperclip size={22} className={attachMenuOpen ? 'rotate-45 transition-transform' : 'transition-transform'} />
           </button>
