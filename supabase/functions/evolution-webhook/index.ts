@@ -453,6 +453,24 @@ serve(async (req) => {
 
 // ============= Handlers =============
 
+// Rank pra nao rebaixar status (read > delivered > sent > pending).
+const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3 }
+
+// Normaliza o ack da Evolution/Baileys (string ou number) pro nosso status.
+function mapAckStatus(raw: unknown): string {
+  if (raw == null) return ''
+  if (typeof raw === 'number') {
+    return ({ 0: 'failed', 1: 'pending', 2: 'sent', 3: 'delivered', 4: 'read', 5: 'read' } as Record<number, string>)[raw] || ''
+  }
+  const u = String(raw).toUpperCase()
+  if (u === 'SERVER_ACK' || u === 'SENT') return 'sent'
+  if (u === 'DELIVERY_ACK' || u === 'DELIVERED') return 'delivered'
+  if (u === 'READ' || u === 'PLAYED') return 'read'
+  if (u === 'ERROR' || u === 'FAILED') return 'failed'
+  if (u === 'PENDING') return 'pending'
+  return ''
+}
+
 async function handleMessagesUpsert(
   supabase: SupabaseClient,
   instanceId: string,
@@ -473,13 +491,26 @@ async function handleMessagesUpsert(
     const otherPhone = jidToPhone(remoteJid)
     if (!otherPhone) { debug.push({ skip: 'no_otherPhone', remoteJid }); continue }
 
-    // Dedup: ja existe?
+    // Dedup: ja existe? A Evolution re-emite upsert com o status atualizado
+    // (SERVER_ACK -> DELIVERY_ACK -> READ). Em vez de so ignorar, avancamos os
+    // ticks da mensagem outbound (sem rebaixar).
     const { data: existing } = await supabase
       .from('crm_messages')
-      .select('id')
+      .select('id, status, direction')
       .eq('evolution_message_id', evolutionMessageId)
       .maybeSingle()
-    if (existing) continue
+    if (existing) {
+      if (existing.direction === 'outbound') {
+        const ns = mapAckStatus(m.status)
+        if (ns && (STATUS_RANK[ns] ?? -1) > (STATUS_RANK[existing.status as string] ?? -1)) {
+          const patch: Record<string, unknown> = { status: ns }
+          if (ns === 'delivered') patch.delivered_at = new Date().toISOString()
+          if (ns === 'read') patch.read_at = new Date().toISOString()
+          await supabase.from('crm_messages').update(patch).eq('id', existing.id)
+        }
+      }
+      continue
+    }
 
     const direction: 'inbound' | 'outbound' = fromMe ? 'outbound' : 'inbound'
 
@@ -635,32 +666,32 @@ async function handleMessagesUpsert(
 }
 
 async function handleMessagesUpdate(supabase: SupabaseClient, data: any) {
-  const updates = Array.isArray(data) ? data : [data]
+  const updates = Array.isArray(data)
+    ? data
+    : (Array.isArray(data?.messages) ? data.messages : [data])
   for (const u of updates) {
-    if (!u?.key?.id) continue
-    const evolutionMessageId = u.key.id
-    const updateData: Record<string, unknown> = {}
+    if (!u) continue
+    // chave da msg: Evolution v2 varia entre key.id / keyId / messageId
+    const msgId = u.key?.id || u.keyId || u.messageId || u.id
+    if (!msgId) continue
 
-    // Evolution manda u.status como string ou u.update.status
-    const status = (u.status || u.update?.status || '').toString().toUpperCase()
+    const ns = mapAckStatus(u.status ?? u.update?.status ?? u.ack)
+    if (!ns) continue
 
-    if (status === 'DELIVERY_ACK' || status === 'DELIVERED') {
-      updateData.status = 'delivered'
-      updateData.delivered_at = new Date().toISOString()
-    } else if (status === 'READ' || status === 'PLAYED') {
-      updateData.status = 'read'
-      updateData.read_at = new Date().toISOString()
-    } else if (status === 'ERROR' || status === 'FAILED') {
-      updateData.status = 'failed'
-      updateData.error_message = u.error || 'erro reportado pelo Evolution'
-    }
+    const patch: Record<string, unknown> = { status: ns }
+    if (ns === 'delivered') patch.delivered_at = new Date().toISOString()
+    if (ns === 'read')      patch.read_at = new Date().toISOString()
+    if (ns === 'failed')    patch.error_message = u.error || 'erro reportado pelo Evolution'
 
-    if (Object.keys(updateData).length === 0) continue
-
-    await supabase
-      .from('crm_messages')
-      .update(updateData)
-      .eq('evolution_message_id', evolutionMessageId)
+    // Ticks sao da mensagem OUTBOUND. Nao rebaixa (READ nao volta pra delivered;
+    // SERVER_ACK so promove de pending; failed so se ainda nao entregou).
+    let q = supabase.from('crm_messages').update(patch)
+      .eq('evolution_message_id', msgId)
+      .eq('direction', 'outbound')
+    if (ns === 'delivered') q = q.neq('status', 'read')
+    if (ns === 'sent')      q = q.eq('status', 'pending')
+    if (ns === 'failed')    q = q.in('status', ['pending', 'sent'])
+    await q
   }
 }
 
