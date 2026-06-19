@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fyness-os-v3';
+const CACHE_NAME = 'fyness-os-v4';
 
 // Install — NAO pre-cachear HTML (evita servir chunks antigos apos deploy)
 self.addEventListener('install', (event) => {
@@ -39,23 +39,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation — sempre rede (nao cachear HTML para evitar chunks antigos apos deploy)
+  // Navigation — sempre rede; fallback pro index/cache; NUNCA rejeita (evita tela branca)
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => new Response(
-        '<h1>Offline</h1><p>Verifique sua conexao.</p>',
-        { headers: { 'Content-Type': 'text/html' } }
-      ))
+      fetch(request).catch(async () =>
+        (await caches.match(request)) ||
+        (await caches.match('/index.html')) ||
+        new Response(
+          '<!doctype html><meta charset="utf-8"><h1>Sem conexao</h1><p>Tente recarregar.</p>',
+          { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+        )
+      )
     );
     return;
   }
 
-  // All other assets — network first, cache as fallback
+  // All other assets — network first, cache as fallback.
+  // IMPORTANTE: o respondWith NUNCA pode resolver pra undefined, senao o browser
+  // dispara "Failed to convert value to 'Response'" e a pagina quebra.
   event.respondWith(
     fetch(request)
       .then((response) => {
         // Cache so 200 OK (status 206 Partial Content nao eh suportado pelo Cache API)
-        if (response.status === 200 && response.type === 'basic') {
+        if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(request, clone).catch(() => {/* swallow: alguns responses nao sao cacheaveis */});
@@ -63,7 +69,10 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(request))
+      .catch(async () => {
+        const cached = await caches.match(request);
+        return cached || Response.error();  // sempre uma Response valida
+      })
   );
 });
 
