@@ -528,40 +528,40 @@ async function handleMessagesUpsert(
     let prospectId: string | null = null
 
     let prospectError: string | null = null
-    if (direction === 'inbound') {
-      contactId = await findContactByPhone(supabase, otherPhone)
-      if (!contactId) {
-        const chatId = remoteJid.replace('@s.whatsapp.net', '@lid')
-        // Evolution ja manda pushName no proprio evento; WAHA precisa buscar.
-        let pushName: string | null = (m.pushName as string) || null
-        if (!pushName && PROVIDER === 'waha') {
-          pushName = await wahaGetContactName(instanceName, chatId)
-        }
-        // Avatar: pode vir null por timing; findOrCreate tenta atualizar depois.
-        // Evolution: ja re-hospeda no Storage (pps.whatsapp.net expira).
-        const avatarUrl = PROVIDER === 'waha'
+    // Vincula a contato existente; senao cria prospect. Vale pros 2 sentidos:
+    // assim conversas que o vendedor INICIA do celular (outbound p/ numero novo)
+    // tambem entram no sistema — nao so as que o lead manda primeiro.
+    contactId = await findContactByPhone(supabase, otherPhone)
+    if (!contactId) {
+      const chatId = remoteJid.replace('@s.whatsapp.net', '@lid')
+      // Evolution ja manda pushName no proprio evento; WAHA precisa buscar.
+      // (Em outbound o pushName costuma vir vazio — cai no fallback "WhatsApp ....")
+      let pushName: string | null = (m.pushName as string) || null
+      if (!pushName && PROVIDER === 'waha') {
+        pushName = await wahaGetContactName(instanceName, chatId)
+      }
+      // Avatar: pode vir null por timing; findOrCreate tenta atualizar depois.
+      // Evolution: ja re-hospeda no Storage (pps.whatsapp.net expira).
+      const avatarUrl = PROVIDER === 'waha'
+        ? await wahaGetProfilePicture(instanceName, chatId)
+        : await evolutionFetchAvatarMirrored(instanceName, otherPhone, supabase)
+      const r = await findOrCreateProspectByPhoneWithError(supabase, otherPhone, pushName, avatarUrl)
+      prospectId = r.id
+      prospectError = r.error
+
+      // Refresh: se criou/existia sem avatar e agora temos um, atualiza.
+      if (prospectId && !avatarUrl) {
+        const retryAvatar = PROVIDER === 'waha'
           ? await wahaGetProfilePicture(instanceName, chatId)
           : await evolutionFetchAvatarMirrored(instanceName, otherPhone, supabase)
-        const r = await findOrCreateProspectByPhoneWithError(supabase, otherPhone, pushName, avatarUrl)
-        prospectId = r.id
-        prospectError = r.error
-
-        // Refresh: se criou/existia sem avatar e agora temos um, atualiza.
-        if (prospectId && !avatarUrl) {
-          const retryAvatar = PROVIDER === 'waha'
-            ? await wahaGetProfilePicture(instanceName, chatId)
-            : await evolutionFetchAvatarMirrored(instanceName, otherPhone, supabase)
-          if (retryAvatar) {
-            await supabase
-              .from('crm_prospects')
-              .update({ avatar_url: retryAvatar })
-              .eq('id', prospectId)
-              .is('avatar_url', null)
-          }
+        if (retryAvatar) {
+          await supabase
+            .from('crm_prospects')
+            .update({ avatar_url: retryAvatar })
+            .eq('id', prospectId)
+            .is('avatar_url', null)
         }
       }
-    } else {
-      contactId = await findContactByPhone(supabase, otherPhone)
     }
 
     if (!contactId && !prospectId) {
