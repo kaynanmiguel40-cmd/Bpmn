@@ -29,14 +29,23 @@ export const DAYS_PER_WEEK = 7;
 
 // ─── Horario Comercial ──────────────────────────────────────────
 
-export const WORK_START_HOUR = 9;
+export const WORK_START_HOUR = 8;
 export const WORK_END_HOUR = 18;
-export const WORK_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR - 1; // 8h uteis (9h-18h com 1h intervalo)
+export const WORK_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR - 1; // 9h uteis (8h-18h com 1h intervalo)
 
 // ─── Metas Mensais ──────────────────────────────────────────────
 
 /** Horas mensais padrao (22 dias x 8h) */
 export const STANDARD_MONTHLY_HOURS = 176;
+
+// ─── Corte do Relatorio ─────────────────────────────────────────
+
+/**
+ * Data de inicio da contagem oficial dos relatorios (formato 'YYYY-MM-DD').
+ * Somente O.S. criadas A PARTIR deste dia (00h local) entram nos KPIs e
+ * exportacoes. O.S. anteriores (legado/teste) sao ignoradas pelo relatorio.
+ */
+export const REPORT_BASELINE_DATE = '2026-06-20';
 
 // ─── Metricas / Thresholds ──────────────────────────────────────
 

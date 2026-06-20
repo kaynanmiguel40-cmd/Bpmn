@@ -301,49 +301,6 @@ export async function clearSectorFromProjects(sectorId) {
 // ==================== MODOS DA O.S. (pool/solo/team) ====================
 
 /**
- * Status efetivo de uma O.S. considerando o modo:
- * - solo/pool: status escrito direto na linha
- * - team: derivado dos GRUPOS do checklist + assinaturas
- *     todos itens de todos os grupos done + todos participantes assinaram -> done
- *     pelo menos 1 item done (em qualquer grupo)                          -> in_progress
- *     todos itens em todos os grupos = todo                               -> available
- *
- * @param {object} order - O.S. transformada (dbToOrder)
- * @param {Array}  signatures - assinaturas (opcional; lista de { userId, userName })
- */
-export function computeOSStatus(order, signatures = []) {
-  if (!order) return { status: 'available', awaitingSignatures: false };
-  if (order.mode !== 'team') {
-    return { status: order.status || 'available', awaitingSignatures: false };
-  }
-
-  const checklist = Array.isArray(order.checklist) ? order.checklist : [];
-  const groups = Array.isArray(order.checklistGroups) ? order.checklistGroups : [];
-  if (checklist.length === 0) {
-    return { status: 'available', awaitingSignatures: false };
-  }
-
-  const allDone  = checklist.every(i => i.done);
-  const anyDone  = checklist.some(i => i.done);
-
-  if (!allDone) {
-    return { status: anyDone ? 'in_progress' : 'available', awaitingSignatures: false };
-  }
-  // Todos os itens done. Checa assinaturas: 1 por participante distinto que tem grupo atribuido.
-  const requiredSigners = [...new Set(
-    groups.map(g => g.assigneeId).filter(Boolean)
-  )];
-  if (requiredSigners.length === 0) {
-    // Nenhum grupo atribuido — sem exigir assinatura, considera done.
-    return { status: 'done', awaitingSignatures: false };
-  }
-  const signedIds = new Set(signatures.map(s => s.userId || s.user_id).filter(Boolean));
-  const allSigned = requiredSigners.every(id => signedIds.has(id));
-  if (allSigned) return { status: 'done', awaitingSignatures: false };
-  return { status: 'in_progress', awaitingSignatures: true };
-}
-
-/**
  * Sincroniza a lista de participantes de uma O.S.
  *
  * - Atualiza a coluna participants[] (autoridade unica de "quem trabalha aqui")
@@ -386,78 +343,6 @@ export async function setOSParticipants(orderId, members) {
   return { mode: nextMode, participants: dedup };
 }
 
-/**
- * Usuario "pega" uma O.S. para si. Funciona em qualquer modo:
- *  - pool         : preenche assignee/assigned_to, marca solo, status -> in_progress
- *  - solo (sua)   : status -> in_progress
- *  - solo (outro) : adiciona o original + o novo em participants[], vira team
- *  - team         : adiciona o novo em participants[]
- *
- * Nao mexe em checklist_groups. A atribuicao por grupo e na UI.
- *
- * @param {string} orderId
- * @param {{id: string, name: string}} member
- */
-export async function joinOSOrder(orderId, member) {
-  if (!orderId || !member?.id) throw new Error('orderId e member.id obrigatorios');
-
-  const { data: row } = await supabase
-    .from('os_orders')
-    .select('id, mode, status, assignee, assigned_to, participants')
-    .eq('id', orderId)
-    .maybeSingle();
-  if (!row) throw new Error('O.S. nao encontrada');
-
-  const now = new Date().toISOString();
-  const currentParticipants = Array.isArray(row.participants) ? row.participants : [];
-
-  // Pegar = assinar: registra signature em qualquer cenario (idempotente)
-  await ensureSignaturesForParticipants(orderId, [{ id: member.id, name: member.name || '' }]);
-
-  // Caso 1: pool -> solo do novo membro
-  if (row.mode === 'pool' || (!row.assigned_to && !row.assignee && currentParticipants.length === 0)) {
-    const patch = {
-      mode: 'solo',
-      assignee: member.name || '',
-      assignedTo: member.id,
-      participants: [{ id: member.id, name: member.name || '' }],
-      status: row.status === 'available' ? 'in_progress' : row.status,
-    };
-    // So define actualStart ao iniciar de fato. Passar undefined viraria null em
-    // normalizeTimestamps e apagaria o actual_start de uma O.S. ja iniciada.
-    if (row.status === 'available') patch.actualStart = now;
-    return updateOSOrder(orderId, patch);
-  }
-
-  // Caso 2: solo do proprio usuario -> claim
-  if (row.mode === 'solo' && row.assigned_to === member.id) {
-    return updateOSOrder(orderId, {
-      status: 'in_progress',
-      actualStart: now,
-    });
-  }
-
-  // Caso 3: solo de outro -> vira team
-  if (row.mode === 'solo') {
-    const original = { id: row.assigned_to, name: row.assignee || '' };
-    await setOSParticipants(orderId, [original, { id: member.id, name: member.name }]);
-    // Garante signature do original tambem (caso ainda nao tenha)
-    await ensureSignaturesForParticipants(orderId, [original]);
-    return updateOSOrder(orderId, {
-      mode: 'team',
-      // limpa atribuicao unica — agora cada grupo do checklist tem seu assignee
-      assignee: null,
-      assignedTo: null,
-    });
-  }
-
-  // Caso 4: team -> adiciona em participants
-  const next = [...currentParticipants, { id: member.id, name: member.name }];
-  await setOSParticipants(orderId, next);
-  return supabase.from('os_orders').select('*').eq('id', orderId).single()
-    .then(({ data }) => dbToOrder(data));
-}
-
 // ==================== HELPERS DE GRUPOS DO CHECKLIST ====================
 
 /**
@@ -475,14 +360,19 @@ export function getChecklistGroupNames(order) {
 // Le estado FRESCO do banco antes de aplicar patch — evita race entre
 // seleções consecutivas que poderiam sobrescrever uma a outra (stale closure).
 async function readFreshGroups(orderId) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('os_orders')
     .select('checklist_groups, checklist')
     .eq('id', orderId)
-    .single();
+    .maybeSingle();
+  // Sem data (O.S. sumiu ou sessao Supabase expirada): NAO seguir, senao um patch
+  // sobre lista vazia apagaria o checklist real. Lanca erro -> caller mostra toast.
+  if (error || !data) {
+    throw new Error('Nao foi possivel ler a O.S. (sessao expirada?). Faca logout/login e tente de novo.');
+  }
   return {
-    groups: Array.isArray(data?.checklist_groups) ? data.checklist_groups : [],
-    checklist: Array.isArray(data?.checklist) ? data.checklist : [],
+    groups: Array.isArray(data.checklist_groups) ? data.checklist_groups : [],
+    checklist: Array.isArray(data.checklist) ? data.checklist : [],
   };
 }
 
@@ -590,13 +480,31 @@ export async function setItemDueAt(orderOrId, itemId, dueAt) {
     i.id === itemId ? { ...i, dueAt: dueAt || null } : i
   );
   const updates = { checklist: next };
-  const dues = next.map(i => i.dueAt).filter(Boolean);
+  // So considera prazos com data valida (evita NaN no reduce com dueAt corrompido).
+  const dues = next.map(i => i.dueAt).filter(d => d && !isNaN(new Date(d).getTime()));
   if (dues.length > 0) {
     updates.estimatedEnd = dues.reduce((a, b) =>
       new Date(a).getTime() >= new Date(b).getTime() ? a : b
     );
   }
   return updateOSOrder(orderId, updates);
+}
+
+/**
+ * Define o responsavel de UMA tarefa do checklist (granularidade fina).
+ * Usado em O.S. de time (>1 responsavel): cada tarefa tem o seu dono. Passe
+ * `member` = { id, name } pra atribuir, ou null pra limpar.
+ */
+export async function setItemAssignee(orderOrId, itemId, member) {
+  const orderId = typeof orderOrId === 'string' ? orderOrId : orderOrId?.id;
+  if (!orderId) throw new Error('orderId obrigatorio');
+  const { checklist } = await readFreshGroups(orderId);
+  const next = checklist.map(i =>
+    i.id === itemId
+      ? { ...i, assigneeId: member?.id || null, assigneeName: member?.name || null }
+      : i
+  );
+  return updateOSOrder(orderId, { checklist: next });
 }
 
 /**

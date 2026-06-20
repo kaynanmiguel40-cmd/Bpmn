@@ -21,6 +21,7 @@ import {
 } from '../../hooks/queries';
 import { useProfile } from '../../hooks/useProfile';
 import { namesMatch } from '../../lib/kpiUtils';
+import { buildOSDeadlineEvents } from '../../lib/agendaDeadlines';
 import { expandRecurrences } from '../../lib/recurrenceUtils';
 import { useRealtimeAgendaEvents } from '../../hooks/useRealtimeSubscription';
 import { connectGCal } from '../../lib/googleCalendarService';
@@ -39,6 +40,16 @@ const typeMeta = (id) => EVENT_TYPES.find(t => t.id === id) || EVENT_TYPES[0];
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const toTimeStr = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+// Visão (lista/mês/semana) e filtro de pessoa ficam TRAVADOS no que o usuário
+// escolheu — sobrevivem a sair e voltar pra agenda (ex.: abrir uma O.S. e voltar).
+const AGENDA_VIEW_KEY = 'agenda:view';
+const AGENDA_FILTERS_KEY = 'agenda:filters';
+const loadView = () => { try { return localStorage.getItem(AGENDA_VIEW_KEY) || 'agenda'; } catch { return 'agenda'; } };
+const loadFilters = () => {
+  try { const r = JSON.parse(localStorage.getItem(AGENDA_FILTERS_KEY) || 'null'); return Array.isArray(r) && r.length ? r : null; }
+  catch { return null; }
+};
 
 // ==================== MODAL COMPACTO DE EVENTO ====================
 
@@ -160,9 +171,17 @@ export default function AgendaPage() {
   });
 
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState('agenda');
-  const [activeFilters, setActiveFilters] = useState(null); // null = ainda nao inicializou
+  const [view, setView] = useState(loadView);
+  const [activeFilters, setActiveFilters] = useState(loadFilters); // null = ainda nao inicializou
   const [showFilter, setShowFilter] = useState(false);
+
+  // Persiste a visão e o filtro escolhidos (travam entre navegações).
+  useEffect(() => { try { localStorage.setItem(AGENDA_VIEW_KEY, view); } catch {} }, [view]);
+  useEffect(() => {
+    try {
+      if (activeFilters && activeFilters.length) localStorage.setItem(AGENDA_FILTERS_KEY, JSON.stringify(activeFilters));
+    } catch {}
+  }, [activeFilters]);
   const [modal, setModal] = useState(null); // { id?, date? } ou null
 
   // Membros + perfil logado
@@ -230,36 +249,9 @@ export default function AgendaPage() {
     }).filter(Boolean);
   }, [crmActivitiesRaw, memberByAuth, memberByName]);
 
-  // 3) Tarefas de O.S. COM PRAZO (responsavel da O.S.)
-  const osTaskEvents = useMemo(() => {
-    const out = [];
-    for (const os of osOrders) {
-      const cl = Array.isArray(os.checklist) ? os.checklist : [];
-      const names = [...new Set([
-        ...(os.assignee ? [os.assignee] : []),
-        ...(os.assignedTo || '').split(',').map(s => s.trim()).filter(Boolean),
-      ])];
-      const people = names.length ? names : [''];
-      const osNum = os.type === 'emergency' ? `EMG-${os.emergencyNumber}` : `#${os.number}`;
-      for (const item of cl) {
-        if (!item.dueAt || item.done) continue;
-        const due = new Date(item.dueAt);
-        if (isNaN(due.getTime())) continue;
-        people.forEach((personName, idx) => {
-          const m = personName ? memberByName(personName) : null;
-          out.push({
-            id: `ostask_${os.id}_${item.id}_p${idx}`,
-            title: `${item.text} · ${osNum}`,
-            startDate: due.toISOString(), endDate: new Date(due.getTime() + 30 * 60000).toISOString(),
-            color: '#ef4444', source: 'os',
-            typeKey: 'task', typeLabel: 'Prazo',
-            assignee: m?.id || null, _osId: os.id,
-          });
-        });
-      }
-    }
-    return out;
-  }, [osOrders, memberByName]);
+  // 3) Prazos de O.S. — cobre a cascata item → grupo → O.S. (prazo de entrega).
+  // Lógica pura e testada em agendaDeadlines.js.
+  const osTaskEvents = useMemo(() => buildOSDeadlineEvents(osOrders, memberByName), [osOrders, memberByName]);
 
   // 4) Google Calendar
   const googleEvents = useMemo(() => {
@@ -272,17 +264,24 @@ export default function AgendaPage() {
   }, [gcalEvents, gcalConnected]);
 
   // Junta tudo + filtro por pessoa.
-  //  - "Ver todos" -> mostra tudo.
+  //  - Atividade COMERCIAL (CRM) e PRIVADA do dono: so entra na agenda de quem
+  //    ela pertence E que esteja no filtro. Nunca vaza pra operacao (ex.: Elias,
+  //    que e produto, nao ve cadencia comercial) nem aparece no load inicial.
+  //    Sem dono resolvido (lixo de demo/cadencia) = nao aparece pra ninguem.
+  //  - "Ver todos" -> mostra o resto (local/O.S./Google) de todo mundo.
   //  - Pessoa(s) selecionada(s) -> so o que e DAQUELAS pessoas.
-  //  - Sem dono resolvido: lead (CRM) e tarefa de O.S. NAO vazam pra agenda
-  //    alheia; Google e do usuario logado; evento local sem responsavel aparece.
+  //  - Sem dono resolvido: tarefa de O.S. NAO vaza pra agenda alheia; Google e
+  //    do usuario logado; evento local sem responsavel aparece.
   const events = useMemo(() => {
     const all = [...localEvents, ...crmEvents, ...osTaskEvents, ...googleEvents];
-    const isAll = allMembers.length > 0 && filters.length === allMembers.length;
+    // Sem membros carregados (load inicial) -> mostra tudo, senao a agenda some.
+    const isAll = allMembers.length === 0 || filters.length === allMembers.length;
     return all.filter(e => {
+      // Comercial: sempre travado no dono, mesmo no "ver todos" e no load inicial.
+      if (e.source === 'crm') return !!e.assignee && filters.includes(e.assignee);
       if (isAll) return true;
       if (e.assignee) return filters.includes(e.assignee);
-      if (e.source === 'crm' || e.source === 'os') return false;
+      if (e.source === 'os') return false;
       if (e.source === 'google') return !!myMemberId && filters.includes(myMemberId);
       return true; // evento local sem responsavel
     });
@@ -301,7 +300,7 @@ export default function AgendaPage() {
   }, [view]);
 
   const handleSelectEvent = useCallback((ev) => {
-    if (ev._osId) { navigate('/financial', { state: { openOsId: ev._osId } }); return; }
+    if (ev._osId) { navigate('/financial', { state: { openOsId: ev._osId, openTaskId: ev._taskId || null } }); return; }
     if (ev.source === 'crm') { if (ev._dealId) navigate(`/crm/deals/${ev._dealId}`); return; }
     if (ev.source === 'google') { if (ev.htmlLink) window.open(ev.htmlLink, '_blank', 'noopener'); return; }
     if (ev.source === 'local') setModal({ id: ev._localId, _ev: ev._raw });

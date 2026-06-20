@@ -80,17 +80,27 @@ export function extractMentions(text, teamMembers) {
   const mentions = [];
   const atMatches = text.match(/@[\w\u00C0-\u024F]+(?:\s[\w\u00C0-\u024F]+)?/g) || [];
 
-  for (const atMatch of atMatches) {
-    const name = atMatch.slice(1); // remove @
-    const normQuery = normName(name);
-    const member = teamMembers.find(m => {
+  const matchMember = (q) => {
+    const normQuery = normName(q);
+    if (!normQuery) return null;
+    return teamMembers.find(m => {
       const parts = m.name.trim().split(/\s+/);
       const firstName = normName(parts[0]);
       const shortN = parts.length > 2
         ? normName(`${parts[0]} ${parts[parts.length - 1]}`)
         : normName(m.name);
       return firstName === normQuery || shortN === normQuery || normName(m.name) === normQuery;
-    });
+    }) || null;
+  };
+
+  for (const atMatch of atMatches) {
+    const raw = atMatch.slice(1); // remove @
+    const words = raw.split(/\s+/);
+    // A regex captura @ + ate 2 palavras (p/ nomes compostos). Tenta a forma
+    // de 2 palavras e, se nenhum membro casar, cai pra 1 palavra \u2014 senao
+    // "@Lorena confirma ..." virava "lorena confirma" e nao notificava ninguem.
+    let member = matchMember(raw);
+    if (!member && words.length > 1) member = matchMember(words[0]);
     if (member && !mentions.find(m => m.memberId === member.id)) {
       mentions.push({ memberId: member.id, memberName: member.name });
     }

@@ -161,11 +161,18 @@ function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
         </div>
       )}
 
-      {deal.segment && (
-        <div className="mb-1">
-          <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
-            {deal.segment}
-          </span>
+      {(deal.segment || deal.source) && (
+        <div className="flex flex-wrap items-center gap-1 mb-1">
+          {deal.segment && (
+            <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
+              {deal.segment}
+            </span>
+          )}
+          {deal.source && (
+            <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+              {deal.source}
+            </span>
+          )}
         </div>
       )}
 
@@ -474,6 +481,7 @@ const DEFAULT_STAGES = [
 function CreatePipelineModal({ open, onClose, onCreated }) {
   const [name, setName]     = useState('');
   const [stages, setStages] = useState(() => DEFAULT_STAGES.map(s => ({ ...s })));
+  const [isDefault, setIsDefault] = useState(false);
   const createMutation = useCreateCrmPipeline();
 
   // Reset ao abrir
@@ -481,6 +489,7 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
     if (open) {
       setName('');
       setStages(DEFAULT_STAGES.map(s => ({ ...s })));
+      setIsDefault(false);
     }
   }, [open]);
 
@@ -502,6 +511,7 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
     if (!name.trim() || stages.length === 0) return;
     const pipeline = await createMutation.mutateAsync({
       name: name.trim(),
+      isDefault,
       stages: stages.map((s, i) => ({
         name:       s.name.trim() || `Etapa ${i + 1}`,
         color:      s.color,
@@ -631,6 +641,20 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
             <Plus size={12} /> Adicionar etapa
           </button>
         </div>
+
+        {/* Pipeline padrao — novos negocios nascem nela */}
+        <label className="flex items-start gap-2.5 cursor-pointer select-none rounded-lg border border-white/60 dark:border-white/10 bg-white/40 dark:bg-slate-800/40 p-3">
+          <input
+            type="checkbox"
+            checked={isDefault}
+            onChange={e => setIsDefault(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500/40"
+          />
+          <span className="text-xs text-slate-600 dark:text-slate-300">
+            <span className="font-medium text-slate-700 dark:text-slate-200">Definir como pipeline padrão</span>
+            <span className="block text-slate-400 dark:text-slate-500 mt-0.5">Novos negócios passam a nascer nesta pipeline. Marcar aqui desmarca a anterior.</span>
+          </span>
+        </label>
 
       </form>
     </CrmModal>

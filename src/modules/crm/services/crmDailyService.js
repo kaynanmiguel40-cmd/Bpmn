@@ -41,6 +41,10 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO) {
       supabase.from('crm_activities')
         .select('created_by')
         .eq('completed', true)
+        // Buckets disjuntos: reunioes ja contam em 'meetings' e ligacoes em
+        // crm_calls (espelhadas como activity type='call'). Sem este filtro o
+        // total contava em dobro quem registra ligacao/reuniao.
+        .not('type', 'in', '("meeting","call")')
         .gte('completed_at', dayStartISO).lt('completed_at', dayEndISO)
         .is('deleted_at', null),
       supabase.from('team_members').select('name, color, auth_user_id'),

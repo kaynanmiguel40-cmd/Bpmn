@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   Target,
   Trophy,
+  CircleDollarSign,
   Crosshair,
   Zap,
   PhoneCall,
@@ -35,6 +36,7 @@ const PinIcon = ({ pinned }) => (
 const crmNavItems = [
   { section: 'Vendas' },
   { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline' },
+  { to: '/crm/ganhos', icon: CircleDollarSign, label: 'Ganhos' },
   { to: '/crm/discador', icon: PhoneCall, label: 'Discador' },
   { to: '/crm/inbox', icon: MessageCircle, label: 'Inbox WhatsApp' },
   { to: '/crm/agenda', icon: CalendarDays, label: 'Agenda' },

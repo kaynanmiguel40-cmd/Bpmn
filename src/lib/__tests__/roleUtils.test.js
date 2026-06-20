@@ -46,6 +46,19 @@ describe('roleUtils', () => {
       expect(detectRole({ role: 'gestor' })).toBe('manager');
       expect(detectRole({ role: 'Gestor' })).toBe('manager');
     });
+
+    // Regressao: o match por substring elevava cargos administrativos a admin
+    // (escalonamento de privilegio). Match agora e por palavra inteira.
+    it('NAO deve elevar cargos que apenas CONTEM um keyword como substring', () => {
+      expect(detectRole({ role: 'administrativo' })).toBe('collaborator');
+      expect(detectRole({ role: 'Assistente Administrativo' })).toBe('collaborator');
+      expect(detectRole({ role: 'auxiliar administrativo' })).toBe('collaborator');
+    });
+
+    it('ainda detecta gestor em cargos compostos (palavra inteira)', () => {
+      expect(detectRole({ role: 'Gerente de Vendas' })).toBe('manager');
+      expect(detectRole({ role: 'Diretor/Gestor' })).toBe('manager');
+    });
   });
 
   describe('isManagerRole', () => {

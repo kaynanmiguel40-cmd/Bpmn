@@ -142,11 +142,35 @@ export function createCRUDService<TDomain = unknown, TRow extends OfflineRow = O
       return local.map(apply);
     }
 
-    saveOffline(table, (data as TRow[]) || []).catch(err =>
-      console.warn(`[${table}] saveOffline falhou:`, (err as Error)?.message || err)
+    // saveOffline faz clear()+bulkPut, entao precisamos preservar linhas criadas
+    // ou editadas offline e ainda nao sincronizadas — senao um getAll() (refetch)
+    // apaga o registro local pendente e o syncPending nao acha mais o payload
+    // (perda de dado silenciosa + fila orfa).
+    let rows = (data as TRow[]) || [];
+    try {
+      const pending = await getPendingSync();
+      const pendingIds = new Set(
+        pending
+          .filter(p => p.table_name === table && p.operation === 'upsert')
+          .map(p => p.item_id),
+      );
+      if (pendingIds.size > 0) {
+        const localBefore = await getOffline<TRow>(table);
+        const preserved = localBefore.filter(r => pendingIds.has(r.id));
+        const serverIds = new Set(rows.map(r => r.id));
+        // versao local pendente vence a do servidor; mantem os que o servidor ainda nao tem
+        rows = rows.map(r => preserved.find(p => p.id === r.id) || r);
+        for (const p of preserved) if (!serverIds.has(p.id)) rows.push(p);
+      }
+    } catch (err) {
+      console.warn(`[${table}] merge pendingSync falhou:`, (err as Error)?.message || err);
+    }
+
+    saveOffline(table, rows).catch(err =>
+      console.warn(`[${table}] saveOffline falhou:`, (err as Error)?.message || err),
     );
 
-    return ((data as TRow[]) || []).map(apply);
+    return rows.map(apply);
   }
 
   async function getPaginated(
@@ -173,14 +197,23 @@ export function createCRUDService<TDomain = unknown, TRow extends OfflineRow = O
 
     if (error) {
       toast('Modo offline — usando dados locais', 'warning');
-      const local = await getOffline<TRow>(table);
-      const sliced = local.slice(from, to + 1);
+      const all = await getOffline<TRow>(table);
+      // Aplica os mesmos filtros do online; antes o fallback ignorava `filters`
+      // e devolvia linhas de outras entidades (ex.: projetos de outra empresa).
+      const filtered = all.filter(r =>
+        Object.entries(filters).every(([field, value]) =>
+          value === undefined || value === null || value === ''
+            ? true
+            : (r as Record<string, unknown>)[field] === value,
+        ),
+      );
+      const sliced = filtered.slice(from, to + 1);
       return {
         data: sliced.map(apply),
-        count: local.length,
+        count: filtered.length,
         page,
         pageSize,
-        totalPages: Math.ceil(local.length / pageSize),
+        totalPages: Math.ceil(filtered.length / pageSize),
       };
     }
 
@@ -322,10 +355,18 @@ export function createCRUDService<TDomain = unknown, TRow extends OfflineRow = O
 
     if (error) {
       const local = await getOffline<TRow>(table);
-      const updated = local.map(r =>
-        (r as Record<string, unknown>)[filterField] === filterValue ? { ...r, ...updateData } : r
-      ) as TRow[];
+      const affected: string[] = [];
+      const updated = local.map(r => {
+        if ((r as Record<string, unknown>)[filterField] === filterValue) {
+          affected.push((r as TRow).id);
+          return { ...r, ...updateData } as TRow;
+        }
+        return r;
+      }) as TRow[];
       await saveOffline(table, updated);
+      // Enfileira p/ sincronizar: antes a alteracao offline ficava so no cache
+      // local e era perdida no proximo getAll (sobrescrito pelo servidor).
+      for (const id of affected) await markPendingSync(table, id, 'upsert');
     }
   }
 

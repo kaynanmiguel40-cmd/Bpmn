@@ -1,6 +1,6 @@
 /**
  * useReportCloseReminder - avisa (notificação) quando um período comercial
- * fechou e ainda não foi marcado como fechado no Arquivos. Roda no MainLayout.
+ * encerrou e ainda não foi marcado como apresentado no Arquivos. Roda no MainLayout.
  *
  *  - Diário:  lembra do dia de ONTEM.
  *  - Semanal: lembra da semana atual a partir de sexta 18h.
@@ -82,8 +82,8 @@ export function useReportCloseReminder() {
           await notify({
             userId,
             type: 'info',
-            title: `Fechar relatório ${p.label}`,
-            message: `Seu relatório ${p.label} está pronto. Revise e feche em Arquivos.`,
+            title: `Apresentar relatório ${p.label}`,
+            message: `Seu relatório ${p.label} está pronto. Revise e apresente em Arquivos.`,
             entityType: 'report',
             entityId: p.key,
           });

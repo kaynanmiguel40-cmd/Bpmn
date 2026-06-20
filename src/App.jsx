@@ -14,7 +14,6 @@ const YouTubeCallbackPage = lazy(() => import('./pages/auth/YouTubeCallbackPage'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Editor = lazy(() => import('./pages/Editor'))
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'))
-const RoutinePage = lazy(() => import('./pages/routine/RoutinePage'))
 const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage'))
 const FinancialPage = lazy(() => import('./pages/financial/FinancialPage'))
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'))
@@ -28,6 +27,7 @@ const CrmDailyPage = lazy(() => import('./modules/crm/pages/CrmDailyPage'))
 const CrmPipelinePage = lazy(() => import('./modules/crm/pages/CrmPipelinePage'))
 const CrmDealsPage = lazy(() => import('./modules/crm/pages/CrmDealsPage'))
 const CrmDealDetailPage = lazy(() => import('./modules/crm/pages/CrmDealDetailPage'))
+const CrmGanhosPage = lazy(() => import('./modules/crm/pages/CrmGanhosPage'))
 const CrmContactsPage = lazy(() => import('./modules/crm/pages/CrmContactsPage'))
 const CrmContactDetailPage = lazy(() => import('./modules/crm/pages/CrmContactDetailPage'))
 const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage'))
@@ -108,6 +108,7 @@ function App() {
                 <Route path="pipeline/:pipelineId" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="deals" element={<ErrorBoundary><CrmDealsPage /></ErrorBoundary>} />
                 <Route path="deals/:dealId" element={<ErrorBoundary><CrmDealDetailPage /></ErrorBoundary>} />
+                <Route path="ganhos" element={<ErrorBoundary><CrmGanhosPage /></ErrorBoundary>} />
                 <Route path="cadastros" element={<ErrorBoundary><CrmCadastrosPage /></ErrorBoundary>} />
                 <Route path="contacts" element={<ErrorBoundary><CrmContactsPage /></ErrorBoundary>} />
                 <Route path="contacts/:id" element={<ErrorBoundary><CrmContactDetailPage /></ErrorBoundary>} />
@@ -136,7 +137,8 @@ function App() {
                 <Route path="/" element={<Navigate to="/financial" replace />} />
                 <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
                 <Route path="/sales" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-                <Route path="/routine" element={<ErrorBoundary><RoutinePage /></ErrorBoundary>} />
+                {/* "Minha Rotina" removida — o trabalho passou a ser pela Agenda. Redireciona links antigos. */}
+                <Route path="/routine" element={<Navigate to="/agenda" replace />} />
                 <Route path="/agenda" element={<ErrorBoundary><AgendaPage /></ErrorBoundary>} />
                 <Route path="/financial" element={<ErrorBoundary><FinancialPage /></ErrorBoundary>} />
                 <Route path="/reports" element={<ErrorBoundary><ReportPage /></ErrorBoundary>} />

@@ -19,6 +19,8 @@ import { DeliveryReportModal } from '../components/DeliveryReportModal';
 import { useCrmCalendarActivities, useCompleteCrmActivity } from '../hooks/useCrmQueries';
 import { useGCalEvents, useGCalStatus } from '../../../hooks/queries';
 import { connectGCal } from '../../../lib/googleCalendarService';
+import { useProfile } from '../../../hooks/useProfile';
+import { namesMatch } from '../../../lib/kpiUtils';
 
 const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -58,6 +60,7 @@ export default function CrmAgendaPage() {
   const [selected, setSelected] = useState(null); // { dealId, contactId }
   const [formOpen, setFormOpen] = useState(false);
   const [formInitial, setFormInitial] = useState(null);
+  const [editActivity, setEditActivity] = useState(null); // tarefa clicada (abre o form em edição, mostra a descrição)
   const [showGoogle, setShowGoogle] = useState(true); // camada Google Agenda visível
   const [deliveryTask, setDeliveryTask] = useState(null); // tarefa pra escrever o relatório de entrega
 
@@ -66,8 +69,31 @@ export default function CrmAgendaPage() {
   const endISO = rangeEnd.toISOString();
 
   // Atividades do CRM no recorte
-  const { data: crmActivities = [] } = useCrmCalendarActivities(startISO, endISO);
+  const { data: crmActivitiesRaw = [] } = useCrmCalendarActivities(startISO, endISO);
   const completeMutation = useCompleteCrmActivity();
+
+  // Cada um vê só a SUA agenda: filtra pelo dono (responsável → nome do
+  // responsável → criador). Sem identidade carregada = nada (privacidade) —
+  // evita que produto/operação (ex.: Elias) veja a cadência de lead alheia.
+  const { profile } = useProfile();
+  const crmActivities = useMemo(() => {
+    const uid = profile?.id || null;
+    const uname = profile?.name || null;
+    if (!uid && !uname) return [];
+    return crmActivitiesRaw.filter((a) => {
+      if (a.assignedTo) return a.assignedTo === uid;
+      if (a.assignedToName && uname) return namesMatch(a.assignedToName, uname);
+      return a.createdBy === uid;
+    });
+  }, [crmActivitiesRaw, profile]);
+
+  // Lookup das atividades completas (com descrição/responsável/etc.) por id,
+  // pra abrir o form de edição ao clicar — o objeto do evento é enxuto.
+  const activitiesById = useMemo(() => {
+    const m = new Map();
+    for (const a of crmActivities) m.set(a.id, a);
+    return m;
+  }, [crmActivities]);
 
   // Google Calendar (pull). Só dispara se conectado.
   const { data: gcalStatus } = useGCalStatus();
@@ -131,10 +157,19 @@ export default function CrmAgendaPage() {
       if (ev.htmlLink) window.open(ev.htmlLink, '_blank', 'noopener');
       return;
     }
+    // Clicar abre o HISTÓRICO COMPLETO do lead (timeline + "a fazer" + relato de
+    // hoje) como modal. Esse é o comportamento esperado.
     if (ev.dealId || ev.contactId) {
       setSelected({ dealId: ev.dealId || null, contactId: ev.contactId || null });
+      return;
     }
-  }, []);
+    // Tarefa SEM lead vinculado: não há histórico de lead — abre a própria
+    // tarefa pra ver/editar a descrição.
+    if (ev.activityId) {
+      const full = activitiesById.get(ev.activityId);
+      if (full) setEditActivity(full);
+    }
+  }, [activitiesById]);
 
   // Clicar num dia vazio: abre o form de nova tarefa já naquela data (09h)
   const handleSelectSlot = useCallback((day) => {
@@ -187,7 +222,7 @@ export default function CrmAgendaPage() {
         }
       />
 
-      <div className="flex-1 flex gap-3 min-h-0">
+      <div className="flex-1 flex min-h-0">
         <div className="flex-1 min-w-0">
           <CrmCalendar
             events={events}
@@ -207,22 +242,34 @@ export default function CrmAgendaPage() {
             selectedLeadKey={selectedLeadKey}
           />
         </div>
+      </div>
 
-        {selected && (
-          <aside className="w-[360px] shrink-0 crm-glass rounded-2xl overflow-hidden hidden lg:block">
+      {/* Histórico do lead — slide-over (modal) visível em QUALQUER tela.
+          Antes era um <aside hidden lg:block>, que sumia em telas < 1024px. */}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm"
+            onClick={() => setSelected(null)} />
+          <aside className="relative w-full sm:max-w-[400px] h-full bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border-l border-white/60 dark:border-white/10 shadow-glass-lg overflow-hidden animate-scale-in">
             <LeadHistoryPanel
               selected={selected}
               onClose={() => setSelected(null)}
               onOpenLead={(lead) => lead.dealId && navigate(`/crm/deals/${lead.dealId}`)}
             />
           </aside>
-        )}
-      </div>
+        </div>
+      )}
 
       <ActivityFormModal
-        open={formOpen}
-        onClose={() => { setFormOpen(false); setFormInitial(null); }}
-        activity={formInitial}
+        open={formOpen || !!editActivity}
+        onClose={() => { setFormOpen(false); setFormInitial(null); setEditActivity(null); }}
+        activity={editActivity || formInitial}
+        onOpenLeadHistory={(act) => {
+          setEditActivity(null);
+          if (act?.dealId || act?.contactId) {
+            setSelected({ dealId: act.dealId || null, contactId: act.contactId || null });
+          }
+        }}
       />
 
       <DeliveryReportModal

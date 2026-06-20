@@ -12,7 +12,8 @@
  * dueAt e armazenado em ISO ("2026-05-10T18:00:00Z").
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 const isoFromDatetimeLocal = (v) => {
   if (!v) return null;
@@ -35,10 +36,12 @@ function fmtShort(iso) {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    return d.toLocaleString('pt-BR', {
-      day: '2-digit', month: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-    });
+    if (isNaN(d.getTime())) return '';
+    // dueAt e "wall clock" rotulado UTC -> le componentes UTC (sem desconto de
+    // fuso). Formato clean: "22/10 18h" (hora cheia) ou "22/10 18:15".
+    const pad = n => String(n).padStart(2, '0');
+    const H = d.getUTCHours(), M = d.getUTCMinutes();
+    return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} ${M === 0 ? pad(H) + 'h' : pad(H) + ':' + pad(M)}`;
   } catch { return ''; }
 }
 
@@ -52,35 +55,73 @@ export default function DueDateButton({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [draft, setDraft] = useState(datetimeLocalFromIso(dueAt));
-  const ref = useRef(null);
+  const [pos, setPos] = useState(null); // {top, left} em coords de viewport (fixed)
+  const ref = useRef(null);       // wrapper do botao
+  const popRef = useRef(null);    // popover (no portal)
 
   useEffect(() => { setDraft(datetimeLocalFromIso(dueAt)); }, [dueAt]);
+
+  // Posiciona o popover a partir do retangulo do botao. Em coords de viewport
+  // (position: fixed) -> escapa de qualquer container com overflow/scroll.
+  const POP_W = 240, POP_H = 90, GAP = 4, MARGIN = 8;
+  const updatePos = () => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    // alinha pela direita do botao (igual ao antigo right-0), mas mantem na tela
+    let left = r.right - POP_W;
+    if (left + POP_W > window.innerWidth - MARGIN) left = window.innerWidth - MARGIN - POP_W;
+    if (left < MARGIN) left = MARGIN;
+    // abre pra baixo; se nao couber, abre pra cima
+    let top = r.bottom + GAP;
+    if (top + POP_H > window.innerHeight - MARGIN) top = Math.max(MARGIN, r.top - POP_H - GAP);
+    setPos({ top, left });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePos();
+    const onScrollResize = () => updatePos();
+    // capture:true pega scroll de qualquer container ancestral, nao so do window
+    window.addEventListener('scroll', onScrollResize, true);
+    window.addEventListener('resize', onScrollResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollResize, true);
+      window.removeEventListener('resize', onScrollResize);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      // popover vive num portal -> checa tanto o wrapper quanto o popover
+      if (ref.current?.contains(e.target) || popRef.current?.contains(e.target)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const now = Date.now();
+  // Compara o prazo (wall clock rotulado UTC) contra o AGORA tambem como wall
+  // clock (componentes locais rotulados UTC), senao o offset do fuso falsearia
+  // o "atrasado".
+  const nd = new Date();
+  const nowWall = Date.UTC(nd.getFullYear(), nd.getMonth(), nd.getDate(), nd.getHours(), nd.getMinutes(), nd.getSeconds());
   const due = dueAt ? new Date(dueAt).getTime() : null;
-  const overdue = due && !done && due < now;
-  const soon = due && !done && !overdue && (due - now) < 24 * 3600 * 1000;
+  const overdue = due && !done && due < nowWall;
+  const soon = due && !done && !overdue && (due - nowWall) < 24 * 3600 * 1000;
 
-  let cls = 'border';
+  // Prazo setado = so texto colorido (clean, sem chip). "+ prazo" = botao discreto.
+  let cls;
   if (!dueAt) {
-    cls += ' bg-slate-50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500';
+    cls = 'border border-dashed border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500';
   } else if (done) {
-    cls += ' bg-slate-50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500 line-through';
+    cls = 'text-slate-400 dark:text-slate-500 line-through';
   } else if (overdue) {
-    cls += ' bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300';
+    cls = 'text-red-600 dark:text-red-400 font-medium';
   } else if (soon) {
-    cls += ' bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300';
+    cls = 'text-amber-600 dark:text-amber-400 font-medium';
   } else {
-    cls += ' bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300';
+    cls = 'text-indigo-600 dark:text-indigo-400 font-medium';
   }
 
   const sizing = size === 'xs'
@@ -92,9 +133,7 @@ export default function DueDateButton({
     setOpen(false);
   };
 
-  const label = dueAt
-    ? (overdue ? `${fmtShort(dueAt)} · atrasado` : fmtShort(dueAt))
-    : '+ prazo';
+  const label = dueAt ? fmtShort(dueAt) : '+ prazo';
 
   return (
     <div className="relative inline-block" ref={ref}>
@@ -114,10 +153,13 @@ export default function DueDateButton({
         <span className="truncate">{label}</span>
       </button>
 
-      {open && !disabled && (
+      {open && !disabled && pos && createPortal(
         <div
-          className="absolute right-0 top-full mt-1 z-30 min-w-[220px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg p-2"
+          ref={popRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: POP_W }}
+          className="z-[1000] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg p-2"
           onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           <input
             type="datetime-local"
@@ -151,7 +193,8 @@ export default function DueDateButton({
               Salvar
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

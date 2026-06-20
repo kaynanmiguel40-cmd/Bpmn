@@ -126,13 +126,18 @@ export async function getGoalsProgress(goals) {
 
   if (!minStart || !maxEnd) return {};
 
+  // closed_at e timestamptz; maxEnd geralmente vem como data-only 'YYYY-MM-DD',
+  // que o PostgREST resolve para 00:00:00 e descartava todos os deals fechados
+  // no ultimo dia da meta. Estende o limite superior para o fim do dia.
+  const maxEndBound = maxEnd.length <= 10 ? `${maxEnd}T23:59:59.999` : maxEnd;
+
   // Buscar todos os deals won no periodo global
   const { data: deals, error } = await supabase
     .from('crm_deals')
     .select('created_by, value, closed_at')
     .eq('status', 'won')
     .gte('closed_at', minStart)
-    .lte('closed_at', maxEnd)
+    .lte('closed_at', maxEndBound)
     .is('deleted_at', null);
 
   if (error) {

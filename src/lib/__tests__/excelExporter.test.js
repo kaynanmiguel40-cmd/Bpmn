@@ -60,21 +60,19 @@ describe('exportOSToExcel', () => {
     expect(resumeData[5][1]).toBe(2);
     // Em Andamento
     expect(resumeData[6][1]).toBe(1);
-    // Disponiveis
-    expect(resumeData[7][1]).toBe(1);
     // Bloqueadas
-    expect(resumeData[8][1]).toBe(1);
+    expect(resumeData[7][1]).toBe(1);
     // Emergenciais
-    expect(resumeData[9][1]).toBe(1);
+    expect(resumeData[8][1]).toBe(1);
     // Taxa de Conclusao
-    expect(resumeData[10][1]).toBe('40.0%');
+    expect(resumeData[9][1]).toBe('40.0%');
   });
 
   it('calcula taxa 0% quando sem ordens', () => {
     exportOSToExcel([], []);
 
     const resumeData = mockAoaToSheet.mock.calls[0][0];
-    expect(resumeData[10][1]).toBe('0%');
+    expect(resumeData[9][1]).toBe('0%');
   });
 
   it('inclui headers na aba detalhado', () => {

@@ -54,18 +54,25 @@ export function PostCallModal({
   const [duration, setDuration] = useState(elapsedSeconds || 0);
   const [followUpAt, setFollowUpAt] = useState('');
   const handleConfirmRef = useRef(null);
+  // Snapshot da duracao no momento da abertura, lido via ref para NAO entrar
+  // nas deps do effect de reset abaixo.
+  const elapsedRef = useRef(elapsedSeconds || 0);
+  elapsedRef.current = elapsedSeconds || 0;
 
+  // Reset SO quando o modal abre. Antes dependia de `elapsedSeconds`, que muda
+  // a cada 1s com o cronometro rodando, re-disparando o reset e apagando o
+  // outcome/notas que o vendedor estava preenchendo.
   useEffect(() => {
     if (!open) return;
     setOutcome(null);
     setNotes('');
-    setDuration(elapsedSeconds || 0);
+    setDuration(elapsedRef.current);
     // Sugere amanha 09:00 como default de retorno
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(9, 0, 0, 0);
     setFollowUpAt(toDatetimeLocal(tomorrow));
-  }, [open, elapsedSeconds]);
+  }, [open]);
 
   // Cmd/Ctrl+Enter registra (Enter "puro" pode estar em uma textarea)
   useEffect(() => {

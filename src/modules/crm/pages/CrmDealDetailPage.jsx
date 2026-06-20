@@ -235,6 +235,17 @@ export function CrmDealDetailPage() {
             </div>
           )}
 
+          {/* Origem do Lead */}
+          {deal.source && (
+            <div className="crm-glass rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-1.5">
+                <GitBranch size={14} className="text-slate-400" />
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider">Origem do lead</span>
+              </div>
+              <CrmBadge variant="blue">{deal.source}</CrmBadge>
+            </div>
+          )}
+
           {/* Previsao */}
           {deal.expectedCloseDate && (
             <div className="crm-glass rounded-2xl p-4">

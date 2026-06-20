@@ -1,8 +1,6 @@
 /**
  * Utilidades de ordenacao de O.S. por prioridade.
- *
- * Extraido de RoutinePage.jsx onde a mesma logica
- * aparecia duplicada nas linhas 88 e 197.
+ * Usado pela Agenda e pela listagem de O.S.
  */
 
 import { PRIORITY_WEIGHT, UNKNOWN_PRIORITY_WEIGHT } from '../constants/sla';

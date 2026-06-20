@@ -60,7 +60,11 @@ export function PermissionProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [normalizedRole]);
+    // `profile?.role` nas deps: pra um colaborador, normalizedRole e 'member'
+    // antes e depois do profile carregar (nao muda), entao sem isso o effect
+    // nao re-disparava e o usuario ficava SEM permissao nenhuma quando o
+    // profile chegava depois de authLoading virar false.
+  }, [normalizedRole, profile?.role]);
 
   useEffect(() => {
     if (!authLoading) {

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useOSOrders, useAgendaEvents, useTeamMembers } from '../../hooks/queries';
 import { generateReport, generateAllReports, getReportPreview } from '../../lib/reportGenerator';
-import { formatCurrency } from '../../lib/kpiUtils';
+import { formatCurrency, filterReportOrders } from '../../lib/kpiUtils';
 import { useToast } from '../../contexts/ToastContext';
 import { ScheduleForm } from '../../components/reports/ScheduleForm';
 import { exportOSToExcel, exportKPIsToExcel } from '../../lib/excelExporter';
@@ -23,10 +23,14 @@ export default function ReportPage() {
   const [exportingExcel, setExportingExcel] = useState(false);
 
   // Dados via React Query
-  const { data: orders = [], isLoading: loadingOrders } = useOSOrders();
+  const { data: allOrders = [], isLoading: loadingOrders } = useOSOrders();
   const { data: events = [], isLoading: loadingEvents } = useAgendaEvents();
   const { data: members = [], isLoading: loadingMembers } = useTeamMembers();
   const loading = loadingOrders || loadingEvents || loadingMembers;
+
+  // Regra do relatório: só contam O.S. criadas a partir da data de corte
+  // (REPORT_BASELINE_DATE). O.S. legadas/antigas ficam de fora de todo o relatório.
+  const orders = useMemo(() => filterReportOrders(allOrders), [allOrders]);
 
   // Preview dos KPIs
   const preview = useMemo(() => {

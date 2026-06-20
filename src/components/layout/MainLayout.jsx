@@ -23,7 +23,6 @@ const routeTitles = {
   '/dashboard': 'Dashboard',
   '/sales': 'Processos',
   '/sales/editor': 'Editor de Fluxo',
-  '/routine': 'Minha Rotina',
   '/agenda': 'Agenda',
   '/financial': 'Ordens de Servico',
   '/reports': 'Relatorios',

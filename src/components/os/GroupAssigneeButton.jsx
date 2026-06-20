@@ -28,11 +28,12 @@ export default function GroupAssigneeButton({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  // Quando ambos tem id, compara por id (homonimos com ids diferentes nao
+  // colidem). So cai pra nome quando algum lado nao tem id. O catch-all antigo
+  // `a.name === p.name` marcava duas pessoas de mesmo nome como a mesma.
   const isAssigned = (p) =>
     currentAssignees.some(a =>
-      (a.id && p.id && a.id === p.id) ||
-      (!a.id && !p.id && a.name === p.name) ||
-      (a.name === p.name)
+      (a.id && p.id) ? a.id === p.id : a.name === p.name
     );
 
   const count = currentAssignees.length;

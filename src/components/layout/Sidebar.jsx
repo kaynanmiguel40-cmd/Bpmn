@@ -18,7 +18,7 @@ import { supabase } from '../../lib/supabase';
 import { Folder } from 'lucide-react';
 import logoFyness from '../../assets/logo-fyness.png';
 import {
-  DashboardIcon, SalesIcon, KanbanIcon, AgendaIcon,
+  DashboardIcon, SalesIcon, AgendaIcon,
   FinancialIcon, ReportIcon, CrmIcon,
   SettingsIcon, LogoutIcon, CollapseIcon, ExpandIcon,
 } from '../icons/NavIcons';
@@ -221,7 +221,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
           {/* <NavItem to="/dashboard" icon={DashboardIcon} label="Dashboard" isCollapsed={effectiveCollapsed} onClick={handleNavClick} /> */}
           <NavItem to="/financial" icon={FinancialIcon} label="Ordens de Servico" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/agenda" icon={AgendaIcon} label="Agenda" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
-          <NavItem to="/routine" icon={KanbanIcon} label="Minha Rotina" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
 
           <div className="my-4 border-t border-slate-200 dark:border-slate-700" />
 

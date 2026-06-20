@@ -7,8 +7,8 @@
  *     operação (relatório das O.S., cada tarefa com chip do setor).
  *   • Setores — setores da operação (relatório das O.S., cada tarefa com chip
  *     de quem fez).
- * Semana = junção dos dias; mês = junção das semanas. "Fechar" marca o período
- * como entregue (genérico por pessoa OU setor). Clicar num lead abre a jornada.
+ * Semana = junção dos dias; mês = junção das semanas. "Apresentar" marca o período
+ * como apresentado (genérico por pessoa OU setor). Clicar num lead abre a jornada.
  */
 
 import { useState, useMemo } from 'react';
@@ -24,6 +24,7 @@ import { seedWeeklyExample, clearWeeklyExample, hasWeeklyExample } from '../../m
 import { getOperationalIndex, getOperationalReport, buildOperationalText } from '../../lib/operationalModel';
 import { listClosings, closeReport, reopenReport } from '../../lib/crmReportClosingsService';
 import OpReport from '../operations/components/OpReport';
+import BriefingDrawer from '../financial/components/BriefingDrawer';
 import { toast } from '../../contexts/ToastContext';
 import { FolderGlyph, FileGlyph, FinderItem } from './FinderIcons';
 
@@ -113,6 +114,7 @@ export default function ArquivosPage() {
   const [period, setPeriod] = useState(null); // 'daily' | 'weekly' | 'monthly'
   const [item, setItem] = useState(null);     // dateKey / mondayKey / monthKey
   const [selectedLead, setSelectedLead] = useState(null);
+  const [openTask, setOpenTask] = useState(null); // tarefa do relatório operacional (painel de leitura)
   const qc = useQueryClient();
   const [hasExample, setHasExample] = useState(hasWeeklyExample());
   const [seeding, setSeeding] = useState(false);
@@ -129,9 +131,21 @@ export default function ArquivosPage() {
   );
   // "Pessoas" = vendedores do comercial (agenda) + pessoas da operação.
   // "Setores" = só os setores da operação.
-  const owners = useMemo(() => (
-    lens === 'sector' ? opOwners : [...crmOwners.map((o) => ({ kind: 'crm', ...o })), ...opOwners]
-  ), [lens, crmOwners, opOwners]);
+  // Dedupe por nome: a mesma pessoa aparece no comercial E na operação (e o
+  // comercial pode repetir) — UMA pasta por pessoa. Operação ganha no empate
+  // (é o "o que ela fez" das O.S.).
+  const owners = useMemo(() => {
+    if (lens === 'sector') return opOwners;
+    const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    const combined = [...opOwners, ...crmOwners.map((o) => ({ kind: 'crm', ...o }))];
+    const seen = new Set();
+    return combined.filter((o) => {
+      const k = norm(o.name);
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [lens, crmOwners, opOwners]);
 
   const isOp = owner?.kind === 'op';
 
@@ -165,13 +179,13 @@ export default function ArquivosPage() {
 
   const closeMut = useMutation({
     mutationFn: (vars) => closeReport(vars),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['reportClosings', closingOwnerId] }); toast('Relatório fechado', 'success'); },
-    onError: () => toast('Não consegui fechar', 'error'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['reportClosings', closingOwnerId] }); toast('Relatório apresentado', 'success'); },
+    onError: () => toast('Não consegui marcar como apresentado', 'error'),
   });
   const reopenMut = useMutation({
     mutationFn: (vars) => reopenReport(vars),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['reportClosings', closingOwnerId] }); toast('Relatório reaberto', 'success'); },
-    onError: () => toast('Não consegui reabrir', 'error'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['reportClosings', closingOwnerId] }); toast('Apresentação desfeita', 'success'); },
+    onError: () => toast('Não consegui desfazer', 'error'),
   });
 
   const openLeadJourney = (l) => setSelectedLead({ dealId: l.dealId, contactId: l.contactId });
@@ -277,7 +291,7 @@ export default function ArquivosPage() {
                 <FinderItem key={key}
                   glyph={<FolderGlyph color={o.color} badge={isSectorFolder ? undefined : (o.name || '?').charAt(0).toUpperCase()} />}
                   label={`${o.name}${o.kind === 'crm' && o.isMe ? ' (você)' : ''}`}
-                  sublabel={o.kind === 'op' ? o.sub : (o.role || undefined)}
+                  sublabel={isSectorFolder ? o.sub : undefined}
                   onClick={() => { setOwner(o); setPeriod(null); setItem(null); }}
                 />
               );
@@ -316,7 +330,7 @@ export default function ArquivosPage() {
                 <FinderItem key={k}
                   glyph={<FileGlyph accent={accent} />}
                   label={labelFor(k)}
-                  sublabel={closingOf(period, k) ? '✓ Fechado' : undefined}
+                  sublabel={closingOf(period, k) ? `✓ Apresentado ${new Date(closingOf(period, k).closedAt).toLocaleDateString('pt-BR')}` : undefined}
                   onClick={() => setItem(k)}
                 />
               ))}
@@ -340,15 +354,15 @@ export default function ArquivosPage() {
               {(
                 currentClosing ? (
                   <button onClick={doReopen} disabled={reopenMut.isPending}
-                    title={`Fechado em ${new Date(currentClosing.closedAt).toLocaleDateString('pt-BR')} — clique pra reabrir`}
+                    title={`Apresentado em ${new Date(currentClosing.closedAt).toLocaleDateString('pt-BR')} — clique pra desfazer`}
                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 disabled:opacity-50">
-                    <CheckCircle2 size={15} /> Fechado
+                    <CheckCircle2 size={15} /> Apresentado · {new Date(currentClosing.closedAt).toLocaleDateString('pt-BR')}
                   </button>
                 ) : (
                   <button onClick={doClose} disabled={closeMut.isPending || activeLoading}
-                    title={`Fechar o relatório ${periodNoun === 'mês' ? 'do mês' : `da/do ${periodNoun}`} e marcar como entregue`}
+                    title={`Marcar o relatório ${periodNoun === 'mês' ? 'do mês' : `da/do ${periodNoun}`} como apresentado`}
                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200/70 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-50">
-                    {closeMut.isPending ? <span className="w-4 h-4 border-2 border-slate-400/40 border-t-slate-500 rounded-full animate-spin" /> : <Lock size={15} />} Fechar {periodNoun}
+                    {closeMut.isPending ? <span className="w-4 h-4 border-2 border-slate-400/40 border-t-slate-500 rounded-full animate-spin" /> : <Lock size={15} />} Apresentar {periodNoun}
                   </button>
                 )
               )}
@@ -364,7 +378,7 @@ export default function ArquivosPage() {
           </div>
 
           {isOp ? (
-            <OpReport report={opReport} />
+            <OpReport report={opReport} onOpenTask={setOpenTask} />
           ) : (
             <>
               {period === 'daily' && (
@@ -386,6 +400,23 @@ export default function ArquivosPage() {
         onClose={() => setSelectedLead(null)}
         onOpenLead={(lead) => lead.dealId && navigate(`/crm/deals/${lead.dealId}`)}
       />
+
+      {openTask && (
+        <BriefingDrawer
+          key={openTask.taskId}
+          title={openTask.title || openTask.taskText}
+          editable={false}
+          content={openTask.briefing}
+          showDelivery={!!openTask.done}
+          deliveryContent={openTask.delivery}
+          reviewStatus={openTask.done ? (openTask.qualityPct != null ? 'approved' : 'draft') : undefined}
+          qualityPct={openTask.qualityPct}
+          qualityAnswers={openTask.qualityAnswers}
+          qualityNotes={openTask.qualityNotes}
+          qualityDispute={openTask.qualityDispute}
+          onClose={() => setOpenTask(null)}
+        />
+      )}
     </div>
   );
 }

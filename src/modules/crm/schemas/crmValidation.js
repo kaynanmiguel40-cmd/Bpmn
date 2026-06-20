@@ -65,6 +65,7 @@ export const crmDealSchema = z.object({
   expectedCloseDate: z.string().nullable().optional().default(null),
   status: z.enum(['open', 'won', 'lost']).default('open'),
   lostReason: nullableStr,
+  source: nullableStr,
   ownerId: z.string().nullable().optional().default(null),
 }).passthrough();
 

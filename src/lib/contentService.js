@@ -38,7 +38,15 @@ export function dbToPost(row) {
     mediaType: row.media_type || null,
     recurrenceGroupId: row.recurrence_group_id || null,
     mediaUrl: row.media_url || null,
-    carouselUrls: row.carousel_urls ? JSON.parse(row.carousel_urls) : null,
+    // Tolerante ao tipo da coluna: jsonb ja vem como array; text vem string
+    // JSON. O JSON.parse direto crashava o calendario quando o valor nao era
+    // uma string JSON valida.
+    carouselUrls: (() => {
+      const v = row.carousel_urls;
+      if (!v) return null;
+      if (Array.isArray(v)) return v;
+      try { return JSON.parse(v); } catch { return null; }
+    })(),
     thumbnailUrl: row.thumbnail_url || null,
     externalId: row.external_id || null,
     publishError: row.publish_error || null,

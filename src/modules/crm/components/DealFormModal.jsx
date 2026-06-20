@@ -52,6 +52,17 @@ const SEGMENT_OPTIONS = [
   'Saude', 'Servicos', 'Tecnologia', 'Varejo', 'Outros',
 ];
 
+// Origem do lead (canal de aquisicao). Sugestoes rapidas — o time pode escrever
+// a propria via "Outros". Trocam o antigo "uma pipeline por canal".
+const SOURCE_OPTIONS = [
+  'Prospeccao ativa',
+  'Indicacao de contador',
+  'Trafego pago',
+  'Indicacao / WhatsApp',
+  'Indicacao de parceiro',
+  'Outros',
+];
+
 function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField = 'name', extraInfo }) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
@@ -262,7 +273,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   const { register, handleSubmit, control, reset, watch, setValue, getValues, formState: { errors } } = useForm({
     resolver: zodResolver(crmDealSchema),
     defaultValues: {
-      title: '', value: 0, mrr: 0, probability: 0, segment: '',
+      title: '', value: 0, mrr: 0, probability: 0, segment: '', source: '',
       contactName: '', contactPhone: '', contactEmail: '', contactId: null,
       companyName: '', companyId: null, pipelineId: null, stageId: null,
       expectedCloseDate: null, status: 'open', lostReason: '',
@@ -277,6 +288,8 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   // Modo "Outros" do segmento — controla exibicao do input livre independente
   // do valor do form (que e o texto final digitado).
   const [isCustomSegment, setIsCustomSegment] = useState(false);
+  // Mesmo padrao pra origem do lead.
+  const [isCustomSource, setIsCustomSource] = useState(false);
 
   // Reset do form SO quando abre o modal ou muda o deal selecionado.
   // Nao pode depender de `pipelines` porque esse array muda a cada realtime/
@@ -284,14 +297,17 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   useEffect(() => {
     if (!open) return;
     const knownSegments = SEGMENT_OPTIONS.filter(s => s !== 'Outros');
+    const knownSources = SOURCE_OPTIONS.filter(s => s !== 'Outros');
     if (deal) {
       setIsCustomSegment(!!deal.segment && !knownSegments.includes(deal.segment));
+      setIsCustomSource(!!deal.source && !knownSources.includes(deal.source));
       reset({
         title: deal.title || '',
         value: deal.value || 0,
         mrr: deal.mrr || 0,
         probability: deal.probability ?? 0,
         segment: deal.segment || '',
+        source: deal.source || '',
         contactName: deal.contactName || deal.contact?.name || '',
         contactPhone: deal.contactPhone || deal.contact?.phone || '',
         contactEmail: deal.contactEmail || deal.contact?.email || '',
@@ -307,8 +323,9 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
       });
     } else {
       setIsCustomSegment(false);
+      setIsCustomSource(false);
       reset({
-        title: '', value: 0, mrr: 0, probability: 0, segment: '',
+        title: '', value: 0, mrr: 0, probability: 0, segment: '', source: '',
         contactName: '', contactPhone: '', contactEmail: '', contactId: null,
         companyId: null, pipelineId: null, stageId: null,
         expectedCloseDate: null, status: 'open', lostReason: '',
@@ -323,7 +340,9 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
     if (!open || !pipelines?.length) return;
     const current = getValues();
     if (!current.pipelineId) {
-      const pId = (deal?.pipelineId) || defaultPipelineId || pipelines[0].id;
+      // Novo deal nasce na pipeline PADRAO (isDefault), nao na mais antiga.
+      const fallbackPipeline = pipelines.find(p => p.isDefault) || pipelines[0];
+      const pId = (deal?.pipelineId) || defaultPipelineId || fallbackPipeline.id;
       setValue('pipelineId', pId);
       if (!current.stageId) {
         const sId = (deal?.stageId) || defaultStageId || pipelines.find(p => p.id === pId)?.stages?.[0]?.id || null;
@@ -504,6 +523,46 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
                       placeholder="Digite o segmento..."
                       autoFocus
                       className={fieldClass('segment')}
+                    />
+                  )}
+                </div>
+              );
+            }} />
+        </div>
+
+        {/* Origem do Lead */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Origem do Lead</label>
+          <Controller name="source" control={control}
+            render={({ field }) => {
+              const selectValue = isCustomSource ? 'Outros' : (field.value || '');
+              return (
+                <div className="space-y-2">
+                  <select
+                    value={selectValue}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === 'Outros') {
+                        setIsCustomSource(true);
+                        field.onChange('');
+                      } else {
+                        setIsCustomSource(false);
+                        field.onChange(v);
+                      }
+                    }}
+                    className={fieldClass('source')}
+                  >
+                    <option value="">Selecione a origem...</option>
+                    {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  {isCustomSource && (
+                    <input
+                      type="text"
+                      value={field.value || ''}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      placeholder="Digite a origem..."
+                      autoFocus
+                      className={fieldClass('source')}
                     />
                   )}
                 </div>

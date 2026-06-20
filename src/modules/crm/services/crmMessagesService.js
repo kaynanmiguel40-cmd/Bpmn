@@ -58,11 +58,15 @@ export function dbToCrmMessage(row) {
 export async function getConversationMessages({ contactId, prospectId, limit = 100 }) {
   if (!contactId && !prospectId) return [];
 
+  // Pega as N mensagens MAIS RECENTES (desc + limit), depois reverte para ASC
+  // (mais antigas primeiro) pro scroll natural do chat. Com asc + limit o banco
+  // devolvia as N mais ANTIGAS e descartava as recentes — inclusive a ultima
+  // mensagem que o vendedor ia responder.
   let query = supabase
     .from('crm_messages')
     .select('*')
     .is('deleted_at', null)
-    .order('sent_at', { ascending: true })
+    .order('sent_at', { ascending: false })
     .limit(limit);
 
   if (contactId)  query = query.eq('contact_id', contactId);
@@ -73,7 +77,7 @@ export async function getConversationMessages({ contactId, prospectId, limit = 1
     toast(`Erro ao carregar conversa: ${error.message}`, 'error');
     return [];
   }
-  return (data || []).map(dbToCrmMessage);
+  return (data || []).map(dbToCrmMessage).reverse();
 }
 
 /**

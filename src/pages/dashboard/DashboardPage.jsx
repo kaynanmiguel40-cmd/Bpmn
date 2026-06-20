@@ -151,7 +151,7 @@ function HorizontalBar({ label, value, maxValue, color, suffix = '' }) {
 
 // ─── Dashboard Colaborador ────────────────────────────────────────
 
-function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange }) {
+function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange, isOwnDashboard = false }) {
   const now = new Date();
   const targetHours = profile.hoursMonth || 176;
   const [kpiHistory, setKpiHistory] = useState([]);
@@ -169,13 +169,17 @@ function CollaboratorDashboard({ profile, currentUser, orders, events, dateRange
     (async () => {
       const userName = currentUser.name || profile.name || '';
       if (!userName) return;
-      // Fechar snapshots de meses passados (imutabiliza historico)
-      await closeExpiredSnapshots(userName);
-      await saveMonthlySnapshot(myOrders, myEvents, targetHours, userName);
+      // So persiste no PROPRIO dashboard. Um gestor visualizando o dashboard de
+      // outro membro nao deve gravar/imutabilizar o historico de KPI alheio
+      // (ainda por cima com o targetHours do gestor) — escrita por leitura.
+      if (isOwnDashboard) {
+        await closeExpiredSnapshots(userName);
+        await saveMonthlySnapshot(myOrders, myEvents, targetHours, userName);
+      }
       const history = await getHistory(userName);
       setKpiHistory(history);
     })();
-  }, [currentUser, myOrders, myEvents, targetHours, profile]);
+  }, [currentUser, myOrders, myEvents, targetHours, profile, isOwnDashboard]);
 
   const trends = useMemo(() => calculateTrends(kpiHistory), [kpiHistory]);
 
@@ -1234,6 +1238,7 @@ export function DashboardPage() {
         orders={orders}
         events={events}
         dateRange={dateRange}
+        isOwnDashboard
       />
     </>
   );

@@ -36,7 +36,9 @@ export function formatNumber(value) {
 /** DD/MM/YYYY HH:MM */
 export function formatDateTime(iso) {
   if (!iso) return '-';
-  return new Date(iso).toLocaleDateString('pt-BR', {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('pt-BR', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -45,7 +47,9 @@ export function formatDateTime(iso) {
 /** DD de MMM de YYYY (ex: 01 de mar. de 2026) */
 export function formatDateShortMonth(iso) {
   if (!iso) return '-';
-  return new Date(iso).toLocaleDateString('pt-BR', {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('pt-BR', {
     day: '2-digit', month: 'short', year: 'numeric',
   });
 }
@@ -55,6 +59,7 @@ export function formatDateSmart(dateStr) {
   if (!dateStr) return '-';
   const hasTime = dateStr.includes('T') && dateStr.length > 10;
   const d = new Date(dateStr + (dateStr.length === 10 ? 'T12:00:00' : ''));
+  if (isNaN(d.getTime())) return '-';
   const opts = { day: '2-digit', month: '2-digit', year: 'numeric' };
   if (hasTime) { opts.hour = '2-digit'; opts.minute = '2-digit'; }
   return d.toLocaleDateString('pt-BR', opts);

@@ -130,11 +130,11 @@ export function CrmDealsPage() {
         <div className="flex items-center gap-2">
           <div className="w-12 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full ${(val || 50) >= 70 ? 'bg-emerald-500' : (val || 50) >= 30 ? 'bg-amber-500' : 'bg-rose-500'}`}
-              style={{ width: `${val || 50}%` }}
+              className={`h-full rounded-full ${(val ?? 50) >= 70 ? 'bg-emerald-500' : (val ?? 50) >= 30 ? 'bg-amber-500' : 'bg-rose-500'}`}
+              style={{ width: `${val ?? 50}%` }}
             />
           </div>
-          <span className="text-xs text-slate-500">{val || 50}%</span>
+          <span className="text-xs text-slate-500">{val ?? 50}%</span>
         </div>
       ),
     },

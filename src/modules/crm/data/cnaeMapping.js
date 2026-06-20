@@ -64,7 +64,8 @@ export const SEGMENT_TO_CNAE = {
   Industria: [
     '1011201', // Frigorifico — abate de bovinos
     '1012101', // Abate de aves
-    '1091100', // Fabricacao de produtos de panificacao
+    // 1091100 (panificacao) removido daqui: pertence a Alimenticio. Estar nos
+    // dois corrompia o reverse map CNAE_TO_SEGMENT (classificava como o ultimo).
     '2511000', // Fabricacao de estruturas metalicas
     '2599301', // Servicos de confeccao de armacoes metalicas
     '2710401', // Fabricacao de motores eletricos

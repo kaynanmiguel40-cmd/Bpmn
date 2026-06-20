@@ -142,12 +142,12 @@ export async function getForecastReport() {
         months[monthKey] = { month: monthKey, deals: [], totalValue: 0, weightedValue: 0 };
       }
 
-      const weighted = (d.value || 0) * ((d.probability || 50) / 100);
+      const weighted = (d.value || 0) * ((d.probability ?? 50) / 100);
       months[monthKey].deals.push({
         id: d.id,
         title: d.title,
         value: d.value || 0,
-        probability: d.probability || 50,
+        probability: d.probability ?? 50,
         weightedValue: Math.round(weighted),
         expectedCloseDate: d.expected_close_date,
         stage: d.crm_pipeline_stages?.name || '',
@@ -278,7 +278,7 @@ export async function getLearnedProbabilities(pipelineId = null) {
 
           const openInStage = open.filter(d => d.stage_id === stage.id);
           const avgVendorProb = openInStage.length > 0
-            ? Math.round(openInStage.reduce((sum, d) => sum + (d.probability || 50), 0) / openInStage.length)
+            ? Math.round(openInStage.reduce((sum, d) => sum + (d.probability ?? 50), 0) / openInStage.length)
             : null;
 
           return {
@@ -324,7 +324,7 @@ export async function getLearnedProbabilities(pipelineId = null) {
 
           const openInStage = open.filter(d => group.stageIds.includes(d.stage_id));
           const avgVendorProb = openInStage.length > 0
-            ? Math.round(openInStage.reduce((sum, d) => sum + (d.probability || 50), 0) / openInStage.length)
+            ? Math.round(openInStage.reduce((sum, d) => sum + (d.probability ?? 50), 0) / openInStage.length)
             : null;
 
           return {
@@ -367,7 +367,7 @@ export async function getLearnedProbabilities(pipelineId = null) {
 
         const openInStage = open.filter(d => stagePositionMap[d.stage_id] === pos);
         const avgVendorProb = openInStage.length > 0
-          ? Math.round(openInStage.reduce((sum, d) => sum + (d.probability || 50), 0) / openInStage.length)
+          ? Math.round(openInStage.reduce((sum, d) => sum + (d.probability ?? 50), 0) / openInStage.length)
           : null;
 
         return {
@@ -386,7 +386,7 @@ export async function getLearnedProbabilities(pipelineId = null) {
 
     // Media geral de probabilidade dos vendedores
     const avgProbabilityVendor = open.length > 0
-      ? Math.round(open.reduce((sum, d) => sum + (d.probability || 50), 0) / open.length)
+      ? Math.round(open.reduce((sum, d) => sum + (d.probability ?? 50), 0) / open.length)
       : 0;
 
     const overallConversion = (totalWon + totalLost) > 0

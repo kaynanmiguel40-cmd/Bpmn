@@ -149,20 +149,21 @@ export function CrmDialerPage() {
   // ---- cronometro de chamada ----
   const [callStartedAt, setCallStartedAt] = useState(null); // ISO string
   const [elapsed, setElapsed] = useState(0);
+  // O cronometro so corre durante a ligacao. Ao "Encerrar" ele congela (mas
+  // callStartedAt continua setado p/ o timestamp startedAt), pra duracao
+  // registrada nao incluir o tempo gasto preenchendo o modal pos-chamada.
+  const [timerRunning, setTimerRunning] = useState(false);
   const timerRef = useRef(null);
   const isInCall = !!callStartedAt;
 
   useEffect(() => {
-    if (!callStartedAt) {
-      setElapsed(0);
-      return;
-    }
+    if (!callStartedAt || !timerRunning) return;
     const startMs = new Date(callStartedAt).getTime();
     timerRef.current = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startMs) / 1000));
     }, 1000);
     return () => clearInterval(timerRef.current);
-  }, [callStartedAt]);
+  }, [callStartedAt, timerRunning]);
 
   // ---- modal pos-chamada ----
   const [postCallOpen, setPostCallOpen] = useState(false);
@@ -175,7 +176,9 @@ export function CrmDialerPage() {
 
   const handleStartCall = () => {
     if (!currentContact?.phone) return;
+    setElapsed(0);
     setCallStartedAt(new Date().toISOString());
+    setTimerRunning(true);
     // Abre discador nativo (no desktop pode nao fazer nada — usuario disca manual).
     const href = toTelHref(currentContact.phone);
     if (href) {
@@ -185,11 +188,13 @@ export function CrmDialerPage() {
   };
 
   const handleEndCall = () => {
+    setTimerRunning(false); // congela a duracao antes de abrir o pos-call
     setPostCallOpen(true);
   };
 
   const handleCancelCall = () => {
     setCallStartedAt(null);
+    setTimerRunning(false);
     setElapsed(0);
   };
 
@@ -224,6 +229,7 @@ export function CrmDialerPage() {
       });
       setPostCallOpen(false);
       setCallStartedAt(null);
+      setTimerRunning(false);
       setElapsed(0);
       // Avanca pro proximo
       setCurrentIndex(i => (i + 1 < queue.length ? i + 1 : i));

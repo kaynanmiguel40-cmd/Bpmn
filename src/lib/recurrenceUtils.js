@@ -116,8 +116,11 @@ function generateOccurrences(event, rangeStart, rangeEnd) {
   let current = new Date(eventStart);
   let count = 0;
 
-  // Limite de seguranca: max 365 ocorrencias ou 2 anos
-  const safetyLimit = 365;
+  // Limite de seguranca contra loop infinito. NAO pode ser baixo: a contagem
+  // parte de eventStart, entao um valor pequeno (era 365) fazia recorrencias
+  // diarias antigas estourarem o cap ANTES de chegar na janela visivel e
+  // sumirem do calendario. O corte real e por data (`current > safetyDate`).
+  const safetyLimit = 5000;
   const safetyDate = new Date(rangeEnd);
   safetyDate.setFullYear(safetyDate.getFullYear() + 2);
 

@@ -147,6 +147,7 @@ export async function getCrmPipelineWithDeals(pipelineId) {
       value: d.value,
       probability: d.probability,
       status: d.status,
+      source: d.source || null,
       expectedCloseDate: d.expected_close_date,
       contactId: d.contact_id,
       companyId: d.company_id,
@@ -185,6 +186,12 @@ export async function createCrmPipeline(data) {
 
   const session = await supabase.auth.getSession();
   const userId = session.data?.session?.user?.id;
+
+  // Padrao e exclusivo: marcar esta como default desmarca as demais, senao o
+  // form de novo deal ficaria com mais de uma "padrao" e escolheria a errada.
+  if (validation.data.isDefault) {
+    await supabase.from('crm_pipelines').update({ is_default: false }).eq('is_default', true);
+  }
 
   const { data: pipeline, error } = await supabase
     .from('crm_pipelines')

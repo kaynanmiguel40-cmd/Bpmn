@@ -22,10 +22,10 @@ describe('calcOSHours', () => {
     expect(calcOSHours({ actualEnd: '2025-01-05' })).toBe(0);
   });
 
-  it('deve calcular horas uteis entre datas (seg-sex 09-18h)', () => {
-    // 2025-01-06 (seg) 09:00 -> 2025-01-07 (ter) 18:00 = 9h + 9h = 18h
+  it('deve calcular horas uteis entre datas (seg-sex 08-18h)', () => {
+    // 2025-01-06 (seg) 09:00 -> 2025-01-07 (ter) 18:00 = 9h (seg, das 9h) + 10h (ter, das 8h) = 19h
     const order = { actualStart: '2025-01-06T09:00:00', actualEnd: '2025-01-07T18:00:00' };
-    expect(calcOSHours(order)).toBe(18);
+    expect(calcOSHours(order)).toBe(19);
   });
 
   it('deve retornar 0 quando start === end (mesma timestamp)', () => {
@@ -45,13 +45,13 @@ describe('calcEstimatedHours', () => {
     expect(calcEstimatedHours({})).toBe(0);
   });
 
-  it('deve calcular horas uteis previstas (seg-sex 09-18h)', () => {
-    // 2025-01-06 (seg) 09:00 -> 2025-01-10 (sex) 18:00 = 5 dias * 9h brutas
-    // calcWorkingHoursBetween retorna horas brutas 09-18h (WORK_HOURS_PER_DAY so afeta dias intermediarios)
+  it('deve calcular horas uteis previstas (seg-sex 08-18h)', () => {
+    // 2025-01-06 (seg) 09:00 -> 2025-01-10 (sex) 18:00
+    // calcWorkingHoursBetween: primeiro dia conta das 9h (max com 8h), ultimo dia ate 18h
     const order = { estimatedStart: '2025-01-06T09:00:00', estimatedEnd: '2025-01-10T18:00:00' };
     const hours = calcEstimatedHours(order);
-    // 3 dias intermediarios * 8h (WORK_HOURS_PER_DAY) + primeiro dia 9h + ultimo dia 9h = 42h
-    expect(hours).toBe(42);
+    // primeiro dia 9h (09->18) + 3 dias intermediarios * 9h (WORK_HOURS_PER_DAY) + ultimo dia 10h (08->18) = 46h
+    expect(hours).toBe(46);
   });
 });
 

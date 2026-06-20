@@ -32,6 +32,7 @@ export interface CrmDeal {
   status: DealStatus;
   lostReason: string | null;
   segment: string | null;
+  source: string | null;
   notes: string;
   ownerId: string | null;
   owner: { id: string; name: string; color?: string | null } | null;
@@ -63,6 +64,7 @@ export interface CrmDealRow {
   status?: DealStatus | null;
   lost_reason?: string | null;
   segment?: string | null;
+  source?: string | null;
   notes?: string | null;
   owner_id?: string | null;
   team_members?: { id: string; name: string; color?: string | null } | null;
@@ -124,6 +126,7 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
     status: row.status || 'open',
     lostReason: row.lost_reason || null,
     segment: row.segment || null,
+    source: row.source || null,
     notes: row.notes || '',
     ownerId: row.owner_id || null,
     owner: row.team_members ? {
@@ -160,6 +163,7 @@ const dealService = createCRUDService<CrmDeal, CrmDealRow>({
     stageId: 'stage_id',
     expectedCloseDate: 'expected_close_date',
     segment: 'segment',
+    source: 'source',
     status: 'status',
     lostReason: 'lost_reason',
     closedAt: 'closed_at',

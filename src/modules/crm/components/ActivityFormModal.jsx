@@ -130,7 +130,7 @@ function AttendeesInput({ value = [], onChange }) {
 
 const EVENT_TYPE_VALUES = ['meeting', 'visit', 'lunch'];
 
-export function ActivityFormModal({ open, onClose, activity = null, defaultDealId = null, defaultContactId = null }) {
+export function ActivityFormModal({ open, onClose, activity = null, defaultDealId = null, defaultContactId = null, onOpenLeadHistory = null }) {
   const isEdit = !!activity?.id;
   const createMutation = useCreateCrmActivity();
   const updateMutation = useUpdateCrmActivity();
@@ -217,6 +217,12 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
     <CrmModal open={open} onClose={onClose} title={isEdit ? 'Editar Atividade' : 'Nova Atividade'} size="lg"
       footer={
         <>
+          {isEdit && onOpenLeadHistory && (activity?.dealId || activity?.contactId) && (
+            <button type="button" onClick={() => onOpenLeadHistory(activity)}
+              className="mr-auto px-3 py-2 text-sm font-medium text-fyness-primary hover:underline">
+              Histórico do lead →
+            </button>
+          )}
           <button type="button" onClick={onClose} disabled={isPending}
             className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
             Cancelar

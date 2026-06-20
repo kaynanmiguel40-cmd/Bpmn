@@ -966,6 +966,11 @@ export default function Editor() {
         {/* BPMN Canvas */}
         <div className="flex-1 relative h-full">
           <BpmnEditor
+            // Remonta o modeler ao trocar de projeto: o init do BpmnEditor nao
+            // tem `xml` nas deps (importa so o XML inicial), entao navegar de
+            // /editor/A para /editor/B mostrava o diagrama de A e o autosave
+            // podia gravar o XML de A dentro do projeto B.
+            key={project?.id}
             ref={bpmnEditorRef}
             xml={currentXml}
             onXmlChange={handleXmlChange}

@@ -11,7 +11,6 @@ export function exportOSToExcel(orders, members, period = '') {
   const total = orders.length;
   const done = orders.filter(o => o.status === 'done').length;
   const inProgress = orders.filter(o => o.status === 'in_progress').length;
-  const available = orders.filter(o => o.status === 'available').length;
   const blocked = orders.filter(o => o.status === 'blocked').length;
   const emergency = orders.filter(o => o.type === 'emergency').length;
 
@@ -23,7 +22,6 @@ export function exportOSToExcel(orders, members, period = '') {
     ['Total de O.S.', total],
     ['Concluidas', done],
     ['Em Andamento', inProgress],
-    ['Disponiveis', available],
     ['Bloqueadas', blocked],
     ['Emergenciais', emergency],
     ['Taxa de Conclusao', total > 0 ? `${((done / total) * 100).toFixed(1)}%` : '0%'],

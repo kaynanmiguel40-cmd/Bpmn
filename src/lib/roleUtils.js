@@ -2,8 +2,12 @@ export const MANAGER_ROLES = ['gestor', 'admin', 'gerente', 'manager', 'diretor'
 
 export function detectRole(profile) {
   if (!profile || !profile.role) return 'collaborator';
-  const r = profile.role.toLowerCase().trim();
-  return MANAGER_ROLES.some(m => r.includes(m)) ? 'manager' : 'collaborator';
+  // Match por PALAVRA INTEIRA (nao substring): "Gerente de Vendas" -> manager,
+  // mas "administrativo"/"assistente administrativo" NAO casa 'admin'.
+  // O `includes` antigo causava escalonamento de privilegio: qualquer cargo
+  // contendo admin/supervisor/coordenador/diretor como substring virava admin.
+  const words = profile.role.toLowerCase().trim().split(/[^a-zà-ú]+/i).filter(Boolean);
+  return words.some(w => MANAGER_ROLES.includes(w)) ? 'manager' : 'collaborator';
 }
 
 export function isManagerRole(profile) {

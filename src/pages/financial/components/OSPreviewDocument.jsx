@@ -1,6 +1,6 @@
 import { PRIORITIES_LIST as PRIORITIES, OS_STATUS_LABELS as STATUS_LABELS } from '../../../constants/colors';
 import logoFyness from '../../../assets/logo-fyness.png';
-import { formatDateTime as formatDate, formatCpf, formatSignatureDateTime } from '../../../lib/formatters';
+import { formatDateTime as formatDate } from '../../../lib/formatters';
 import { namesMatch, calcChecklistItemMinutes } from '../../../lib/kpiUtils';
 import RichTextDisplay from './RichTextDisplay';
 import { getOrderAssigneeNames } from './helpers';
@@ -117,15 +117,11 @@ export default function OSPreviewDocument({ order, projectName, profileName, pro
             </div>
           </div>
 
-          {(order.estimatedStart || order.estimatedEnd) && (
-          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-r border-slate-200 dark:border-slate-700">
-              <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Previsao de Inicio</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.estimatedStart ? formatDate(order.estimatedStart) : '-'}</p>
-            </div>
+          {order.estimatedEnd && (
+          <div className="border-b border-slate-200 dark:border-slate-700">
             <div className="p-4">
               <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Previsao de Entrega</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.estimatedEnd ? formatDate(order.estimatedEnd) : '-'}</p>
+              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDate(order.estimatedEnd)}</p>
             </div>
           </div>
           )}
@@ -374,40 +370,6 @@ export default function OSPreviewDocument({ order, projectName, profileName, pro
               </div>
             )}
           </div>
-
-          {/* Assinaturas (apenas solo/pool — em team o OSSignaturesPanel ja cobre) */}
-          {order.mode !== 'team' && (
-          <div className="p-8 pt-12 grid grid-cols-2 gap-16">
-            <div>
-              <div className="text-center">
-                <div className="border-b-2 border-slate-400 dark:border-slate-500 pb-1 mb-2 h-20 flex items-end justify-center">
-                  {profileName && (
-                    <span className="text-white" style={{ fontFamily: "'Milton One', cursive", fontSize: '1.75rem', lineHeight: '1.2' }}>
-                      {profileName}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider mt-1">Solicitante</p>
-              </div>
-              {profileName && (
-                <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-relaxed mt-3 text-justify">
-                  Documento assinado por <strong className="text-slate-500">{profileName}</strong>
-                  {profileCpf && <>, portador do CPF <strong className="text-slate-500">{formatCpf(profileCpf)}</strong></>}
-                  . Assinou e esta de acordo com este documento as{' '}
-                  <strong className="text-slate-500">{formatSignatureDateTime(order.createdAt)}</strong>.
-                </p>
-              )}
-            </div>
-            <div>
-              <div className="text-center">
-                <div className="border-b-2 border-dashed border-slate-300 dark:border-slate-600 pb-1 mb-2 h-20 flex items-end justify-center">
-                  <span className="text-xs text-slate-400 dark:text-slate-500 italic">Aguardando execucao</span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider mt-1">Responsavel pela Execucao</p>
-              </div>
-            </div>
-          </div>
-          )}
 
           {/* Rodape */}
           <div className="bg-slate-50 dark:bg-slate-800/50 px-8 py-3 text-center border-t border-slate-200 dark:border-slate-700 rounded-b-xl">

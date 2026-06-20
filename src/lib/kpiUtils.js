@@ -13,6 +13,7 @@ import {
   WORK_START_HOUR,
   WORK_END_HOUR,
   WORK_HOURS_PER_DAY,
+  REPORT_BASELINE_DATE,
 } from '../constants/sla';
 
 // Re-exportar formatters para manter compatibilidade com imports existentes
@@ -41,6 +42,7 @@ export function isLastMonth(dateStr) {
 export function calcWorkingHoursBetween(startStr, endStr) {
   const start = new Date(startStr);
   const end = new Date(endStr);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
   if (end <= start) return 0;
 
   // Mesmo dia
@@ -258,6 +260,31 @@ export function findCurrentUser(profile, teamMembers) {
   return match || { id: 'self', name: profile.name, color: '#3b82f6' };
 }
 
+// ─── Corte do Relatório (baseline) ───────────────────────────────
+
+/** Meia-noite local do dia de corte (REPORT_BASELINE_DATE). Calculado 1x. */
+const reportBaselineMs = (() => {
+  const [y, m, d] = (REPORT_BASELINE_DATE || '').split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d).getTime(); // 00h horário local
+})();
+
+/**
+ * Uma O.S. conta para o relatório se foi criada A PARTIR do dia de corte.
+ * Sem createdAt = registro legado -> não conta.
+ */
+export function isCountedForReport(order) {
+  if (reportBaselineMs == null) return true; // sem baseline configurado: conta tudo
+  if (!order?.createdAt) return false;
+  const t = new Date(order.createdAt).getTime();
+  return !isNaN(t) && t >= reportBaselineMs;
+}
+
+/** Filtra a lista de O.S. mantendo só as que entram no relatório (criadas >= baseline). */
+export function filterReportOrders(orders) {
+  return (orders || []).filter(isCountedForReport);
+}
+
 // ─── Filtro por Período ──────────────────────────────────────────
 
 /** Verifica se uma data string esta dentro de um range [start, end] */
@@ -284,9 +311,10 @@ export function filterByPeriod(ordersList, eventsList, startDate, endDate) {
       const d = new Date(o.actualEnd);
       return d >= start && d <= end;
     }
-    // Em andamento: incluir se actualStart <= endDate
-    if (o.status === 'in_progress' && o.actualStart) {
-      return new Date(o.actualStart) <= end;
+    // Em andamento: sem actualStart (modelo novo), usa createdAt como inicio.
+    if (o.status === 'in_progress') {
+      const startRef = o.actualStart || o.createdAt;
+      return startRef ? new Date(startRef) <= end : false;
     }
     // Disponíveis: incluir se criada dentro do range
     if (o.status === 'available' && o.createdAt) {
@@ -481,7 +509,9 @@ export function calcKPIs(ordersList, eventsList, targetHours, dateRange = null) 
 export function calcLeadTimeHours(order) {
   if (order.leadTimeHours) return order.leadTimeHours;
   if (order.status !== 'done' || !order.createdAt || !order.actualEnd) return null;
-  return (new Date(order.actualEnd) - new Date(order.createdAt)) / (1000 * 60 * 60);
+  const ms = new Date(order.actualEnd) - new Date(order.createdAt);
+  if (isNaN(ms)) return null;
+  return ms / (1000 * 60 * 60);
 }
 
 /** Calcula lead time medio das ordens concluidas */

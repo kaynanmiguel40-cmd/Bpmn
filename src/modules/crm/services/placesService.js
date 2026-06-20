@@ -80,6 +80,10 @@ export function searchNearbyPartners(map, center, radiusMeters) {
           if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
             console.log(`[Places] ${categoryKey}: ${results.length} resultados`);
             resolve(results.map(r => ({ ...r, _category: categoryKey })));
+          } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+            // ZERO_RESULTS nao e erro: cidade pequena sem parceiros daquela
+            // categoria. Resolve vazio para nao disparar o throw de "todas falharam".
+            resolve([]);
           } else {
             console.warn(`[Places] ${categoryKey}: status=${status}`);
             resolve({ _error: status, _category: categoryKey });

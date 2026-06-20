@@ -5,21 +5,31 @@
  */
 
 import { supabase } from './supabase';
+import { escapeOrIlike } from '../modules/crm/lib/searchFilters';
 
 export async function searchAll(query) {
   if (!query || query.length < 2) return [];
 
   const q = query.toLowerCase();
+  // Escapa virgula/parenteses/wildcards: input cru no `.or()` quebrava a
+  // sintaxe do PostgREST (ex.: "Silva, Ltda") -> erro 400 engolido pelo
+  // catch{} -> busca retornava zero resultados.
+  const esc = escapeOrIlike(q);
   const results = [];
 
   // ==================== BUSCA VIA SUPABASE ====================
 
   // O.S.
   try {
+    // `number` e coluna inteira: ilike sempre erra. Busca por numero exato so
+    // quando o termo tiver digitos.
+    const orParts = [`title.ilike.%${esc}%`, `client.ilike.%${esc}%`, `description.ilike.%${esc}%`];
+    const digits = q.replace(/\D/g, '');
+    if (digits) orParts.push(`number.eq.${digits}`);
     const { data: orders } = await supabase
       .from('os_orders')
       .select('id, number, title, client, description')
-      .or(`title.ilike.%${q}%,client.ilike.%${q}%,description.ilike.%${q}%,number.ilike.%${q}%`)
+      .or(orParts.join(','))
       .limit(10);
 
     (orders || []).forEach(o => {
@@ -40,7 +50,7 @@ export async function searchAll(query) {
     const { data: events } = await supabase
       .from('agenda_events')
       .select('id, title, description')
-      .or(`title.ilike.%${q}%,description.ilike.%${q}%`)
+      .or(`title.ilike.%${esc}%,description.ilike.%${esc}%`)
       .limit(10);
 
     (events || []).forEach(e => {
@@ -82,7 +92,7 @@ export async function searchAll(query) {
     const { data: members } = await supabase
       .from('team_members')
       .select('id, name, role')
-      .or(`name.ilike.%${q}%,role.ilike.%${q}%`)
+      .or(`name.ilike.%${esc}%,role.ilike.%${esc}%`)
       .limit(10);
 
     (members || []).forEach(m => {
@@ -103,8 +113,7 @@ export async function searchAll(query) {
   const pages = [
     // Dashboard de O.S./RH (/dashboard) fica oculto — nao listar na busca.
     { label: 'Ordens de Servico', route: '/financial', keywords: ['ordens', 'servico', 'os', 'kanban', 'inicio', 'home', 'painel'] },
-    { label: 'Agenda', route: '/agenda', keywords: ['agenda', 'calendario', 'eventos'] },
-    { label: 'Minha Rotina', route: '/routine', keywords: ['rotina', 'tarefas', 'routine'] },
+    { label: 'Agenda', route: '/agenda', keywords: ['agenda', 'calendario', 'eventos', 'tarefas', 'rotina'] },
     { label: 'Processos (BPMN)', route: '/sales', keywords: ['processos', 'bpmn', 'fluxo'] },
     { label: 'Relatorios', route: '/reports', keywords: ['relatorios', 'reports', 'pdf'] },
     { label: 'Configuracoes', route: '/settings', keywords: ['configuracoes', 'settings', 'perfil', 'equipe'] },

@@ -74,7 +74,8 @@ export function ScheduleForm({ members = [] }) {
   function handleEdit(schedule) {
     setEditId(schedule.id);
     setFrequency(schedule.frequency);
-    setDayOfWeek(schedule.dayOfWeek || 1);
+    // `?? 1`: domingo = 0 e `0 || 1` virava segunda, movendo o agendamento de dia.
+    setDayOfWeek(schedule.dayOfWeek ?? 1);
     setDayOfMonth(schedule.dayOfMonth || 1);
     setRecipients((schedule.recipients || []).join(', '));
     setFilterMember(schedule.filterMember || 'all');

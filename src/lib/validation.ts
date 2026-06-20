@@ -128,6 +128,8 @@ const checklistItem = z.object({
   done: z.boolean().default(false),
   dueAt: z.string().nullable().optional(),
   estimatedMinutes: z.number().min(0).optional(),
+  assigneeId: z.string().nullable().optional(),     // responsavel da tarefa (O.S. de time)
+  assigneeName: z.string().nullable().optional(),
 }).passthrough();
 
 const nullableStr = z.string().nullable().optional().default('');
@@ -344,18 +346,9 @@ export function validateStatusTransition(
   const current = order.status || 'available';
   if (current === newStatus) return { ok: true };
 
-  if (newStatus === 'in_progress') {
-    const missing: string[] = [];
-    if (!order.estimatedStart) missing.push('data de inicio prevista');
-    if (!order.estimatedEnd) missing.push('data de termino prevista');
-    if (!order.assignedTo && !order.assignee) missing.push('responsavel');
-    if (missing.length > 0) {
-      return {
-        ok: false,
-        error: `Para iniciar, preencha: ${missing.join(', ')}.`,
-      };
-    }
-  }
+  // 'in_progress' nao exige mais data de inicio/responsavel: a O.S. nasce em
+  // andamento (montadas no sabado) e o trabalho e por prazo/responsavel das tarefas.
+  // Reabrir (done -> in_progress) tambem reusa esta transicao.
 
   if (newStatus === 'done') {
     const cl = order.checklist || [];

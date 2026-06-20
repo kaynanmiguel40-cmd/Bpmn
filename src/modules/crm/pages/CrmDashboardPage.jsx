@@ -43,8 +43,9 @@ const formatNumber = (val) =>
 
 function getDaysRemaining(dateStr) {
   if (!dateStr) return 999;
-  const now = new Date();
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return 999;
+  const now = new Date();
   return Math.max(0, Math.ceil((date - now) / 86400000));
 }
 
