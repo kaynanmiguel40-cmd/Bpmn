@@ -2473,9 +2473,25 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
               if (!onUpdateOrder) return;
               onUpdateOrder(order.id, { checklist: fn(checklistRef.current, item.id, { at: new Date().toISOString() }) });
             };
-            const handleStart = runTimer(startTask);
+            // Regra "uma tarefa por vez": não dá pra pegar/retomar uma tarefa se a
+            // pessoa já tem outra EM ANDAMENTO (rodando, sem pausa) — tem que pausar
+            // ou finalizar a atual antes. Em time, vale por responsável (cada um roda
+            // a sua); em solo/pool, só uma no total.
+            const myRunningTask = (excludeId) => (checklistRef.current || []).find(i =>
+              i.id !== excludeId && !i.done && i.startedAt && !i.pausedAt &&
+              (order.mode === 'team' ? namesMatch(i.assigneeName, profileName) : true)
+            );
+            const guardSingleRunning = (item) => {
+              const r = myRunningTask(item.id);
+              if (r) {
+                toast.warning(`Você já está com "${r.text}" em andamento. Pause ou finalize antes de pegar outra tarefa.`);
+                return false;
+              }
+              return true;
+            };
+            const handleStart = (item) => { if (guardSingleRunning(item)) runTimer(startTask)(item); };
             const handlePause = runTimer(pauseTask);
-            const handleResume = runTimer(resumeTask);
+            const handleResume = (item) => { if (guardSingleRunning(item)) runTimer(resumeTask)(item); };
 
 
             // Agrupar tarefas

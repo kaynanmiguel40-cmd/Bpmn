@@ -195,6 +195,19 @@ export function RoutinePage() {
       toast.error('Perfil nao carregado.');
       return;
     }
+
+    // Uma O.S. EM ANDAMENTO por pessoa: se você já tem uma rodando (in_progress
+    // e não pausada), bloqueia pegar outra — pause ou finalize a atual primeiro.
+    const mine = (o) =>
+      o.assignedTo === profile.id ||
+      namesMatch(o.assignee, userName) ||
+      (Array.isArray(o.participants) && o.participants.some(p => p.id === profile.id || namesMatch(p.name, userName)));
+    const running = orders.find(o => o.id !== orderId && o.status === 'in_progress' && !o.pausedAt && mine(o));
+    if (running) {
+      toast.warning(`Você já está com a O.S. "${running.title}" em andamento. Pause ou finalize ela antes de pegar outra.`);
+      return;
+    }
+
     // joinOSOrder cobre os 4 cenarios: pool->solo, solo-self, solo-other->team, team
     const updated = await joinOSOrder(orderId, { id: profile.id, name: userName });
 
