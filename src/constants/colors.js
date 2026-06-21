@@ -47,11 +47,11 @@ export const PRIORITIES_LIST = [
 
 // ─── Colunas Kanban ─────────────────────────────────────────────
 
-/** Colunas do kanban de rotina (por status) */
+/** Colunas do kanban de rotina (por status): so Disponiveis e Concluidas.
+ *  "Em andamento" foi unificado em Disponiveis (tudo que ainda nao terminei). */
 export const ROUTINE_COLUMNS = [
-  { id: 'todo', title: 'Por Fazer', color: 'from-slate-400 to-slate-500', emptyText: 'Nenhuma O.S. pendente' },
-  { id: 'doing', title: 'Em Andamento', color: 'from-blue-500 to-blue-600', emptyText: 'Nenhuma O.S. em andamento' },
-  { id: 'done', title: 'Concluido', color: 'from-green-500 to-emerald-600', emptyText: 'Nenhuma O.S. concluida' },
+  { id: 'todo', title: 'Disponíveis', color: 'from-slate-400 to-slate-500', emptyText: 'Nenhuma O.S. disponível' },
+  { id: 'done', title: 'Concluídas', color: 'from-green-500 to-emerald-600', emptyText: 'Nenhuma O.S. concluída' },
 ];
 
 /** Colunas do kanban financeiro (por prioridade) */

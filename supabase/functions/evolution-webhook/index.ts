@@ -973,18 +973,28 @@ async function findContactByPhone(
   phone: string,
 ): Promise<string | null> {
   if (!phone) return null
-  // Phone no banco pode ter mascara ou nao. Tenta variantes basicas.
-  // Estrategia: filtra dig-only via regexp_replace; SE crm_contacts.phone for limpo, basta eq.
-  // Por simplicidade, busca por terminacao (sufixo) pra tolerar +55 / DDI.
-  const last9 = phone.slice(-9)
+  // Compara o numero NACIONAL (DDD + assinante, sem +55) digito-a-digito.
+  // O slice(-9) antigo DESCARTAVA o DDD: dois contatos de DDDs diferentes com os
+  // mesmos 9 digitos finais colidiam e a mensagem ia pro contato ERRADO (e o
+  // limit(1) sem order pegava uma linha arbitraria). Aqui o ilike e so um
+  // pre-filtro amplo; o casamento real e validado no JS (tolera mascara).
+  const national = (n: string): string => {
+    const d = String(n || '').replace(/\D/g, '')
+    return d.startsWith('55') && d.length > 11 ? d.slice(2) : d
+  }
+  const inNat = national(phone)
+  if (inNat.length < 10) return null // precisa DDD(2) + assinante(8+)
+  const last8 = inNat.slice(-8)
   const { data } = await supabase
     .from('crm_contacts')
     .select('id, phone')
-    .ilike('phone', `%${last9}%`)
+    .ilike('phone', `%${last8}%`)
     .is('deleted_at', null)
-    .limit(1)
-    .maybeSingle()
-  return data?.id || null
+    .limit(50)
+  for (const row of (data || [])) {
+    if (national(String(row.phone || '')) === inNat) return row.id
+  }
+  return null
 }
 
 async function findOrCreateProspectByPhoneWithError(

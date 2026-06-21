@@ -95,7 +95,11 @@ export function CrmCallHistoryPage() {
     sortOrder: 'desc',
   }), [page, debouncedSearch, outcomeFilter, startDate, teamMode, userId]);
 
-  const { data, isLoading } = useCrmCalls(filters);
+  // No modo "minhas chamadas" espera o userId resolver antes de buscar — senao a
+  // 1a query sai sem createdBy e traz o historico do time inteiro pro cache.
+  const { data, isLoading } = useCrmCalls(filters, {
+    enabled: teamMode === '1' || !!userId,
+  });
   const deleteMutation = useDeleteCrmCall();
 
   const [deleteTarget, setDeleteTarget] = useState(null);

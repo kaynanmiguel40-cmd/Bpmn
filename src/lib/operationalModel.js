@@ -1,24 +1,24 @@
 /**
  * operationalModel - Relatório operacional por SETOR e por PESSOA.
  *
- * Núcleo do "novo modelo": tudo deriva de uma lista de REGISTROS de tarefa
- * concluída, cada um carregando setor + pessoa. A mesma lista alimenta os dois
- * cortes (lens):
+ * Núcleo do modelo: tudo deriva de uma lista de REGISTROS de tarefa (1 por item
+ * do checklist da O.S.), cada um carregando setor + pessoa. A mesma lista
+ * alimenta os dois cortes (lens):
  *   • 'person' → agrupa por pessoa; cada tarefa mostra um chip do SETOR.
  *   • 'sector' → agrupa por setor; cada tarefa mostra um chip da PESSOA.
  *
  * Cascata: dia = registros do dia · semana = junção dos dias · mês = junção das
  * semanas (mesma lógica do comercial).
  *
- * Por enquanto os registros vêm de um EXEMPLO determinístico (recordsForDay).
- * Pra ligar nos dados reais, basta trocar recordsForDay/listDays por uma leitura
- * das O.S. (setor = O.S.→projeto→setor; pessoa = responsável do grupo/da O.S.).
- * O resto (cascata, agregação, UI) não muda.
+ * FONTE = O.S. REAIS. A página chama setOperationalSource({orders, projects,
+ * sectors, members}) antes de ler; o modelo deriva os registros das O.S.
+ * (setor = O.S.→projeto→setor; pessoa = responsável do item/da O.S.). Toda a
+ * agregação/nota/cartões abaixo é agnóstica à fonte.
  *
  * Fica em src/lib (fora do módulo CRM).
  */
 
-import { OPERACAO_QUALITY, scoreQualityChecklist } from './qualityChecklist';
+import { calcChecklistItemMinutes } from './kpiUtils';
 
 // ---------- datas ----------
 const pad = (n) => String(n).padStart(2, '0');
@@ -76,7 +76,6 @@ function mondayOf(dateKey) {
   return keyOf(dt);
 }
 const shortDay = (key) => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }); };
-const ddmm = (key) => { const [, m, d] = key.split('-').map(Number); return `${pad(d)}/${pad(m)}`; };
 const WD = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const weekdayShort = (key) => { const [y, m, d] = key.split('-').map(Number); return WD[new Date(y, m - 1, d).getDay()]; };
 
@@ -88,180 +87,124 @@ function weeksOfMonth(monthKey) {
 }
 
 // ---------- utils ----------
-const hashKey = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
 const fmtHM = (min) => { const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? (m ? `${h}h${pad(m)}` : `${h}h`) : `${m}min`; };
+const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
-// ---------- catálogo do exemplo (setores, pessoas, tarefas) ----------
-const SECTORS = {
-  comercial: { id: 'comercial', label: 'Comercial', color: '#EC4899' },
-  produto: { id: 'produto', label: 'Produto', color: '#3B82F6' },
-  marketing: { id: 'marketing', label: 'Marketing', color: '#A06BE6' },
-  suporte: { id: 'suporte', label: 'Suporte / CS', color: '#10B981' },
-};
+// ---------- fonte de dados: O.S. REAIS (injetadas pela página) ----------
+// setOperationalSource() deriva 1 registro por TAREFA do checklist e indexa por
+// PRAZO (previstas) e por ENTREGA (feitas). Toda a máquina abaixo lê só isto.
 
-// sectors[] com repetição = peso (ex.: Kaynan mais Comercial que Produto)
-const PEOPLE = [
-  { id: 'kaynan', name: 'Kaynan', color: '#6366F1', sectors: ['comercial', 'comercial', 'produto'] },
-  { id: 'elias', name: 'Elias', color: '#0EA5E9', sectors: ['produto', 'produto', 'produto', 'suporte'] },
-  { id: 'lorena', name: 'Lorena', color: '#F59E0B', sectors: ['suporte', 'suporte', 'comercial'] },
-  { id: 'kaua', name: 'Kauã', color: '#A06BE6', sectors: ['marketing'] },
-];
+let _people = [];           // [{id,name,color,sub}] — cadastro real da equipe (dedup)
+let _sectorsList = [];      // [{id,label,color}] — setores reais (das O.S.)
+let _dueIndex = new Map();  // dueKey  -> registros com prazo nesse dia (previstas)
+let _doneIndex = new Map(); // doneKey -> registros concluídos nesse dia (entregues)
 
-const TASKS = {
-  comercial: [
-    { title: 'Diagnóstico financeiro com a Marmoraria Granito Real', min: 35, delivery: 'Levantei faturamento e margem. Dor: não sabe o custo por obra. Proposta marcada pra segunda.' },
-    { title: 'Fechamento com a Clínica Sorriso', min: 55, delivery: 'Fechou plano Pro mensal + implantação. Contrato assinado.' },
-    { title: 'Reativar lead frio: Auto Peças Veloz', min: 20, delivery: 'Reabri com case de outro mecânico. Topou uma demo na quinta.' },
-    { title: 'Montar proposta para a Rede Farmácias Bem-Estar', min: 45, delivery: '3 CNPJs, plano Enterprise. Proposta enviada com ROI por loja.' },
-    { title: 'Qualificar 8 leads novos do diagnóstico', min: 40, delivery: '5 dentro do ICP (contadores e PMEs), 3 descartados.' },
-    { title: 'Demo de DRE para a Transportadora Rota Sul', min: 50, delivery: 'Mostrei DRE e fluxo por filial. Decisor pediu a proposta.' },
-  ],
-  produto: [
-    { title: 'Integração Open Finance com o Sicoob', min: 120, delivery: 'Sandbox conectado, importando extrato e saldo em tempo real.' },
-    { title: 'Refatorar o cálculo do balancete', min: 80, delivery: 'Corrigi arredondamento de centavos. Bate com a contabilidade.' },
-    { title: 'Conciliação automática de maquininha (Stone/PagBank)', min: 95, delivery: 'Conciliando taxa e antecipação automaticamente.' },
-    { title: 'Bug: parcelamento sumindo no fluxo de caixa', min: 35, delivery: 'Causa era timezone no vencimento. Corrigido e testado.' },
-    { title: 'Exportador do relatório gerencial em PDF', min: 60, delivery: 'DRE + fluxo + indicadores num PDF com a marca do cliente.' },
-    { title: 'Subir release 1.6 (alertas de saldo)', min: 40, delivery: 'Deploy ok. Push e e-mail de alerta validados.' },
-  ],
-  marketing: [
-    { title: 'Campanha "Feche seu mês em 1 clique"', min: 90, delivery: '1 vídeo + 3 estáticos aprovados, sobem amanhã.' },
-    { title: 'Reel com depoimento da Clínica Sorriso', min: 70, delivery: 'Reel de 28s com o antes/depois do controle financeiro.' },
-    { title: 'Otimizar o funil do diagnóstico (CPL)', min: 35, delivery: 'Troquei a headline. CPL caiu de R$ 18 → R$ 11.' },
-    { title: 'Sequência de e-mail pós-diagnóstico', min: 50, delivery: '4 e-mails de nutrição agendados no automation.' },
-    { title: 'Atualizar a landing com prova social', min: 55, delivery: '3 depoimentos + selo "+50 empresas". Pixel validado.' },
-    { title: 'Calendário de conteúdo da semana', min: 30, delivery: '5 posts sobre fechamento e DRE agendados.' },
-  ],
-  suporte: [
-    { title: 'Implantação completa: Contabilidade Silva', min: 110, delivery: 'Plano de contas, integrações e usuários no ar. Cliente lança sozinho.' },
-    { title: 'Migrar 18 meses de histórico (Padaria Pão Quente)', min: 100, delivery: 'Saldos de abertura conferidos, fechamento batendo.' },
-    { title: 'Treinar equipe no fluxo de caixa projetado', min: 45, delivery: 'Call de 50min. Projeção de 90 dias e alertas configurados.' },
-    { title: 'Chamado: divergência no DRE de maio', min: 35, delivery: 'Duas notas classificadas errado. Corrigido e documentado.' },
-    { title: 'Revisão mensal de saúde da Ótica Visão', min: 40, delivery: 'Uso alto, sem risco. Sugeri upsell de centro de custo.' },
-    { title: 'Configurar alertas de vencimento (Auto Peças Veloz)', min: 30, delivery: 'Alertas de contas a pagar/receber ativados.' },
-  ],
-};
-
-// ---------- gerador do exemplo: tarefas por PRAZO DE ENTREGA ----------
-// Cada tarefa tem um prazo (dueKey) e um status (done). Dias passados ~entregues
-// (alguns atrasados), hoje ~metade, futuro pendente (previsto). Determinístico.
-const BRIEF_BY_SECTOR = {
-  comercial: 'Siga o script de abordagem, registre o resultado no CRM e combine o próximo passo com o lead.',
-  produto: 'Confira o requisito, implemente seguindo o padrão do repositório, teste e registre a entrega com print.',
-  marketing: 'Alinhe com a campanha vigente, produza dentro da identidade visual e registre as métricas/links.',
-  suporte: 'Confirme a necessidade do cliente, execute o procedimento padrão e registre o atendimento.',
-};
-const QUALITY_REASONS = [
-  'Faltou um detalhe pequeno, ajustado depois.',
-  'Precisou de um retoque na revisão.',
-  'Ficou bom, mas dava pra documentar melhor.',
-  'Um ponto fora do padrão.',
-];
-// Contestações de EXEMPLO (o executor discorda da nota; supervisor/3º decide).
-const DISPUTE_REASONS = [
-  'Discordo. Entreguei tudo que foi pedido e ainda antecipei um problema — segue o print no chat.',
-  'Acho injusto. O retrabalho foi por mudança de escopo no meio, não por erro meu.',
-  'Fui proativo sim: avisei o time antes do prazo e propus a solução. Vale revisar essa nota.',
-  'A documentação estava no card, só não foi vista. Anexei de novo.',
-];
-const DISPUTE_RESOLUTIONS_CHANGED = [
-  'Procede. Revi o histórico e ajustei a nota.',
-  'Tem razão, o print confirma. Corrigido.',
-];
-const DISPUTE_RESOLUTIONS_KEPT = [
-  'Entendo o ponto, mas o critério segue valendo. Mantida.',
-  'Conversamos — a nota reflete o combinado. Mantida.',
-];
-const clampPct = (n) => Math.max(0, Math.min(100, n));
-// Gera (ou não) uma contestação determinística pra uma avaliação de exemplo.
-function exampleDispute(seed, quality, executorName) {
-  if (seed % 4 !== 0) return null; // ~25% das avaliadas têm contestação
-  const lows = OPERACAO_QUALITY.filter((c) => typeof quality.answers[c.id] === 'number' && quality.answers[c.id] < 5);
-  const criterion = lows.length ? lows[seed % lows.length].id : null;
-  const reason = DISPUTE_REASONS[seed % DISPUTE_REASONS.length];
-  const base = { by: executorName, byId: null, criterion, reason };
-  if (seed % 2 === 0) return { ...base, status: 'open' }; // metade ainda abertas
-  const changed = seed % 3 === 0;
-  return {
-    ...base,
-    status: 'resolved',
-    outcome: changed ? 'changed' : 'kept',
-    resolvedBy: 'Kaynan',
-    resolutionNote: (changed ? DISPUTE_RESOLUTIONS_CHANGED : DISPUTE_RESOLUTIONS_KEPT)[seed % 2],
-    prevPct: changed ? clampPct(quality.pct - (10 + (seed % 10))) : quality.pct,
-  };
+function pushTo(map, key, rec) {
+  if (!key) return;
+  if (!map.has(key)) map.set(key, []);
+  map.get(key).push(rec);
 }
-// Qualidade de EXEMPLO (notas por critério + justificativas) pra tarefa revisada.
-function exampleQuality(seed) {
-  const answers = {}, notes = {};
-  for (const c of OPERACAO_QUALITY) {
-    const r = (seed + hashKey(c.id)) % 10;
-    let v;
-    if (r === 0) v = 'na';
-    else if (r <= 5) v = 5;
-    else if (r <= 7) v = 4;
-    else if (r === 8) v = 3;
-    else v = 2;
-    answers[c.id] = v;
-    if (typeof v === 'number' && v < 5) notes[c.id] = QUALITY_REASONS[(seed + r) % QUALITY_REASONS.length];
+
+/**
+ * Liga o modelo nos dados REAIS das O.S.
+ *   pessoa = responsável do item (team) ou da O.S. (solo) → membro da equipe
+ *   setor  = O.S. → projeto → setor
+ *   prazo  = item.dueAt · entrega = item.completedAt · nota = item.qualityPct
+ */
+export function setOperationalSource({ orders = [], projects = [], sectors = [], members = [] } = {}) {
+  const projById = {}; for (const p of projects) projById[p.id] = p;
+  const secById = {}; for (const s of sectors) secById[s.id] = s;
+
+  // Pessoas = cadastro real da equipe, dedup por nome.
+  const seenP = new Set();
+  _people = [];
+  for (const m of (members || [])) {
+    const k = norm(m.name);
+    if (!k || seenP.has(k)) continue;
+    seenP.add(k);
+    _people.push({ id: m.id, name: m.name, color: m.color || '#6366f1', authUserId: m.authUserId || null, sub: '' });
   }
-  return { answers, notes, pct: scoreQualityChecklist(answers).pct };
-}
+  const memberByName = (name) => {
+    const k = norm(name);
+    if (!k) return null;
+    const first = k.split(' ')[0];
+    return _people.find((p) => norm(p.name) === k)
+      || _people.find((p) => { const pk = norm(p.name); return pk.includes(k) || k.includes(pk); })
+      || _people.find((p) => norm(p.name).split(' ')[0] === first)
+      || null;
+  };
 
-const addDays = (key, n) => { const [y, m, d] = key.split('-').map(Number); return keyOf(new Date(y, m - 1, d + n)); };
+  const usedSectors = new Map();
+  _dueIndex = new Map();
+  _doneIndex = new Map();
+  const sectorCountByPerson = {}; // pra deduzir o setor predominante de cada pessoa
 
-const _dueCache = new Map();
-function tasksForDueDay(dueKey) {
-  if (_dueCache.has(dueKey)) return _dueCache.get(dueKey);
-  const out = [];
-  const tk = todayKey();
-  const past = dueKey < tk;
-  const isToday = dueKey === tk;
-  for (const p of PEOPLE) {
-    const seed = hashKey(p.id + dueKey);
-    const count = seed % 5; // 0–4 tarefas com prazo nesse dia (alguns dias 0)
-    for (let i = 0; i < count; i++) {
-      const secId = p.sectors[(seed + i * 7) % p.sectors.length];
-      const sector = SECTORS[secId];
-      const task = TASKS[secId][(seed + i * 5) % TASKS[secId].length];
-      const done = past ? ((seed + i) % 6 !== 0) : isToday ? ((seed + i) % 2 === 0) : false;
-      const onTime = done ? ((seed + i) % 7 !== 0) : false;
-      const reviewed = done && (seed + i) % 2 === 0;
-      const approved = reviewed && (seed + i) % 11 !== 0;
-      const quality = reviewed ? exampleQuality(seed + i) : null;
-      const dispute = quality ? exampleDispute(seed + i, quality, p.name) : null;
-      // data REAL de entrega: no prazo → no dia do prazo; atrasada → 1–4 dias depois.
-      const doneKey = done ? addDays(dueKey, onTime ? 0 : 1 + ((seed + i) % 4)) : null;
-      // com HORA (no real virá do dueAt/completedAt da O.S.)
-      const dueAt = `${dueKey}T${pad(9 + ((seed + i) % 9))}:${pad(((seed + i) * 13) % 60)}:00`;
-      const doneAt = doneKey ? `${doneKey}T${pad(8 + ((seed + i * 3) % 11))}:${pad((seed + i * 7) % 60)}:00` : null;
-      out.push({
-        taskId: `${p.id}-${dueKey}-${i}`,
-        dueKey, doneKey, dueAt, doneAt, done,
-        sector: { id: sector.id, label: sector.label, color: sector.color },
-        person: { id: p.id, name: p.name, color: p.color },
-        taskText: task.title,
-        briefing: `${task.title}. ${BRIEF_BY_SECTOR[secId]}`,
-        timeMin: task.min,
-        estMin: Math.round(task.min * (1 + ((seed + i) % 6) * 0.1)), // previsto: 1.0–1.5× o real (estimativa inflada)
+  for (const order of (orders || [])) {
+    const proj = order.projectId ? projById[order.projectId] : null;
+    const secId = proj?.sector || null;
+    const secRow = secId ? secById[secId] : null;
+    const sector = { id: secId || '__sem_setor__', label: secRow?.label || 'Sem setor', color: secRow?.color || '#94a3b8' };
+    usedSectors.set(sector.id, sector);
+
+    const cl = Array.isArray(order.checklist) ? order.checklist : [];
+    const fallbackName = order.assignee || (Array.isArray(order.participants) && order.participants[0]?.name) || null;
+
+    for (const item of cl) {
+      const pname = item.assigneeName || fallbackName;
+      const pm = pname ? memberByName(pname) : null;
+      const person = pm
+        ? { id: pm.id, name: pm.name, color: pm.color }
+        : { id: pname ? `name:${norm(pname)}` : '__sem_resp__', name: pname || 'Sem responsável', color: '#94a3b8' };
+
+      const dueKey = item.dueAt ? keyOf(new Date(item.dueAt)) : null;
+      const doneKey = (item.done && item.completedAt) ? keyOf(new Date(item.completedAt)) : null;
+      if (!dueKey && !doneKey) continue; // sem prazo e não concluída → nada a mostrar
+
+      const reviewed = item.reviewStatus === 'approved' || item.reviewStatus === 'changes';
+      const approved = item.reviewStatus === 'approved';
+      const onTime = (item.done && item.completedAt && item.dueAt)
+        ? (new Date(item.completedAt) <= new Date(item.dueAt))
+        : !!item.done; // sem prazo definido, conta como no prazo
+
+      const rec = {
+        taskId: `${order.id}:${item.id}`,
+        dueKey, doneKey,
+        dueAt: item.dueAt || null, doneAt: item.completedAt || null,
+        done: !!item.done,
+        sector, person,
+        taskText: item.text || 'Tarefa',
+        briefing: item.briefing || '',
+        timeMin: calcChecklistItemMinutes(item) || 0,
+        estMin: item.durationMin || 0,
         onTime, reviewed, approved,
-        delivery: done ? task.delivery : null,
-        qualityPct: quality?.pct ?? null,
-        qualityAnswers: quality?.answers ?? null,
-        qualityNotes: quality?.notes ?? null,
-        qualityDispute: dispute,
-      });
+        delivery: item.done ? (item.delivery || null) : null,
+        qualityPct: item.qualityPct ?? null,
+        qualityAnswers: item.qualityAnswers ?? null,
+        qualityNotes: item.qualityNotes ?? null,
+        qualityDispute: item.qualityDispute ?? null,
+      };
+      pushTo(_dueIndex, dueKey, rec);
+      if (rec.done) pushTo(_doneIndex, doneKey, rec);
+
+      const sc = (sectorCountByPerson[person.id] = sectorCountByPerson[person.id] || {});
+      sc[sector.label] = (sc[sector.label] || 0) + 1;
     }
   }
-  _dueCache.set(dueKey, out);
-  return out;
+
+  // sub = setor onde a pessoa mais atuou
+  for (const p of _people) {
+    const sc = sectorCountByPerson[p.id];
+    if (sc) p.sub = Object.entries(sc).sort((a, b) => b[1] - a[1])[0][0];
+  }
+  _sectorsList = [...usedSectors.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
-// "Concluídas no dia" = tarefas com prazo nesse dia que já foram entregues
-// (no exemplo, a entrega cai no dia do prazo). Mantém os blocos de "feito".
-function recordsForDay(dateKey) {
-  return tasksForDueDay(dateKey).filter((t) => t.done);
-}
+function getPeople() { return _people; }
+function getSectorsList() { return _sectorsList; }
+
+// Registros do modelo (reais): por PRAZO (previstas) e por ENTREGA (feitas).
+function tasksForDueDay(dueKey) { return _dueIndex.get(dueKey) || []; }
+function recordsForDay(dayKey) { return _doneIndex.get(dayKey) || []; }
 
 // ---------- agregação ----------
 function aggregate(records) {
@@ -333,8 +276,8 @@ function recordToTask(r, otherDim, day) {
 // ---------- API pública ----------
 export function getOperationalIndex(lens) {
   const owners = lens === 'sector'
-    ? Object.values(SECTORS).map((s) => ({ id: s.id, name: s.label, color: s.color, sub: 'setor' }))
-    : PEOPLE.map((p) => ({ id: p.id, name: p.name, color: p.color, sub: SECTORS[p.sectors[0]]?.label }));
+    ? getSectorsList().map((s) => ({ id: s.id, name: s.label, color: s.color, sub: 'setor' }))
+    : getPeople().map((p) => ({ id: p.id, name: p.name, color: p.color, sub: p.sub }));
   return { owners, days: lastWeekdays(10), weeks: lastMondays(4), months: lastMonths(3) };
 }
 
@@ -406,8 +349,8 @@ function avgFactors(match, dayKeys) {
     if (!f) continue;
     for (const kk of ['entrega', 'qualidade', 'prazo']) if (f[kk] != null) acc[kk].push(f[kk]);
   }
-  const avg = (arr) => (arr.length ? Math.round(arr.reduce((s, n) => s + n, 0) / arr.length) : null);
-  return { entrega: avg(acc.entrega), qualidade: avg(acc.qualidade), prazo: avg(acc.prazo) };
+  const avgArr = (arr) => (arr.length ? Math.round(arr.reduce((s, n) => s + n, 0) / arr.length) : null);
+  return { entrega: avgArr(acc.entrega), qualidade: avgArr(acc.qualidade), prazo: avgArr(acc.prazo) };
 }
 function weekNotaBy(match, mondayKey) {
   const notas = weekdaysFromMonday(mondayKey).map((d) => dayNotaBy(match, d)).filter((n) => n != null);
@@ -425,7 +368,7 @@ const personNota = (id, period, key) => notaBy('person', id, period, key);
 
 // "esperado" = média das notas das pessoas no período
 function periodMedia(period, key) {
-  const notas = PEOPLE.map((p) => personNota(p.id, period, key)).filter((n) => n != null);
+  const notas = getPeople().map((p) => personNota(p.id, period, key)).filter((n) => n != null);
   if (!notas.length) return null;
   return Math.round((notas.reduce((s, n) => s + n, 0) / notas.length) * 10) / 10;
 }
@@ -442,8 +385,7 @@ function classifyCard(nota, media) {
 
 /**
  * Cartões de produtividade — atribuídos à PESSOA, não ao relatório. É o histórico
- * de avaliação semanal dela (1 cartão/semana); independe do período que você abre:
- * o mesmo cartão aparece igual no diário, no semanal e no mensal da pessoa.
+ * de avaliação semanal dela (1 cartão/semana); independe do período que você abre.
  *   - current  = a semana mais recente (standing atual da pessoa)
  *   - history  = últimas 6 semanas (antiga → recente)
  *   - saldo    = verdes − vermelhos (vermelhos consomem verdes)
@@ -488,10 +430,7 @@ function gatherPending(lens, id, period, key) {
   return out.sort((a, b) => (Number(b.overdue) - Number(a.overdue)) || (a.dueKey < b.dueKey ? -1 : 1));
 }
 
-// Meta batida (carga PREVISTA × ENTREGUE) DO PERÍODO navegado:
-//  - diário  → só a meta do dia
-//  - semanal → a meta da semana + cada dia (Seg–Sex)
-//  - mensal  → a meta do mês + cada semana
+// Meta batida (carga PREVISTA × ENTREGUE) DO PERÍODO navegado.
 function getGoals(lens, id, period, key) {
   const g = (p, k, label) => { const l = getOperationalLoad(lens, id, p, k); return { label, done: l.totalDone, planned: l.totalPlanned, pct: l.totalPlanned > 0 ? Math.round((l.totalDone / l.totalPlanned) * 100) : null }; };
   const t = period === 'daily' ? 'Meta do dia' : period === 'weekly' ? 'Meta da semana' : 'Meta do mês';
@@ -592,11 +531,9 @@ export function getOperationalReport(lens, id, period, key) {
   } : null;
 
   // carga por prazo de entrega — alimenta os KPIs (Previstas/Entregues) e a Meta.
-  // Vale pra PESSOA e pra SETOR (no setor é a soma da carga de quem é dele).
   const load = getOperationalLoad(lens, id, period, key);
 
-  // camada 3 — nota (compensatória) + fatores (Entrega/Qualidade/Prazo). No dia
-  // são os fatores do dia; na semana/mês são a MÉDIA dos fatores diários.
+  // camada 3 — nota (compensatória) + fatores (Entrega/Qualidade/Prazo).
   const m = matcher(lens, id);
   const nota = notaBy(lens, id, period, key);
   const f = period === 'daily' ? (dayFactors(m, key) || {}) : avgFactors(m, period === 'weekly' ? weekdaysFromMonday(key) : weekdaysOfMonth(key));
@@ -610,8 +547,7 @@ export function getOperationalReport(lens, id, period, key) {
     : 'média dos dias · Entrega 40% · Qualidade 40% · Prazo 20%';
   const score = { nota, kind: 'factors', items: scoreItems, foot };
 
-  // cartões (verde/vermelho + saldo) — atribuídos à PESSOA (mesmo cartão em
-  // qualquer período dela); setor não tem cartão (não é uma pessoa).
+  // cartões (verde/vermelho + saldo) — atribuídos à PESSOA; setor não tem cartão.
   const cards = lens === 'person' ? getOperationalCards(id) : null;
 
   return {
@@ -640,7 +576,7 @@ export function buildOperationalText(report, ownerName, sub, headLabel) {
   if (report.highlights?.length) { lines.push('Destaques:'); report.highlights.forEach((h) => lines.push(`• ${h}`)); lines.push(''); }
   if (report.split?.rows?.length) {
     lines.push(`${report.split.title}:`);
-    report.split.rows.forEach((r) => lines.push(`• ${r.label}: ${r.value}${r.sub ? ` — ${r.sub}` : ''}`));
+    report.split.rows.forEach((r) => lines.push(`• ${r.label}: ${r.done}/${r.planned} feitas${r.realMin ? ` · ${fmtHM(r.realMin)}` : ''}${r.onTimePct != null ? ` · ${r.onTimePct}% no prazo` : ''}`));
     lines.push('');
   }
   if (report.timeline?.length) {

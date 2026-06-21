@@ -120,6 +120,19 @@ export async function getCommercialPlanReal() {
   // Se o plano ja passou de M12, "atual" = ultimo decorrido.
   if (currentM == null && elapsedMonths.length) currentM = elapsedMonths[elapsedMonths.length - 1];
 
+  // Deals ganhos DENTRO do mes atual (com data) — alimenta a cadencia diaria/
+  // semanal do acompanhamento de meta. A base sem closed_at nao entra (nao e
+  // "nova" venda do mes).
+  let currentMonthWon = [];
+  let currentMonthRange = null;
+  if (currentM) {
+    const { start, end } = planMonthRange(currentM);
+    currentMonthRange = { start: start.toISOString(), end: end.toISOString() };
+    currentMonthWon = won
+      .filter(d => d.closed && d.closed >= start && d.closed <= end)
+      .map(d => ({ closedAt: d.closed.toISOString(), mrr: d.mrr, value: d.value }));
+  }
+
   // 6) Marketing (trafego pago) do mes atual — lido do CRM (crm_paid_traffic).
   //    Usa o mes inteiro (entradas de trafego sao por periodo, nao por dia).
   let marketing = null;
@@ -155,5 +168,7 @@ export async function getCommercialPlanReal() {
     monthElapsedPct,
     hasData: won.length > 0,
     marketing,
+    currentMonthWon,
+    currentMonthRange,
   };
 }

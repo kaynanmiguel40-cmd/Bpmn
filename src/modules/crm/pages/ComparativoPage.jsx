@@ -6,16 +6,20 @@
  * a curva de MRR rumo a R$100k, funil, conversoes e marketing.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
+  ComposedChart, Area, BarChart, Bar, Legend,
 } from 'recharts';
-import { Target } from 'lucide-react';
+import {
+  Target, TrendingUp, TrendingDown, Gauge, CalendarDays, Flame, CheckCircle2, AlertTriangle,
+} from 'lucide-react';
 import {
   PLAN_MONTHS, PREMISSAS, PLAN_GOAL_MRR, PLAN_POSITION,
   planMonthLabel, planMonthLong,
 } from '../../../lib/commercialPlan';
+import { buildMonthlyCadence } from '../../../lib/salesCadence';
 import { getCommercialPlanReal } from '../../../lib/commercialPlanReal';
 import {
   PLAN_PHASES, actionId, TOTAL_ACTIONS, getPlanActionsState, setPlanActionDone,
@@ -90,6 +94,192 @@ function CurrentMonthHero({ planRow, real, monthElapsedPct }) {
         <Stat label="Leads" prev={planRow.leads} realVal={real?.funnel?.lead ?? 0} />
       </div>
     </div>
+  );
+}
+
+// ---------- Acompanhamento da meta do mes (diario / semanal) ----------
+
+const STATUS_STYLE = {
+  acima:       { badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', dot: 'bg-emerald-500', Icon: TrendingUp },
+  dentro:      { badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',              dot: 'bg-blue-500',    Icon: Gauge },
+  abaixo_leve: { badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',          dot: 'bg-amber-500',   Icon: TrendingDown },
+  abaixo:      { badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',              dot: 'bg-rose-500',    Icon: TrendingDown },
+};
+
+function MetaMiniCard({ label, hint, children }) {
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-4">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</div>
+      <div className="mt-1.5">{children}</div>
+      {hint && <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{hint}</div>}
+    </div>
+  );
+}
+
+function MetaMensalPanel({ planRow, prevMrr, real }) {
+  const [metric, setMetric] = useState('vendas'); // 'vendas' (nº) | 'mrr' (R$)
+  const range = real?.currentMonthRange;
+
+  const cadence = useMemo(() => {
+    if (!range) return null;
+    const isMrr = metric === 'mrr';
+    const target = isMrr ? Math.max(0, (planRow.mrr || 0) - (prevMrr || 0)) : (planRow.novos || 0);
+    return buildMonthlyCadence({
+      monthStart: new Date(range.start),
+      monthEnd: new Date(range.end),
+      now: new Date(),
+      target,
+      deals: real.currentMonthWon || [],
+      weigh: isMrr ? (d) => d.mrr || 0 : () => 1,
+    });
+  }, [range, metric, planRow, prevMrr, real?.currentMonthWon]);
+
+  if (!cadence) return null;
+
+  const isMrr = metric === 'mrr';
+  const fmt = (v) => (isMrr ? fmtBRL(v) : `${Math.round(v || 0)}`);
+  const fmtPace = (v) => (!isFinite(v) ? '—' : isMrr ? fmtBRL(v) : (Math.round(v * 10) / 10).toLocaleString('pt-BR'));
+  const unit = isMrr ? 'MRR' : Math.round(cadence.monthTarget) === 1 ? 'venda' : 'vendas';
+
+  const reachedPct = cadence.monthTarget > 0 ? Math.round((cadence.realizedToDate / cadence.monthTarget) * 100) : 0;
+  const st = STATUS_STYLE[cadence.status.key] || STATUS_STYLE.dentro;
+  const rec = cadence.recovery;
+  const mrrNovoMeta = Math.max(0, (planRow.mrr || 0) - (prevMrr || 0));
+
+  // Dia de hoje (pro ReferenceLine), so se o mes corrente esta em curso.
+  const now = new Date();
+  const today = now >= new Date(range.start) && now <= new Date(range.end) ? now.getDate() : null;
+
+  const recoveryMsg = rec.achieved
+    ? `Meta do mes ja batida — ${fmt(cadence.realizedToDate)} ${unit} de ${fmt(cadence.monthTarget)}. 🎉`
+    : rec.impossible
+      ? `Mes encerrado ${fmt(rec.remaining)} ${unit} abaixo da meta.`
+      : rec.onTrack
+        ? `No ritmo: mantendo ${fmtPace(rec.plannedDailyPace)}/dia util a meta fecha no prazo.`
+        : `Atrasado em ${fmt(rec.behindBy)} ${unit}. Pra recuperar, feche ${fmtPace(rec.requiredDailyPace)}/dia util nos ${rec.businessDaysRemaining} dias uteis restantes${rec.extraEffortPct > 0 ? ` — ${rec.extraEffortPct}% acima do ritmo planejado` : ''}.`;
+
+  return (
+    <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
+      {/* Header + toggle de metrica + status */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <Flame className="w-4 h-4 text-fyness-primary" />
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Acompanhamento da meta · {planMonthLong(planRow.m)}</h3>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">Previsto vs realizado · dia, semana e mes · ritmo por dia util</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${st.badge}`}>
+            <st.Icon className="w-3 h-3" /> {cadence.status.label}
+          </span>
+          <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-[11px] font-semibold">
+            {[['vendas', 'Vendas'], ['mrr', 'MRR']].map(([m, lbl]) => (
+              <button
+                key={m}
+                onClick={() => setMetric(m)}
+                className={`px-3 py-1.5 transition-colors ${metric === m ? 'bg-fyness-primary text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 4 cards: meta · realizado · previsto+status · esforco */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetaMiniCard label="Meta do mes" hint={isMrr ? `${planRow.novos} novos clientes` : `${fmtBRL(mrrNovoMeta)} de MRR novo`}>
+          <span className="text-2xl font-bold text-slate-900 dark:text-white">{fmt(cadence.monthTarget)}</span>
+          <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">{unit}</span>
+        </MetaMiniCard>
+
+        <MetaMiniCard label="Realizado ate hoje" hint={`${cadence.dealsToDate} ${cadence.dealsToDate === 1 ? 'venda fechada' : 'vendas fechadas'}`}>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-slate-900 dark:text-white">{fmt(cadence.realizedToDate)}</span>
+            <span className={`text-xs font-semibold ${reachedPct >= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>{reachedPct}%</span>
+          </div>
+        </MetaMiniCard>
+
+        <MetaMiniCard label="Previsto ate hoje" hint={`${cadence.businessDaysElapsed}/${cadence.businessDaysTotal} dias uteis`}>
+          <span className={`text-2xl font-bold ${gapTone(cadence.realizedToDate, cadence.expectedToDate)}`}>{fmt(cadence.expectedToDate)}</span>
+          <div className="text-[10px] mt-0.5 flex items-center gap-1">
+            <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+            <span className="text-slate-500 dark:text-slate-400">{cadence.status.label}</span>
+          </div>
+        </MetaMiniCard>
+
+        <MetaMiniCard label="Esforco p/ recuperar" hint={`${rec.businessDaysRemaining} dias uteis restantes`}>
+          {rec.achieved ? (
+            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold"><CheckCircle2 className="w-4 h-4" /> Batida</span>
+          ) : rec.impossible ? (
+            <span className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400 font-bold text-sm"><AlertTriangle className="w-4 h-4" /> Encerrado</span>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-slate-900 dark:text-white">{fmtPace(rec.requiredDailyPace)}</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">/dia util</span>
+              </div>
+              {rec.extraEffortPct != null && rec.extraEffortPct > 0 && (
+                <div className="text-[10px] mt-0.5 text-rose-500 font-semibold">+{rec.extraEffortPct}% vs ritmo planejado</div>
+              )}
+            </>
+          )}
+        </MetaMiniCard>
+      </div>
+
+      {/* Callout de recuperacao */}
+      <div className={`mt-3 rounded-xl px-4 py-2.5 text-xs leading-snug ${rec.onTrack || rec.achieved ? 'bg-emerald-50 dark:bg-emerald-900/15 text-emerald-700 dark:text-emerald-300' : 'bg-amber-50 dark:bg-amber-900/15 text-amber-700 dark:text-amber-300'}`}>
+        {recoveryMsg}
+      </div>
+
+      {/* Graficos: acumulado diario + barras semanais */}
+      <div className="grid lg:grid-cols-2 gap-4 mt-4">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+          <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2 px-1">Acumulado diario · previsto vs realizado</h4>
+          <ResponsiveContainer width="100%" height={220}>
+            <ComposedChart data={cadence.dailySeries} margin={{ top: 6, right: 10, left: -12, bottom: 0 }}>
+              <defs>
+                <linearGradient id="metaRealizadoFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.28} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" vertical={false} />
+              <XAxis dataKey="day" tick={{ fontSize: 10 }} stroke="#94a3b8" interval={4} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10 }} stroke="#94a3b8" width={42} tickLine={false} axisLine={false} tickFormatter={(v) => (isMrr ? `${Math.round(v / 1000)}k` : Math.round(v))} />
+              <Tooltip formatter={(v, name) => [v == null ? '—' : fmt(v), name]} labelFormatter={(d) => `Dia ${d}`} contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
+              {today != null && <ReferenceLine x={today} stroke="#94a3b8" strokeDasharray="3 3" label={{ value: 'hoje', position: 'top', fontSize: 9, fill: '#94a3b8' }} />}
+              <Area type="monotone" dataKey="realized" name="Realizado" stroke="#10b981" strokeWidth={2.5} fill="url(#metaRealizadoFill)" connectNulls={false} dot={false} />
+              <Line type="monotone" dataKey="expected" name="Previsto" stroke="#3b82f6" strokeWidth={2} strokeDasharray="5 4" dot={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+          <div className="flex items-center gap-4 mt-1 px-1 text-[11px]">
+            <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400"><span className="w-3 border-t-2 border-dashed border-blue-500" /> Previsto</span>
+            <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400"><span className="w-3 border-t-2 border-emerald-500" /> Realizado</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+          <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2 px-1">Por semana · meta vs realizado</h4>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={cadence.weeklySeries} margin={{ top: 6, right: 10, left: -12, bottom: 0 }} barGap={2}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#94a3b8" tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10 }} stroke="#94a3b8" width={42} tickLine={false} axisLine={false} tickFormatter={(v) => (isMrr ? `${Math.round(v / 1000)}k` : Math.round(v))} />
+              <Tooltip
+                formatter={(v, name) => [fmt(v), name]}
+                labelFormatter={(l, p) => { const w = p?.[0]?.payload; return w ? `${l} · dias ${w.rangeLabel}` : l; }}
+                contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
+              <Bar dataKey="target" name="Meta" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={16} />
+              <Bar dataKey="realized" name="Realizado" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={16} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -442,6 +632,8 @@ export default function ComparativoPage() {
   const currentM = real.currentM || 1;
   const planRow = PLAN_MONTHS.find(p => p.m === currentM) || PLAN_MONTHS[0];
   const currentReal = real.byMonth[currentM] || null;
+  // MRR previsto do mes anterior (base pro "MRR novo do mes"). M1 parte da posicao atual.
+  const prevMrr = currentM > 1 ? (PLAN_MONTHS.find(p => p.m === currentM - 1)?.mrr ?? PLAN_POSITION.mrr) : PLAN_POSITION.mrr;
 
   return (
     <div className="max-w-7xl mx-auto space-y-5">
@@ -468,6 +660,7 @@ export default function ComparativoPage() {
       </div>
 
       <CurrentMonthHero planRow={planRow} real={currentReal} monthElapsedPct={real.monthElapsedPct} />
+      <MetaMensalPanel planRow={planRow} prevMrr={prevMrr} real={real} />
       <MrrChart real={real} />
       <FunnelCompare planRow={planRow} real={currentReal} />
       <MarketingPanel marketing={real.marketing} />

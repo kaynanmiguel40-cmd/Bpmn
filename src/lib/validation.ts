@@ -152,6 +152,7 @@ export const osOrderSchema = z.object({
   assignee: nullableStr,
   assignedTo: nullableStr,
   supervisor: nullableStr,
+  judge: nullableStr,
   estimatedStart: nullableTimestamp,
   estimatedEnd: nullableTimestamp,
   actualStart: nullableTimestamp,

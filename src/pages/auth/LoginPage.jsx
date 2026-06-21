@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import logoFyness from '../../assets/logo-fyness.png';
@@ -11,7 +11,7 @@ import logoFyness from '../../assets/logo-fyness.png';
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, loading, error } = useAuth();
+  const { signIn, loading, error, isAuthenticated } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,6 +20,13 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   const from = location.state?.from?.pathname || '/financial';
+
+  // Ja autenticado (bookmark, back do browser, /login digitado): manda pro app
+  // em vez de mostrar o formulario num beco sem saida. `loading` segura ate a
+  // sessao resolver. Fica apos os hooks de estado pra nao violar Rules of Hooks.
+  if (!loading && isAuthenticated) {
+    return <Navigate to={from} replace />;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();

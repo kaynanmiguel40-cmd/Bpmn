@@ -25,13 +25,12 @@ describe('buildOSDeadlineEvents — pega os prazos da O.S.', () => {
     expect(ev[0]._osId).toBe('os1');
   });
 
-  it('2) item SEM prazo herda o prazo do GRUPO/setor', () => {
+  it('2) item SEM prazo próprio NÃO herda do grupo (não infla a agenda)', () => {
     const ev = buildOSDeadlineEvents([order({
       checklist: [item({ id: 'i1', text: 'Editar reel', group: 'Marketing', dueAt: null })],
       checklistGroups: [{ name: 'Marketing', dueAt: '2026-06-30T12:00:00Z' }],
     })], byName);
-    expect(ev).toHaveLength(1);
-    expect(ev[0].startDate).toBe('2026-06-30T12:00:00.000Z'); // herdou do grupo
+    expect(ev).toHaveLength(0); // sem prazo no item = não aparece como tarefa
   });
 
   it('3) prazo de ENTREGA da O.S. (estimatedEnd) vira marco "Entrega O.S."', () => {
@@ -46,16 +45,16 @@ describe('buildOSDeadlineEvents — pega os prazos da O.S.', () => {
     expect(entrega.assignee).toBe('m-elias');
   });
 
-  it('cobre os 3 níveis ao mesmo tempo (item + grupo + entrega da O.S.)', () => {
+  it('mostra só item com prazo próprio + a entrega da O.S. (grupo não conta)', () => {
     const ev = buildOSDeadlineEvents([order({
       estimatedEnd: '2026-07-10T17:00:00Z',
       checklist: [
-        item({ id: 'a', text: 'A', dueAt: '2026-06-25T10:00:00Z' }),   // próprio
-        item({ id: 'b', text: 'B', group: 'Dev', dueAt: null }),        // herda do grupo
+        item({ id: 'a', text: 'A', dueAt: '2026-06-25T10:00:00Z' }),   // prazo próprio → aparece
+        item({ id: 'b', text: 'B', group: 'Dev', dueAt: null }),        // sem prazo próprio → NÃO aparece
       ],
       checklistGroups: [{ name: 'Dev', dueAt: '2026-06-28T10:00:00Z' }],
     })], byName);
-    expect(ev.filter((e) => e.typeLabel === 'Prazo')).toHaveLength(2);
+    expect(ev.filter((e) => e.typeLabel === 'Prazo')).toHaveLength(1);
     expect(ev.filter((e) => e.typeLabel === 'Entrega O.S.')).toHaveLength(1);
   });
 

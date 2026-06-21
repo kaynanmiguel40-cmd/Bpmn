@@ -84,13 +84,16 @@ export function CrmCompaniesPage({ embedded = false } = {}) {
 
   useEffect(() => { setPage(1); }, [debouncedSearch, segmentFilter]);
 
+  // Le o estado vivo (sortKey/sortDir) e os declara nas deps. Com deps [] o
+  // sortConfig do 1o render ficava congelado e a direcao travava em 'desc'.
   const handleSort = useCallback((key) => {
-    setSortConfig(prev =>
-      prev.key === key
-        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: 'asc' }
-    );
-  }, []);
+    if (key === sortKey) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }, [sortKey, sortDir, setSortKey, setSortDir]);
 
   const handleEdit = (company) => {
     setEditCompany(company);

@@ -1,25 +1,22 @@
 /**
  * agendaDeadlines - extrai os PRAZOS das O.S. pra agenda (eventos do calendário).
  *
- * Cobre a cascata de prazo de um item (mesma do resolveItemDueAt):
- *   1. item.dueAt            → prazo próprio da tarefa        → evento "Prazo"
- *   2. grupo/setor (dueAt)   → o item herda o prazo do grupo  → evento "Prazo"
- *   3. O.S. estimatedEnd     → prazo de ENTREGA da O.S.       → 1 marco "Entrega · #N"
+ * Pra NÃO lotar a agenda, mostra o essencial:
+ *   1. item.dueAt         → prazo PRÓPRIO da tarefa     → evento "Prazo"
+ *   2. O.S. estimatedEnd  → prazo de ENTREGA da O.S.    → 1 marco "Entrega · #N"
+ *
+ * (Herança de prazo do grupo foi removida — inflava demais.)
  *
  * Lógica pura (sem React) pra ficar testável: recebe os pedidos + um resolvedor
  * nome→membro e devolve os eventos no shape do CrmCalendar.
  */
 
-const groupDueOf = (os, item) =>
-  (os?.checklistGroups || []).find((g) => (g.name || '') === (item?.group || ''))?.dueAt || null;
-
-// Responsáveis da O.S.: time (>1) usa participantes; senão assignee + assignedTo.
+// Responsáveis da O.S.: time usa participantes; solo usa o nome em `assignee`.
+// `assignedTo` NÃO entra aqui: guarda um UUID de auth.users (não um nome), e
+// passá-lo pra memberByName gerava um 2º evento "fantasma" sem dono no calendário.
 function responsiblesOf(os) {
   if (os?.mode === 'team') return (os.participants || []).map((p) => p.name).filter(Boolean);
-  return [...new Set([
-    ...(os?.assignee ? [os.assignee] : []),
-    ...((os?.assignedTo || '').split(',').map((s) => s.trim()).filter(Boolean)),
-  ])];
+  return os?.assignee ? [os.assignee] : [];
 }
 
 export function buildOSDeadlineEvents(orders, memberByName = () => null) {
@@ -37,12 +34,10 @@ export function buildOSDeadlineEvents(orders, memberByName = () => null) {
       out.push({ ...base, id: `${base.id}_p${idx}`, assignee: m?.id || null, _osId: os.id });
     });
 
-    // 1+2) Itens com prazo próprio (do item OU herdado do grupo/setor).
+    // 1) Itens com prazo PRÓPRIO (só o que foi marcado no item).
     for (const item of cl) {
-      if (item.done) continue;
-      const own = item.dueAt || groupDueOf(os, item);
-      if (!own) continue;
-      const due = new Date(own);
+      if (item.done || !item.dueAt) continue;
+      const due = new Date(item.dueAt);
       if (isNaN(due.getTime())) continue;
       pushEntry(peopleFor(item), {
         id: `ostask_${os.id}_${item.id}`,

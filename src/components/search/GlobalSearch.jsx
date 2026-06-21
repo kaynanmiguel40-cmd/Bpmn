@@ -9,6 +9,7 @@ export function GlobalSearch() {
   const [results, setResults] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
+  const searchSeq = useRef(0); // so o resultado da busca mais recente pode commitar
 
   // Cmd+K / Ctrl+K listener
   useEffect(() => {
@@ -40,9 +41,13 @@ export function GlobalSearch() {
     setQuery(value);
     setSelectedIndex(0);
     if (value.length >= 2) {
+      // Token por chamada: depois do await, so commita se nenhuma busca mais nova
+      // comecou — senao uma resposta lenta antiga sobrescreve a atual.
+      const seq = ++searchSeq.current;
       const data = await searchAll(value);
-      setResults(data);
+      if (seq === searchSeq.current) setResults(data);
     } else {
+      searchSeq.current++; // invalida qualquer busca em voo
       setResults([]);
     }
   }, []);

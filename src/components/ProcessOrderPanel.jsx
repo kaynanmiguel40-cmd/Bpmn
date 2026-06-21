@@ -82,7 +82,12 @@ export default function ProcessOrderPanel({ element, projectId, onClose }) {
   // ==================== LOCAL FORM STATE ====================
   const [form, setForm] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const debounceRef = useRef(null);
+  const debounceRef = useRef({});   // { [field]: timeoutId } — um timer POR campo
+  const pendingRef = useRef({});    // { [field]: value } ainda nao persistido
+  const orderIdRef = useRef(null);
+  const mutateRef = useRef(updateMutation.mutate);
+  orderIdRef.current = form?.id || null;
+  mutateRef.current = updateMutation.mutate;
 
   // Sync form with fetched order
   useEffect(() => {
@@ -97,15 +102,25 @@ export default function ProcessOrderPanel({ element, projectId, onClose }) {
 
   const saveField = useCallback((field, value) => {
     if (!form?.id) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
+    // Timer POR campo: salvar o campo B nao pode cancelar o save pendente do A
+    // (era o que causava perda silenciosa ao trocar de campo dentro de 800ms).
+    if (debounceRef.current[field]) clearTimeout(debounceRef.current[field]);
+    pendingRef.current[field] = value;
+    debounceRef.current[field] = setTimeout(() => {
+      delete debounceRef.current[field];
+      delete pendingRef.current[field];
       updateMutation.mutate({ id: form.id, updates: { [field]: value } });
     }, 800);
   }, [form?.id, updateMutation]);
 
   const saveImmediate = useCallback((updates) => {
     if (!form?.id) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    // Cancela so os timers dos campos gravados agora — nao mexe nos outros
+    // campos pendentes (antes o ref unico apagava saves nao relacionados).
+    Object.keys(updates).forEach((k) => {
+      if (debounceRef.current[k]) { clearTimeout(debounceRef.current[k]); delete debounceRef.current[k]; }
+      delete pendingRef.current[k];
+    });
     updateMutation.mutate({ id: form.id, updates });
   }, [form?.id, updateMutation]);
 
@@ -114,10 +129,19 @@ export default function ProcessOrderPanel({ element, projectId, onClose }) {
     saveField(field, value);
   }, [saveField]);
 
-  // Cleanup debounce on unmount
+  // Cleanup no unmount: FLUSH os saves pendentes antes de limpar os timers, pra
+  // nao perder a ultima edicao ao fechar o painel / trocar de elemento.
   useEffect(() => {
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      const id = orderIdRef.current;
+      Object.entries(debounceRef.current).forEach(([field, t]) => {
+        clearTimeout(t);
+        if (id && field in pendingRef.current) {
+          mutateRef.current({ id, updates: { [field]: pendingRef.current[field] } });
+        }
+      });
+      debounceRef.current = {};
+      pendingRef.current = {};
     };
   }, []);
 

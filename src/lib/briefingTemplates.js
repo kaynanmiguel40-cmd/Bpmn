@@ -72,7 +72,33 @@ const BRIEFING_SPIKE = `
 <p>Pontos que precisam de aval antes de prosseguir.</p>
 `;
 
+// Modelo CPOC: Contexto - Problema - Objetivo - Criterios. Briefing geral de
+// tarefa de O.S. (serve pra qualquer setor, nao so produto).
+const BRIEFING_CPOC = `
+<h2>Briefing &mdash; CPOC</h2>
+<p><strong>Tarefa:</strong> [titulo] &nbsp;&bull;&nbsp; <strong>Responsavel:</strong> [quem] &nbsp;&bull;&nbsp; <strong>Prazo:</strong> [data]</p>
+<hr>
+<h3>1. Contexto</h3>
+<p>Explique por que esta tarefa existe <em>agora</em>: a situacao atual, o que mudou e de onde veio a demanda. De o background minimo para o executor entender o cenario sem precisar perguntar. Perguntas-guia: O que apareceu ou mudou? De onde veio o pedido (cliente, time, processo)? O que ja existe hoje e precisa ser considerado?</p>
+<p><em>Ex.: O cliente [nome] migrou de plano e o fluxo antigo de [area] nao cobre mais o caso de [situacao]. Surgiu na reuniao de [data] / no ticket [#].</em></p>
+<p><strong>Links e referencias:</strong> [tela, documento, conversa, O.S. relacionada].</p>
+<h3>2. Problema</h3>
+<p>Descreva a dor concreta &mdash; o que esta quebrado, faltando ou ineficiente hoje. Foque no <em>que precisa ser resolvido</em>, nao na solucao. Se houver impacto (tempo perdido, retrabalho, cliente parado), registre aqui.</p>
+<p><em>Ex.: Toda vez que [acontece X], o time precisa [acao manual Y], o que gasta [tempo] e gera [risco/erro]. Sem isso resolvido, [consequencia].</em></p>
+<p><strong>Quem sente:</strong> [usuario / area afetada] &nbsp;&bull;&nbsp; <strong>Frequencia:</strong> [diaria / por O.S. / pontual].</p>
+<h3>3. Objetivo</h3>
+<p>Diga o resultado esperado em uma frase &mdash; <em>o que deve estar entregue</em> ao final. Em seguida, delimite o escopo na tabela: o que entra nesta tarefa e o que fica de fora, para evitar inchaco e desvio.</p>
+<p><em>Ex.: Entregar [resultado] de forma que [criterio observavel], sem alterar [area fora do escopo].</em></p>
+<table><tbody><tr><th>Item</th><th>Entra no escopo</th><th>Nao entra</th></tr><tr><td>Ex.: Tela de [X]</td><td>Ajuste do fluxo principal</td><td>Redesign visual completo</td></tr><tr><td>Ex.: Dados de [Y]</td><td>Caso padrao ([situacao comum])</td><td>Casos legados / migracao historica</td></tr></tbody></table>
+<h3>4. Criterios de aceite</h3>
+<p>Marque cada item ao concluir. So considere a tarefa pronta quando todos os criterios essenciais (Definition of Done) e as bordas abaixo estiverem cobertos.</p>
+<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Objetivo principal entregue e validado no cenario padrao (de ponta a ponta)</p></li><li data-type="taskItem" data-checked="false"><p>Funciona no caso real do cliente/usuario que originou a demanda</p></li><li data-type="taskItem" data-checked="false"><p>Borda tratada: entrada vazia / dado faltando / erro comum nao quebra</p></li><li data-type="taskItem" data-checked="false"><p>Ficou dentro do escopo combinado, sem itens extras nem faltando</p></li><li data-type="taskItem" data-checked="false"><p>Nada fora do escopo foi alterado (sem efeito colateral)</p></li><li data-type="taskItem" data-checked="false"><p>Feito de forma limpa e reaproveitavel, sem gerar retrabalho</p></li><li data-type="taskItem" data-checked="false"><p>Evidencia anexada (print, video, link ou registro do teste)</p></li><li data-type="taskItem" data-checked="false"><p>Revisado e aprovado pelo responsavel antes de marcar como concluido</p></li></ul>
+<h3>5. Revisao do supervisor</h3>
+<table><tbody><tr><th>Item avaliado</th><th>Aprovado?</th></tr><tr><td>Objetivo atende ao problema descrito</td><td>&nbsp;</td></tr><tr><td>Criterios de aceite cumpridos</td><td>&nbsp;</td></tr><tr><td>Escopo respeitado (sem desvio)</td><td>&nbsp;</td></tr><tr><td>Liberado para concluir a O.S.</td><td>&nbsp;</td></tr></tbody></table>
+`;
+
 export const FULL_BRIEFINGS = [
+  { label: 'CPOC', title: 'Briefing CPOC (Contexto-Problema-Objetivo-Criterios)', html: BRIEFING_CPOC },
   { label: 'Modulo SaaS', title: 'Desenvolvimento de Modulo (SaaS)', html: BRIEFING_MODULO_SAAS },
   { label: 'Correcao de Bug', title: 'Correcao de Bug', html: BRIEFING_BUG },
   { label: 'Pesquisa (Spike)', title: 'Pesquisa Tecnica', html: BRIEFING_SPIKE },

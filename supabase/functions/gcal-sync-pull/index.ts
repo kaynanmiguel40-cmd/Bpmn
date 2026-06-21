@@ -235,22 +235,33 @@ async function processGoogleEvent(
   }
 
   // ==================== EVENTO NOVO (CREATE) ====================
-  // Verificar se nao e um evento que o Fyness criou (evita duplicatas)
-  // Eventos criados pelo Fyness tem o google_event_id ja salvo
-  const { data: byTitle } = await supabase
+  // Verificar se nao e um evento que o Fyness criou (evita duplicatas).
+  // start_date e gravado como ISO UTC (toISOString, "...Z"); o Google devolve
+  // dateTime com offset local ("...-03:00"). O igual-de-string exato NUNCA casava
+  // esses dois (mesmo instante, bytes diferentes) e o evento era REIMPORTADO.
+  // Comparamos o INSTANTE (epoch ms) com tolerancia, so em linhas ainda sem
+  // google_event_id.
+  const gStartRaw = gcalEvent.start?.dateTime || gcalEvent.start?.date || ''
+  const gStartMs = gStartRaw ? Date.parse(gStartRaw) : NaN
+  const { data: sameTitle } = await supabase
     .from('agenda_events')
-    .select('id')
+    .select('id, start_date')
     .eq('title', gcalEvent.summary || '')
-    .gte('start_date', gcalEvent.start?.dateTime || gcalEvent.start?.date || '')
-    .lte('start_date', gcalEvent.start?.dateTime || gcalEvent.start?.date || '')
-    .limit(1)
+    .is('google_event_id', null)
 
-  if (byTitle && byTitle.length > 0) {
+  const match = !Number.isNaN(gStartMs)
+    ? (sameTitle || []).find((row: { start_date: string }) => {
+        const ms = Date.parse(row.start_date)
+        return !Number.isNaN(ms) && Math.abs(ms - gStartMs) < 60000 // 1 min
+      })
+    : null
+
+  if (match) {
     // Provavelmente ja existe — atualizar o google_event_id
     await supabase
       .from('agenda_events')
       .update({ google_event_id: googleEventId, google_calendar_id: calendarId })
-      .eq('id', byTitle[0].id)
+      .eq('id', match.id)
     return
   }
 

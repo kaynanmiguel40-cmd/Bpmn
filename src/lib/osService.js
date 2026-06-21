@@ -28,6 +28,7 @@ export function dbToOrder(row) {
     assignee: row.assignee || null,
     assignedTo: row.assigned_to || null,
     supervisor: row.supervisor || null,
+    judge: row.judge || null,
     sortOrder: row.sort_order ?? 0,
     estimatedStart: toDatetimeLocal(row.estimated_start),
     estimatedEnd: toDatetimeLocal(row.estimated_end),
@@ -218,6 +219,7 @@ const orderService = createCRUDService({
     parentOrderId: 'parent_order_id',
     emergencyNumber: 'emergency_number',
     supervisor: 'supervisor',
+    judge: 'judge',
     eapTaskId: 'eap_task_id',
     wbsPath: 'wbs_path',
     scheduledPauses: 'scheduled_pauses',
@@ -341,6 +343,75 @@ export async function setOSParticipants(orderId, members) {
     ...(nextMode !== orderRow.mode ? { mode: nextMode } : {}),
   });
   return { mode: nextMode, participants: dedup };
+}
+
+/**
+ * "Pegar" uma O.S. — cobre os 4 cenarios de entrada de um membro:
+ *   1. pool             -> vira solo do novo membro (e inicia, se available)
+ *   2. solo do proprio  -> claim (so inicia)
+ *   3. solo de outro    -> vira team (original + novo)
+ *   4. team             -> adiciona o membro em participants[]
+ * Pegar = assinar: registra a signature em qualquer cenario (idempotente).
+ * Usado pela Minha Rotina (RoutinePage).
+ */
+export async function joinOSOrder(orderId, member) {
+  if (!orderId || !member?.id) throw new Error('orderId e member.id obrigatorios');
+
+  const { data: row } = await supabase
+    .from('os_orders')
+    .select('id, mode, status, assignee, assigned_to, participants')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (!row) throw new Error('O.S. nao encontrada');
+
+  const now = new Date().toISOString();
+  const currentParticipants = Array.isArray(row.participants) ? row.participants : [];
+
+  // Pegar = assinar: registra signature em qualquer cenario (idempotente)
+  await ensureSignaturesForParticipants(orderId, [{ id: member.id, name: member.name || '' }]);
+
+  // Caso 1: pool -> solo do novo membro
+  if (row.mode === 'pool' || (!row.assigned_to && !row.assignee && currentParticipants.length === 0)) {
+    const patch = {
+      mode: 'solo',
+      assignee: member.name || '',
+      assignedTo: member.id,
+      participants: [{ id: member.id, name: member.name || '' }],
+      status: row.status === 'available' ? 'in_progress' : row.status,
+    };
+    // So define actualStart ao iniciar de fato. Passar undefined viraria null em
+    // normalizeTimestamps e apagaria o actual_start de uma O.S. ja iniciada.
+    if (row.status === 'available') patch.actualStart = now;
+    return updateOSOrder(orderId, patch);
+  }
+
+  // Caso 2: solo do proprio usuario -> claim
+  if (row.mode === 'solo' && row.assigned_to === member.id) {
+    return updateOSOrder(orderId, {
+      status: 'in_progress',
+      actualStart: now,
+    });
+  }
+
+  // Caso 3: solo de outro -> vira team
+  if (row.mode === 'solo') {
+    const original = { id: row.assigned_to, name: row.assignee || '' };
+    await setOSParticipants(orderId, [original, { id: member.id, name: member.name }]);
+    // Garante signature do original tambem (caso ainda nao tenha)
+    await ensureSignaturesForParticipants(orderId, [original]);
+    return updateOSOrder(orderId, {
+      mode: 'team',
+      // limpa atribuicao unica — agora cada grupo do checklist tem seu assignee
+      assignee: null,
+      assignedTo: null,
+    });
+  }
+
+  // Caso 4: team -> adiciona em participants
+  const next = [...currentParticipants, { id: member.id, name: member.name }];
+  await setOSParticipants(orderId, next);
+  return supabase.from('os_orders').select('*').eq('id', orderId).single()
+    .then(({ data }) => dbToOrder(data));
 }
 
 // ==================== HELPERS DE GRUPOS DO CHECKLIST ====================

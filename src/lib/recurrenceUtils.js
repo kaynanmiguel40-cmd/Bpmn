@@ -20,7 +20,7 @@ export function toDateKey(date) {
 /**
  * Avanca uma data por 1 passo conforme tipo de recorrencia
  */
-function advanceDate(date, recurrenceType, config) {
+function advanceDate(date, recurrenceType, config, anchorDay) {
   const d = new Date(date);
   const interval = config.interval || 1;
 
@@ -32,12 +32,14 @@ function advanceDate(date, recurrenceType, config) {
       d.setDate(d.getDate() + 7 * interval);
       break;
     case 'monthly': {
-      const targetDay = d.getDate();
+      // Ancora no dia ORIGINAL do evento, nao no dia (ja clampado) do passo
+      // anterior. Sem isso, um evento dia 31 vira 28/fev e ficava preso em 28
+      // pra sempre. Reseta pro dia 1 antes de trocar de mes pra evitar overflow.
+      const target = anchorDay || d.getDate();
+      d.setDate(1);
       d.setMonth(d.getMonth() + interval);
-      // Clamp ao ultimo dia do mes (ex: 31 jan -> 28 fev)
-      if (d.getDate() < targetDay) {
-        d.setDate(0); // volta pro ultimo dia do mes anterior
-      }
+      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      d.setDate(Math.min(target, lastDay));
       break;
     }
     case 'yearly':
@@ -175,7 +177,7 @@ function generateOccurrences(event, rangeStart, rangeEnd) {
         // Agora estamos no domingo da proxima semana valida, o filtro acima vai encontrar o dia certo
       }
     } else {
-      current = advanceDate(current, event.recurrenceType, config);
+      current = advanceDate(current, event.recurrenceType, config, eventStart.getDate());
     }
   }
 

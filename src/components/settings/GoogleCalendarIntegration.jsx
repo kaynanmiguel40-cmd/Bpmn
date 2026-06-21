@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useGCalStatus, queryKeys } from '../../hooks/queries';
-import { connectGCal, triggerGCalPull, disconnectGCal, getGCalSyncLog } from '../../lib/googleCalendarService';
+import { connectGCalServer, triggerGCalPull, disconnectGCal, getGCalSyncLog } from '../../lib/googleCalendarService';
 import { toast } from '../../contexts/ToastContext';
 
 export default function GoogleCalendarIntegration() {
@@ -22,9 +22,10 @@ export default function GoogleCalendarIntegration() {
 
   const handleConnect = async () => {
     try {
-      await connectGCal();
-      toast('Google Calendar conectado com sucesso!', 'success');
-      queryClient.invalidateQueries({ queryKey: queryKeys.googleCalendarStatus });
+      // Fluxo SERVER (auth-code) → gera refresh_token, necessário pra agenda da
+      // equipe ler este calendário depois. Redireciona pro consent do Google.
+      await connectGCalServer();
+      // (não chega aqui — a página redireciona pro Google)
     } catch (err) {
       toast(err.message || 'Erro ao conectar', 'error');
     }

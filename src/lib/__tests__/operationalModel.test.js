@@ -1,11 +1,49 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   getOperationalIndex, getOperationalReport, getOperationalLoad, getOperationalCards, buildOperationalText,
+  setOperationalSource,
 } from '../operationalModel';
 
-const round1 = (n) => Math.round(n * 10) / 10;
-const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
 const personIdx = () => getOperationalIndex('person');
+
+// Injeta O.S. REAIS de mentira cobrindo os últimos ~18 dias (dias úteis), com
+// tarefas atribuídas a 2 pessoas, prazos/entregas, revisão e nota — pra exercer
+// índice, carga, nota, cartões e relatório como em produção.
+beforeAll(() => {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const iso = (base, h) => { const d = new Date(base); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+
+  const members = [
+    { id: 'm1', name: 'Kaynan', color: '#6366f1', authUserId: 'u1' },
+    { id: 'm2', name: 'Elias', color: '#0ea5e9', authUserId: 'u2' },
+  ];
+  const sectors = [{ id: 's1', label: 'Produto', color: '#3b82f6' }];
+  const projects = [{ id: 'p1', sector: 's1' }];
+
+  const checklist = [];
+  for (let i = 0; i < 18; i++) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const dow = d.getDay(); if (dow === 0 || dow === 6) continue; // só dias úteis
+    const done = i > 0;                  // hoje pendente; passado entregue
+    const onTime = i % 3 !== 0;
+    const completedAt = done
+      ? (onTime ? iso(d, 12) : iso(new Date(d.getTime() + 2 * 86400000), 12)) // prazo 18h: 12h = no prazo
+      : null;
+    const reviewed = done && i % 2 === 0;
+    checklist.push({
+      id: `t${i}`, text: `Tarefa ${i}`, briefing: `Briefing ${i}`,
+      dueAt: iso(d, 18), completedAt, done,
+      durationMin: 60, accumulatedMin: 50,
+      delivery: done ? `Entrega ${i}` : '',
+      reviewStatus: reviewed ? (i % 5 === 0 ? 'changes' : 'approved') : (done ? 'review' : undefined),
+      qualityPct: reviewed ? (i % 5 === 0 ? 70 : 90) : null,
+      qualityAnswers: reviewed ? { funcional: 5 } : null,
+      assigneeName: i % 2 === 0 ? 'Kaynan' : 'Elias',
+    });
+  }
+  const orders = [{ id: 'o1', projectId: 'p1', assignee: 'Kaynan', participants: [], checklist }];
+  setOperationalSource({ orders, projects, sectors, members });
+});
 
 describe('getOperationalIndex', () => {
   it('person e sector têm owners e períodos', () => {
@@ -18,12 +56,20 @@ describe('getOperationalIndex', () => {
       expect(idx.owners[0]).toHaveProperty('id');
     }
   });
+
+  it('owners de pessoa vêm do cadastro da equipe (1 por pessoa)', () => {
+    const idx = personIdx();
+    const names = idx.owners.map((o) => o.name);
+    expect(names).toContain('Kaynan');
+    expect(names).toContain('Elias');
+    expect(new Set(names).size).toBe(names.length); // sem duplicata
+  });
 });
 
 describe('getOperationalReport', () => {
   it('args inválidos = null', () => {
     expect(getOperationalReport('person', null, 'weekly', '2026-06-01')).toBeNull();
-    expect(getOperationalReport('person', 'kaynan', 'weekly', null)).toBeNull();
+    expect(getOperationalReport('person', 'm1', 'weekly', null)).toBeNull();
   });
 
   it('pessoal semanal: estrutura completa', () => {
@@ -62,7 +108,7 @@ describe('getOperationalReport', () => {
 
   it('tarefas/faltantes carregam taskId+briefing; faltante não está done', () => {
     const idx = personIdx();
-    const r = getOperationalReport('person', idx.owners[0].id, 'monthly', idx.months[1]);
+    const r = getOperationalReport('person', idx.owners[0].id, 'weekly', idx.weeks[0]);
     r.pending.forEach((p) => {
       expect(p.done).toBe(false);
       expect(typeof p.overdue).toBe('boolean');
@@ -77,7 +123,7 @@ describe('getOperationalReport', () => {
   it('setor: paridade com pessoa — carga + meta + 4 KPIs, sem cartões', () => {
     const idx = getOperationalIndex('sector');
     const r = getOperationalReport('sector', idx.owners[0].id, 'weekly', idx.weeks[1]);
-    expect(r.load).toBeTruthy();        // setor agora tem carga (soma de quem é dele)
+    expect(r.load).toBeTruthy();        // setor tem carga (soma de quem é dele)
     expect(r.goals).toBeTruthy();       // e Meta batida
     expect(r.metrics).toHaveLength(4);  // KPIs de carga iguais aos da pessoa
     expect(r.cards).toBeNull();         // cartão é da PESSOA, setor não tem

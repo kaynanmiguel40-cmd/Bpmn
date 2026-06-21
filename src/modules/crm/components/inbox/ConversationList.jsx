@@ -139,7 +139,9 @@ export function ConversationList({ activeKey, onSelect }) {
 
   const filtered = useMemo(() => {
     let list = conversations;
-    if (selectedPhone) list = list.filter((c) => c.instancePhone === selectedPhone);
+    // Mantem conversas de instancias ainda sem phone_number sincronizado visiveis
+    // em qualquer aba — senao elas somem sem nenhuma UI pra limpar o filtro.
+    if (selectedPhone) list = list.filter((c) => !c.instancePhone || c.instancePhone === selectedPhone);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((c) =>

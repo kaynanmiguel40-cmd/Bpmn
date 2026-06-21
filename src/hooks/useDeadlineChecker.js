@@ -18,6 +18,14 @@ export function useDeadlineChecker() {
   const lastCheck = useRef(0);
   const [currentUserId, setCurrentUserId] = useState(null);
 
+  // Mantem os dados mais recentes em refs pra LER dentro do check sem recriar os
+  // timers a cada refetch (o realtime de os_orders troca a referencia do array e
+  // antes reiniciava o setTimeout/setInterval, adiando a 1a checagem).
+  const ordersRef = useRef(orders);
+  const membersRef = useRef(teamMembers);
+  ordersRef.current = orders;
+  membersRef.current = teamMembers;
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setCurrentUserId(session?.user?.id || null);
@@ -25,14 +33,17 @@ export function useDeadlineChecker() {
   }, []);
 
   useEffect(() => {
-    if (!orders?.length || !teamMembers?.length || !currentUserId) return;
+    if (!currentUserId) return;
 
     const check = () => {
+      const o = ordersRef.current;
+      const m = membersRef.current;
+      if (!o?.length || !m?.length) return;
       const now = Date.now();
       if (now - lastCheck.current < MIN_INTERVAL) return;
       lastCheck.current = now;
       // Passa currentUserId para que cada browser so notifique o proprio usuario
-      checkAndNotifyDeadlines(orders, teamMembers, currentUserId);
+      checkAndNotifyDeadlines(o, m, currentUserId);
     };
 
     // Checar apos 10s (dar tempo pro app carregar)
@@ -43,5 +54,5 @@ export function useDeadlineChecker() {
       clearTimeout(initialTimer);
       clearInterval(interval);
     };
-  }, [orders, teamMembers, currentUserId]);
+  }, [currentUserId]);
 }

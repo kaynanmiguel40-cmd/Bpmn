@@ -672,6 +672,9 @@ export function useUpdateCrmActivity() {
       qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
       qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: ['agendaEvents'] });
+      // A Agenda (/agenda) puxa as atividades do CRM por uma query propria
+      // (['agendaCrmActivities', ...]) — sem isso o chip fica desatualizado.
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
     },
   });
 }
@@ -687,6 +690,7 @@ export function useDeleteCrmActivity() {
       qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['agendaEvents'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
       toast('Atividade excluida', 'success');
     },
   });
@@ -702,6 +706,7 @@ export function useCompleteCrmActivity() {
       qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
       qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
       toast('Atividade concluida', 'success');
     },
   });
@@ -709,11 +714,12 @@ export function useCompleteCrmActivity() {
 
 // ==================== CALLS / DISCADOR ====================
 
-export function useCrmCalls(filters = {}) {
+export function useCrmCalls(filters = {}, options = {}) {
   return useQuery({
     queryKey: [...crmQueryKeys.calls, filters],
     queryFn: () => getCrmCalls(filters),
     staleTime: 30_000,
+    ...options,
   });
 }
 

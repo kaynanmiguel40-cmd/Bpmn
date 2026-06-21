@@ -114,6 +114,36 @@ export function connectGCal() {
   });
 }
 
+/**
+ * Conecta via fluxo SERVER (auth-code, com refresh_token) — necessário pra que a
+ * "agenda da equipe" consiga ler o calendário deste usuário depois (o GIS
+ * client-side não dá refresh_token). Redireciona o navegador pro consent.
+ * Se já houver um token antigo (do fluxo GIS), desconecta e refaz automaticamente.
+ */
+export async function connectGCalServer({ force = false } = {}) {
+  if (force) { try { await disconnectGCal(); } catch { /* ignora */ } }
+  const { data, error } = await supabase.functions.invoke('gcal-auth-url');
+  if (data?.url) { window.location.href = data.url; return { redirecting: true }; }
+  // Erro mais comum aqui é "Já conectado" (token do fluxo antigo): desconecta e refaz 1x.
+  if (error && !force) return connectGCalServer({ force: true });
+  throw new Error(data?.error || error?.message || 'Falha ao iniciar conexão com o Google');
+}
+
+/**
+ * Eventos do Google de TODA a equipe (via Edge Function gcal-team-events).
+ * Cada membro é buscado com o token dele. Retorna eventos marcados com userId.
+ */
+export async function fetchTeamGCalEvents(timeMin, timeMax, userIds = null) {
+  const body = {
+    timeMin: timeMin instanceof Date ? timeMin.toISOString() : timeMin,
+    timeMax: timeMax instanceof Date ? timeMax.toISOString() : timeMax,
+  };
+  if (Array.isArray(userIds) && userIds.length) body.userIds = userIds;
+  const { data, error } = await supabase.functions.invoke('gcal-team-events', { body });
+  if (error) throw error;
+  return data?.events || [];
+}
+
 /** Reconecta silenciosamente (sem popup, se possivel) */
 export function refreshGCalToken() {
   return new Promise((resolve, reject) => {
@@ -668,20 +698,29 @@ async function processGoogleEvent(userId, gcalEvent, calendarId, stats) {
     return;
   }
 
-  // Evento novo — verificar duplicata por titulo/data
-  const { data: byTitle } = await supabase
+  // Evento novo — verificar duplicata por titulo/INSTANTE (nao string exata).
+  // start_date e ISO UTC ("...Z"); o Google devolve offset local ("...-03:00").
+  // O igual-de-string exato nunca casava e o evento era reimportado duplicado.
+  const gStartRaw = gcalEvent.start?.dateTime || gcalEvent.start?.date || '';
+  const gStartMs = gStartRaw ? Date.parse(gStartRaw) : NaN;
+  const { data: sameTitle } = await supabase
     .from('agenda_events')
-    .select('id')
+    .select('id, start_date')
     .eq('title', gcalEvent.summary || '')
-    .gte('start_date', gcalEvent.start?.dateTime || gcalEvent.start?.date || '')
-    .lte('start_date', gcalEvent.start?.dateTime || gcalEvent.start?.date || '')
-    .limit(1);
+    .is('google_event_id', null);
 
-  if (byTitle && byTitle.length > 0) {
+  const dupe = !Number.isNaN(gStartMs)
+    ? (sameTitle || []).find((row) => {
+        const ms = Date.parse(row.start_date);
+        return !Number.isNaN(ms) && Math.abs(ms - gStartMs) < 60000; // 1 min
+      })
+    : null;
+
+  if (dupe) {
     await supabase
       .from('agenda_events')
       .update({ google_event_id: googleEventId, google_calendar_id: calendarId })
-      .eq('id', byTitle[0].id);
+      .eq('id', dupe.id);
     return;
   }
 

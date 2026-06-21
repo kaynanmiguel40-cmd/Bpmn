@@ -84,7 +84,7 @@ function buildRRule(event) {
 
   if (event.recurrenceEndType === 'after' && event.recurrenceEndValue) {
     rrule += `;COUNT=${event.recurrenceEndValue}`;
-  } else if (event.recurrenceEndType === 'on' && event.recurrenceEndValue) {
+  } else if (event.recurrenceEndType === 'on_date' && event.recurrenceEndValue) {
     rrule += `;UNTIL=${formatICSDate(new Date(event.recurrenceEndValue))}`;
   }
 

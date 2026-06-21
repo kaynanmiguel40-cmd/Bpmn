@@ -14,14 +14,14 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
-import { Folder, ChevronRight, ArrowLeft, Home, Copy, Sparkles, Trash2, Lock, CheckCircle2, Users, Layers } from 'lucide-react';
+import { Folder, ChevronRight, ArrowLeft, Home, Copy, Lock, CheckCircle2, Users, Layers } from 'lucide-react';
 import {
   useReportOwners, useOwnerReportIndex, useDailyReport, useWeeklyReport, useMonthlyReport,
 } from '../../modules/crm/hooks/useCrmQueries';
+import { useOSOrders, useOSProjects, useOSSectors, useTeamMembers } from '../../hooks/queries';
 import { DailyReportBody, PeriodReportBody, eventVisual, hm, money } from '../../modules/crm/components/reports/ReportBlocks';
 import LeadJourneyDrawer from '../../modules/crm/components/LeadJourneyDrawer';
-import { seedWeeklyExample, clearWeeklyExample, hasWeeklyExample } from '../../modules/crm/services/crmDemoWeekService';
-import { getOperationalIndex, getOperationalReport, buildOperationalText } from '../../lib/operationalModel';
+import { getOperationalIndex, getOperationalReport, buildOperationalText, setOperationalSource } from '../../lib/operationalModel';
 import { listClosings, closeReport, reopenReport } from '../../lib/crmReportClosingsService';
 import OpReport from '../operations/components/OpReport';
 import BriefingDrawer from '../financial/components/BriefingDrawer';
@@ -116,36 +116,47 @@ export default function ArquivosPage() {
   const [selectedLead, setSelectedLead] = useState(null);
   const [openTask, setOpenTask] = useState(null); // tarefa do relatório operacional (painel de leitura)
   const qc = useQueryClient();
-  const [hasExample, setHasExample] = useState(hasWeeklyExample());
-  const [seeding, setSeeding] = useState(false);
 
   const switchLens = (l) => { setLens(l); setOwner(null); setPeriod(null); setItem(null); };
 
   const { data: crmOwners = [] } = useReportOwners();
 
+  // Dados REAIS das O.S. que alimentam o relatório operacional.
+  const { data: osOrders = [] } = useOSOrders();
+  const { data: osProjects = [] } = useOSProjects();
+  const { data: osSectors = [] } = useOSSectors();
+  const { data: teamMembers = [] } = useTeamMembers();
+
+  // Liga o modelo operacional nos dados reais ANTES de qualquer leitura dele.
+  // (as pessoas/ setores e os registros passam a vir das O.S. + cadastro da equipe).
+  const opReady = useMemo(() => {
+    setOperationalSource({ orders: osOrders, projects: osProjects, sectors: osSectors, members: teamMembers });
+    return `${osOrders.length}:${osProjects.length}:${osSectors.length}:${teamMembers.length}`;
+  }, [osOrders, osProjects, osSectors, teamMembers]);
+
   // Camada OPERACIONAL (das O.S.): pessoas OU setores, conforme o interruptor.
-  const opIndex = useMemo(() => getOperationalIndex(lens), [lens]);
+  const opIndex = useMemo(() => getOperationalIndex(lens), [lens, opReady]);
   const opOwners = useMemo(
     () => opIndex.owners.map((o) => ({ kind: 'op', opLens: lens, id: o.id, name: o.name, color: o.color, sub: o.sub })),
     [opIndex, lens],
   );
-  // "Pessoas" = vendedores do comercial (agenda) + pessoas da operação.
-  // "Setores" = só os setores da operação.
-  // Dedupe por nome: a mesma pessoa aparece no comercial E na operação (e o
-  // comercial pode repetir) — UMA pasta por pessoa. Operação ganha no empate
-  // (é o "o que ela fez" das O.S.).
-  const owners = useMemo(() => {
-    if (lens === 'sector') return opOwners;
+  // "Pessoas" = duas SEÇÕES: Comercial (vendedores) e Operação (pessoas das O.S.).
+  // Uma pessoa pode ter os DOIS relatórios — são coisas diferentes (vendas x O.S.),
+  // então cada um aparece na sua seção em vez de fundir/sumir. Dentro de cada
+  // seção, dedupe por nome (remove repetição de cadastro). "Setores" = só operação.
+  const crmPeople = useMemo(() => {
     const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-    const combined = [...opOwners, ...crmOwners.map((o) => ({ kind: 'crm', ...o }))];
     const seen = new Set();
-    return combined.filter((o) => {
+    return crmOwners.map((o) => ({ kind: 'crm', ...o })).filter((o) => {
       const k = norm(o.name);
       if (!k || seen.has(k)) return false;
       seen.add(k);
       return true;
     });
-  }, [lens, crmOwners, opOwners]);
+  }, [crmOwners]);
+  // 1 pasta por PESSOA da equipe (operação) ou por DEPARTAMENTO — fonte única,
+  // sem o split Comercial/Operação que duplicava (2 Kaynan) e sem perder ninguém.
+  const owners = opOwners;
 
   const isOp = owner?.kind === 'op';
 
@@ -157,7 +168,7 @@ export default function ArquivosPage() {
   // Relatório operacional (montado na hora a partir do modelo, das O.S.)
   const opReport = useMemo(
     () => (isOp && period && item ? getOperationalReport(owner.opLens, owner.id, period, item) : null),
-    [isOp, owner, period, item],
+    [isOp, owner, period, item, opReady],
   );
 
   // Relatórios comerciais (agenda)
@@ -190,8 +201,6 @@ export default function ArquivosPage() {
 
   const openLeadJourney = (l) => setSelectedLead({ dealId: l.dealId, contactId: l.contactId });
 
-  const runSeed = async () => { setSeeding(true); const r = await seedWeeklyExample(); setSeeding(false); if (r.ok) { setHasExample(true); qc.invalidateQueries({ queryKey: ['crm'] }); } };
-  const runClear = async () => { setSeeding(true); const r = await clearWeeklyExample(); setSeeding(false); if (r.ok) { setHasExample(false); qc.invalidateQueries({ queryKey: ['crm'] }); } };
 
   // ---------- breadcrumb ----------
   const periodLabel = PERIODS.find(p => p.key === period)?.label;
@@ -222,6 +231,20 @@ export default function ArquivosPage() {
   const doClose = () => closeMut.mutate({ ownerId: closingOwnerId, period, periodKey: item, summary: buildSummary() });
   const doReopen = () => reopenMut.mutate({ ownerId: closingOwnerId, period, periodKey: item });
 
+  // Renderiza uma pasta de pessoa/setor (usado nas seções Comercial/Operação).
+  const ownerFolder = (o) => {
+    const key = o.kind === 'op' ? `op-${o.id}` : o.authUserId;
+    const isSectorFolder = o.kind === 'op' && o.opLens === 'sector';
+    return (
+      <FinderItem key={key}
+        glyph={<FolderGlyph color={o.color} badge={isSectorFolder ? undefined : (o.name || '?').charAt(0).toUpperCase()} />}
+        label={`${o.name}${o.kind === 'crm' && o.isMe ? ' (você)' : ''}`}
+        sublabel={isSectorFolder ? o.sub : undefined}
+        onClick={() => { setOwner(o); setPeriod(null); setItem(null); }}
+      />
+    );
+  };
+
   const Breadcrumb = (
     <nav className="flex items-center gap-1.5 text-sm flex-wrap">
       <Crumb onClick={() => { setOwner(null); setPeriod(null); setItem(null); }} last={!owner}>
@@ -244,13 +267,13 @@ export default function ArquivosPage() {
       <div className="mb-6 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Arquivos</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Relatórios por pessoa e por setor — diário, semanal e mensal.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Relatórios por pessoa e por departamento — diário, semanal e mensal.</p>
           <div className="mt-4">{Breadcrumb}</div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {/* Interruptor de corte: Pessoas | Setores */}
           <div className="inline-flex p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/70 dark:border-white/10">
-            {[{ k: 'person', label: 'Pessoas', icon: Users }, { k: 'sector', label: 'Setores', icon: Layers }].map((t) => {
+            {[{ k: 'person', label: 'Pessoas', icon: Users }, { k: 'sector', label: 'Departamentos', icon: Layers }].map((t) => {
               const Icon = t.icon; const active = lens === t.k;
               return (
                 <button key={t.k} onClick={() => switchLens(t.k)}
@@ -260,43 +283,15 @@ export default function ArquivosPage() {
               );
             })}
           </div>
-          {lens === 'person' && !owner && (
-            hasExample ? (
-              <button onClick={runClear} disabled={seeding}
-                title="Remover os dados de exemplo do comercial"
-                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-rose-600 dark:text-rose-400 rounded-lg border border-rose-200/70 dark:border-rose-900/40 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50">
-                {seeding ? <span className="w-4 h-4 border-2 border-rose-400/40 border-t-rose-500 rounded-full animate-spin" /> : <Trash2 size={15} />} Limpar exemplo
-              </button>
-            ) : (
-              <button onClick={runSeed} disabled={seeding}
-                title="Gerar dados de exemplo do comercial na sua semana atual"
-                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-violet-600 dark:text-violet-400 rounded-lg border border-violet-200/70 dark:border-violet-900/40 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-50">
-                {seeding ? <span className="w-4 h-4 border-2 border-violet-400/40 border-t-violet-500 rounded-full animate-spin" /> : <Sparkles size={15} />} Gerar exemplo
-              </button>
-            )
-          )}
         </div>
       </div>
 
-      {/* Nível 0: Pessoas ou Setores */}
+      {/* Nível 0: 1 pasta por Pessoa (equipe) ou por Departamento */}
       {!owner && (
         owners.length === 0 ? (
-          <Empty msg={lens === 'sector' ? 'Nenhum setor com relatórios ainda.' : 'Nenhuma pessoa com relatórios ainda.'} />
+          <Empty msg={lens === 'sector' ? 'Nenhum departamento cadastrado ainda.' : 'Nenhuma pessoa na equipe ainda.'} />
         ) : (
-          <div className="flex flex-wrap gap-1">
-            {owners.map(o => {
-              const key = o.kind === 'op' ? `op-${o.id}` : o.authUserId;
-              const isSectorFolder = o.kind === 'op' && o.opLens === 'sector';
-              return (
-                <FinderItem key={key}
-                  glyph={<FolderGlyph color={o.color} badge={isSectorFolder ? undefined : (o.name || '?').charAt(0).toUpperCase()} />}
-                  label={`${o.name}${o.kind === 'crm' && o.isMe ? ' (você)' : ''}`}
-                  sublabel={isSectorFolder ? o.sub : undefined}
-                  onClick={() => { setOwner(o); setPeriod(null); setItem(null); }}
-                />
-              );
-            })}
-          </div>
+          <div className="flex flex-wrap gap-1">{owners.map(ownerFolder)}</div>
         )
       )}
 

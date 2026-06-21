@@ -231,8 +231,10 @@ export function CrmDialerPage() {
       setCallStartedAt(null);
       setTimerRunning(false);
       setElapsed(0);
-      // Avanca pro proximo
-      setCurrentIndex(i => (i + 1 < queue.length ? i + 1 : i));
+      // Avanca pro proximo. Com excludeRecent ligado, o refetch REMOVE o contato
+      // chamado e a fila desliza — o mesmo indice ja aponta pro proximo, entao nao
+      // somar 1 (somar pularia um contato). Sem o filtro, avancar manualmente.
+      setCurrentIndex(i => (excludeRecent ? i : (i + 1 < queue.length ? i + 1 : i)));
     } catch {
       // toast ja foi emitido pelo service
     }

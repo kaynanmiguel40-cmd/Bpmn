@@ -707,7 +707,13 @@ async function searchPartnersViaAPI(filters = {}) {
     : null;
 
   const body = buildPartnerApiBody({ ...filters, segment: categoryKey });
-  return callCasaDadosAPI(body, { isPartner: true, partnerCategory: categoryKey, dddFilter: filters.ddd || '' });
+  const result = await callCasaDadosAPI(body, { isPartner: true, partnerCategory: categoryKey });
+  if (!result) return null;
+  // Mesmo pos-processamento dos leads: o DDD nao eh enviado a API (filtro client)
+  // e parceiros ja importados precisam sair do resultado (dedup contra crm_companies).
+  let data = applyDddFilter(result.data, filters.ddd);
+  data = await excludeConvertedCnpjs(data);
+  return { ...result, data };
 }
 
 // ==================== FALLBACK: BUSCA NO CRM LOCAL ====================

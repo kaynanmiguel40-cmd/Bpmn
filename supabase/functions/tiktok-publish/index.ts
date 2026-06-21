@@ -254,10 +254,14 @@ serve(async (req) => {
 
       console.log('[TikTok Publish] Upload completo, aguardando processamento...')
 
-      // 5. Aguardar processamento (polling)
+      // 5. Aguardar processamento (polling).
+      // Curto de proposito: a Edge Function tem teto de wall-clock (~bem abaixo de
+      // 300s). Videos curtos completam nas primeiras voltas; os longos caem no
+      // retorno status:'processing' (o client trata como sucesso), em vez de estourar
+      // o limite e a publicacao (que pode ter dado certo) aparecer como falha.
       let status = 'PROCESSING'
       let attempts = 0
-      const maxAttempts = 30 // 5 minutos (10s * 30)
+      const maxAttempts = 6 // ~60s (10s * 6), seguro sob o limite de wall-clock
 
       while (status === 'PROCESSING' && attempts < maxAttempts) {
         await new Promise(r => setTimeout(r, 10000)) // Aguardar 10 segundos

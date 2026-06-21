@@ -58,6 +58,7 @@ const EMPTY_FORM = {
   notes: '',
   assignedTo: '',
   supervisor: '',
+  judge: '',
   estimatedStart: '',
   estimatedEnd: '',
   attachments: [],
@@ -77,20 +78,30 @@ const EMPTY_PROJECT_FORM = {
 };
 
 import { formatDateTime as formatDate, formatDateSmart as formatDateShort, formatCurrency, toDatetimeLocal } from '../../lib/formatters';
-import { STANDARD_MONTHLY_HOURS, WORK_START_HOUR } from '../../constants/sla';
-
-/** ISO do inicio do expediente (8h) no mesmo dia de `iso`. Ancora da 1a tarefa. */
-const workdayStart = (iso) => {
-  const d = new Date(iso);
-  d.setHours(WORK_START_HOUR, 0, 0, 0);
-  return d.toISOString();
-};
+import { STANDARD_MONTHLY_HOURS } from '../../constants/sla';
 import { FolderIcon, InboxIcon } from '../../components/icons/FinancialIcons';
 import GroupAssigneeButton from '../../components/os/GroupAssigneeButton';
 import DueDateButton from '../../components/os/DueDateButton';
 import { recordTaskCompletion, recordTaskReview, removeTaskCompletion } from '../../lib/taskMetricsService';
 import { scoreQualityChecklist } from '../../lib/qualityChecklist';
 import { setBriefing as setBriefingItem, setDelivery as setDeliveryItem, applyReview, applyQualityDraft, fileDispute as fileDisputeItem, resolveDispute as resolveDisputeItem } from '../../lib/osReview';
+import { startTask, pauseTask, resumeTask, finishTask, reopenTask, workedMinutes, workedSeconds, timerState } from '../../lib/osTimer';
+
+// Cronômetro AO VIVO (tica a cada 1s, isolado pra não re-renderizar a O.S. inteira).
+const fmtClock = (s) => {
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  const p = (n) => String(n).padStart(2, '0');
+  return h ? `${h}:${p(m)}:${p(ss)}` : `${m}:${p(ss)}`;
+};
+function LiveWorkedTime({ item, className }) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => force((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <span className={className} title="Cronômetro rodando">{fmtClock(workedSeconds(item))}</span>;
+}
 
 const EMPTY_SECTOR_FORM = {
   label: '',
@@ -243,8 +254,12 @@ export default function FinancialPage() {
     if (filterMember === 'all') return projectOrders;
     const memberName = allMembers.find(m => m.id === filterMember)?.name;
     if (!memberName) return projectOrders;
+    // Resolve por NOME como o resto da pagina (getOrderAssigneeNames cobre time
+    // via participants[] e solo via assignee). O antigo `o.assignedTo === memberName`
+    // era morto (assignedTo guarda UUID) e escondia toda O.S. de time/pool.
     return projectOrders.filter(o =>
-      o.assignee === memberName || o.assignedTo === memberName
+      getOrderAssigneeNames(o).some(n => namesMatch(n, memberName)) ||
+      namesMatch(o.assignee, memberName)
     );
   }, [projectOrders, filterMember, allMembers]);
 
@@ -372,6 +387,7 @@ export default function FinancialPage() {
       notes: order.notes || '',
       assignedTo: assignedNamesFromOrder(order),
       supervisor: order.supervisor || '',
+      judge: order.judge || '',
       estimatedStart: toDatetimeLocal(order.estimatedStart),
       estimatedEnd: toDatetimeLocal(order.estimatedEnd),
       attachments: order.attachments || [],
@@ -407,6 +423,7 @@ export default function FinancialPage() {
       notes: order.notes || '',
       assignedTo: assignedNamesFromOrder(order),
       supervisor: order.supervisor || '',
+      judge: order.judge || '',
       estimatedStart: order.estimatedStart || '',
       estimatedEnd: order.estimatedEnd || '',
       attachments: order.attachments || [],
@@ -440,8 +457,8 @@ export default function FinancialPage() {
       }
       setShowCreateForm(false);
     } else {
-      // Criacao: mostra preview antes de confirmar. A O.S. nasce "em andamento"
-      // (montadas no sabado, trabalhadas seg-sex); sem cronometro/Previsao de Inicio.
+      // Criacao: mostra preview antes de confirmar. A O.S. nasce "em andamento".
+      // Previsao de Inicio/Entrega sao opcionais (definem o periodo previsto).
       const previewData = {
         id: `preview_${Date.now()}`,
         number: emergencyFormMode ? null : nextNumber,
@@ -498,6 +515,7 @@ export default function FinancialPage() {
       notes: pendingOrder.notes || '',
       assignedTo: pendingOrder.assignedTo || '',
       supervisor: pendingOrder.supervisor || '',
+      judge: pendingOrder.judge || '',
       estimatedStart: pendingOrder.estimatedStart || '',
       estimatedEnd: pendingOrder.estimatedEnd || '',
       attachments: pendingOrder.attachments || [],
@@ -1000,7 +1018,7 @@ export default function FinancialPage() {
                   <h3 className="text-sm font-semibold text-white">{column.title}</h3>
                   <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">{colOrders.length}</span>
                 </div>
-                <div className={`flex-1 overflow-y-auto overscroll-contain p-3 space-y-0 min-h-[100px] ${isOver ? 'bg-fyness-primary/5' : ''}`}>
+                <div className={`flex-1 p-3 space-y-0 min-h-[100px] ${isOver ? 'bg-fyness-primary/5' : ''}`}>
                   {colOrders.length === 0 ? (
                     <div className={`text-center py-8 text-sm ${isOver ? 'text-fyness-primary font-medium' : 'text-slate-400 dark:text-slate-500'}`}>
                       {isOver ? 'Soltar aqui' : column.emptyText}
@@ -1904,6 +1922,15 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
     onUpdateOrder(order.id, { checklist: [...latestCl, newItem] });
   };
 
+  // Tick pra atualizar o cronômetro ao vivo enquanto alguma tarefa está rodando.
+  const [, setTimerTick] = useState(0);
+  useEffect(() => {
+    const running = (order.checklist || []).some(i => !i.done && i.startedAt && !i.pausedAt);
+    if (!running) return;
+    const t = setInterval(() => setTimerTick(n => n + 1), 30000);
+    return () => clearInterval(t);
+  }, [order.checklist]);
+
   // Briefing por tarefa — painel lateral estilo Notion.
   // Rascunho local; salva ao FECHAR (evita escrever na rede a cada tecla).
   const [briefingItemId, setBriefingItemId] = useState(null);
@@ -1950,6 +1977,15 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
     return sup.some(name => namesMatch(name, profileName));
   }, [order.supervisor, profileName, canEditOS]);
 
+  // O JUIZ arbitra a contestação (terceiro neutro), designado por O.S. no campo
+  // `judge`. Gestor também pode arbitrar (override admin).
+  const hasJudge = !!(order.judge || '').trim();
+  const canJudge = useMemo(() => {
+    const judges = (order.judge || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (judges.length === 0) return false;
+    return judges.some(name => namesMatch(name, profileName)) || isManager;
+  }, [order.judge, profileName, isManager]);
+
   // Status de revisao da tarefa (Rascunho -> Pronto pra revisar -> Aprovado/Ajuste).
   // quality = { answers, pct, points, max } vindo do checklist de qualidade.
   const setTaskReview = (itemId, status, quality = null) => {
@@ -1993,7 +2029,9 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
     }
     toast.success(outcome === 'changed' ? 'Nota ajustada' : 'Nota mantida');
   };
-  const canResolveDispute = canReviewTask || isManager;
+  // Se há Juiz designado, SÓ ele (ou gestor) resolve a contestação — o supervisor
+  // não julga a própria nota. Sem Juiz: comportamento antigo (supervisor/gestor).
+  const canResolveDispute = hasJudge ? canJudge : (canReviewTask || isManager);
 
   const teamMember = teamMembers.find(m => m.id === order.assignee || namesMatch(m.name, order.assignee));
   const member = teamMember || (order.assignee ? { id: order.assignee, name: order.assignee, color: '#3b82f6' } : null);
@@ -2060,7 +2098,11 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
           )}
 
           {onEdit && (
-            <button onClick={onEdit} className="px-3 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">Editar</button>
+            <button onClick={onEdit} title="Editar a O.S. (titulo, descricao, prioridade, cliente, projeto, previsao)"
+              className="px-3 py-1.5 border border-fyness-primary/60 text-fyness-primary text-sm font-medium rounded-lg hover:bg-fyness-primary/10 transition-colors flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              Editar
+            </button>
           )}
           {onDuplicate && (
             <button onClick={onDuplicate} className="px-3 py-1.5 border border-blue-300 dark:border-blue-600 text-blue-600 dark:text-blue-400 text-sm rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-1.5">
@@ -2172,17 +2214,43 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             </div>
           )}
 
-          {order.estimatedEnd && (
-          <div className="border-b border-slate-200 dark:border-slate-700">
-            <div className="p-4">
-              <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Previsao de Entrega</label>
-              <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{formatDate(order.estimatedEnd)}</p>
-              {(order.checklist || []).some(i => i.dueAt) && (
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Segue o maior prazo das tarefas</p>
-              )}
-            </div>
-          </div>
-          )}
+          {((order.checklist || []).length > 0 || order.estimatedEnd || calcOSHours(order) > 0) && (() => {
+            // Controle de horarios: INICIO previsto (editavel aqui) -> ENTREGA prevista
+            // (maior prazo das tarefas) -> PERIODO (horas comerciais) -> TEMPO trabalhado.
+            const worked = calcOSHours(order);
+            const planned = (order.estimatedStart && order.estimatedEnd) ? calcWorkingHoursBetween(order.estimatedStart, order.estimatedEnd) : 0;
+            const fmtH = (h) => { const m = Math.round((h || 0) * 60); if (m <= 0) return '—'; const hh = Math.floor(m / 60), mm = m % 60; return hh ? (mm ? `${hh}h ${mm}min` : `${hh}h`) : `${mm}min`; };
+            return (
+              <div className="border-b border-slate-200 dark:border-slate-700">
+                <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {/* Inicio previsto — SO LEITURA (edita no modal Editar) */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Inicio previsto</label>
+                    <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.estimatedStart ? formatDate(order.estimatedStart) : '—'}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">edite no botao Editar</p>
+                  </div>
+                  {/* Previsao de entrega — automatica (maior prazo das tarefas) */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Previsao de entrega</label>
+                    <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{order.estimatedEnd ? formatDate(order.estimatedEnd) : '—'}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{(order.checklist || []).some(i => i.dueAt) ? 'maior prazo das tarefas' : 'defina o prazo de cada tarefa'}</p>
+                  </div>
+                  {/* Periodo previsto — calculado (inicio -> entrega, horas comerciais) */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Periodo previsto</label>
+                    <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 font-medium">{fmtH(planned)}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{planned > 0 ? 'horas comerciais (inicio → entrega)' : (!order.estimatedStart ? 'defina o inicio acima' : 'defina o prazo das tarefas')}</p>
+                  </div>
+                  {/* Tempo trabalhado — real (soma dos cronometros) */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">Tempo trabalhado</label>
+                    <p className="text-sm text-emerald-600 dark:text-emerald-400 mt-1 font-medium">{fmtH(worked)}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">soma dos cronometros</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {(order.status === 'blocked' && order.blockReason) && (
           <div className="border-b border-slate-200 dark:border-slate-700">
@@ -2258,6 +2326,29 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             )}
           </div>
 
+          {/* Juiz — arbitra a contestação da nota (terceiro neutro) */}
+          <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2.5 bg-indigo-50/30 dark:bg-indigo-900/10">
+            <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+            </svg>
+            <label className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Juiz</label>
+            {order.judge ? (
+              <div className="flex flex-wrap items-center gap-2 ml-1">
+                {(order.judge || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                  const jd = teamMembers.find(tm => namesMatch(tm.name, name));
+                  return (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: jd?.color || '#6366f1' }}>{(name || '?')[0]}</div>
+                      <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 dark:text-slate-500 ml-1 italic">Nenhum</p>
+            )}
+          </div>
+
           {/* Descricao */}
           {order.description && (
             <div className="p-6 border-b border-slate-200 dark:border-slate-700">
@@ -2271,9 +2362,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
             const cl = order.checklist || [];
             const doneCount = cl.filter(i => i.done).length;
             // Calcular duracao real em HORAS UTEIS (seg-sex, 9h-18h)
-            const realDuration = (item) => {
-              return calcChecklistItemMinutes(item);
-            };
+            const realDuration = (item) => workedMinutes(item);
             const totalTime = cl.reduce((sum, i) => sum + realDuration(i), 0);
             const fmtTime = (min) => {
               if (!min || min <= 0) return '';
@@ -2362,44 +2451,15 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
               setGroupOutput(groupKey, { ...current, files: (current.files || []).filter(f => f.id !== fileId) });
             };
 
+            // "Finalizar" (entregar) / reabrir. Lógica de cronômetro em osTimer.js.
             const handleToggle = (item) => {
               if (!onUpdateOrder) return;
-              const latestCl = checklistRef.current;
               const now = new Date().toISOString();
-              const arrIdx = latestCl.findIndex(i => i.id === item.id);
-              if (arrIdx === -1) return;
               let updated;
               if (!item.done) {
-                // Marcar como feito: finalizar accumulatedMin.
-                // A 1a tarefa do dia/da O.S. nao tem startedAt (sem "Pegar"): ancora
-                // as 8h do dia em que e concluida (montamos sabado, trabalho e seg-sex,
-                // entao o dia da conclusao e sempre util). calcWorkingHoursBetween ja
-                // clampa em 8h-18h e pula fim de semana ("para de contar as 18h").
-                const startAnchor = item.startedAt || workdayStart(now);
-                let finalAccMin = item.accumulatedMin || 0;
-                if (!item.pausedAt) {
-                  finalAccMin += calcWorkingHoursBetween(startAnchor, now) * 60;
-                }
-                finalAccMin = Math.max(0, Math.round(finalAccMin));
-                updated = latestCl.map((i, idx) => {
-                  if (i.id === item.id) return { ...i, done: true, startedAt: startAnchor, completedAt: now, durationMin: finalAccMin, accumulatedMin: finalAccMin, pausedAt: null };
-                  return i;
-                });
-                // Iniciar cronometro da proxima tarefa pendente
-                const nextUndone = updated.findIndex((i, idx) => idx > arrIdx && !i.done);
-                if (nextUndone >= 0 && !updated[nextUndone].startedAt && !updated[nextUndone].pausedAt) {
-                  updated = updated.map((i, idx) =>
-                    idx === nextUndone ? { ...i, startedAt: now, pausedAt: null, accumulatedMin: i.accumulatedMin || 0 } : i
-                  );
-                }
+                updated = finishTask(checklistRef.current, item.id, { at: now });
               } else {
-                // Desmarcar: para o cronometro ao vivo mas PRESERVA o tempo ja
-                // acumulado (accumulatedMin) — desmarcar sem querer nao apaga o
-                // trabalho registrado. Reconcluir continua somando a partir dele.
-                updated = latestCl.map(i => {
-                  if (i.id === item.id) return { ...i, done: false, completedAt: null, durationMin: null, pausedAt: null, startedAt: null };
-                  return i;
-                });
+                updated = reopenTask(checklistRef.current, item.id);
               }
               onUpdateOrder(order.id, { checklist: updated });
               // Base de produtividade: registra a conclusão (ou apaga ao desmarcar).
@@ -2407,6 +2467,15 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
               if (updatedItem?.done) recordTaskCompletion(order, updatedItem, profileName);
               else removeTaskCompletion(order.id, item.id);
             };
+
+            // Cronômetro explícito: Pegar / Pausar / Retomar (Entregar = handleToggle).
+            const runTimer = (fn) => (item) => {
+              if (!onUpdateOrder) return;
+              onUpdateOrder(order.id, { checklist: fn(checklistRef.current, item.id, { at: new Date().toISOString() }) });
+            };
+            const handleStart = runTimer(startTask);
+            const handlePause = runTimer(pauseTask);
+            const handleResume = runTimer(resumeTask);
 
 
             // Agrupar tarefas
@@ -2424,7 +2493,7 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                   <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Bloco de Tarefas</label>
                   <div className="flex items-center gap-3">
                     {totalTime > 0 && (
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500">Total: {fmtTime(totalTime)}</span>
+                      <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Trabalhado: {fmtTime(totalTime)}</span>
                     )}
                     <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{doneCount}/{cl.length}</span>
                   </div>
@@ -2540,15 +2609,15 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                             <div className="border-t border-slate-200/60 dark:border-slate-700/40">
                               {/* Planilha de tarefas — grade com linhas e colunas */}
                               <div className="px-2 py-1.5">
-                                <div className="rounded-lg border border-slate-300 dark:border-slate-600 overflow-hidden">
+                                <div className="rounded-lg border border-slate-300 dark:border-slate-600 overflow-x-auto">
                                   {/* Cabecalho */}
-                                  <div className="grid grid-cols-[2.25rem_2.25rem_minmax(0,1fr)_13rem_11.5rem_8rem_6rem] items-stretch divide-x divide-slate-200 dark:divide-slate-700 border-b border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800/60 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                                    <div aria-hidden />
+                                  <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_8.5rem_8.5rem_13rem_7rem_4.5rem] min-w-[820px] items-stretch divide-x divide-slate-200 dark:divide-slate-700 border-b border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800/60 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                                     <div aria-hidden />
                                     <div className="px-3 py-2 flex items-center">Tarefa</div>
                                     <div className="px-3 py-2 flex items-center">Responsavel</div>
-                                    <div className="px-3 py-2 flex items-center">Previsto</div>
-                                    <div className="px-3 py-2 flex items-center">Real</div>
+                                    <div className="px-3 py-2 flex items-center text-blue-500 dark:text-blue-400">Previsao de entrega</div>
+                                    <div className="px-3 py-2 flex items-center text-emerald-600 dark:text-emerald-400">Tempo trabalhado</div>
+                                    <div className="px-3 py-2 flex items-center text-emerald-600 dark:text-emerald-400">Entrega real</div>
                                     <div className="px-3 py-2 flex items-center">Briefing</div>
                                   </div>
                                   {/* Linhas */}
@@ -2574,24 +2643,11 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                       return (
                                         <div
                                           key={item.id}
-                                          className={`grid grid-cols-[2.25rem_2.25rem_minmax(0,1fr)_13rem_11.5rem_8rem_6rem] items-stretch divide-x divide-slate-200 dark:divide-slate-700/60 transition-colors ${item.done ? 'bg-slate-50/60 dark:bg-slate-800/20' : 'hover:bg-blue-50/40 dark:hover:bg-blue-900/10'}`}
+                                          className={`grid grid-cols-[2.25rem_minmax(0,1fr)_8.5rem_8.5rem_13rem_7rem_4.5rem] min-w-[820px] items-stretch divide-x divide-slate-200 dark:divide-slate-700/60 transition-colors ${item.done ? 'bg-slate-50/60 dark:bg-slate-800/20' : 'hover:bg-blue-50/40 dark:hover:bg-blue-900/10'}`}
                                         >
-                                          {/* feito (toggle) */}
+                                          {/* # (verde quando concluída) */}
                                           <div className="flex items-center justify-center py-2">
-                                            <button
-                                              type="button"
-                                              onClick={() => handleToggle(item)}
-                                              title={item.done ? 'Desmarcar' : 'Marcar como feito'}
-                                              className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${item.done ? 'bg-emerald-500 border-emerald-500' : 'border-blue-400 dark:border-blue-500 hover:border-emerald-500'}`}
-                                            >
-                                              {item.done && (
-                                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                              )}
-                                            </button>
-                                          </div>
-                                          {/* # */}
-                                          <div className="flex items-center justify-center py-2">
-                                            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">{arrIdx + 1}</span>
+                                            <span className={`text-[11px] font-mono ${item.done ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500'}`}>{arrIdx + 1}</span>
                                           </div>
                                           {/* tarefa (titulo completo, quebra linha; status/tempo inline) */}
                                           <div className="min-w-0 px-3 py-2 flex items-center">
@@ -2601,9 +2657,6 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                                 <span className={`ml-1.5 align-middle inline-block text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${item.reviewStatus === 'approved' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : item.reviewStatus === 'changes' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'}`}>
                                                   {item.reviewStatus === 'approved' ? 'Aprovado' : item.reviewStatus === 'changes' ? 'Ajustar' : 'Em revisao'}
                                                 </span>
-                                              )}
-                                              {item.done && realDuration(item) > 0 && (
-                                                <span className="ml-1.5 align-middle inline-block text-[10px] font-medium text-emerald-600 dark:text-emerald-400">{fmtTime(realDuration(item))}</span>
                                               )}
                                             </div>
                                           </div>
@@ -2645,15 +2698,69 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
                                               }}
                                             />
                                           </div>
-                                          {/* prazo real (data de conclusao — preenche ao marcar feito) */}
+                                          {/* Tempo trabalhado: CRONOMETRO (Pegar → Pausar/Retomar → Finalizar) */}
+                                          <div className="px-3 py-2 flex items-center">
+                                            {(() => {
+                                              const st = timerState(item); // idle | running | paused | done
+                                              const mins = realDuration(item);
+                                              const finishBtn = (
+                                                <button type="button" disabled={!canEditOS} onClick={() => handleToggle(item)} title="Finalizar (entregar + parar o cronômetro)" aria-label="Finalizar tarefa"
+                                                  className="inline-flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40">
+                                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> Finalizar
+                                                </button>
+                                              );
+                                              const iconBtn = 'inline-flex items-center justify-center w-9 h-9 rounded-md disabled:opacity-40 transition-colors';
+                                              if (st === 'done') {
+                                                return (
+                                                  <span className="flex items-center gap-2">
+                                                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{fmtTime(mins) || '0min'}</span>
+                                                    {canEditOS && (
+                                                      <button type="button" onClick={() => handleToggle(item)} title="Reabrir" aria-label="Reabrir tarefa"
+                                                        className={`${iconBtn} text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700/50`}>
+                                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M4.6 9a7.5 7.5 0 1 1-.3 4" /></svg>
+                                                      </button>
+                                                    )}
+                                                  </span>
+                                                );
+                                              }
+                                              if (st === 'running') {
+                                                return (
+                                                  <span className="flex items-center gap-1.5">
+                                                    <LiveWorkedTime item={item} className="text-sm font-bold text-emerald-600 dark:text-emerald-400 tabular-nums" />
+                                                    <button type="button" disabled={!canEditOS} onClick={() => handlePause(item)} title="Pausar" aria-label="Pausar cronômetro"
+                                                      className={`${iconBtn} text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20`}>
+                                                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z" /></svg>
+                                                    </button>
+                                                    {finishBtn}
+                                                  </span>
+                                                );
+                                              }
+                                              if (st === 'paused') {
+                                                return (
+                                                  <span className="flex items-center gap-1.5">
+                                                    <span className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums" title="Pausado">{fmtClock(workedSeconds(item))}</span>
+                                                    <button type="button" disabled={!canEditOS} onClick={() => handleResume(item)} title="Retomar" aria-label="Retomar cronômetro"
+                                                      className={`${iconBtn} text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20`}>
+                                                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                                                    </button>
+                                                    {finishBtn}
+                                                  </span>
+                                                );
+                                              }
+                                              // idle — só o botão Pegar (começa o cronômetro do zero)
+                                              return (
+                                                <button type="button" disabled={!canEditOS} onClick={() => handleStart(item)} title="Pegar a tarefa (iniciar o cronômetro)" aria-label="Pegar tarefa e iniciar cronômetro"
+                                                  className="inline-flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-emerald-400 text-emerald-600 dark:border-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40">
+                                                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg> Pegar
+                                                </button>
+                                              );
+                                            })()}
+                                          </div>
+                                          {/* Entrega real (instante em que foi finalizada) */}
                                           <div className="px-3 py-2 flex items-center">
                                             {item.done && item.completedAt ? (
-                                              <span
-                                                className={`text-xs whitespace-nowrap ${realLate ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}
-                                                title={realLate ? 'Concluida com atraso' : 'Concluida no prazo'}
-                                              >
-                                                {realLabel}
-                                              </span>
+                                              <span className={`text-xs whitespace-nowrap ${realLate ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}
+                                                title={realLate ? 'Entregue com atraso' : 'Entregue no prazo'}>{realLabel}</span>
                                             ) : (
                                               <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
                                             )}
@@ -3258,6 +3365,40 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                 ))}
               </select>
             </div>
+
+            {/* Juiz (multiplos) — terceiro neutro que arbitra a contestação da nota */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Juiz <span className="font-normal text-slate-400">(arbitra contestações)</span></label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {(form.judge || '').split(',').map(s => s.trim()).filter(Boolean).map(name => (
+                  <span key={name} className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs rounded-full">
+                    {name}
+                    <button type="button" onClick={() => {
+                      const updated = (form.judge || '').split(',').map(s => s.trim()).filter(s => s && s !== name).join(', ');
+                      update('judge', updated || null);
+                    }} className="hover:text-red-500 transition-colors">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <select
+                value=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  const current = (form.judge || '').split(',').map(s => s.trim()).filter(Boolean);
+                  if (!current.some(s => namesMatch(s, e.target.value))) {
+                    update('judge', [...current, e.target.value].join(', '));
+                  }
+                }}
+                className="w-full appearance-none px-4 py-2.5 pr-8 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm"
+              >
+                <option value="">Adicionar juiz...</option>
+                {teamMembers.filter(m => !(form.judge || '').split(',').some(s => namesMatch(s.trim(), m.name))).map(m => (
+                  <option key={m.id} value={m.name}>{m.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div>
@@ -3316,6 +3457,12 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
             {!form.clientId && (
               <input type="text" value={form.client} onChange={(e) => update('client', e.target.value)} className="w-full mt-2 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" placeholder="Ou digite o nome do cliente..." />
             )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Previsao de Inicio</label>
+            <input type="datetime-local" value={form.estimatedStart} onChange={(e) => update('estimatedStart', e.target.value)} className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary focus:border-transparent text-sm" />
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Quando a O.S. comeca — define o periodo previsto (junto com a entrega).</p>
           </div>
 
           <div>
@@ -3386,6 +3533,14 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
               const updateTaskText = (taskId, newText) => {
                 if (!newText.trim()) return;
                 update('checklist', cl.map(i => i.id === taskId ? { ...i, text: newText.trim() } : i));
+              };
+
+              // Definir/limpar o horário (prazo) de uma tarefa já na criação.
+              // Vai pro item.dueAt — preenche o "pacote de tarefas" e, ao salvar a
+              // O.S., a Agenda já mostra o evento "Prazo" automaticamente (sem
+              // relançamento manual). Ver buildOSDeadlineEvents.
+              const updateTaskDueAt = (taskId, iso) => {
+                update('checklist', cl.map(i => i.id === taskId ? { ...i, dueAt: iso || null } : i));
               };
 
               // Mover tarefa via drag-and-drop (reordenar no array)
@@ -3492,6 +3647,16 @@ function OSFormModal({ form, setForm, editing, number, projects, onSave, onClose
                                 onFocus={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                                 className={`text-sm flex-1 bg-transparent border-none outline-none focus:ring-0 p-0 hover:bg-slate-100 dark:hover:bg-slate-700/40 focus:bg-slate-100 dark:focus:bg-slate-700/40 rounded px-1 -mx-1 transition-colors resize-none overflow-hidden ${item.done ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200'}`}
                               />
+                              {/* Horário da tarefa — definido já na criação; vira o
+                                  prazo do item e o evento "Prazo" na Agenda. */}
+                              <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <DueDateButton
+                                  dueAt={item.dueAt || null}
+                                  done={item.done}
+                                  size="xs"
+                                  onChange={(iso) => updateTaskDueAt(item.id, iso)}
+                                />
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => openBriefing(item)}

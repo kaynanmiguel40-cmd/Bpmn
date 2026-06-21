@@ -251,7 +251,7 @@ export function MainLayout() {
   useReportCloseReminder();
 
   return (
-    <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 app-mesh print:block print:bg-white">
+    <div className="h-screen flex bg-slate-50 dark:bg-slate-950 app-mesh print:h-auto print:min-h-0 print:block print:bg-white">
       {/* Sidebar */}
       <div className="print:hidden">
         <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />

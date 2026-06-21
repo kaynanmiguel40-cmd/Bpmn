@@ -13,29 +13,14 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { Plus, Link2, Users, Trash2 } from 'lucide-react';
 import {
-  useAgendaEvents, useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent,
-  useTeamMembers, useOSOrders, useGCalEvents, useGCalStatus,
+  useCreateAgendaEvent, useUpdateAgendaEvent, useDeleteAgendaEvent,
 } from '../../hooks/queries';
-import { useProfile } from '../../hooks/useProfile';
-import { namesMatch } from '../../lib/kpiUtils';
-import { buildOSDeadlineEvents } from '../../lib/agendaDeadlines';
-import { expandRecurrences } from '../../lib/recurrenceUtils';
-import { useRealtimeAgendaEvents } from '../../hooks/useRealtimeSubscription';
-import { connectGCal } from '../../lib/googleCalendarService';
+import { connectGCalServer } from '../../lib/googleCalendarService';
 import CrmCalendar from '../../modules/crm/components/agenda/CrmCalendar';
-import { getCrmCalendarActivities } from '../../modules/crm/services/crmAgendaService';
 import { useCompleteCrmActivity } from '../../modules/crm/hooks/useCrmQueries';
-
-// Tipos de evento LOCAL (criados direto na agenda).
-const EVENT_TYPES = [
-  { id: 'meeting', label: 'Reuniao', color: '#3b82f6' },
-  { id: 'task', label: 'Tarefa', color: '#22c55e' },
-  { id: 'personal', label: 'Pessoal', color: '#64748b' },
-];
-const typeMeta = (id) => EVENT_TYPES.find(t => t.id === id) || EVENT_TYPES[0];
+import { useAgendaData, EVENT_TYPES, typeMeta, SOURCE_META, DEFAULT_SOURCES } from '../../hooks/useAgendaData';
 
 const pad = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -45,10 +30,17 @@ const toTimeStr = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 // escolheu — sobrevivem a sair e voltar pra agenda (ex.: abrir uma O.S. e voltar).
 const AGENDA_VIEW_KEY = 'agenda:view';
 const AGENDA_FILTERS_KEY = 'agenda:filters';
+const AGENDA_SOURCES_KEY = 'agenda:sources';
 const loadView = () => { try { return localStorage.getItem(AGENDA_VIEW_KEY) || 'agenda'; } catch { return 'agenda'; } };
 const loadFilters = () => {
   try { const r = JSON.parse(localStorage.getItem(AGENDA_FILTERS_KEY) || 'null'); return Array.isArray(r) && r.length ? r : null; }
   catch { return null; }
+};
+
+// Fontes (chips) — constantes vêm do hook compartilhado (useAgendaData).
+const loadSources = () => {
+  try { const r = JSON.parse(localStorage.getItem(AGENDA_SOURCES_KEY) || 'null'); return r && typeof r === 'object' ? { ...DEFAULT_SOURCES, ...r } : { ...DEFAULT_SOURCES }; }
+  catch { return { ...DEFAULT_SOURCES }; }
 };
 
 // ==================== MODAL COMPACTO DE EVENTO ====================
@@ -142,126 +134,39 @@ function EventModal({ open, initial, members, defaultAssignee, onClose, onSave, 
 
 export default function AgendaPage() {
   const navigate = useNavigate();
-  const today = useMemo(() => new Date(), []);
 
-  const { data: localEventsRaw = [] } = useAgendaEvents();
-  const { data: teamMembers = [] } = useTeamMembers();
-  const { data: osOrders = [] } = useOSOrders();
-  const { profile } = useProfile();
+  // Dados unificados (membros + eventos das 4 fontes) vêm do hook compartilhado.
+  const {
+    allMembers, myMemberId,
+    localEvents, crmEvents, osTaskEvents, googleEvents,
+    gcalConnected,
+  } = useAgendaData();
+
   const createEvent = useCreateAgendaEvent();
   const updateEvent = useUpdateAgendaEvent();
   const deleteEvent = useDeleteAgendaEvent();
   const completeCrm = useCompleteCrmActivity();
-  useRealtimeAgendaEvents();
-
-  // Google Calendar (opcional)
-  const { data: gcalStatus } = useGCalStatus();
-  const gcalConnected = !!gcalStatus?.id && !gcalStatus?.expired;
-  const gMin = useMemo(() => { const d = new Date(today); d.setMonth(d.getMonth() - 2); return d; }, [today]);
-  const gMax = useMemo(() => { const d = new Date(today); d.setMonth(d.getMonth() + 4); return d; }, [today]);
-  const { data: gcalEvents = [] } = useGCalEvents(gMin, gMax, gcalConnected);
-
-  // Atividades comerciais (CRM)
-  const crmStart = useMemo(() => gMin.toISOString(), [gMin]);
-  const crmEnd = useMemo(() => gMax.toISOString(), [gMax]);
-  const { data: crmActivitiesRaw = [] } = useQuery({
-    queryKey: ['agendaCrmActivities', crmStart, crmEnd],
-    queryFn: () => getCrmCalendarActivities({ start: crmStart, end: crmEnd }),
-    staleTime: 60_000,
-  });
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState(loadView);
   const [activeFilters, setActiveFilters] = useState(loadFilters); // null = ainda nao inicializou
   const [showFilter, setShowFilter] = useState(false);
 
-  // Persiste a visão e o filtro escolhidos (travam entre navegações).
+  const [sources, setSources] = useState(loadSources);
+  const toggleSource = (k) => setSources((s) => ({ ...s, [k]: !s[k] }));
+
+  // Persiste a visão, o filtro e as fontes escolhidas (travam entre navegações).
   useEffect(() => { try { localStorage.setItem(AGENDA_VIEW_KEY, view); } catch {} }, [view]);
   useEffect(() => {
     try {
       if (activeFilters && activeFilters.length) localStorage.setItem(AGENDA_FILTERS_KEY, JSON.stringify(activeFilters));
     } catch {}
   }, [activeFilters]);
+  useEffect(() => { try { localStorage.setItem(AGENDA_SOURCES_KEY, JSON.stringify(sources)); } catch {} }, [sources]);
   const [modal, setModal] = useState(null); // { id?, date? } ou null
-
-  // Membros + perfil logado
-  const allMembers = useMemo(() => {
-    if (!profile.name) return teamMembers;
-    if (teamMembers.some(m => namesMatch(m.name, profile.name))) return teamMembers;
-    return [{ id: 'profile_self', name: profile.name, role: profile.role || '', color: '#3b82f6', authUserId: profile.id || null }, ...teamMembers];
-  }, [teamMembers, profile]);
-
-  const myMemberId = useMemo(() => {
-    if (!profile.name) return null;
-    const m = teamMembers.find(mm => namesMatch(mm.name, profile.name));
-    return m ? m.id : 'profile_self';
-  }, [teamMembers, profile]);
 
   // Inicia o filtro mostrando SO o meu (padrao: cada um ve a sua agenda).
   const filters = activeFilters ?? (myMemberId ? [myMemberId] : allMembers.map(m => m.id));
-
-  const memberByName = useCallback((name) => {
-    if (!name) return null;
-    const n = String(name).toLowerCase().trim();
-    return allMembers.find(m => m.name && m.name.toLowerCase().trim() === n) || null;
-  }, [allMembers]);
-  const memberByAuth = useCallback((authId) => {
-    if (!authId) return null;
-    return allMembers.find(m => m.authUserId === authId) || null;
-  }, [allMembers]);
-
-  // ===== Eventos unificados (shape do CrmCalendar) =====
-
-  // 1) Eventos locais (reunioes/tarefas/pessoais) — expande recorrencia na janela.
-  const localEvents = useMemo(() => {
-    const start = new Date(today); start.setMonth(start.getMonth() - 2);
-    const end = new Date(today); end.setMonth(end.getMonth() + 4);
-    const expanded = expandRecurrences(localEventsRaw, start, end);
-    return expanded.map(e => {
-      const meta = typeMeta(e.type);
-      return {
-        id: e.id, _localId: e._parentId || e.id, _local: true,
-        title: e.title, startDate: e.startDate, endDate: e.endDate || e.startDate,
-        color: e.color || meta.color, source: 'local',
-        typeKey: e.type === 'meeting' ? 'meeting' : 'task', typeLabel: meta.label,
-        assignee: e.assignee || null,
-        _raw: e,
-      };
-    });
-  }, [localEventsRaw, today]);
-
-  // 2) Atividades comerciais do CRM
-  const crmEvents = useMemo(() => {
-    return (crmActivitiesRaw || []).map(a => {
-      if (!a.startDate) return null;
-      const m = memberByAuth(a.assignedTo) || memberByName(a.assignedToName) || memberByAuth(a.createdBy);
-      return {
-        id: `crm_${a.id}`,
-        title: a.title || a.typeLabel || 'Atividade',
-        startDate: a.startDate, endDate: a.endDate || a.startDate,
-        color: a.color || '#3b82f6', source: 'crm',
-        typeKey: a.type, typeLabel: a.typeLabel,
-        completed: a.completed, completedAt: a.completedAt || null,
-        leadName: a.leadName || null, stageName: a.stageName || null,
-        assignee: m?.id || null,
-        _crmActivityId: a.id, _dealId: a.dealId || null,
-      };
-    }).filter(Boolean);
-  }, [crmActivitiesRaw, memberByAuth, memberByName]);
-
-  // 3) Prazos de O.S. — cobre a cascata item → grupo → O.S. (prazo de entrega).
-  // Lógica pura e testada em agendaDeadlines.js.
-  const osTaskEvents = useMemo(() => buildOSDeadlineEvents(osOrders, memberByName), [osOrders, memberByName]);
-
-  // 4) Google Calendar
-  const googleEvents = useMemo(() => {
-    if (!gcalConnected) return [];
-    return (gcalEvents || []).filter(g => g.startDate).map(g => ({
-      id: `gcal_${g.id}`, title: g.title, startDate: g.startDate, endDate: g.endDate || g.startDate,
-      color: g.color || '#94a3b8', source: 'google', isAllDay: g.isAllDay, typeLabel: 'Google',
-      htmlLink: g.htmlLink, assignee: null,
-    }));
-  }, [gcalEvents, gcalConnected]);
 
   // Junta tudo + filtro por pessoa.
   //  - Atividade COMERCIAL (CRM) e PRIVADA do dono: so entra na agenda de quem
@@ -277,6 +182,8 @@ export default function AgendaPage() {
     // Sem membros carregados (load inicial) -> mostra tudo, senao a agenda some.
     const isAll = allMembers.length === 0 || filters.length === allMembers.length;
     return all.filter(e => {
+      // Fonte desligada (chip) -> some.
+      if (sources[e.source] === false) return false;
       // Comercial: sempre travado no dono, mesmo no "ver todos" e no load inicial.
       if (e.source === 'crm') return !!e.assignee && filters.includes(e.assignee);
       if (isAll) return true;
@@ -285,7 +192,7 @@ export default function AgendaPage() {
       if (e.source === 'google') return !!myMemberId && filters.includes(myMemberId);
       return true; // evento local sem responsavel
     });
-  }, [localEvents, crmEvents, osTaskEvents, googleEvents, filters, allMembers, myMemberId]);
+  }, [localEvents, crmEvents, osTaskEvents, googleEvents, filters, allMembers, myMemberId, sources]);
 
   // ===== Navegacao / acoes =====
   const handleNavigate = useCallback((dir) => {
@@ -330,7 +237,13 @@ export default function AgendaPage() {
     : filters.length === 1 ? (allMembers.find(m => m.id === filters[0])?.name || '1 pessoa')
     : `${filters.length} pessoas`;
 
-  const modalInitial = modal ? (modal.id ? { ...modal._ev, id: modal.id } : { date: modal.date }) : null;
+  // Memoizado: sem isso, cada re-render de fundo (realtime + refetch do CRM/Google)
+  // cria um novo objeto, o efeito de init do EventModal dispara de novo e apaga o
+  // que o usuario esta digitando. So muda quando o `modal` realmente abre/troca.
+  const modalInitial = useMemo(
+    () => (modal ? (modal.id ? { ...modal._ev, id: modal.id } : { date: modal.date }) : null),
+    [modal]
+  );
 
   return (
     <div className="h-full flex flex-col">
@@ -366,7 +279,7 @@ export default function AgendaPage() {
             )}
           </div>
           {!gcalConnected && (
-            <button onClick={() => connectGCal()} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <button onClick={() => connectGCalServer().catch(e => alert(e.message || 'Falha ao conectar Google'))} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
               <Link2 size={15} /> Google Agenda
             </button>
           )}
@@ -374,6 +287,22 @@ export default function AgendaPage() {
             <Plus size={16} /> Novo evento
           </button>
         </div>
+      </div>
+
+      {/* Filtros de FONTE — liga/desliga o que aparece (mata o ruído de leads/tarefas) */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-3">
+        <span className="text-[11px] text-slate-400 dark:text-slate-500 mr-0.5">Mostrar:</span>
+        {SOURCE_META.map(s => {
+          const on = sources[s.key] !== false;
+          return (
+            <button key={s.key} onClick={() => toggleSource(s.key)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-medium border transition-colors ${on ? 'border-transparent text-white' : 'border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+              style={on ? { backgroundColor: s.color } : undefined}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: on ? '#fff' : s.color }} />
+              {s.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex-1 min-h-0">

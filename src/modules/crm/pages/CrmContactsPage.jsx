@@ -99,13 +99,17 @@ export function CrmContactsPage({ embedded = false } = {}) {
   // Reset page on filter change
   useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, companyFilter, tagFilter]);
 
+  // Le o estado vivo (sortKey/sortDir) e os declara nas deps. A versao antiga
+  // (useCallback com deps []) congelava o sortConfig do 1o render, travando a
+  // direcao em 'desc' apos o 1o clique — ascendente ficava inalcancavel.
   const handleSort = useCallback((key) => {
-    setSortConfig(prev =>
-      prev.key === key
-        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: 'asc' }
-    );
-  }, []);
+    if (key === sortKey) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }, [sortKey, sortDir, setSortKey, setSortDir]);
 
   const handleEdit = (contact) => {
     setEditContact(contact);

@@ -29,7 +29,7 @@ const dayKeyOf = (iso) => {
  * @returns {Promise<{ date, sectors: object[], totals: object }>}
  */
 export async function getOperationalDailyReport(date) {
-  const empty = { date, sectors: [], totals: { tasksDone: 0, deliveries: 0, timeMin: 0, osDone: 0 } };
+  const empty = { date, sectors: [], totals: { tasksDone: 0, deliveries: 0, timeMin: 0, osDone: 0, qualityAvg: null, disputes: 0, disputesOpen: 0, disputesKept: 0, disputesChanged: 0 } };
   if (!date) return empty;
 
   const [orders, projects, sectors] = await Promise.all([getOSOrders(), getOSProjects(), getOSSectors()]);
@@ -52,6 +52,10 @@ export async function getOperationalDailyReport(date) {
         tasksDone: 0, deliveries: 0, timeMin: 0,
         onTime: 0, late: 0, reviewed: 0, approved: 0, changes: 0,
         osDone: 0,
+        // Qualidade (nota) + contestações arbitradas pelo Juiz
+        qualitySum: 0, qualityCount: 0,
+        disputes: 0, disputesOpen: 0, disputesKept: 0, disputesChanged: 0,
+        judges: new Set(),
       });
     }
     return agg.get(sec.id);
@@ -73,6 +77,19 @@ export async function getOperationalDailyReport(date) {
       }
       if (item.reviewStatus === 'approved') { m.reviewed++; m.approved++; }
       else if (item.reviewStatus === 'changes') { m.reviewed++; m.changes++; }
+
+      // Nota de qualidade (0–100) — média ponderada do checklist do supervisor.
+      if (typeof item.qualityPct === 'number') { m.qualitySum += item.qualityPct; m.qualityCount++; }
+
+      // Contestação da nota → arbitrada pelo Juiz (mantida / ajustada / em aberto).
+      const disp = item.qualityDispute;
+      if (disp) {
+        m.disputes++;
+        if (disp.status === 'open') m.disputesOpen++;
+        else if (disp.outcome === 'changed') m.disputesChanged++;
+        else if (disp.outcome === 'kept') m.disputesKept++;
+        if (disp.resolvedBy) m.judges.add(disp.resolvedBy);
+      }
     }
 
     // O.S. concluída no dia (status done + data de conclusão real no dia).
@@ -84,6 +101,8 @@ export async function getOperationalDailyReport(date) {
       ...m,
       onTimePct: (m.onTime + m.late) > 0 ? Math.round((m.onTime / (m.onTime + m.late)) * 100) : null,
       approvedPct: m.reviewed > 0 ? Math.round((m.approved / m.reviewed) * 100) : null,
+      qualityAvg: m.qualityCount > 0 ? Math.round(m.qualitySum / m.qualityCount) : null,
+      judges: [...m.judges],
     }))
     .sort((a, b) => b.tasksDone - a.tasksDone);
 
@@ -92,7 +111,14 @@ export async function getOperationalDailyReport(date) {
     deliveries: acc.deliveries + s.deliveries,
     timeMin: acc.timeMin + s.timeMin,
     osDone: acc.osDone + s.osDone,
-  }), { tasksDone: 0, deliveries: 0, timeMin: 0, osDone: 0 });
+    qualitySum: acc.qualitySum + s.qualitySum,
+    qualityCount: acc.qualityCount + s.qualityCount,
+    disputes: acc.disputes + s.disputes,
+    disputesOpen: acc.disputesOpen + s.disputesOpen,
+    disputesKept: acc.disputesKept + s.disputesKept,
+    disputesChanged: acc.disputesChanged + s.disputesChanged,
+  }), { tasksDone: 0, deliveries: 0, timeMin: 0, osDone: 0, qualitySum: 0, qualityCount: 0, disputes: 0, disputesOpen: 0, disputesKept: 0, disputesChanged: 0 });
+  totals.qualityAvg = totals.qualityCount > 0 ? Math.round(totals.qualitySum / totals.qualityCount) : null;
 
   return { date, sectors: sectorsOut, totals };
 }

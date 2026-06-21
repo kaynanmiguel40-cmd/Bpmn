@@ -12,7 +12,7 @@ import { getPenalties, createPenalty, deletePenalty } from '../lib/penaltyServic
 import { getContentPosts, createContentPost, updateContentPost, deleteContentPost } from '../lib/contentService';
 import { getProcessOrdersByProject, getProcessOrderByElement, createProcessOrder, updateProcessOrder, deleteProcessOrder } from '../lib/processOrderService';
 import { supabase } from '../lib/supabase';
-import { pushEventToGCal, getGCalConnectionStatus, fetchGCalEvents, createGCalEvent, updateGCalEvent, deleteGCalEvent, syncOSToGCal, deleteOSFromGCal } from '../lib/googleCalendarService';
+import { pushEventToGCal, getGCalConnectionStatus, fetchGCalEvents, fetchTeamGCalEvents, createGCalEvent, updateGCalEvent, deleteGCalEvent, syncOSToGCal, deleteOSFromGCal } from '../lib/googleCalendarService';
 
 /** Log falha de sync com GCal sem bloquear o fluxo principal */
 function logGCalSyncError(action, err) {
@@ -83,12 +83,11 @@ export function useUpdateOSOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, updates }) => updateOSOrder(id, updates),
-    onSuccess: async (_, variables) => {
+    onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: queryKeys.osOrders });
-      // Buscar O.S. atualizada para sincronizar com Google Calendar
-      const orders = qc.getQueryData(queryKeys.osOrders);
-      const os = orders?.find(o => o.id === variables.id);
-      if (os) syncOSToGCal({ ...os, ...variables.updates }).catch(err => logGCalSyncError('sincronizar OS atualizada', err));
+      // Usa a linha JA atualizada que o service retorna (.select().single()) — antes
+      // lia o cache logo apos invalidar, pegando dados velhos (ou undefined).
+      if (updated) syncOSToGCal(updated).catch(err => logGCalSyncError('sincronizar OS atualizada', err));
     },
   });
 }
@@ -189,6 +188,17 @@ export function useGCalEvents(timeMin, timeMax, enabled = true) {
     queryFn: () => fetchGCalEvents(timeMin, timeMax),
     enabled: !!enabled && !!timeMin && !!timeMax,
     staleTime: 30_000,
+  });
+}
+
+/** Eventos do Google de TODA a equipe (via Edge Function gcal-team-events). */
+export function useTeamGCalEvents(timeMin, timeMax, enabled = true) {
+  return useQuery({
+    queryKey: ['teamGcalEvents', timeMin?.toISOString?.() || timeMin, timeMax?.toISOString?.() || timeMax],
+    queryFn: () => fetchTeamGCalEvents(timeMin, timeMax),
+    enabled: !!enabled && !!timeMin && !!timeMax,
+    staleTime: 60_000,
+    retry: 1,
   });
 }
 

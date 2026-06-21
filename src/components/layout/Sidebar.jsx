@@ -15,7 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { getProfile } from '../../lib/profileService';
 import { supabase } from '../../lib/supabase';
-import { Folder } from 'lucide-react';
+import { Folder, ClipboardList } from 'lucide-react';
 import logoFyness from '../../assets/logo-fyness.png';
 import {
   DashboardIcon, SalesIcon, AgendaIcon,
@@ -25,6 +25,8 @@ import {
 
 // Ícone do menu Arquivos (lucide, no tamanho dos NavIcons)
 const ArquivosIcon = () => <Folder className="w-5 h-5" />;
+// Ícone da Minha Rotina (quadro pessoal de O.S.)
+const RotinaIcon = () => <ClipboardList className="w-5 h-5" />;
 
 // Item de navegacao
 function NavItem({ to, icon: Icon, label, isCollapsed, badge, onClick }) {
@@ -221,6 +223,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
           {/* <NavItem to="/dashboard" icon={DashboardIcon} label="Dashboard" isCollapsed={effectiveCollapsed} onClick={handleNavClick} /> */}
           <NavItem to="/financial" icon={FinancialIcon} label="Ordens de Servico" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
           <NavItem to="/agenda" icon={AgendaIcon} label="Agenda" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
+          <NavItem to="/routine" icon={RotinaIcon} label="Minha Rotina" isCollapsed={effectiveCollapsed} onClick={handleNavClick} />
 
           <div className="my-4 border-t border-slate-200 dark:border-slate-700" />
 

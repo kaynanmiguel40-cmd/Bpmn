@@ -9,7 +9,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, ClipboardCheck, Clock, Timer, BadgeCheck, FileText, Copy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ClipboardCheck, Clock, Timer, BadgeCheck, FileText, Copy, Award, Scale } from 'lucide-react';
 import { getOperationalDailyReport } from '../../lib/operationalReportService';
 import { formatHM } from '../financial/components/helpers';
 import { toast } from '../../contexts/ToastContext';
@@ -40,22 +40,47 @@ function SectorCard({ s }) {
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 flex-1 truncate">{s.label}</h3>
         {s.osDone > 0 && <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{s.osDone} O.S. concluída{s.osDone > 1 ? 's' : ''}</span>}
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 px-4 py-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 px-4 py-3">
         <Metric icon={ClipboardCheck} accent="#3b82f6" value={s.tasksDone} sub={`tarefa${s.tasksDone === 1 ? '' : 's'} · ${s.deliveries} entrega${s.deliveries === 1 ? '' : 's'}`} />
         <Metric icon={Timer} accent="#8b5cf6" value={formatHM(Math.round(s.timeMin))} sub="tempo trabalhado" />
         <Metric icon={Clock} accent="#f59e0b" value={s.onTimePct == null ? '—' : `${s.onTimePct}%`} sub={`no prazo${s.late ? ` · ${s.late} atrasada${s.late > 1 ? 's' : ''}` : ''}`} />
         <Metric icon={BadgeCheck} accent="#10b981" value={s.approvedPct == null ? '—' : `${s.approvedPct}%`} sub={`aprovadas${s.reviewed ? ` · ${s.reviewed} revisada${s.reviewed > 1 ? 's' : ''}` : ''}`} />
+        <Metric icon={Award} accent="#6366f1" value={s.qualityAvg == null ? '—' : `${s.qualityAvg}%`} sub="nota de qualidade" />
       </div>
+      {/* Contestações arbitradas pelo Juiz — só aparece quando houve contestação */}
+      {s.disputes > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-slate-100 dark:border-white/5 text-[11px] text-slate-500 dark:text-slate-400">
+          <Scale size={13} className="text-indigo-500 dark:text-indigo-400 shrink-0" />
+          <span className="min-w-0">
+            {s.disputes} contestaç{s.disputes > 1 ? 'ões' : 'ão'}
+            {s.disputesChanged ? ` · ${s.disputesChanged} ajustada${s.disputesChanged > 1 ? 's' : ''}` : ''}
+            {s.disputesKept ? ` · ${s.disputesKept} mantida${s.disputesKept > 1 ? 's' : ''}` : ''}
+            {s.disputesOpen ? ` · ${s.disputesOpen} em aberto` : ''}
+            {s.judges && s.judges.length ? ` · Juiz: ${s.judges.join(', ')}` : ''}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
+function disputeText(s) {
+  if (!s.disputes) return '';
+  const parts = [`${s.disputes} contestaç${s.disputes > 1 ? 'ões' : 'ão'}`];
+  if (s.disputesChanged) parts.push(`${s.disputesChanged} ajustada${s.disputesChanged > 1 ? 's' : ''}`);
+  if (s.disputesKept) parts.push(`${s.disputesKept} mantida${s.disputesKept > 1 ? 's' : ''}`);
+  if (s.disputesOpen) parts.push(`${s.disputesOpen} em aberto`);
+  if (s.judges && s.judges.length) parts.push(`Juiz: ${s.judges.join(', ')}`);
+  return ` · ⚖️ ${parts.join(' · ')}`;
+}
+
 function buildText(date, report) {
+  const t = report.totals;
   const lines = [`RELATÓRIO OPERACIONAL — ${longDate(date)}`];
-  lines.push(`${report.totals.tasksDone} tarefas · ${report.totals.deliveries} entregas · ${formatHM(Math.round(report.totals.timeMin))} · ${report.totals.osDone} O.S. concluídas`);
+  lines.push(`${t.tasksDone} tarefas · ${t.deliveries} entregas · ${formatHM(Math.round(t.timeMin))} · ${t.osDone} O.S. concluídas${t.qualityAvg == null ? '' : ` · nota ${t.qualityAvg}%`}${t.disputes ? ` · ${t.disputes} contestaç${t.disputes > 1 ? 'ões' : 'ão'}` : ''}`);
   lines.push('');
   report.sectors.forEach(s => {
-    lines.push(`• ${s.label}: ${s.tasksDone} tarefas · ${formatHM(Math.round(s.timeMin))} · ${s.onTimePct == null ? '—' : s.onTimePct + '% no prazo'} · ${s.approvedPct == null ? '—' : s.approvedPct + '% aprovadas'}`);
+    lines.push(`• ${s.label}: ${s.tasksDone} tarefas · ${formatHM(Math.round(s.timeMin))} · ${s.onTimePct == null ? '—' : s.onTimePct + '% no prazo'} · ${s.approvedPct == null ? '—' : s.approvedPct + '% aprovadas'}${s.qualityAvg == null ? '' : ` · nota ${s.qualityAvg}%`}${disputeText(s)}`);
   });
   return lines.join('\n');
 }
@@ -69,7 +94,7 @@ export default function OperationalDailyPage() {
     staleTime: 30_000,
   });
 
-  const report = data || { date, sectors: [], totals: { tasksDone: 0, deliveries: 0, timeMin: 0, osDone: 0 } };
+  const report = data || { date, sectors: [], totals: { tasksDone: 0, deliveries: 0, timeMin: 0, osDone: 0, qualityAvg: null, disputes: 0 } };
   const rel = relativeDay(date);
 
   const copy = async () => {
@@ -77,7 +102,13 @@ export default function OperationalDailyPage() {
     catch { toast('Não consegui copiar', 'error'); }
   };
 
-  const totalLabel = useMemo(() => `${report.totals.tasksDone} tarefas · ${report.totals.deliveries} entregas · ${formatHM(Math.round(report.totals.timeMin))} · ${report.totals.osDone} O.S.`, [report.totals]);
+  const totalLabel = useMemo(() => {
+    const t = report.totals;
+    let s = `${t.tasksDone} tarefas · ${t.deliveries} entregas · ${formatHM(Math.round(t.timeMin))} · ${t.osDone} O.S.`;
+    if (t.qualityAvg != null) s += ` · nota ${t.qualityAvg}%`;
+    if (t.disputes) s += ` · ${t.disputes} contestaç${t.disputes > 1 ? 'ões' : 'ão'}`;
+    return s;
+  }, [report.totals]);
 
   return (
     <div className="max-w-5xl mx-auto">

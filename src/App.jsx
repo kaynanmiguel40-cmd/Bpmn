@@ -15,6 +15,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Editor = lazy(() => import('./pages/Editor'))
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'))
 const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage'))
+const RoutinePage = lazy(() => import('./pages/routine/RoutinePage'))
 const FinancialPage = lazy(() => import('./pages/financial/FinancialPage'))
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'))
 const ReportPage = lazy(() => import('./pages/reports/ReportPage'))
@@ -137,8 +138,7 @@ function App() {
                 <Route path="/" element={<Navigate to="/financial" replace />} />
                 <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
                 <Route path="/sales" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-                {/* "Minha Rotina" removida — o trabalho passou a ser pela Agenda. Redireciona links antigos. */}
-                <Route path="/routine" element={<Navigate to="/agenda" replace />} />
+                <Route path="/routine" element={<ErrorBoundary><RoutinePage /></ErrorBoundary>} />
                 <Route path="/agenda" element={<ErrorBoundary><AgendaPage /></ErrorBoundary>} />
                 <Route path="/financial" element={<ErrorBoundary><FinancialPage /></ErrorBoundary>} />
                 <Route path="/reports" element={<ErrorBoundary><ReportPage /></ErrorBoundary>} />

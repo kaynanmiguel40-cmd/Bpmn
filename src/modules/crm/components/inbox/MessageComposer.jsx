@@ -172,7 +172,7 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
     const up = await uploadCrmMedia(file, { prefix });
     setUploading(false);
     if (!up.ok) { toast(`Falha no upload: ${up.error}`, 'error'); return false; }
-    await sendMutation.mutateAsync({
+    const res = await sendMutation.mutateAsync({
       instanceName,
       phone:        conversation.otherPhone,
       mediaUrl:     up.url,
@@ -183,7 +183,9 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
       dealId:       conversation.dealId || null,
       source:       'manual',
     });
-    return true;
+    // sendCrmMessage devolve { ok:false } em vez de lançar — sem isto o envio
+    // "falha em silencio" e a UI nao saberia que nao foi.
+    return res?.ok === true;
   }
 
   const handleSend = async () => {
@@ -193,17 +195,19 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
 
     if (attachment) {
       const a = attachment;
-      setText('');
-      setAttachment(null);
-      await sendMedia({ file: a.file, mediaType: a.mediaType, caption: content || undefined });
-      if (a.preview) URL.revokeObjectURL(a.preview);
+      // So limpa o anexo se o envio deu certo — senao o usuario perderia o arquivo.
+      const ok = await sendMedia({ file: a.file, mediaType: a.mediaType, caption: content || undefined });
+      if (ok) {
+        setText('');
+        setAttachment(null);
+        if (a.preview) URL.revokeObjectURL(a.preview);
+      }
       textareaRef.current?.focus();
       return;
     }
 
     if (!content) return;
-    setText('');
-    await sendMutation.mutateAsync({
+    const res = await sendMutation.mutateAsync({
       instanceName,
       phone:      conversation.otherPhone,
       content,
@@ -212,6 +216,8 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
       dealId:     conversation.dealId || null,
       source:     'manual',
     });
+    // Limpa o texto so apos confirmar — em falha o usuario nao reescreve do zero.
+    if (res?.ok) setText('');
     textareaRef.current?.focus();
   };
 
