@@ -5,10 +5,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle, Repeat, Upload } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle, Repeat, Upload, Combine } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
 import { useUrlState } from '../../../hooks/useUrlState';
 import { supabase } from '../../../lib/supabase';
@@ -468,6 +468,102 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
   );
 }
 
+// ==================== COLUNA PERDIDO ====================
+
+// Card enxuto pra coluna "Perdido": mostra em QUAL etapa o lead se perdeu e o
+// motivo. Sem drag (perdido nao volta arrastando) — so abre o deal ou exclui.
+function LostDealCard({ deal, onDelete }) {
+  const navigate = useNavigate();
+  return (
+    <div
+      onClick={() => navigate(`/crm/deals/${deal.id}`)}
+      className="rounded-xl border px-3 py-2.5 cursor-pointer shadow-sm hover:shadow-glass hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 group relative bg-rose-50/60 dark:bg-rose-900/15 border-rose-200/60 dark:border-rose-800/40"
+    >
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-snug line-clamp-2">{deal.title}</h4>
+        {deal.value > 0 && (
+          <span className="text-xs font-medium text-slate-400 dark:text-slate-500 line-through shrink-0 mt-0.5">
+            {formatCurrency(deal.value)}
+          </span>
+        )}
+      </div>
+
+      {(deal.contact || deal.company) && (
+        <div className="text-xs text-slate-500 dark:text-slate-400 truncate mb-1">
+          {deal.contact?.name || deal.contactName || deal.company?.name}
+        </div>
+      )}
+
+      {/* Em qual etapa se perdeu */}
+      {deal.lostStage && (
+        <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400">
+          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: deal.lostStage.color }} />
+          Perdido em {deal.lostStage.name}
+        </div>
+      )}
+
+      {deal.lostReason && (
+        <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500 italic line-clamp-2">“{deal.lostReason}”</div>
+      )}
+
+      {deal.source && (
+        <div className="mt-1">
+          <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+            {deal.source}
+          </span>
+        </div>
+      )}
+
+      <div className="absolute right-1.5 top-1.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(deal); }}
+          title="Excluir"
+          className="p-1 rounded bg-white dark:bg-slate-800 text-slate-400 hover:text-rose-600 shadow-sm border border-slate-200 dark:border-slate-700"
+        >
+          <Trash2 size={11} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LostColumn({ lostDeals, totalLost, onDelete }) {
+  return (
+    <div className="w-72 shrink-0 flex flex-col h-full crm-glass rounded-2xl overflow-hidden border border-rose-200/50 dark:border-rose-900/30">
+      {/* Total perdido */}
+      <div className="px-3 pt-3 pb-1.5 text-center">
+        <div className="text-base font-bold text-rose-500 dark:text-rose-400">
+          {totalLost} perdido{totalLost !== 1 ? 's' : ''}
+        </div>
+      </div>
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <XCircle size={14} className="text-rose-500 shrink-0" />
+          <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate">Perdido</span>
+        </div>
+        <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+          {lostDeals.length}{lostDeals.length !== totalLost ? ` de ${totalLost}` : ''}
+        </span>
+      </div>
+
+      {/* Lista (sem drop — perdido nao recebe arraste) */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        {lostDeals.length === 0 ? (
+          <div className="py-8 text-center text-xs text-slate-400">
+            {totalLost > 0 ? 'Nenhum resultado' : 'Nenhum negocio perdido'}
+          </div>
+        ) : (
+          lostDeals.map(deal => (
+            <LostDealCard key={deal.id} deal={deal} onDelete={onDelete} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ==================== MODAL CRIAR PIPELINE ====================
 
 const DEFAULT_STAGES = [
@@ -693,7 +789,9 @@ const STATUS_BADGE = {
 function PipelineListView({ pipelineData, filterDeals, onMarkLost, onDelete }) {
   const navigate = useNavigate();
 
-  // Achatar deals de todos os stages e enriquecer com nome/cor do stage
+  // Achatar deals de todos os stages e enriquecer com nome/cor do stage.
+  // Os perdidos saem da lista por stage (service), entao reentram aqui com a
+  // etapa em que se perderam (lostStage), mantendo o status "Perdido".
   const rows = useMemo(() => {
     const stages = pipelineData?.stages || [];
     const all = stages.flatMap(stage =>
@@ -702,7 +800,8 @@ function PipelineListView({ pipelineData, filterDeals, onMarkLost, onDelete }) {
         stage: { id: stage.id, name: stage.name, color: stage.color },
       }))
     );
-    return filterDeals(all);
+    const lost = (pipelineData?.lostDeals || []).map(d => ({ ...d, stage: d.lostStage }));
+    return filterDeals([...all, ...lost]);
   }, [pipelineData, filterDeals]);
 
   if (!pipelineData) return null;
@@ -807,7 +906,7 @@ function PipelineListView({ pipelineData, filterDeals, onMarkLost, onDelete }) {
 
 // ==================== EMPTY STATE ====================
 
-function SeedOrCreateEmpty({ onCreateManual }) {
+function SeedOrCreateEmpty({ onCreateManual, onCreateGeneral, creatingGeneral }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 gap-6">
       <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
@@ -816,16 +915,25 @@ function SeedOrCreateEmpty({ onCreateManual }) {
       <div className="text-center">
         <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-1">Nenhum pipeline criado</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md">
-          Crie pipelines para gerenciar seus negocios no Kanban.
+          Comece com a pipeline <strong>Geral</strong> (um funil unico, com a origem do lead marcada no negocio) — ou crie uma manual.
         </p>
       </div>
-      <button
-        onClick={onCreateManual}
-        className="px-5 py-2.5 text-sm font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
-      >
-        <Plus size={16} />
-        Criar Pipeline Manual
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onCreateGeneral}
+          disabled={creatingGeneral}
+          className="px-5 py-2.5 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-60"
+        >
+          <Plus size={16} />
+          {creatingGeneral ? 'Criando...' : 'Criar pipeline Geral'}
+        </button>
+        <button
+          onClick={onCreateManual}
+          className="px-5 py-2.5 text-sm font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
+        >
+          Criar pipeline manual
+        </button>
+      </div>
     </div>
   );
 }
@@ -866,6 +974,8 @@ export function CrmPipelinePage() {
   const lostMutation = useMarkDealLost();
   const deleteDealMutation = useDeleteCrmDeal();
   const deletePipelineMutation = useDeleteCrmPipeline();
+  const ensureGeneralMutation = useEnsureGeneralPipeline();
+  const consolidateMutation = useConsolidateIntoGeneral();
   const quickCreateMutation = useCreateCrmDeal();
   const { data: allMembers = [] } = useTeamMembers();
   const crmMembers = allMembers.filter(m => m.crmRole);
@@ -887,6 +997,7 @@ export function CrmPipelinePage() {
   const [dragOverStageId, setDragOverStageId] = useState(null);
   const [createPipelineOpen, setCreatePipelineOpen] = useState(false);
   const [deletePipelineConfirm, setDeletePipelineConfirm] = useState(false);
+  const [consolidateConfirm, setConsolidateConfirm] = useState(false);
   const [lostModalDealId, setLostModalDealId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [deleteDealTarget, setDeleteDealTarget] = useState(null);
@@ -907,13 +1018,14 @@ export function CrmPipelinePage() {
   const [searchQuery, setSearchQuery] = useUrlState('q', '');
   const [probFilter, setProbFilter]   = useUrlState('p', 'all');
   const [ownerFilter, setOwnerFilter] = useUrlState('o', 'all');
+  const [sourceFilter, setSourceFilter] = useUrlState('src', 'all');
 
   // Persiste filtros entre navegacoes (URL e sempre fonte de verdade quando
   // presente; quando ausente, restaura do localStorage). Salva sempre que muda.
   const PIPELINE_FILTERS_KEY = 'crm-pipeline-filters';
   useEffect(() => {
     // Restaura ao montar SE a URL nao tem filtros ainda
-    const hasUrlFilters = searchQuery || probFilter !== 'all' || ownerFilter !== 'all';
+    const hasUrlFilters = searchQuery || probFilter !== 'all' || ownerFilter !== 'all' || sourceFilter !== 'all';
     if (hasUrlFilters) return;
     try {
       const raw = localStorage.getItem(PIPELINE_FILTERS_KEY);
@@ -922,17 +1034,28 @@ export function CrmPipelinePage() {
       if (f.searchQuery) setSearchQuery(f.searchQuery);
       if (f.probFilter && f.probFilter !== 'all') setProbFilter(f.probFilter);
       if (f.ownerFilter && f.ownerFilter !== 'all') setOwnerFilter(f.ownerFilter);
+      if (f.sourceFilter && f.sourceFilter !== 'all') setSourceFilter(f.sourceFilter);
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     try {
-      localStorage.setItem(PIPELINE_FILTERS_KEY, JSON.stringify({ searchQuery, probFilter, ownerFilter }));
+      localStorage.setItem(PIPELINE_FILTERS_KEY, JSON.stringify({ searchQuery, probFilter, ownerFilter, sourceFilter }));
     } catch {}
-  }, [searchQuery, probFilter, ownerFilter]);
+  }, [searchQuery, probFilter, ownerFilter, sourceFilter]);
 
-  const hasFilters = searchQuery || probFilter !== 'all' || ownerFilter !== 'all';
+  const hasFilters = searchQuery || probFilter !== 'all' || ownerFilter !== 'all' || sourceFilter !== 'all';
+  const clearFilters = () => { setSearchQuery(''); setProbFilter('all'); setOwnerFilter('all'); setSourceFilter('all'); };
+
+  // Origens (canais) presentes no pipeline atual — alimenta o filtro por Origem.
+  // Vem dos deals reais (inclui nomes de pipelines antigas apos a consolidacao).
+  const sourceOptions = useMemo(() => {
+    const set = new Set();
+    (pipelineData?.stages || []).forEach(st => (st.deals || []).forEach(d => { if (d.source) set.add(d.source); }));
+    (pipelineData?.lostDeals || []).forEach(d => { if (d.source) set.add(d.source); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [pipelineData]);
 
   const filterDeals = useCallback((deals) => {
     if (!deals) return [];
@@ -948,6 +1071,8 @@ export function CrmPipelinePage() {
         ].join(' ').toLowerCase();
         if (!haystack.includes(q)) return false;
       }
+      if (sourceFilter === '_none' && d.source) return false;
+      if (sourceFilter !== 'all' && sourceFilter !== '_none' && d.source !== sourceFilter) return false;
       if (probFilter === 'high' && (d.probability ?? 50) < 70) return false;
       if (probFilter === 'mid' && ((d.probability ?? 50) < 30 || (d.probability ?? 50) >= 70)) return false;
       if (probFilter === 'low' && (d.probability ?? 50) >= 30) return false;
@@ -956,11 +1081,17 @@ export function CrmPipelinePage() {
       if (ownerFilter !== 'all' && ownerFilter !== '_mine' && ownerFilter !== '_none' && d.ownerId !== ownerFilter) return false;
       return true;
     });
-  }, [searchQuery, probFilter, ownerFilter, myMemberId]);
+  }, [searchQuery, sourceFilter, probFilter, ownerFilter, myMemberId]);
 
   const handleNewDeal = (stageId = null) => {
     setDefaultStageId(stageId);
     setFormOpen(true);
+  };
+
+  // Cria (ou reaproveita) a pipeline unica "Geral" e ja a seleciona.
+  const handleCreateGeneral = async () => {
+    const res = await ensureGeneralMutation.mutateAsync();
+    if (res?.id) setSelectedPipelineId(res.id);
   };
 
   // Criacao rapida: so titulo + pipeline + stage. Vendedor edita o resto depois
@@ -1001,77 +1132,39 @@ export function CrmPipelinePage() {
         subtitle="Kanban visual dos seus negocios"
         actions={
           <div className="flex items-center gap-2">
-            {/* Busca */}
-            <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar..."
-                className="pl-8 pr-7 py-1.5 text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg w-36 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-
-            {/* Filtro probabilidade */}
-            <select
-              value={probFilter}
-              onChange={(e) => setProbFilter(e.target.value)}
-              className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
-            >
-              <option value="all">Prob: Todas</option>
-              <option value="high">Alta (70%+)</option>
-              <option value="mid">Media (30-69%)</option>
-              <option value="low">Baixa (&lt;30%)</option>
-            </select>
-
-            {/* Filtro vendedor */}
-            <select
-              value={ownerFilter}
-              onChange={(e) => setOwnerFilter(e.target.value)}
-              className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
-            >
-              <option value="all">Vendedor: Todos</option>
-              {myMemberId && <option value="_mine">Meus Leads</option>}
-              <option value="_none">Sem vendedor</option>
-              {crmMembers.map(m => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-
-            {/* Limpar filtros */}
-            {hasFilters && (
-              <button
-                onClick={() => { setSearchQuery(''); setProbFilter('all'); setOwnerFilter('all'); }}
-                className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-1.5 py-1.5"
-                title="Limpar filtros"
-              >
-                <X size={14} />
-              </button>
-            )}
-
             {/* Seletor de Pipeline (com opção de criar nova) */}
             <select
               value={activePipelineId || ''}
               onChange={(e) => {
-                if (e.target.value === '__new__') {
+                const v = e.target.value;
+                if (v === '__new__') {
                   setCreatePipelineOpen(true);
                   requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
+                } else if (v === '__geral__') {
+                  handleCreateGeneral();
+                  requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
                 } else {
-                  setSelectedPipelineId(e.target.value || '');
+                  setSelectedPipelineId(v || '');
                 }
               }}
               className="text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
             >
               {(pipelines || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               <option disabled>──────────</option>
+              <option value="__geral__">+ Pipeline Geral (recomendada)</option>
               <option value="__new__">+ Nova Pipeline</option>
             </select>
+
+            {/* Consolidar leads das pipelines antigas na Geral */}
+            {pipelines && pipelines.length > 1 && (
+              <button
+                onClick={() => setConsolidateConfirm(true)}
+                title="Consolidar leads das pipelines de venda antigas na Geral (origem = nome da pipeline)"
+                className="p-1.5 text-slate-400 hover:text-fyness-primary hover:bg-fyness-primary/10 rounded-lg transition-colors"
+              >
+                <Combine size={15} />
+              </button>
+            )}
 
             {/* Excluir pipeline selecionada */}
             {pipelines && pipelines.length > 1 && (
@@ -1103,30 +1196,103 @@ export function CrmPipelinePage() {
         }
       />
 
-      {/* Toggle de visualizacao */}
-      <div className="flex items-center gap-1 mb-3 crm-glass rounded-xl p-1 w-fit">
-        <button
-          onClick={() => switchView('kanban')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-            viewMode === 'kanban'
-              ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-          }`}
-        >
-          <Kanban size={13} />
-          Kanban
-        </button>
-        <button
-          onClick={() => switchView('list')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-            viewMode === 'list'
-              ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-          }`}
-        >
-          <List size={13} />
-          Lista
-        </button>
+      {/* Toggle de visualizacao + barra de filtros */}
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <div className="flex items-center gap-1 crm-glass rounded-xl p-1 w-fit">
+          <button
+            onClick={() => switchView('kanban')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              viewMode === 'kanban'
+                ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}
+          >
+            <Kanban size={13} />
+            Kanban
+          </button>
+          <button
+            onClick={() => switchView('list')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              viewMode === 'list'
+                ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}
+          >
+            <List size={13} />
+            Lista
+          </button>
+        </div>
+
+        {/* Filtros */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Busca */}
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar..."
+              className="pl-8 pr-7 py-1.5 text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg w-36 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Filtro Origem (canal) — so aparece quando ha origens no pipeline */}
+          {sourceOptions.length > 0 && (
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary max-w-[180px]"
+              title="Filtrar por origem do lead"
+            >
+              <option value="all">Origem: Todas</option>
+              {sourceOptions.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="_none">Sem origem</option>
+            </select>
+          )}
+
+          {/* Filtro vendedor */}
+          <select
+            value={ownerFilter}
+            onChange={(e) => setOwnerFilter(e.target.value)}
+            className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+          >
+            <option value="all">Vendedor: Todos</option>
+            {myMemberId && <option value="_mine">Meus Leads</option>}
+            <option value="_none">Sem vendedor</option>
+            {crmMembers.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+
+          {/* Filtro probabilidade */}
+          <select
+            value={probFilter}
+            onChange={(e) => setProbFilter(e.target.value)}
+            className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+          >
+            <option value="all">Prob: Todas</option>
+            <option value="high">Alta (70%+)</option>
+            <option value="mid">Media (30-69%)</option>
+            <option value="low">Baixa (&lt;30%)</option>
+          </select>
+
+          {/* Limpar filtros */}
+          {hasFilters && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-2 py-1.5"
+              title="Limpar filtros"
+            >
+              <X size={14} /> Limpar
+            </button>
+          )}
+        </div>
       </div>
 
       {viewMode === 'list' ? (
@@ -1145,6 +1311,8 @@ export function CrmPipelinePage() {
       ) : !pipelines || pipelines.length === 0 ? (
         <SeedOrCreateEmpty
           onCreateManual={() => setCreatePipelineOpen(true)}
+          onCreateGeneral={handleCreateGeneral}
+          creatingGeneral={ensureGeneralMutation.isPending}
         />
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-210px)] crm-stagger">
@@ -1167,6 +1335,13 @@ export function CrmPipelinePage() {
               }}
             />
           ))}
+          {(pipelineData?.lostDeals?.length || 0) > 0 && (
+            <LostColumn
+              lostDeals={filterDeals(pipelineData.lostDeals)}
+              totalLost={pipelineData.lostDeals.length}
+              onDelete={(deal) => setDeleteDealTarget(deal)}
+            />
+          )}
         </div>
       )}
 
@@ -1201,6 +1376,24 @@ export function CrmPipelinePage() {
         open={createPipelineOpen}
         onClose={() => setCreatePipelineOpen(false)}
         onCreated={(id) => setSelectedPipelineId(id)}
+      />
+
+      <CrmConfirmDialog
+        open={consolidateConfirm}
+        onCancel={() => setConsolidateConfirm(false)}
+        onConfirm={() => {
+          consolidateMutation.mutate(undefined, {
+            onSuccess: (res) => {
+              setConsolidateConfirm(false);
+              if (res?.geralId) setSelectedPipelineId(res.geralId);
+            },
+          });
+        }}
+        title="Consolidar leads na pipeline Geral"
+        message='Move os negocios das pipelines de venda antigas (Outbound, IA, Vendedor, Leads de Parceiros...) pra pipeline "Geral", mapeando cada etapa na equivalente e marcando a ORIGEM com o nome da pipeline de onde vieram (so quando o negocio ainda nao tem origem). As pipelines de venda antigas que ficarem vazias sao REMOVIDAS. Aquisicao de Parceiros e Nutricao NAO sao tocadas.'
+        confirmLabel="Consolidar"
+        variant="info"
+        loading={consolidateMutation.isPending}
       />
 
       <CrmConfirmDialog

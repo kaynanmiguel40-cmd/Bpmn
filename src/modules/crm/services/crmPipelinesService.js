@@ -135,13 +135,19 @@ export async function getCrmPipelineWithDeals(pipelineId) {
 
   const result = dbToPipeline(pipeline);
 
-  // Agrupar deals por stage
+  // Mapa id->etapa, pra anotar em qual etapa um lead perdido se perdeu.
+  const stageById = {};
+  result.stages.forEach(s => { stageById[s.id] = { id: s.id, name: s.name, color: s.color }; });
+
+  // Agrupar deals por stage. Negocios PERDIDOS saem das colunas e vao pra uma
+  // lista separada (coluna "Perdido"), guardando a etapa onde se perderam — o
+  // stage_id de um deal perdido continua sendo onde ele estava ao ser marcado.
   const dealsByStage = {};
+  const lostDeals = [];
   (deals || []).forEach(d => {
-    if (!dealsByStage[d.stage_id]) dealsByStage[d.stage_id] = [];
     // Fallback: deals antigos sem historico usam created_at do deal
     const lastStageChangedAt = lastStageChangeMap[d.id] || d.created_at;
-    dealsByStage[d.stage_id].push({
+    const card = {
       id: d.id,
       title: d.title,
       value: d.value,
@@ -161,18 +167,28 @@ export async function getCrmPipelineWithDeals(pipelineId) {
       createdAt: d.created_at,
       lastStageChangedAt,
       cadence: cadenceMap[d.id] || null,
-    });
+    };
+
+    if (d.status === 'lost') {
+      lostDeals.push({ ...card, lostReason: d.lost_reason || null, lostStage: stageById[d.stage_id] || null });
+      return;
+    }
+
+    if (!dealsByStage[d.stage_id]) dealsByStage[d.stage_id] = [];
+    dealsByStage[d.stage_id].push(card);
   });
 
   result.stages = result.stages.map(stage => {
-    const allDeals = dealsByStage[stage.id] || [];
-    const deals = allDeals;
+    const stageDeals = dealsByStage[stage.id] || [];
     return {
       ...stage,
-      deals,
-      totalValue: deals.reduce((sum, d) => sum + (d.value || 0), 0),
+      deals: stageDeals,
+      totalValue: stageDeals.reduce((sum, d) => sum + (d.value || 0), 0),
     };
   });
+
+  // Perdidos (o fetch ja vem por created_at desc — mais recentes primeiro).
+  result.lostDeals = lostDeals;
 
   return result;
 }
@@ -278,6 +294,173 @@ export async function ensurePartnersPipeline() {
   });
 
   return { id: pipeline?.id, created: true };
+}
+
+// ==================== PIPELINE GERAL (unica) ====================
+
+export const GENERAL_PIPELINE_NAME = 'Geral';
+
+// Os passos da pipeline unica de vendas. A ORIGEM do lead (prospeccao, trafego,
+// indicacao de contador/parceiro, WhatsApp...) NAO vira pipeline por canal —
+// vive no campo `source` do negocio. Nomes escolhidos pra casar com o funil do
+// Comparativo: "Respondeu" -> qualificado, "Reuniao / Demo" -> reuniao,
+// "Cliente" -> ganho (is_win_stage).
+const GENERAL_PIPELINE_STAGES = [
+  { name: 'A contatar',     position: 1, color: '#94a3b8', isWinStage: false },
+  { name: 'Em cadência',    position: 2, color: '#06b6d4', isWinStage: false },
+  { name: 'Respondeu',      position: 3, color: '#a78bfa', isWinStage: false },
+  { name: 'Reunião / Demo', position: 4, color: '#3b82f6', isWinStage: false },
+  { name: 'Proposta',       position: 5, color: '#f59e0b', isWinStage: false },
+  { name: 'Trial / Teste',  position: 6, color: '#f97316', isWinStage: false },
+  { name: 'Negociação',     position: 7, color: '#ef4444', isWinStage: false },
+  { name: 'Cliente',        position: 8, color: '#10b981', isWinStage: true  },
+];
+
+/**
+ * Garante a pipeline unica "Geral". Idempotente: se ja existe, retorna ela sem
+ * duplicar nem apagar nada. Se nao existe, cria com os 8 passos e marca como
+ * padrao (createCrmPipeline desmarca os outros defaults). Nao remove pipelines
+ * existentes — consolidacao/limpeza e passo separado e explicito.
+ */
+export async function ensureGeneralPipeline() {
+  const { data: existing } = await supabase
+    .from('crm_pipelines')
+    .select('id, name')
+    .eq('name', GENERAL_PIPELINE_NAME)
+    .maybeSingle();
+
+  if (existing) return { id: existing.id, created: false };
+
+  const pipeline = await createCrmPipeline({
+    name: GENERAL_PIPELINE_NAME,
+    isDefault: true,
+    stages: GENERAL_PIPELINE_STAGES,
+  });
+
+  return { id: pipeline?.id, created: !!pipeline?.id };
+}
+
+// Heuristica: mapeia uma etapa de pipeline ANTIGA -> etapa equivalente na Geral.
+// Win -> win; senao por palavra-chave; fallback por posicao relativa entre as
+// etapas nao-ganhas; default = primeira etapa ("A contatar").
+const GENERAL_STAGE_KEYWORDS = [
+  { re: /trial|teste|piloto/i,                                                                  name: 'Trial / Teste' },
+  { re: /negocia|final/i,                                                                        name: 'Negociação' },
+  { re: /proposta|or[çc]amento/i,                                                                name: 'Proposta' },
+  { re: /reuni|demo|apresenta/i,                                                                 name: 'Reunião / Demo' },
+  { re: /respond|engaj|conect|qualifica|icp|interess|topou/i,                                    name: 'Respondeu' },
+  { re: /cad[êe]ncia|nutri|tentativa|follow|enriquec|reativ/i,                                   name: 'Em cadência' },
+  { re: /contatar|identificad|mapead|lista|captad|indicad|prospec|recebid|in[íi]cio|entrada|lead|nov[ao]/i, name: 'A contatar' },
+];
+
+function mapStageToGeneral(oldStage, oldStagesSorted, geralStagesSorted, geralByName, geralWin, geralFirst) {
+  if (oldStage.is_win_stage) return geralWin;
+  for (const k of GENERAL_STAGE_KEYWORDS) {
+    if (k.re.test(oldStage.name || '') && geralByName[k.name]) return geralByName[k.name];
+  }
+  const oldOpen = oldStagesSorted.filter(s => !s.is_win_stage);
+  const geralOpen = geralStagesSorted.filter(s => !s.is_win_stage);
+  const idx = oldOpen.findIndex(s => s.id === oldStage.id);
+  if (idx >= 0 && oldOpen.length > 1 && geralOpen.length) {
+    const gi = Math.round((idx / (oldOpen.length - 1)) * (geralOpen.length - 1));
+    return geralOpen[gi] || geralFirst;
+  }
+  return geralFirst;
+}
+
+/**
+ * Consolida os leads das pipelines de VENDA antigas dentro da pipeline unica
+ * "Geral": move pipeline_id + stage_id (etapa equivalente por nome/posicao) e
+ * grava a ORIGEM (`source`) = nome da pipeline de onde o lead veio (so quando o
+ * deal ainda nao tem origem, pra nao sobrescrever origem ja preenchida).
+ *
+ * NAO move a aquisicao de Parceiros (nome exato "Parceiros") nem Nutricao:
+ * parceiro fechado nao e venda — moves-los pra Geral os faria contar como
+ * cliente/MRR no Comparativo. Apos mover, REMOVE as pipelines de venda antigas
+ * que ficaram vazias (sem deal ativo). Idempotente: rodar de novo nao tem efeito.
+ */
+export async function consolidateSalesPipelinesIntoGeneral() {
+  const { id: geralId } = await ensureGeneralPipeline();
+  if (!geralId) {
+    toast('Nao consegui garantir a pipeline Geral', 'error');
+    return { moved: 0, total: 0 };
+  }
+
+  const { data: allPipelines } = await supabase
+    .from('crm_pipelines')
+    .select('id, name, crm_pipeline_stages(id, name, position, is_win_stage)');
+
+  const geral = (allPipelines || []).find(p => p.id === geralId);
+  const geralStages = (geral?.crm_pipeline_stages || []).slice().sort((a, b) => a.position - b.position);
+  if (!geralStages.length) {
+    toast('Pipeline Geral sem etapas', 'error');
+    return { moved: 0, total: 0, geralId };
+  }
+  const geralByName = {};
+  geralStages.forEach(s => { geralByName[s.name] = s; });
+  const geralWin = geralStages.find(s => s.is_win_stage) || geralStages[geralStages.length - 1];
+  const geralFirst = geralStages[0];
+
+  // Pipelines de venda antigas = tudo menos Geral, aquisicao de Parceiros e Nutricao.
+  const isNurturing = p => /nurturing|nutri/i.test(p.name || '');
+  const isPartnerAcq = p => /^\s*parceiros\s*$/i.test(p.name || '');
+  const sourcePipelines = (allPipelines || []).filter(
+    p => p.id !== geralId && !isNurturing(p) && !isPartnerAcq(p)
+  );
+  if (!sourcePipelines.length) {
+    toast('Nenhuma pipeline de venda antiga pra consolidar', 'info');
+    return { moved: 0, total: 0, geralId };
+  }
+
+  const stageMap = {};
+  const pipelineNameById = {};
+  for (const p of sourcePipelines) {
+    pipelineNameById[p.id] = p.name;
+    const oldStages = (p.crm_pipeline_stages || []).slice().sort((a, b) => a.position - b.position);
+    for (const s of oldStages) {
+      stageMap[s.id] = mapStageToGeneral(s, oldStages, geralStages, geralByName, geralWin, geralFirst).id;
+    }
+  }
+
+  const sourceIds = sourcePipelines.map(p => p.id);
+  const { data: deals } = await supabase
+    .from('crm_deals')
+    .select('id, stage_id, source, pipeline_id')
+    .in('pipeline_id', sourceIds)
+    .is('deleted_at', null);
+
+  // Move os deals ativos pra Geral (etapa equivalente + origem = pipeline antiga).
+  const results = await Promise.all((deals || []).map(d => {
+    const newStageId = stageMap[d.stage_id] || geralFirst.id;
+    const update = { pipeline_id: geralId, stage_id: newStageId };
+    const oldName = pipelineNameById[d.pipeline_id];
+    if (!d.source && oldName) update.source = oldName;
+    return supabase.from('crm_deals').update(update).eq('id', d.id).then(({ error }) => !error);
+  }));
+  const moved = results.filter(Boolean).length;
+
+  // Remove as pipelines de venda antigas que ficaram VAZIAS. Reconfere os deals
+  // ativos restantes: se algum move falhou, a pipeline ainda tem deal e NAO e
+  // apagada (nao perde negocio). As que esvaziaram de fato sao removidas
+  // (CASCADE leva etapas + historico; deals ativos ja sairam pra Geral).
+  const { data: remaining } = await supabase
+    .from('crm_deals')
+    .select('pipeline_id')
+    .in('pipeline_id', sourceIds)
+    .is('deleted_at', null);
+  const stillHasDeals = new Set((remaining || []).map(d => d.pipeline_id));
+  const deleted = [];
+  for (const p of sourcePipelines) {
+    if (stillHasDeals.has(p.id)) continue;
+    const { error } = await supabase.from('crm_pipelines').delete().eq('id', p.id);
+    if (!error) deleted.push(p.name);
+  }
+
+  if (moved === 0 && deleted.length === 0) {
+    toast('Nada pra consolidar — as vendas ja estao na Geral', 'info');
+  }
+
+  return { moved, total: deals?.length || 0, geralId, deleted };
 }
 
 // ==================== LIMPEZA COMPLETA CRM ====================

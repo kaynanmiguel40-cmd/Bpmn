@@ -4,7 +4,7 @@ import { toast } from '../../../contexts/ToastContext';
 // Services
 import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany, softDeleteCrmCompany } from '../services/crmCompaniesService';
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
-import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
+import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, ensureGeneralPipeline, consolidateSalesPipelinesIntoGeneral, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
 import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal } from '../services/crmActivitiesService';
 import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel } from '../services/crmDashboardService';
@@ -1044,6 +1044,32 @@ export function useEnsurePartnersPipeline() {
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
       if (result?.created) toast('Pipeline Parceiros criado com sucesso', 'success');
+    },
+  });
+}
+
+export function useEnsureGeneralPipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ensureGeneralPipeline,
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
+      toast(result?.created ? 'Pipeline "Geral" criada' : 'Pipeline "Geral" ja existe', result?.created ? 'success' : 'info');
+    },
+  });
+}
+
+export function useConsolidateIntoGeneral() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: consolidateSalesPipelinesIntoGeneral,
+    onSuccess: (res) => {
+      // Mexeu em deals + pipelines — invalida o CRM inteiro.
+      qc.invalidateQueries({ queryKey: ['crm'] });
+      const parts = [];
+      if (res?.moved > 0) parts.push(`${res.moved} lead${res.moved !== 1 ? 's' : ''} na Geral`);
+      if (res?.deleted?.length) parts.push(`${res.deleted.length} pipeline${res.deleted.length !== 1 ? 's' : ''} antiga${res.deleted.length !== 1 ? 's' : ''} removida${res.deleted.length !== 1 ? 's' : ''}`);
+      if (parts.length) toast(parts.join(' · '), 'success');
     },
   });
 }

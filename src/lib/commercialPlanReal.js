@@ -38,20 +38,32 @@ function pct(a, b) {
 export async function getCommercialPlanReal() {
   const now = new Date();
 
-  // 1) Todos os deals ganhos (uma query). value = contrato, mrr = mensalidade.
-  const { data: wonRaw, error } = await supabase
-    .from('crm_deals')
-    .select('value, mrr, closed_at')
-    .eq('status', 'won')
-    .is('deleted_at', null);
+  // 1) Deals ganhos + pipelines (em paralelo). value = contrato, mrr = mensalidade.
+  const [{ data: wonRaw, error }, { data: pipelinesRaw }] = await Promise.all([
+    supabase.from('crm_deals').select('value, mrr, closed_at, pipeline_id').eq('status', 'won').is('deleted_at', null),
+    supabase.from('crm_pipelines').select('id, name'),
+  ]);
 
   if (error) {
     console.error('[Plano Comercial] erro ao ler deals ganhos:', error.message);
   }
-  // Todo deal ganho conta como cliente ativo. Sem closed_at = base ja existente
-  // (clientes que ja estavam no CRM antes do plano) — ativo desde o M1. Com
-  // closed_at = entra a partir do mes em que fechou.
+
+  // ESCOPO DE VENDA: um "parceiro fechado" (ganho na pipeline de AQUISICAO de
+  // parceiros) NAO e cliente/MRR — nao pode contar no Previsto vs Real. Exclui
+  // tambem nutricao. Mesma regra do funil (getSalesFunnel scope='sales'):
+  // "Parceiros" (exato) = aquisicao; "Leads de Parceiros" SEGUE contando (sao
+  // clientes indicados que fecharam de fato).
+  const isNurturing  = p => /nurturing|nutri/i.test(p.name || '');
+  const isPartnerAcq = p => /^\s*parceiros\s*$/i.test(p.name || '');
+  const nonSalesPipelineIds = new Set(
+    (pipelinesRaw || []).filter(p => isNurturing(p) || isPartnerAcq(p)).map(p => p.id)
+  );
+
+  // Todo deal ganho DE VENDA conta como cliente ativo. Sem closed_at = base ja
+  // existente (clientes que ja estavam no CRM antes do plano) — ativo desde o
+  // M1. Com closed_at = entra a partir do mes em que fechou.
   const won = (wonRaw || [])
+    .filter(d => !nonSalesPipelineIds.has(d.pipeline_id))
     .map(d => ({ mrr: d.mrr || 0, value: d.value || 0, closed: d.closed_at ? new Date(d.closed_at) : null }));
 
   // 2) Quais meses do plano ja comecaram (start <= hoje).
