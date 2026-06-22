@@ -243,7 +243,8 @@ function AgendaRow({ ev, onClick, onCompleteTask, dimmed }) {
   const Icon = iconFor(ev);
   const label = ev.leadName && isCrm ? ev.leadName : ev.title;
   const sub = [ev.typeLabel, ev.stageName].filter(Boolean).join(' · ');
-  const timing = !isGoogle && ev.completed && ev.completedAt ? scheduleTiming(ev.startDate, ev.completedAt) : null;
+  // Previsto = o FIM agendado (prazo da tarefa), não o início. Sem fim, cai no início.
+  const timing = !isGoogle && ev.completed && ev.completedAt ? scheduleTiming(ev.endDate || ev.startDate, ev.completedAt) : null;
   return (
     <div className={`group/row w-full flex items-center gap-3 py-2.5 px-3 rounded-lg transition-colors
         hover:bg-slate-50 dark:hover:bg-white/5 ${dimmed ? 'opacity-30 hover:opacity-100' : ''}`}>
@@ -265,7 +266,7 @@ function AgendaRow({ ev, onClick, onCompleteTask, dimmed }) {
         {timing && (
           <div className="flex items-center gap-1.5 mt-1 text-[11px] flex-wrap">
             <span className="text-slate-400 dark:text-slate-500 tabular-nums">
-              Previsto {fmtTime(ev.startDate)} · feito {fmtTime(ev.completedAt)}
+              Previsto {fmtTime(ev.endDate || ev.startDate)} · feito {fmtTime(ev.completedAt)}
             </span>
             <span className={`px-1.5 py-px rounded-full font-medium ${TIMING_CLASS[timing.state]}`}>{timing.label}</span>
           </div>

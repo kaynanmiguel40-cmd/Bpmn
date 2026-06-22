@@ -230,6 +230,7 @@ export async function getLeadTimeline({ dealId = null, contactId = null } = {}) 
       title: a.title,
       detail: a.description || '',
       date: when,
+      endDate: a.endDate || null,
       completedAt: a.completedAt || null,
       color: meta.color,
       typeLabel: meta.label,

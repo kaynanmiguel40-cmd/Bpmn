@@ -92,11 +92,11 @@ function TimelineRow({ item }) {
         {item.detail && <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 break-words">{item.detail}</p>}
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{relativeLabel(item.date)}</p>
         {item.kind === 'activity' && item.done && item.completedAt && (() => {
-          const t = scheduleTiming(item.date, item.completedAt);
+          const t = scheduleTiming(item.endDate || item.date, item.completedAt);
           if (!t) return null;
           return (
             <p className="flex items-center gap-1.5 mt-1 text-[11px] flex-wrap">
-              <span className="text-slate-400 dark:text-slate-500 tabular-nums">Previsto {hm(item.date)} · feito {hm(item.completedAt)}</span>
+              <span className="text-slate-400 dark:text-slate-500 tabular-nums">Previsto {hm(item.endDate || item.date)} · feito {hm(item.completedAt)}</span>
               <span className={`px-1.5 py-px rounded-full font-medium ${TIMING_CLASS[t.state]}`}>{t.label}</span>
             </p>
           );
