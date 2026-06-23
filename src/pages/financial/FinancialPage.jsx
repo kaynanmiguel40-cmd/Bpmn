@@ -1868,18 +1868,6 @@ function OSDocument({ order, currentUser, projectName, onBack, onEdit, onDuplica
   const checklistRef = useRef(order.checklist || []);
   checklistRef.current = order.checklist || [];
 
-  // Limpeza unica: remover pausedAt de itens do checklist (agora o pause e na O.S.)
-  useEffect(() => {
-    if (!onUpdateOrder) return;
-    const latestCl = checklistRef.current;
-    let needsFix = false;
-    const cleaned = latestCl.map(i => {
-      if (i.pausedAt) { needsFix = true; return { ...i, pausedAt: null }; }
-      return i;
-    });
-    if (needsFix) onUpdateOrder(order.id, { checklist: cleaned });
-  }, [order.id]);
-
   // Estado de colapso dos blocos de tarefas
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
   const toggleGroupCollapse = (key) => setCollapsedGroups(prev => {
