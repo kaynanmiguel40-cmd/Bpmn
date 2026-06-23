@@ -21,7 +21,11 @@ const ICONS = {
 
 const fmtMin = (m) => { if (!m) return '0min'; const h = Math.floor(m / 60), r = Math.round(m % 60); return h ? (r ? `${h}h${String(r).padStart(2, '0')}` : `${h}h`) : `${r}min`; };
 const ddmm = (key) => { const [, m, d] = key.split('-').map(Number); return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`; };
+// PRAZO (dueAt) é "wall clock" rotulado UTC (ex.: 18:00 que o usuário escolheu)
+// → lê os componentes do ISO sem converter.
 const dmHm = (iso) => { if (!iso) return ''; const [date, time] = iso.split('T'); const [, m, d] = date.split('-'); const hm = (time || '').slice(0, 5); return `${d}/${m}${hm ? ` ${hm}` : ''}`; };
+// ENTREGA (completedAt) é UTC REAL → converte pro fuso LOCAL (senão sai ~3h adiantado).
+const localDmHm = (iso) => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d.getTime())) return ''; const p = (n) => String(n).padStart(2, '0'); return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 
 function PendingCard({ pending, onOpenTask }) {
   const overdue = pending.filter((p) => p.overdue).length;
@@ -131,11 +135,11 @@ function TaskList({ title, tasks, onOpenTask }) {
                   )}
                 </div>
                 <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{t.title}</div>
-                {t.delivery && <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">{t.delivery}</p>}
+                {/* Relato/briefing NÃO aparece inline — só ao clicar na tarefa (abre o drawer). */}
                 {(t.dueAt || t.doneAt) && (
                   <div className="flex items-center gap-2 mt-1 text-[10px] tabular-nums">
                     {t.dueAt && <span className="text-slate-400 dark:text-slate-500"><span className="uppercase tracking-wide mr-1">prazo</span>{dmHm(t.dueAt)}</span>}
-                    {t.doneAt && <span className={t.onTime ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}><span className="text-slate-300 dark:text-slate-600 mr-1">→</span><span className="uppercase tracking-wide mr-1">entregue</span>{dmHm(t.doneAt)}</span>}
+                    {t.doneAt && <span className={t.onTime ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}><span className="text-slate-300 dark:text-slate-600 mr-1">→</span><span className="uppercase tracking-wide mr-1">entregue</span>{localDmHm(t.doneAt)}</span>}
                   </div>
                 )}
               </div>

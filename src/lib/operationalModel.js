@@ -90,6 +90,16 @@ function weeksOfMonth(monthKey) {
 const fmtHM = (min) => { const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? (m ? `${h}h${pad(m)}` : `${h}h`) : `${m}min`; };
 const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
+// Compara horários como "relógio de parede". dueAt é rotulado UTC (a hora que o
+// usuário escolheu, ex.: 18:00) → componentes UTC. completedAt é UTC REAL →
+// componentes LOCAIS. Sem isso o offset do fuso falsearia o "no prazo".
+const wallMs = (iso, asUtc) => {
+  const d = new Date(iso); if (isNaN(d.getTime())) return NaN;
+  return asUtc
+    ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes())
+    : Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+};
+
 // ---------- fonte de dados: O.S. REAIS (injetadas pela página) ----------
 // setOperationalSource() deriva 1 registro por TAREFA do checklist e indexa por
 // PRAZO (previstas) e por ENTREGA (feitas). Toda a máquina abaixo lê só isto.
@@ -163,7 +173,7 @@ export function setOperationalSource({ orders = [], projects = [], sectors = [],
       const reviewed = item.reviewStatus === 'approved' || item.reviewStatus === 'changes';
       const approved = item.reviewStatus === 'approved';
       const onTime = (item.done && item.completedAt && item.dueAt)
-        ? (new Date(item.completedAt) <= new Date(item.dueAt))
+        ? (wallMs(item.completedAt, false) <= wallMs(item.dueAt, true)) // completedAt local · dueAt rotulado UTC
         : !!item.done; // sem prazo definido, conta como no prazo
 
       const rec = {

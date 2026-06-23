@@ -24,6 +24,16 @@ const dayKeyOf = (iso) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// "Relógio de parede": dueAt é rotulado UTC (a hora escolhida, ex.: 18:00) →
+// componentes UTC; completedAt é UTC REAL → componentes LOCAIS. Sem isso o
+// offset do fuso falsearia o "no prazo".
+const wallMs = (iso, asUtc) => {
+  const d = new Date(iso); if (isNaN(d.getTime())) return NaN;
+  return asUtc
+    ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes())
+    : Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+};
+
 /**
  * @param {string} date - 'YYYY-MM-DD'
  * @returns {Promise<{ date, sectors: object[], totals: object }>}
@@ -73,7 +83,7 @@ export async function getOperationalDailyReport(date) {
       if (item.delivery) m.deliveries++;
       m.timeMin += calcChecklistItemMinutes(item) || 0;
       if (item.dueAt) {
-        if (new Date(item.completedAt) <= new Date(item.dueAt)) m.onTime++; else m.late++;
+        if (wallMs(item.completedAt, false) <= wallMs(item.dueAt, true)) m.onTime++; else m.late++;
       }
       if (item.reviewStatus === 'approved') { m.reviewed++; m.approved++; }
       else if (item.reviewStatus === 'changes') { m.reviewed++; m.changes++; }

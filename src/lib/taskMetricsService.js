@@ -13,6 +13,16 @@
 import { supabase } from './supabase';
 import { getOSProjects, getOSSectors } from './osService';
 
+// "Relógio de parede": dueAt com hora é rotulado UTC (a hora escolhida) →
+// componentes UTC; completedAt é UTC REAL → componentes LOCAIS. Compara os dois
+// no mesmo referencial pra o "no prazo" não errar por causa do fuso.
+const wallMs = (iso, asUtc) => {
+  const d = new Date(iso); if (isNaN(d.getTime())) return NaN;
+  return asUtc
+    ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes())
+    : Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+};
+
 // ---- cache de projetos/setores pra derivar o setor do trabalho ----
 let _proj = null, _sec = null, _cacheAt = 0;
 async function sectorMaps() {
@@ -65,13 +75,15 @@ export async function recordTaskCompletion(order, item, completedBy) {
     const dueAt = resolveDueAt(order, item);
     const completedAt = item.completedAt || new Date().toISOString();
     const realMinutes = item.accumulatedMin ?? item.durationMin ?? null;
-    // dueAt date-only ('YYYY-MM-DD') = fim do dia LOCAL (Brasil), nao meia-noite
-    // UTC — senao qualquer conclusao depois das 21h do dia anterior (UTC) caia
-    // como atrasada. Com hora explicita, usa como veio.
-    const dueDate = dueAt
-      ? (/^\d{4}-\d{2}-\d{2}$/.test(dueAt) ? new Date(`${dueAt}T23:59:59.999`) : new Date(dueAt))
-      : null;
-    const onTime = dueDate ? (new Date(completedAt) <= dueDate) : null;
+    // No prazo? dueAt só-data ('YYYY-MM-DD') = fim do dia LOCAL. dueAt com hora é
+    // "wall clock" rotulado UTC; completedAt é UTC real → compara relógio de
+    // parede (senao o offset do fuso falsearia o "no prazo").
+    let onTime = null;
+    if (dueAt) {
+      onTime = /^\d{4}-\d{2}-\d{2}$/.test(dueAt)
+        ? (new Date(completedAt) <= new Date(`${dueAt}T23:59:59.999`))
+        : (wallMs(completedAt, false) <= wallMs(dueAt, true));
+    }
 
     const row = {
       order_id: String(order.id),
