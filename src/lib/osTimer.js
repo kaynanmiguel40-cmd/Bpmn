@@ -14,10 +14,12 @@
 const mapItem = (checklist, itemId, fn) =>
   (checklist || []).map((i) => (i.id === itemId ? fn(i) : i));
 
-/** Minutos REAIS (relógio) entre dois ISO. 0 se inválido/negativo. */
+/** Minutos REAIS (relógio) entre dois ISO, com precisão de SEGUNDOS (fracionário).
+ *  NÃO arredonda pra minuto cheio — senão a pausa perderia os segundos (40:30 → 40)
+ *  e segmentos curtos (<30s) somariam 0 e o tempo nunca progrediria. 0 se inválido. */
 const realMin = (from, at) => {
   const ms = new Date(at).getTime() - new Date(from).getTime();
-  return Number.isFinite(ms) && ms > 0 ? Math.round(ms / 60000) : 0;
+  return Number.isFinite(ms) && ms > 0 ? Math.round(ms / 1000) / 60 : 0;
 };
 
 /** "Pegar" — começa o cronômetro do zero. Se já está rodando, não reinicia. */
