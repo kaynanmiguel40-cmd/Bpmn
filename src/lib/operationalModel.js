@@ -284,11 +284,21 @@ function recordToTask(r, otherDim, day) {
 }
 
 // ---------- API pública ----------
-export function getOperationalIndex(lens) {
+export function getOperationalIndex(lens, id) {
   const owners = lens === 'sector'
     ? getSectorsList().map((s) => ({ id: s.id, name: s.label, color: s.color, sub: 'setor' }))
     : getPeople().map((p) => ({ id: p.id, name: p.name, color: p.color, sub: p.sub }));
-  return { owners, days: lastWeekdays(10), weeks: lastMondays(4), months: lastMonths(3) };
+  let days = lastWeekdays(10), weeks = lastMondays(4), months = lastMonths(3);
+  // Com owner selecionado: lista SÓ os períodos que têm tarefa (prazo OU entrega)
+  // dele — senão aparece um monte de relatório vazio/sem sentido.
+  if (id) {
+    const m = matcher(lens, id);
+    const dayHas = (dk) => tasksForDueDay(dk).some(m) || recordsForDay(dk).some(m);
+    days = days.filter(dayHas);
+    weeks = weeks.filter((wk) => allWeekdaysFromMonday(wk).some(dayHas));
+    months = months.filter((mk) => allWeekdaysOfMonth(mk).some(dayHas));
+  }
+  return { owners, days, weeks, months };
 }
 
 /**
@@ -557,8 +567,9 @@ export function getOperationalReport(lens, id, period, key) {
     : 'média dos dias · Entrega 40% · Qualidade 40% · Prazo 20%';
   const score = { nota, kind: 'factors', items: scoreItems, foot };
 
-  // cartões (verde/vermelho + saldo) — atribuídos à PESSOA; setor não tem cartão.
-  const cards = lens === 'person' ? getOperationalCards(id) : null;
+  // cartões (verde/vermelho + saldo) — atribuídos à PESSOA e SEMANAIS; não fazem
+  // sentido no relatório do DIA (só no semanal/mensal). Setor não tem cartão.
+  const cards = (lens === 'person' && period !== 'daily') ? getOperationalCards(id) : null;
 
   return {
     kind: 'operacao', period, lens,

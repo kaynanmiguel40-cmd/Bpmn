@@ -95,10 +95,10 @@ describe('getOperationalReport', () => {
     });
   });
 
-  it('diário: fatores 0–100 + cartão da pessoa presente', () => {
+  it('diário: fatores 0–100, SEM cartão (cartão é semanal)', () => {
     const idx = personIdx();
     const r = getOperationalReport('person', idx.owners[0].id, 'daily', idx.days[1]);
-    expect(r.cards).toBeTruthy(); // cartão é da pessoa, aparece em qualquer período
+    expect(r.cards).toBeNull(); // cartões são semanais — não aparecem no diário
     expect(r.score.kind).toBe('factors');
     r.score.items.forEach((i) => {
       expect(i.value).toBeGreaterThanOrEqual(0);

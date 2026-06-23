@@ -162,7 +162,9 @@ export default function ArquivosPage() {
 
   // Índice de períodos (pastas/datas)
   const crmIndexQ = useOwnerReportIndex(isOp ? null : owner?.authUserId);
-  const index = isOp ? opIndex : crmIndexQ.data;
+  // Com owner operacional selecionado, usa o índice FILTRADO (só períodos com
+  // tarefa dele) — evita listar dezenas de relatórios vazios.
+  const index = isOp ? (owner ? getOperationalIndex(owner.opLens, owner.id) : opIndex) : crmIndexQ.data;
   const indexLoading = isOp ? false : crmIndexQ.isLoading;
 
   // Relatório operacional (montado na hora a partir do modelo, das O.S.)
