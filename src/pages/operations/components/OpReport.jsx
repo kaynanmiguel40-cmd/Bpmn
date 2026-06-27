@@ -313,8 +313,88 @@ function TimelineCard({ title, rows }) {
   );
 }
 
+// ---------- Semanal minimalista ----------
+// Cartão de cada O.S./tarefa = pela PONTUAÇÃO (nota de qualidade do supervisor):
+// boa → verde, ruim → vermelho, meio/sem nota avaliada → neutro. Sem rótulo —
+// só a cor (o porquê abre no clique).
+const TASK_CARD_COLOR = { green: '#10b981', red: '#ef4444', neutral: '#94a3b8' };
+function taskCardKey(t) {
+  if (typeof t.qualityPct === 'number') {
+    if (t.qualityPct >= 70) return 'green';
+    if (t.qualityPct < 50) return 'red';
+    return 'neutral';
+  }
+  if (t.approved) return 'green';
+  if (t.reviewed) return 'red'; // revisada mas não aprovada (pediu mudanças)
+  return 'neutral';
+}
+
+// Cartõeszinhos de métrica — FORA do campo da O.S.
+function MiniKpis({ tiles }) {
+  if (!tiles.length) return null;
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      {tiles.map((m, i) => {
+        const Icon = ICONS[m.icon] || ClipboardCheck;
+        return (
+          <div key={i} className="rounded-xl border border-slate-200/70 dark:border-white/10 bg-white/70 dark:bg-slate-800/40 px-3 py-2.5">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Icon size={12} style={{ color: m.accent }} className="shrink-0" />
+              <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate">{m.label}</span>
+            </div>
+            <div className="text-lg font-bold text-slate-800 dark:text-slate-100 tabular-nums leading-none">{m.value}</div>
+            {m.sub && <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{m.sub}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Lista das O.S. da semana — cada uma com SÓ o cartão (verde/vermelho/neutro).
+function MiniTaskList({ tasks, onOpenTask }) {
+  return (
+    <Card title="Entregas da semana" meta={`${tasks.length}`}>
+      {tasks.length === 0 ? (
+        <p className="text-[13px] text-slate-400 dark:text-slate-500">Nenhuma entrega nesta semana.</p>
+      ) : (
+        <div className="divide-y divide-slate-100 dark:divide-white/5 -my-2">
+          {tasks.map((t, i) => {
+            const key = taskCardKey(t);
+            return (
+              <div key={i} onClick={() => onOpenTask?.(t)}
+                className={`flex items-center gap-3 py-2 -mx-2 px-2 rounded-lg ${onOpenTask ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5' : ''}`}>
+                <span className="w-3 h-4 rounded-[3px] shadow-sm shrink-0"
+                  style={{ backgroundColor: TASK_CARD_COLOR[key], opacity: key === 'neutral' ? 0.45 : 1 }} />
+                <span className="text-sm text-slate-700 dark:text-slate-200 truncate flex-1 min-w-0">{t.title}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function WeeklyMinimal({ report, onOpenTask }) {
+  const { metrics = [], score, allTasks = [], tasks = [] } = report;
+  const list = allTasks.length ? allTasks : tasks;
+  const tiles = [...metrics];
+  if (score?.nota != null) tiles.push({ icon: 'quality', label: 'Nota', value: score.nota.toFixed(1), accent: notaColor(score.nota) });
+  return (
+    <div className="space-y-4">
+      <MiniKpis tiles={tiles} />
+      <MiniTaskList tasks={list} onOpenTask={onOpenTask} />
+    </div>
+  );
+}
+
 export default function OpReport({ report, onOpenTask }) {
   if (!report) return null;
+
+  // Semanal: visão enxuta — cartõeszinhos de métrica + lista de O.S. com cartão.
+  if (report.period === 'weekly') return <WeeklyMinimal report={report} onOpenTask={onOpenTask} />;
+
   const { metrics = [], score, cards, goals, pending = [], split, timeline, tasks = [], note } = report;
 
   return (

@@ -273,7 +273,7 @@ function recordToTask(r, otherDim, day) {
     : { label: r.person.name, color: r.person.color };
   return {
     taskId: r.taskId, title: r.taskText, duration: fmtHM(r.timeMin),
-    onTime: r.onTime, approved: r.approved, delivery: r.delivery,
+    onTime: r.onTime, approved: r.approved, reviewed: r.reviewed, delivery: r.delivery,
     chip, day: day || null,
     // detalhe pro painel de leitura (clique na tarefa)
     briefing: r.briefing, done: r.done, dueKey: r.dueKey, doneKey: r.doneKey, dueAt: r.dueAt, doneAt: r.doneAt,
@@ -500,6 +500,10 @@ export function getOperationalReport(lens, id, period, key) {
     ? all.map((r) => recordToTask(r, otherDim, null))
     : repTasks(byDay, otherDim);
 
+  // Lista COMPLETA de entregas do período (não amostrada), em ordem cronológica.
+  // Alimenta a visão semanal minimalista — cada O.S. com seu cartão.
+  const allTasks = all.map((r) => recordToTask(r, otherDim, period === 'daily' ? null : shortDay(r.doneKey || r.dueKey)));
+
   // destaques + resumo
   const single = period === 'daily';
   const span = single ? 'no dia' : period === 'weekly' ? 'na semana' : 'no mês';
@@ -577,7 +581,7 @@ export function getOperationalReport(lens, id, period, key) {
     goals: getGoals(lens, id, period, key),
     pending: gatherPending(lens, id, period, key),
     metrics: tilesPerson(a, load, totalEst),
-    load, highlights, split, timeline, tasks, note,
+    load, highlights, split, timeline, tasks, allTasks, note,
     summary: { tasksDone: a.tasksDone, timeMin: a.timeMin, onTimePct: a.onTimePct, approvedPct: a.approvedPct, deliveries: a.deliveries },
   };
 }
