@@ -10,6 +10,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOSOrders, useOSProjects, useTeamMembers, useOSBlocks } from '../../hooks/queries';
+import { useRealtimeOSOrders } from '../../hooks/useRealtimeSubscription';
 import { updateOSOrder, joinOSOrder } from '../../lib/osService';
 import { setBlockStatus } from '../../lib/osBlocksService';
 import { namesMatch, isAssignedTo } from '../../lib/kpiUtils';
@@ -46,6 +47,11 @@ export function RoutinePage() {
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: allBlocks = [] } = useOSBlocks();
   const { profile, isLoading: loadingProfile } = useProfile();
+
+  // Realtime nas O.S. — o board da Rotina (incl. "Rotina da Equipe" / O.S. mode='team')
+  // precisa refletir mudanças de OUTROS usuários. Sem isso, com refetchOnWindowFocus
+  // agora off, o board só atualizava no remount. Hook throttled (4s) — egress mínimo.
+  useRealtimeOSOrders();
 
   const { isManager } = useAuth();
 

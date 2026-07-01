@@ -1162,8 +1162,9 @@ export function useCrmInboxConversations(opts = {}) {
   return useQuery({
     queryKey: [...crmQueryKeys.inbox, opts],
     queryFn: () => getInboxConversations(opts),
-    staleTime: 15_000,
-    refetchOnWindowFocus: true,
+    // EGRESS: refetchOnWindowFocus:true aqui re-baixava crm_messages inteiro + joins
+    // a cada foco de aba (anulava o fix global). Realtime + staleTime mantêm fresco.
+    staleTime: 30_000,
   });
 }
 

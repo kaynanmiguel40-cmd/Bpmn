@@ -106,8 +106,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
         .is('deleted_at', null);
       return count || 0;
     },
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    // EGRESS: este badge roda em TODA página. Poll de 60s × todas as abas somava
+    // muito. 5min é de sobra pra um contador de leads novos.
+    staleTime: 120_000,
+    refetchInterval: 300_000,
   });
 
   const [isPinned, setIsPinned] = useState(() => {

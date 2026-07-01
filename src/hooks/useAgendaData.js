@@ -51,8 +51,10 @@ export function useAgendaData() {
   // Google Calendar (opcional)
   const { data: gcalStatus } = useGCalStatus();
   const gcalConnected = !!gcalStatus?.id && !gcalStatus?.expired;
-  const gMin = useMemo(() => { const d = new Date(today); d.setMonth(d.getMonth() - 2); return d; }, [today]);
-  const gMax = useMemo(() => { const d = new Date(today); d.setMonth(d.getMonth() + 4); return d; }, [today]);
+  // EGRESS: janela do Google/CRM era de 6 meses (-2/+4) por membro. -1/+2 cobre o
+  // uso real da agenda e corta ~metade do payload (Google client + team + CRM).
+  const gMin = useMemo(() => { const d = new Date(today); d.setMonth(d.getMonth() - 1); return d; }, [today]);
+  const gMax = useMemo(() => { const d = new Date(today); d.setMonth(d.getMonth() + 2); return d; }, [today]);
   const { data: gcalEvents = [] } = useGCalEvents(gMin, gMax, gcalConnected);
   // Google da EQUIPE (cada membro buscado com o token DELE, via Edge Function).
   // Independe de EU estar conectado — outros membros podem estar.
@@ -106,9 +108,9 @@ export function useAgendaData() {
 
   // 1) Eventos locais (reunioes/tarefas/pessoais) — expande recorrencia na janela.
   const localEvents = useMemo(() => {
-    const start = new Date(today); start.setMonth(start.getMonth() - 2);
-    const end = new Date(today); end.setMonth(end.getMonth() + 4);
-    const expanded = expandRecurrences(localEventsRaw, start, end);
+    // Mesma janela do Google/CRM (gMin/gMax = -1/+2) pra as 4 fontes aparecerem e
+    // sumirem juntas — senão local/O.S. mostrariam meses onde Google/CRM somem.
+    const expanded = expandRecurrences(localEventsRaw, gMin, gMax);
     return expanded.map(e => {
       const meta = typeMeta(e.type);
       return {
@@ -120,7 +122,7 @@ export function useAgendaData() {
         _raw: e,
       };
     });
-  }, [localEventsRaw, today]);
+  }, [localEventsRaw, gMin, gMax]);
 
   // 2) Atividades comerciais do CRM
   const crmEvents = useMemo(() => {

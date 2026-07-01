@@ -66,7 +66,10 @@ export const queryKeys = {
 
 // ==================== OS ORDERS ====================
 
-export const useOSOrders = makeQueryHook(queryKeys.osOrders, getOSOrders, 30_000);
+// staleTime alto de propósito (egress): getOSOrders faz select('*') do checklist
+// inteiro de TODAS as O.S. e roda em quase toda tela. O realtime invalida quando
+// algo muda, então não precisa refetch agressivo por tempo.
+export const useOSOrders = makeQueryHook(queryKeys.osOrders, getOSOrders, 120_000);
 
 export function useCreateOSOrder() {
   const qc = useQueryClient();
@@ -187,7 +190,9 @@ export function useGCalEvents(timeMin, timeMax, enabled = true) {
     queryKey: ['gcalEvents', timeMin?.toISOString?.() || timeMin, timeMax?.toISOString?.() || timeMax],
     queryFn: () => fetchGCalEvents(timeMin, timeMax),
     enabled: !!enabled && !!timeMin && !!timeMax,
-    staleTime: 30_000,
+    // EGRESS: mutations locais já invalidam ['gcalEvents']; 5min de stale evita
+    // re-baixar o calendário a cada navegação pra agenda.
+    staleTime: 300_000,
   });
 }
 
@@ -197,7 +202,9 @@ export function useTeamGCalEvents(timeMin, timeMax, enabled = true) {
     queryKey: ['teamGcalEvents', timeMin?.toISOString?.() || timeMin, timeMax?.toISOString?.() || timeMax],
     queryFn: () => fetchTeamGCalEvents(timeMin, timeMax),
     enabled: !!enabled && !!timeMin && !!timeMax,
-    staleTime: 60_000,
+    // EGRESS: cada refetch chama a Edge Function que consulta o Google de CADA
+    // membro. 5min de stale corta esse fan-out repetido.
+    staleTime: 300_000,
     retry: 1,
   });
 }
@@ -343,8 +350,10 @@ export function useConversationReads(orderId) {
     queryKey: ['conversationReads', orderId],
     queryFn: () => getConversationReads(orderId),
     enabled: !!orderId,
-    staleTime: 5_000,
-    refetchInterval: 10_000,
+    // EGRESS: poll dos read-receipts enquanto a O.S. está aberta. 60s é fresco o
+    // bastante pra "quem já leu" e corta o poll pela metade.
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 }
 

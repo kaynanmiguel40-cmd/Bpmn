@@ -72,9 +72,12 @@ const queryClient = new QueryClient({
   }),
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
+      // EGRESS: staleTime curto + refetchOnWindowFocus faziam TODAS as queries
+      // refazerem o fetch a cada foco de aba → banco inteiro baixado dezenas de
+      // vezes/dia. Realtime + invalidação nas mutations já mantêm os dados frescos.
+      staleTime: 120_000,
       retry: 1,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
       refetchOnReconnect: true,
     },
   },

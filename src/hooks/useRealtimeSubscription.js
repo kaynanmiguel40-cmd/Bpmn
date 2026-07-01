@@ -35,18 +35,30 @@ export function useRealtimeSubscription(table, queryKeys, options = {}) {
   useEffect(() => {
     if (!enabled) return;
 
+    // EGRESS: cada escrita disparava um refetch da query inteira em TODOS os
+    // clientes. Numa rajada (cronômetro, edições seguidas) isso re-baixava a
+    // tabela dezenas de vezes. Throttle: no máximo 1 invalidação a cada 4s
+    // (coalesce a rajada num refetch só). Atualiza em até ~4s — ok pra um board.
+    let throttle = null;
+    const scheduleInvalidate = () => {
+      if (throttle) return; // já há um refetch agendado nesta janela
+      throttle = setTimeout(() => {
+        throttle = null;
+        (queryKeysRef.current || []).forEach((key) => {
+          queryClient.invalidateQueries({ queryKey: Array.isArray(key) ? key : [key] });
+        });
+      }, 4000);
+    };
+
     const channel = supabase
       .channel(`realtime-${table}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table },
         (payload) => {
-          // Invalidar queries relevantes para forcar refetch
-          (queryKeysRef.current || []).forEach((key) => {
-            queryClient.invalidateQueries({ queryKey: Array.isArray(key) ? key : [key] });
-          });
+          scheduleInvalidate();
 
-          // Callbacks opcionais por tipo de evento
+          // Callbacks opcionais por tipo de evento (imediatos — ex.: notificações)
           if (payload.eventType === 'INSERT' && onInsertRef.current) {
             onInsertRef.current(payload.new);
           } else if (payload.eventType === 'UPDATE' && onUpdateRef.current) {
@@ -59,6 +71,7 @@ export function useRealtimeSubscription(table, queryKeys, options = {}) {
       .subscribe();
 
     return () => {
+      if (throttle) clearTimeout(throttle);
       supabase.removeChannel(channel);
     };
   }, [table, enabled, queryClient]);
@@ -103,6 +116,20 @@ export function useRealtimeNotifications(enabled = true) {
   useEffect(() => {
     if (!enabled || !userId) return;
 
+    // EGRESS: cada notificação invalidava ['notifications'] + ['unreadCount'] na hora.
+    // Numa rajada (várias notif. seguidas) isso re-baixava as listas N vezes.
+    // Throttle: no máximo 1 invalidação a cada 4s. O push (showLocalNotification)
+    // continua imediato — só o refetch das listas é coalescido.
+    let throttle = null;
+    const scheduleInvalidate = () => {
+      if (throttle) return;
+      throttle = setTimeout(() => {
+        throttle = null;
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+      }, 4000);
+    };
+
     const channel = supabase
       .channel(`realtime-notifications-${userId}`)
       .on(
@@ -114,8 +141,7 @@ export function useRealtimeNotifications(enabled = true) {
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          queryClient.invalidateQueries({ queryKey: ['notifications'] });
-          queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+          scheduleInvalidate();
 
           if (payload.eventType === 'INSERT' && payload.new?.title) {
             showLocalNotification({
@@ -132,6 +158,7 @@ export function useRealtimeNotifications(enabled = true) {
       .subscribe();
 
     return () => {
+      if (throttle) clearTimeout(throttle);
       supabase.removeChannel(channel);
     };
   }, [enabled, userId, queryClient]);
