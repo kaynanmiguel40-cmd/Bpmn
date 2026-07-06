@@ -14,7 +14,7 @@ import {
   Building2,
   CalendarDays,
   Settings,
-  ArrowLeft,
+  UserCog,
   Target,
   Trophy,
   CircleDollarSign,
@@ -60,6 +60,7 @@ const crmNavItems = [
   // Pra religar: re-importe TrendingUp do lucide-react e adicione aqui:
   //   { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },
   { divider: true },
+  { to: '/crm/equipe', icon: UserCog, label: 'Equipe' },
   { to: '/crm/settings', icon: Settings, label: 'Configuracoes' },
 ];
 
@@ -142,20 +143,7 @@ export function CrmSidebar() {
         )}
       </div>
 
-      {/* Voltar ao Fyness */}
-      <div className="px-2 pt-2 pb-0.5">
-        <button
-          onClick={() => navigate('/financial')}
-          className={`
-            flex items-center gap-2 w-full px-2.5 py-1 rounded-md text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors
-            ${isCollapsed ? 'justify-center px-2' : ''}
-          `}
-          title="Voltar ao Fyness"
-        >
-          <ArrowLeft size={13} className="shrink-0" />
-          {!isCollapsed && <span>Voltar ao Fyness</span>}
-        </button>
-      </div>
+      {/* CRM-only: botão "Voltar ao Fyness" removido (o app agora é só CRM). */}
 
       {/* Navigation */}
       <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto" role="navigation" aria-label="Menu CRM">

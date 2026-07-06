@@ -209,11 +209,7 @@ export default function CrmAgendaPage() {
                 {showGoogle ? <Eye size={14} /> : <EyeOff size={14} />} Google Agenda
               </button>
             )}
-            <button onClick={() => navigate('/arquivos')}
-              title="Arquivo de relatórios (diário, semanal e mensal por pessoa)"
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200/70 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5">
-              <FileText size={15} /> Relatórios
-            </button>
+            {/* CRM-only: botão "Relatórios" (ia pro /arquivos do sistema) removido. */}
             <button onClick={openNewTask}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg shadow-sm">
               <Plus size={16} /> Nova tarefa

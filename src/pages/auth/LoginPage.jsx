@@ -19,7 +19,7 @@ export function LoginPage() {
   const [localError, setLocalError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const from = location.state?.from?.pathname || '/financial';
+  const from = location.state?.from?.pathname || '/crm';
 
   // Ja autenticado (bookmark, back do browser, /login digitado): manda pro app
   // em vez de mostrar o formulario num beco sem saida. `loading` segura ate a

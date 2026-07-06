@@ -62,7 +62,7 @@ function UnauthorizedPage() {
       <div className="text-6xl font-bold text-slate-300 dark:text-slate-600">403</div>
       <h1 className="text-xl font-semibold text-slate-700 dark:text-slate-200">Acesso Negado</h1>
       <p className="text-slate-500 dark:text-slate-400">Voce nao tem permissao para acessar esta pagina.</p>
-      <a href="/financial" className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors">
+      <a href="/crm" className="px-4 py-2 bg-fyness-primary text-white rounded-lg hover:bg-fyness-secondary transition-colors">
         Voltar ao Inicio
       </a>
     </div>
@@ -92,10 +92,11 @@ function App() {
             <Route path="/auth/tiktok-callback" element={<TikTokCallbackPage />} />
             <Route path="/auth/youtube-callback" element={<YouTubeCallbackPage />} />
 
-            {/* Editor em tela cheia (protegido) */}
+            {/* CRM-only: editor BPMN oculto — redireciona pro /crm.
+                Pra religar: troque os Navigate de volta por <Editor />. */}
             <Route element={<ProtectedRoute />}>
-              <Route path="/sales/editor/:id?" element={<Editor />} />
-              <Route path="/editor/:id?" element={<Editor />} />
+              <Route path="/sales/editor/:id?" element={<Navigate to="/crm" replace />} />
+              <Route path="/editor/:id?" element={<Navigate to="/crm" replace />} />
             </Route>
 
             {/* CRM — layout proprio (app dentro do app) — protegido.
@@ -128,28 +129,36 @@ function App() {
                 <Route path="prospects" element={<ErrorBoundary><CrmProspectsPage /></ErrorBoundary>} />
                 <Route path="settings" element={<ErrorBoundary><CrmSettingsPage /></ErrorBoundary>} />
                 <Route path="automations" element={<ErrorBoundary><CrmAutomationsPage /></ErrorBoundary>} />
+                {/* Gestão de usuários/equipe/perfil — movida do sistema pro CRM */}
+                <Route path="equipe" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
               </Route>
             </Route>
 
-            {/* Rotas com Layout (Sidebar) — protegidas */}
-            {/* Cada pagina tem ErrorBoundary individual para nao crashar o app inteiro */}
+            {/* ============================================================
+                CRM-ONLY (2026-07-03): o app virou só CRM. As rotas de
+                gerenciamento/rotina (Dashboard, O.S./Rotina, Agenda, Financeiro,
+                Relatórios, Arquivos, BPMN/Sales) foram OCULTADAS — redirecionam
+                pro /crm. O código das páginas segue intacto; pra religar alguma,
+                troque o <Navigate> pelo <ErrorBoundary><Pagina/></ErrorBoundary>
+                original (os imports lazy no topo continuam lá).
+                ============================================================ */}
             <Route element={<ProtectedRoute />}>
-              <Route element={<MainLayout />}>
-                <Route path="/" element={<Navigate to="/financial" replace />} />
-                <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
-                <Route path="/sales" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-                <Route path="/routine" element={<ErrorBoundary><RoutinePage /></ErrorBoundary>} />
-                <Route path="/agenda" element={<ErrorBoundary><AgendaPage /></ErrorBoundary>} />
-                <Route path="/financial" element={<ErrorBoundary><FinancialPage /></ErrorBoundary>} />
-                <Route path="/reports" element={<ErrorBoundary><ReportPage /></ErrorBoundary>} />
-                <Route path="/arquivos" element={<ErrorBoundary><ArquivosPage /></ErrorBoundary>} />
-                <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
-              </Route>
+              {/* Redirects das rotas operacionais ocultadas (sistema agora é só o Fyness CRM) */}
+              <Route path="/" element={<Navigate to="/crm" replace />} />
+              <Route path="/dashboard" element={<Navigate to="/crm" replace />} />
+              <Route path="/sales" element={<Navigate to="/crm" replace />} />
+              <Route path="/routine" element={<Navigate to="/crm" replace />} />
+              <Route path="/agenda" element={<Navigate to="/crm" replace />} />
+              <Route path="/financial" element={<Navigate to="/crm" replace />} />
+              <Route path="/reports" element={<Navigate to="/crm" replace />} />
+              <Route path="/arquivos" element={<Navigate to="/crm" replace />} />
+              {/* Gestão de usuários/equipe foi movida pra dentro do CRM (/crm/equipe) */}
+              <Route path="/settings" element={<Navigate to="/crm/equipe" replace />} />
             </Route>
 
             {/* Catch-all: qualquer URL nao-casada vai pra um destino visivel
                 em vez de renderizar <Routes> vazio (tela branca). */}
-            <Route path="*" element={<Navigate to="/financial" replace />} />
+            <Route path="*" element={<Navigate to="/crm" replace />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>
