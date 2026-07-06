@@ -10,7 +10,7 @@ import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmAc
 import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel } from '../services/crmDashboardService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
-import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
+import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress, getActiveFunnelGoals } from '../services/crmGoalsService';
 import { getSalesReport, getFunnelReport, getForecastReport, getLearnedProbabilities } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
 import { getCrmCalendarActivities, getLeadTimeline } from '../services/crmAgendaService';
@@ -854,6 +854,16 @@ export function useSalesFunnel(range, scope = 'sales', ownerId = null) {
   return useQuery({
     queryKey: [...crmQueryKeys.dashboard, 'funnel', range || null, scope, ownerId || 'all'],
     queryFn: () => getSalesFunnel(range, scope, ownerId),
+    staleTime: 60_000,
+  });
+}
+
+// Metas de funil ativas no periodo (planejador reverso) — overlay no funil.
+export function useActiveFunnelGoals(range, ownerId = null) {
+  return useQuery({
+    queryKey: [...crmQueryKeys.goals, 'funnel-active', range || null, ownerId || 'all'],
+    queryFn: () => getActiveFunnelGoals(range, ownerId),
+    enabled: !!range?.start && !!range?.end,
     staleTime: 60_000,
   });
 }

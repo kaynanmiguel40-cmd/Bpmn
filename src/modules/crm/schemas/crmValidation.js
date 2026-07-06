@@ -124,6 +124,10 @@ export const crmGoalSchema = z.object({
   periodStart: z.string().min(1, 'Data de inicio e obrigatoria'),
   periodEnd: z.string().min(1, 'Data de fim e obrigatoria'),
   status: z.enum(['active', 'completed', 'cancelled']).default('active'),
+  // Meta de FUNIL (planejador reverso). kind='revenue' (default) = meta em R$.
+  kind: z.enum(['revenue', 'funnel']).default('revenue'),
+  funnelBase: z.enum(['sales', 'calls']).nullable().optional().default(null),
+  conversionRate: z.number().min(0).max(100).nullable().optional().default(null),
 }).passthrough();
 
 // ==================== PAID TRAFFIC ====================

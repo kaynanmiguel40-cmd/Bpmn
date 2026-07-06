@@ -17,6 +17,9 @@ describe('getCrmWorkspaceSettings', () => {
       lostTargetStageId: null,
       discardStageId: null,
       mrrGoalMonthly: 0,
+      funnelPlanBase: null,
+      funnelPlanTarget: 0,
+      funnelPlanRate: 0,
     });
   });
 

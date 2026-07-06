@@ -41,6 +41,12 @@ const formatCurrencyFull = (val) =>
 const formatNumber = (val) =>
   new Intl.NumberFormat('pt-BR').format(val || 0);
 
+// Formata o valor no "idioma" da meta: R$ p/ valor, contagem+unidade p/ funil.
+const fmtGoalValue = (goal, val) =>
+  (goal?.kind || 'revenue') === 'funnel'
+    ? `${formatNumber(Math.round(val) || 0)} ${goal?.funnelBase === 'calls' ? 'ligações' : 'vendas'}`
+    : formatCurrency(val);
+
 function getDaysRemaining(dateStr) {
   if (!dateStr) return 999;
   const date = new Date(dateStr);
@@ -412,7 +418,7 @@ export function CrmDashboardPage() {
                       />
                     </div>
                     <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap tnum">
-                      {formatCurrency(totalProgress)} / {formatCurrency(goal.targetValue)}
+                      {fmtGoalValue(goal, totalProgress)} / {fmtGoalValue(goal, goal.targetValue)}
                     </span>
                   </div>
                 </div>

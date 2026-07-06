@@ -9,12 +9,15 @@
  * Responsivo: sidebar vira drawer no mobile.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, Search, Bell, Moon, Sun } from 'lucide-react';
 import { CrmSidebar } from './CrmSidebar';
 import { useTheme } from '../../../../contexts/ThemeContext';
 import { useCrmRealtime } from '../../hooks/useCrmRealtime';
+import { requestPermission } from '../../../../lib/pushNotifications';
+import { useCrmAccess } from '../../hooks/useCrmAccess';
+import { sectionKeyFromPath, GATED_KEYS } from '../../lib/crmAccess';
 
 // Mapa de titulos CRM
 const crmRouteTitles = {
@@ -110,9 +113,25 @@ function CrmTopbar({ onToggleMobileMenu }) {
 
 export function CrmLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Guard de acesso: se a seção da URL está bloqueada pro usuário, manda pro
+  // Dashboard (evita bypass por link direto). Admin nunca cai aqui.
+  const { canAccess } = useCrmAccess();
+  useEffect(() => {
+    const key = sectionKeyFromPath(location.pathname);
+    if (key && GATED_KEYS.has(key) && !canAccess(key)) {
+      navigate('/crm', { replace: true });
+    }
+  }, [location.pathname, canAccess, navigate]);
 
   // Ativar Realtime para todas as tabelas CRM
   useCrmRealtime({ enabled: true });
+
+  // Pede permissão de notificação uma vez (pro push de mensagem do WhatsApp
+  // funcionar). requestPermission só prompta se ainda estiver 'default'.
+  useEffect(() => { requestPermission().catch(() => {}); }, []);
 
   const toggleMobileMenu = useCallback(() => {
     setMobileMenuOpen(prev => !prev);

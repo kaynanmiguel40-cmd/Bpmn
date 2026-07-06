@@ -25,6 +25,7 @@ import {
   PLAN_PHASES, actionId, TOTAL_ACTIONS, getPlanActionsState, setPlanActionDone,
 } from '../../../lib/commercialPlanActions';
 import { useProfile } from '../../../hooks/useProfile';
+import { FunnelPrevistoReal } from '../components/FunnelPrevistoReal';
 
 const fmtBRL = (v) => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
 const fmtK = (v) => 'R$' + Math.round((v || 0) / 1000) + 'k';
@@ -370,14 +371,8 @@ function MonthlyTable({ real }) {
 }
 
 // ---------- Funil + premissas do mes atual ----------
-function FunnelCompare({ planRow, real }) {
+function FunnelCompare({ real, range }) {
   const f = real?.funnel;
-  const rows = [
-    { label: 'Leads', prev: planRow.leads, real: f?.lead },
-    { label: 'Qualificados', prev: planRow.qualif, real: f?.qualif },
-    { label: 'Reunioes', prev: planRow.reun, real: f?.reun },
-    { label: 'Fechamentos', prev: planRow.fech, real: f?.fech },
-  ];
   const premReal = {
     qualif: f?.qualRate,
     agendamento: f?.agendRate,
@@ -386,28 +381,11 @@ function FunnelCompare({ planRow, real }) {
   };
   return (
     <div className="grid md:grid-cols-2 gap-4">
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
-        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">Funil do mes · previsto vs real</h3>
-        <div className="space-y-3">
-          {rows.map(row => {
-            const w = row.prev > 0 ? Math.min(100, Math.round(((row.real ?? 0) / row.prev) * 100)) : 0;
-            return (
-              <div key={row.label}>
-                <div className="flex items-baseline justify-between text-xs mb-1">
-                  <span className="text-slate-600 dark:text-slate-300">{row.label}</span>
-                  <span className="tabular-nums">
-                    <span className={`font-semibold ${gapTone(row.real, row.prev)}`}>{row.real == null ? '—' : row.real}</span>
-                    <span className="text-slate-400 dark:text-slate-500"> / {row.prev}</span>
-                  </span>
-                </div>
-                <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
-                  <div className="h-full bg-fyness-primary/80 rounded-full" style={{ width: `${w}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* Funil Previsto × Real puxado da meta/planejador (nao mais do plano fixo) */}
+      <FunnelPrevistoReal
+        real={{ lead: f?.lead, qualified: f?.qualif, meeting: f?.reun, closing: f?.fech }}
+        range={range}
+      />
 
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
         <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">Conversoes · previsto vs real</h3>
@@ -662,7 +640,7 @@ export default function ComparativoPage() {
       <CurrentMonthHero planRow={planRow} real={currentReal} monthElapsedPct={real.monthElapsedPct} />
       <MetaMensalPanel planRow={planRow} prevMrr={prevMrr} real={real} />
       <MrrChart real={real} />
-      <FunnelCompare planRow={planRow} real={currentReal} />
+      <FunnelCompare real={currentReal} range={real.currentMonthRange} />
       <MarketingPanel marketing={real.marketing} />
       <MonthlyTable real={real} />
       <PlanChecklist />

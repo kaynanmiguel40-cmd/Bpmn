@@ -1,8 +1,30 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, Component } from 'react';
 import { Link } from 'react-router-dom';
 import { Phone, ExternalLink, MessageSquare, Lock } from 'lucide-react';
 import { useCrmConversation, useMarkCrmMessagesAsRead } from '../../hooks/useCrmQueries';
 import { MessageBubble } from './MessageBubble';
+
+/**
+ * Isola cada balão: se UMA mensagem tem dado que quebra a renderização, mostra um
+ * placeholder discreto em vez de derrubar a conversa inteira (tela branca).
+ */
+class BubbleBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error) { console.error('[MessageBubble] falha ao renderizar mensagem:', error); }
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="flex justify-center my-1">
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 italic px-2 py-0.5 rounded bg-black/5 dark:bg-white/5">
+            mensagem não pôde ser exibida
+          </span>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /**
  * MessageThread - Painel direito do Inbox (estilo WhatsApp).
@@ -157,7 +179,7 @@ export function MessageThread({ conversation, children }) {
               return (
                 <div key={m.id}>
                   {showDay && <DateChip label={d} />}
-                  <MessageBubble message={m} />
+                  <BubbleBoundary><MessageBubble message={m} /></BubbleBoundary>
                 </div>
               );
             })

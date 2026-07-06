@@ -1,5 +1,25 @@
 import { useRealtimeSubscription } from '../../../hooks/useRealtimeSubscription';
+import { showLocalNotification, playChatSound } from '../../../lib/pushNotifications';
 import { crmQueryKeys } from './useCrmQueries';
+
+// Notifica (som + push nativo) quando chega mensagem INBOUND no inbox WhatsApp.
+// Mensagens outbound (enviadas por nós) são ignoradas.
+function notifyInboundWhatsApp(msg) {
+  if (!msg || msg.direction !== 'inbound') return;
+  let body = (msg.content || '').trim();
+  if (!body && msg.media_type) body = `[${msg.media_type}]`;
+  if (!body) body = 'Nova mensagem recebida';
+  if (body.length > 120) body = body.slice(0, 120) + '…';
+  playChatSound();
+  showLocalNotification({
+    title: '💬 Nova mensagem no WhatsApp',
+    body,
+    type: 'info',
+    entityType: 'crm_message',
+    entityId: msg.id,
+    tag: 'crm-inbox-message',
+  });
+}
 
 /**
  * Hook que cria subscriptions Supabase Realtime para tabelas CRM.
@@ -69,11 +89,12 @@ export function useCrmRealtime(options = {}) {
     { enabled }
   );
 
-  // Messages — atualiza inbox WhatsApp, conversa aberta e timeline do lead
+  // Messages — atualiza inbox WhatsApp, conversa aberta e timeline do lead.
+  // onInsert dispara notificação (som + push nativo) em mensagem inbound.
   useRealtimeSubscription(
     'crm_messages',
     [['crm', 'conversation'], ['crm', 'inbox'], ['crm', 'leadTimeline']],
-    { enabled }
+    { enabled, onInsert: notifyInboundWhatsApp }
   );
 
   // WhatsApp instances — atualiza status/QR de conexão

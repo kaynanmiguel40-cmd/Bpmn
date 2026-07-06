@@ -1,7 +1,7 @@
 -- ================================================================
 -- _apply_all_schema.sql  (gerado automaticamente)
 --
--- Reaplica TODAS as migrations de SCHEMA (035..063) em ordem.
+-- Reaplica TODAS as migrations de SCHEMA (035..066) em ordem.
 -- Todas idempotentes (IF NOT EXISTS / DO ... EXCEPTION duplicate_object).
 -- Seguro re-rodar: o que ja existe vira no-op.
 --
@@ -1907,4 +1907,43 @@ COMMENT ON COLUMN public.os_orders.judge IS
 ALTER TABLE public.notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 
 -- Recarrega o cache de schema do PostgREST (pega as alteracoes acima na hora).
+NOTIFY pgrst, 'reload schema';
+
+
+-- ===== 065_crm_goals_funnel.sql =============================================
+-- Metas de FUNIL (planejador reverso): crm_goals ganha kind/funnel_base/
+-- conversion_rate. kind='revenue' (default) = meta em R$ (comportamento antigo);
+-- kind='funnel' = meta em quantidade (vendas OU ligacoes) + taxa de conversao,
+-- que alimenta o overlay de metas no Funil de Conversao. Idempotente.
+-- ============================================================
+
+ALTER TABLE public.crm_goals
+  ADD COLUMN IF NOT EXISTS kind            TEXT    NOT NULL DEFAULT 'revenue',
+  ADD COLUMN IF NOT EXISTS funnel_base     TEXT,
+  ADD COLUMN IF NOT EXISTS conversion_rate NUMERIC;
+
+COMMENT ON COLUMN public.crm_goals.kind IS
+  'Tipo de meta: revenue (valor em R$, default) ou funnel (quantidade + taxa de conversao).';
+COMMENT ON COLUMN public.crm_goals.funnel_base IS
+  'So p/ kind=funnel: qual ponta foi digitada — sales (nº de vendas) ou calls (nº de ligacoes).';
+COMMENT ON COLUMN public.crm_goals.conversion_rate IS
+  'So p/ kind=funnel: taxa de conversao % (lead/ligacao -> venda). Base do planejador reverso.';
+
+-- Recarrega o cache de schema do PostgREST (pega as colunas novas na hora).
+NOTIFY pgrst, 'reload schema';
+
+
+-- ===== 066_crm_member_access.sql =============================================
+-- Permissao de acesso por MEMBRO a secoes do CRM. crm_blocked_sections (JSONB) =
+-- lista de secoes que o membro NAO pode ver (NULL/[] = vê tudo). Admins ignoram.
+-- Editado pelo admin em Configuracoes do CRM > Equipe. Idempotente.
+-- ============================================================
+
+ALTER TABLE public.team_members
+  ADD COLUMN IF NOT EXISTS crm_blocked_sections JSONB;
+
+COMMENT ON COLUMN public.team_members.crm_blocked_sections IS
+  'Secoes do CRM que este membro NAO pode acessar (lista de keys). NULL/[] = vê tudo. Admins ignoram.';
+
+-- Recarrega o cache de schema do PostgREST (pega a coluna nova na hora).
 NOTIFY pgrst, 'reload schema';

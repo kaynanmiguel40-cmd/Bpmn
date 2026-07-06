@@ -147,12 +147,11 @@ export async function dispatchNotification(type, data, recipientPhone, recipient
   }
 }
 
-// Labels para tipos de notificacao
+// Labels para tipos de notificacao (preferencias por canal).
+// App virou Fyness CRM: tipos ligados a O.S. (os_assigned/os_completed/os_overdue/
+// deadline_warning/comment_added — todos entityType os_order) saíram daqui.
+// Só ficam tipos de CRM. dispatchNotification tem fallback próprio, então tirar
+// daqui só some da tela de preferências, não quebra o disparo.
 export const NOTIFICATION_TYPE_LABELS = {
-  os_assigned: 'O.S. atribuida a mim',
-  os_completed: 'O.S. concluida',
-  os_overdue: 'O.S. atrasada',
-  deadline_warning: 'Alerta de prazo',
-  comment_added: 'Novo comentario',
   event_reminder: 'Lembrete de evento',
 };

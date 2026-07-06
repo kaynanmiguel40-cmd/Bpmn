@@ -199,6 +199,7 @@ export const teamMemberSchema = z.object({
   salaryMonth: z.number().min(0, 'Salario nao pode ser negativo').default(0),
   hoursMonth: z.number().min(1).default(176),
   crmRole: z.enum(['vendedor', 'pre_vendedor', 'gestor']).nullable().optional().default(null),
+  crmBlockedSections: z.array(z.string()).nullable().optional(),
   orgSectorId: z.string().nullable().optional().default(null),
   managerId: z.string().nullable().optional().default(null),
 }).passthrough();

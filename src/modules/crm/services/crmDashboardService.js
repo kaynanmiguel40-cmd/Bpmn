@@ -176,6 +176,7 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
         .select('id, type, target_value, period_start, period_end, owner_id, team_members(id, name, color, auth_user_id)')
         .gte('period_end', new Date(now.getFullYear() - 1, now.getMonth(), 1).toISOString().slice(0, 10))
         .neq('status', 'cancelled')
+        .eq('kind', 'revenue') // grafico Realizado/Previsto e em R$; ignora metas de funil (contagem)
         .is('deleted_at', null),
 
       // Total acumulado de leads perdidos (sem filtro de periodo) — KPI absoluto (so vendas).
@@ -595,6 +596,7 @@ export async function getBonificacaoProgress(startDate, endDate) {
         .select('id, title, target_value, current_value, owner_id, period_start, period_end, status, team_members(id, name, color, auth_user_id)')
         .eq('status', 'active')
         .eq('type', 'individual')
+        .eq('kind', 'revenue') // bonificacao e comissao em R$; ignora metas de funil (contagem)
         .is('deleted_at', null),
     ]);
 

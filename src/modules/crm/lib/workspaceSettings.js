@@ -20,6 +20,12 @@ const EMPTY_SETTINGS = {
   discardStageId: null,
   // Alvo mensal de MRR novo (R$/mes) — meta do dashboard comercial (SaaS).
   mrrGoalMonthly: 0,
+  // Previsto do Funil (planejador reverso) — camada "previsto" da visualizacao
+  // Previsto x Real no Funil de Conversao. Definido inline no card do funil,
+  // sem passar por Metas. Uma Meta de funil salva, se existir, tem prioridade.
+  funnelPlanBase: null,   // 'sales' | 'calls' | null (desativado)
+  funnelPlanTarget: 0,    // nº alvo (vendas ou ligacoes)
+  funnelPlanRate: 0,      // taxa de conversao %
 };
 
 export function getCrmWorkspaceSettings() {

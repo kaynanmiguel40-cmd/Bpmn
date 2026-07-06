@@ -37,6 +37,16 @@ import { GoalFormModal } from '../components/GoalFormModal';
 const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val || 0);
 
+const formatCount = (val) =>
+  new Intl.NumberFormat('pt-BR').format(Math.round(val) || 0);
+
+const isFunnelGoal = (goal) => (goal?.kind || 'revenue') === 'funnel';
+const goalUnit = (goal) => (goal?.funnelBase === 'calls' ? 'ligações' : 'vendas');
+
+// Formata um valor no "idioma" da meta: R$ para valor, contagem+unidade para funil.
+const fmtGoalVal = (goal, val) =>
+  isFunnelGoal(goal) ? `${formatCount(val)} ${goalUnit(goal)}` : formatCurrency(val);
+
 const STATUS_TABS = [
   { value: 'active', label: 'Ativas', variant: 'info' },
   { value: 'completed', label: 'Concluidas', variant: 'success' },
@@ -218,6 +228,8 @@ function GoalsSkeleton() {
 
 export function CrmGoalsPage() {
   const [statusTab, setStatusTab] = useUrlState('tab', 'active');
+  const [kindTabRaw, setKindTab] = useUrlState('meta', 'revenue');
+  const kindTab = kindTabRaw === 'funnel' ? 'funnel' : 'revenue';
   const [typeTabRaw, setTypeTab] = useUrlState('tipo', 'individuais');
   // Normaliza: URL ?tipo=foo invalido cai pra 'individuais' (evita tela em branco)
   const typeTab = (typeTabRaw === 'individuais' || typeTabRaw === 'time') ? typeTabRaw : 'individuais';
@@ -236,16 +248,23 @@ export function CrmGoalsPage() {
   const [editGoal, setEditGoal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [formDefaultType, setFormDefaultType] = useState('individual');
+  const [formDefaultKind, setFormDefaultKind] = useState('revenue');
 
-  // Filtrar por busca
+  // Filtrar por tipo de meta (Valor x Funil) + busca
   const filteredGoals = useMemo(() => {
-    if (!debouncedSearch) return allGoals;
+    const byKind = allGoals.filter(g => (g.kind || 'revenue') === kindTab);
+    if (!debouncedSearch) return byKind;
     const q = debouncedSearch.toLowerCase();
-    return allGoals.filter(g =>
+    return byKind.filter(g =>
       g.title.toLowerCase().includes(q) ||
       (g.owner?.name || '').toLowerCase().includes(q)
     );
-  }, [allGoals, debouncedSearch]);
+  }, [allGoals, kindTab, debouncedSearch]);
+
+  const kindCounts = useMemo(() => ({
+    revenue: allGoals.filter(g => (g.kind || 'revenue') === 'revenue').length,
+    funnel: allGoals.filter(g => (g.kind || 'revenue') === 'funnel').length,
+  }), [allGoals]);
 
   // Separar globais e individuais
   const globalGoals = useMemo(() => filteredGoals.filter(g => g.type === 'global'), [filteredGoals]);
@@ -309,7 +328,7 @@ export function CrmGoalsPage() {
     return { totalTarget, totalCurrent, totalPercent, onTrack, behind, achieved, count: individualGoals.length };
   }, [individualGoals, getProgress]);
 
-  const handleNew = (type = 'individual') => { setEditGoal(null); setFormDefaultType(type); setFormOpen(true); };
+  const handleNew = (type = 'individual') => { setEditGoal(null); setFormDefaultType(type); setFormDefaultKind(kindTab); setFormOpen(true); };
   const handleEdit = (goal) => { setEditGoal(goal); setFormOpen(true); };
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -352,6 +371,31 @@ export function CrmGoalsPage() {
           </div>
         }
       />
+
+      {/* Tipo de meta: Valor (R$) | Funil (planejador reverso) */}
+      <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg w-fit">
+        {[
+          { value: 'revenue', label: 'Metas de Valor', icon: Target, count: kindCounts.revenue },
+          { value: 'funnel',  label: 'Metas de Funil', icon: TrendingUp, count: kindCounts.funnel },
+        ].map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.value}
+              onClick={() => setKindTab(tab.value)}
+              className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                kindTab === tab.value
+                  ? 'bg-white dark:bg-slate-700 text-fyness-primary shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              <Icon size={13} />
+              {tab.label}
+              <span className="text-[10px] text-slate-400">({tab.count})</span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Sub-tabs de tipo: Individuais | Time Comercial */}
       <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg w-fit">
@@ -419,6 +463,9 @@ export function CrmGoalsPage() {
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {formatPeriod(goal.periodStart, goal.periodEnd)}
+                      {isFunnelGoal(goal) && (
+                        <span className="text-fyness-primary font-medium"> · {goalUnit(goal)} · {goal.conversionRate}% conversão</span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -439,10 +486,10 @@ export function CrmGoalsPage() {
               <div className="flex items-center justify-between mt-3">
                 <div className="flex items-center gap-4">
                   <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                    {formatCurrency(current)}
+                    {fmtGoalVal(goal, current)}
                   </span>
                   <span className="text-sm text-slate-500 dark:text-slate-400">
-                    de {formatCurrency(goal.targetValue)}
+                    de {fmtGoalVal(goal, goal.targetValue)}
                   </span>
                 </div>
                 <span className={`text-lg font-bold ${percent >= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}`}>
@@ -465,7 +512,7 @@ export function CrmGoalsPage() {
                     <div className="flex items-center gap-1.5">
                       <CalendarDays size={13} className="text-slate-400" />
                       <span className="text-xs text-slate-600 dark:text-slate-400">
-                        Meta diaria: <span className="font-medium">{formatCurrency(dailyTarget)}</span>
+                        Meta diaria: <span className="font-medium">{fmtGoalVal(goal, dailyTarget)}</span>
                       </span>
                     </div>
                   )}
@@ -504,12 +551,12 @@ export function CrmGoalsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="crm-glass rounded-2xl p-4">
             <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Soma das Metas</div>
-            <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(summary.totalTarget)}</div>
+            <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{kindTab === 'funnel' ? formatCount(summary.totalTarget) : formatCurrency(summary.totalTarget)}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400">{summary.count} meta{summary.count !== 1 ? 's' : ''}</div>
           </div>
           <div className="crm-glass rounded-2xl p-4">
             <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Progresso Total</div>
-            <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(summary.totalCurrent)}</div>
+            <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{kindTab === 'funnel' ? formatCount(summary.totalCurrent) : formatCurrency(summary.totalCurrent)}</div>
             <div className="flex items-center gap-2 mt-1">
               <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                 <div className={`h-full rounded-full ${summary.totalPercent >= 100 ? 'bg-emerald-500' : summary.totalPercent >= 70 ? 'bg-blue-500' : 'bg-amber-500'}`}
@@ -607,6 +654,11 @@ export function CrmGoalsPage() {
                         <div className="text-xs text-slate-400 dark:text-slate-500 truncate">
                           {goal.title}
                         </div>
+                        {isFunnelGoal(goal) && (
+                          <div className="text-[10px] text-fyness-primary font-medium mt-0.5">
+                            {goalUnit(goal)} · {goal.conversionRate}% conversão
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -626,9 +678,9 @@ export function CrmGoalsPage() {
 
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                      {formatCurrency(current)}
+                      {fmtGoalVal(goal, current)}
                       <span className="text-xs font-normal text-slate-400 dark:text-slate-500 ml-1">
-                        / {formatCurrency(goal.targetValue)}
+                        / {fmtGoalVal(goal, goal.targetValue)}
                       </span>
                     </span>
                     <span className={`text-xs font-bold ${percent >= 100 ? 'text-emerald-600' : percent >= 70 ? 'text-blue-600' : 'text-slate-500'}`}>
@@ -648,7 +700,7 @@ export function CrmGoalsPage() {
                       {dailyTarget !== null && dailyTarget > 0 && (
                         <span className="text-[11px] text-slate-400 flex items-center gap-1">
                           <CalendarDays size={11} />
-                          {formatCurrency(dailyTarget)}/dia
+                          {fmtGoalVal(goal, dailyTarget)}/dia
                         </span>
                       )}
                       {current >= goal.targetValue && (
@@ -686,6 +738,7 @@ export function CrmGoalsPage() {
         onClose={() => { setFormOpen(false); setEditGoal(null); }}
         goal={editGoal}
         defaultType={formDefaultType}
+        defaultKind={formDefaultKind}
       />
 
       <CrmConfirmDialog

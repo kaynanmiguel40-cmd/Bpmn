@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-import { detectRole } from '../lib/roleUtils';
+import { detectRole, isOwnerEmail } from '../lib/roleUtils';
 
 const PermissionContext = createContext({});
 
@@ -34,9 +34,9 @@ export function PermissionProvider({ children }) {
     ],
   };
 
-  // Gestor (detectRole 'manager') e admin tem acesso completo
+  // Gestor (detectRole 'manager'), role admin, ou dono por e-mail = acesso completo
   const isGestor = detectRole(profile) === 'manager';
-  const normalizedRole = (isGestor || profile?.role === 'admin') ? 'admin' : 'member';
+  const normalizedRole = (isGestor || profile?.role === 'admin' || isOwnerEmail(user?.email)) ? 'admin' : 'member';
 
   // Buscar permissoes do usuario baseado no role
   const fetchPermissions = useCallback(async () => {

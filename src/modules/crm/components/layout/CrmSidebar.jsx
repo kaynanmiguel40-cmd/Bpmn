@@ -5,8 +5,9 @@
  * Inclui logo Fyness, hover expand/collapse e botao pin.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useCrmAccess } from '../../hooks/useCrmAccess';
 import {
   LayoutDashboard,
   Kanban,
@@ -17,7 +18,6 @@ import {
   UserCog,
   Target,
   Trophy,
-  CircleDollarSign,
   Crosshair,
   Zap,
   PhoneCall,
@@ -35,34 +35,50 @@ const PinIcon = ({ pinned }) => (
 
 const crmNavItems = [
   { section: 'Vendas' },
-  { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline' },
-  { to: '/crm/ganhos', icon: CircleDollarSign, label: 'Ganhos' },
-  { to: '/crm/discador', icon: PhoneCall, label: 'Discador' },
-  { to: '/crm/inbox', icon: MessageCircle, label: 'Inbox WhatsApp' },
-  { to: '/crm/agenda', icon: CalendarDays, label: 'Agenda' },
+  { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline', sectionKey: 'pipeline' },
+  // Ganhos oculto da sidebar (a rota /crm/ganhos e a página seguem ativas).
+  // Pra religar: re-importe CircleDollarSign do lucide-react e adicione aqui:
+  //   { to: '/crm/ganhos', icon: CircleDollarSign, label: 'Ganhos' },
+  { to: '/crm/discador', icon: PhoneCall, label: 'Discador', sectionKey: 'discador' },
+  { to: '/crm/inbox', icon: MessageCircle, label: 'Inbox WhatsApp', sectionKey: 'inbox' },
+  { to: '/crm/agenda', icon: CalendarDays, label: 'Agenda', sectionKey: 'agenda' },
   // Atividades agora vivem dentro da Agenda — item oculto da sidebar.
   // A rota /crm/activities e a página seguem ativas (lista, filtros, editar,
   // concluir). Pra religar: re-importe CalendarCheck e adicione aqui:
   //   { to: '/crm/activities', icon: CalendarCheck, label: 'Atividades' },
   { section: 'Prospecao' },
-  { to: '/crm/prospects', icon: Crosshair, label: 'Gerador de Lista' },
+  { to: '/crm/prospects', icon: Crosshair, label: 'Gerador de Lista', sectionKey: 'prospects' },
   // Tráfego Pago oculto por enquanto (a rota /crm/traffic e a página seguem ativas).
   // Pra religar: re-importe Megaphone do lucide-react e adicione aqui:
   //   { to: '/crm/traffic', icon: Megaphone, label: 'Trafego Pago' },
-  { to: '/crm/automations', icon: Zap, label: 'Automacoes' },
+  { to: '/crm/automations', icon: Zap, label: 'Automacoes', sectionKey: 'automations' },
   { section: 'Cadastros' },
-  { to: '/crm/cadastros', icon: Users, label: 'Cadastros' },
+  { to: '/crm/cadastros', icon: Users, label: 'Cadastros', sectionKey: 'cadastros' },
   { section: 'Gestao' },
-  { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true },
-  { to: '/crm/comparativo', icon: Target, label: 'Comparativo' },
-  { to: '/crm/goals', icon: Trophy, label: 'Metas' },
+  { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true }, // landing, sempre visível
+  { to: '/crm/comparativo', icon: Target, label: 'Comparativo', sectionKey: 'comparativo' },
+  { to: '/crm/goals', icon: Trophy, label: 'Metas', sectionKey: 'goals' },
   // Forecast oculto por enquanto (a rota /crm/forecast e a página seguem ativas).
   // Pra religar: re-importe TrendingUp do lucide-react e adicione aqui:
   //   { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },
   { divider: true },
-  { to: '/crm/equipe', icon: UserCog, label: 'Equipe' },
-  { to: '/crm/settings', icon: Settings, label: 'Configuracoes' },
+  { to: '/crm/equipe', icon: UserCog, label: 'Equipe', sectionKey: 'equipe' },
+  { to: '/crm/settings', icon: Settings, label: 'Configuracoes', sectionKey: 'settings' },
 ];
+
+// Remove seções bloqueadas e limpa cabeçalhos/divisores que ficaram órfãos.
+function filterNavItems(items, canAccess) {
+  const filtered = items.filter(it => !(it.to && it.sectionKey && !canAccess(it.sectionKey)));
+  return filtered.filter((it, i) => {
+    if (!it.section && !it.divider) return true;
+    // mantém o cabeçalho/divisor só se houver um item de nav antes do próximo
+    for (let j = i + 1; j < filtered.length; j++) {
+      if (filtered[j].section || filtered[j].divider) return false;
+      if (filtered[j].to) return true;
+    }
+    return false;
+  });
+}
 
 function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact }) {
   const location = useLocation();
@@ -94,6 +110,8 @@ function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact }) {
 
 export function CrmSidebar() {
   const navigate = useNavigate();
+  const { canAccess } = useCrmAccess();
+  const navItems = useMemo(() => filterNavItems(crmNavItems, canAccess), [canAccess]);
   const [isPinned, setIsPinned] = useState(() => {
     try { return localStorage.getItem('crm-sidebar-pinned') === 'true'; } catch { return false; }
   });
@@ -147,7 +165,7 @@ export function CrmSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto" role="navigation" aria-label="Menu CRM">
-        {crmNavItems.map((item, idx) =>
+        {navItems.map((item, idx) =>
           item.divider ? (
             <div key={`div-${idx}`} className="my-2 border-t border-white/60 dark:border-white/10" />
           ) : item.section ? (

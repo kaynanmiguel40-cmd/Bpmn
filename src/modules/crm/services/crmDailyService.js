@@ -157,7 +157,7 @@ export async function getDailyBriefing() {
       supabase.from('team_members').select('name, color, auth_user_id'),
       supabase.from('crm_goals')
         .select('title, target_value, period_start, period_end')
-        .eq('type', 'global').eq('status', 'active').is('deleted_at', null),
+        .eq('type', 'global').eq('status', 'active').eq('kind', 'revenue').is('deleted_at', null),
       supabase.from('crm_deals')
         .select('value').eq('status', 'won')
         .gte('closed_at', monthStartISO).lt('closed_at', monthEndISO)

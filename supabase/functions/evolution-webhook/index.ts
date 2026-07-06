@@ -34,6 +34,11 @@ const WEBHOOK_SECRET            = Deno.env.get('EVOLUTION_WEBHOOK_SECRET') || ''
 const EVOLUTION_URL             = Deno.env.get('EVOLUTION_URL') || ''
 const EVOLUTION_API_KEY         = Deno.env.get('EVOLUTION_API_KEY') || ''
 const PROVIDER                  = (Deno.env.get('EVOLUTION_PROVIDER') || 'evolution').toLowerCase()
+// URL PÚBLICA do storage (pro browser). No self-hosted o container usa
+// SUPABASE_URL=http://kong:8000 (interno) — getPublicUrl devolveria esse host, que
+// o navegador não acessa (e vira mixed-content). Trocamos pelo SUPABASE_PUBLIC_URL
+// (ex: https://bpmn.fyness.com.br/sb). Fallback: o próprio SUPABASE_URL.
+const PUBLIC_BASE               = Deno.env.get('SUPABASE_PUBLIC_URL') || SUPABASE_URL
 
 /**
  * Busca pushname (nome do contato) via API do WAHA.
@@ -105,7 +110,7 @@ async function mirrorWahaMediaToStorage(
     if (upErr) return null
 
     const { data: pub } = supabase.storage.from('crm-whatsapp-media').getPublicUrl(path)
-    return pub.publicUrl
+    return pub.publicUrl.replace(SUPABASE_URL, PUBLIC_BASE)
   } catch {
     return null
   }
@@ -186,7 +191,7 @@ async function uploadBase64ToStorage(
       .upload(path, bytes, { contentType, upsert: false })
     if (upErr) return null
     const { data: pub } = supabase.storage.from('crm-whatsapp-media').getPublicUrl(path)
-    return pub.publicUrl
+    return pub.publicUrl.replace(SUPABASE_URL, PUBLIC_BASE)
   } catch {
     return null
   }
@@ -250,7 +255,7 @@ async function mirrorImageToStorage(
       .upload(path, blob, { contentType: ct, upsert: false })
     if (error) return null
     const { data: pub } = supabase.storage.from('crm-whatsapp-media').getPublicUrl(path)
-    return pub.publicUrl
+    return pub.publicUrl.replace(SUPABASE_URL, PUBLIC_BASE)
   } catch {
     return null
   }

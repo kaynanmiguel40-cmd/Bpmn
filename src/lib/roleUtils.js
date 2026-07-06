@@ -1,5 +1,12 @@
 export const MANAGER_ROLES = ['gestor', 'admin', 'gerente', 'manager', 'diretor', 'supervisor', 'coordenador'];
 
+// Donos do sistema — sempre admin, independente de cargo no banco (bootstrap).
+export const OWNER_EMAILS = ['kaynanmiguel40@gmail.com'];
+
+export function isOwnerEmail(email) {
+  return !!email && OWNER_EMAILS.includes(email.toLowerCase().trim());
+}
+
 export function detectRole(profile) {
   if (!profile || !profile.role) return 'collaborator';
   // Match por PALAVRA INTEIRA (nao substring): "Gerente de Vendas" -> manager,
