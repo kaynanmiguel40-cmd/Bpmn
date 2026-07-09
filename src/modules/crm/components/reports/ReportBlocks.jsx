@@ -128,16 +128,18 @@ export function DailyReportBody({ data, onOpenLead }) {
                           <span className="text-slate-700 dark:text-slate-200">{label}</span>
                           {ev.detail && <span className="text-slate-500 dark:text-slate-400 break-words"> — {ev.detail}</span>}
                           {ev.kind === 'activity' && (ev.input || ev.output) && (
-                            <div className="mt-1 space-y-1">
+                            <div className="mt-1.5 space-y-1">
                               {ev.input && (
-                                <p className="text-slate-600 dark:text-slate-300 break-words">
-                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mr-1">Você:</span>{ev.input}
-                                </p>
+                                <div className="flex items-start gap-2 rounded-md border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2 py-1">
+                                  <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
+                                  <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{ev.input}</span>
+                                </div>
                               )}
                               {ev.output && (
-                                <p className="text-slate-600 dark:text-slate-300 break-words">
-                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mr-1">Lead:</span>{ev.output}
-                                </p>
+                                <div className="flex items-start gap-2 rounded-md border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2 py-1">
+                                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
+                                  <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{ev.output}</span>
+                                </div>
                               )}
                             </div>
                           )}
@@ -199,9 +201,19 @@ export function PeriodReportBody({ data, onOpenLead, funnelRange, ownerId }) {
                       </div>
                       {/* Input em cima (o que o vendedor fez), output embaixo (o que o lead respondeu) — cada tarefa com o seu par. */}
                       {(t.input || t.output) ? (
-                        <div className="mt-1 space-y-1">
-                          {t.input && <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words"><span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mr-1">Você:</span>{t.input}</p>}
-                          {t.output && <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words"><span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mr-1">Lead:</span>{t.output}</p>}
+                        <div className="mt-1.5 space-y-1">
+                          {t.input && (
+                            <div className="flex items-start gap-2 rounded-md border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2 py-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
+                              <span className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words">{t.input}</span>
+                            </div>
+                          )}
+                          {t.output && (
+                            <div className="flex items-start gap-2 rounded-md border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2 py-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
+                              <span className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words">{t.output}</span>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <p className="text-sm text-slate-400 dark:text-slate-500 italic">—</p>

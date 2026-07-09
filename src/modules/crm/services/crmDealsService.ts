@@ -547,6 +547,8 @@ export interface DealActivity {
   endDate: string | null;
   completed: boolean;
   completedAt: string | null;
+  deliveryInput: string | null;
+  deliveryReport: string | null;
   contact: { id: string; name: string; avatarColor?: string | null } | null;
   createdAt: string;
 }
@@ -567,6 +569,7 @@ export async function getDealActivities(dealId: string): Promise<DealActivity[]>
   type ActivityRow = {
     id: string; title: string; description: string | null; type: string;
     start_date: string; end_date: string | null; completed: boolean; completed_at: string | null;
+    delivery_input: string | null; delivery_report: string | null;
     crm_contacts?: { id: string; name: string; avatar_color?: string | null } | null;
     created_at: string;
   };
@@ -580,6 +583,8 @@ export async function getDealActivities(dealId: string): Promise<DealActivity[]>
     endDate: row.end_date,
     completed: row.completed,
     completedAt: row.completed_at,
+    deliveryInput: row.delivery_input,
+    deliveryReport: row.delivery_report,
     contact: row.crm_contacts
       ? { id: row.crm_contacts.id, name: row.crm_contacts.name, avatarColor: row.crm_contacts.avatar_color }
       : null,

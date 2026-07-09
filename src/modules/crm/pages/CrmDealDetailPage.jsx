@@ -511,7 +511,22 @@ export function CrmDealDetailPage() {
                                     <CrmBadge variant="neutral" size="sm">{label}</CrmBadge>
                                   </div>
                                 </div>
-                                {item.description && (
+                                {(item.deliveryInput || item.deliveryReport) ? (
+                                  <div className="mt-2 space-y-1.5">
+                                    {item.deliveryInput && (
+                                      <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2.5 py-1.5">
+                                        <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
+                                        <span className="text-xs text-slate-700 dark:text-slate-200">{item.deliveryInput}</span>
+                                      </div>
+                                    )}
+                                    {item.deliveryReport && (
+                                      <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1.5">
+                                        <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
+                                        <span className="text-xs text-slate-700 dark:text-slate-200">{item.deliveryReport}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : item.description && (
                                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{item.description}</p>
                                 )}
                                 <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
