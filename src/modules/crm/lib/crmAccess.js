@@ -22,18 +22,21 @@ export function isCrmAdmin(user, profile) {
  * Dashboard (/crm) fica de fora de propósito: é a landing, todo mundo entra nela.
  */
 export const CRM_SECTIONS = [
-  { key: 'pipeline',    label: 'Pipeline' },
-  { key: 'discador',    label: 'Discador' },
-  { key: 'inbox',       label: 'Inbox WhatsApp' },
-  { key: 'agenda',      label: 'Agenda' },
-  { key: 'prospects',   label: 'Gerador de Lista' },
-  { key: 'automations', label: 'Automações' },
-  { key: 'cadastros',   label: 'Cadastros' },
-  { key: 'comparativo', label: 'Comparativo' },
-  { key: 'goals',       label: 'Metas' },
-  { key: 'equipe',      label: 'Equipe' },
-  { key: 'settings',    label: 'Configurações' },
+  { key: 'pipeline',    label: 'Pipeline',         group: 'Vendas' },
+  { key: 'discador',    label: 'Discador',         group: 'Vendas' },
+  { key: 'inbox',       label: 'Inbox WhatsApp',   group: 'Vendas' },
+  { key: 'agenda',      label: 'Agenda',           group: 'Vendas' },
+  { key: 'prospects',   label: 'Gerador de Lista', group: 'Prospecção' },
+  { key: 'automations', label: 'Automações',       group: 'Prospecção' },
+  { key: 'cadastros',   label: 'Cadastros',        group: 'Cadastros' },
+  { key: 'comparativo', label: 'Comparativo',      group: 'Gestão' },
+  { key: 'goals',       label: 'Metas',            group: 'Gestão' },
+  { key: 'equipe',      label: 'Equipe',           group: 'Gestão' },
+  { key: 'settings',    label: 'Configurações',    group: 'Gestão' },
 ];
+
+// Ordem dos grupos no editor de acesso (espelha a sidebar).
+export const CRM_SECTION_GROUPS = ['Vendas', 'Prospecção', 'Cadastros', 'Gestão'];
 
 export const GATED_KEYS = new Set(CRM_SECTIONS.map(s => s.key));
 

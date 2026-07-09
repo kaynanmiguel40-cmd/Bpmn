@@ -127,6 +127,20 @@ export function DailyReportBody({ data, onOpenLead }) {
                         <div className="min-w-0 flex-1">
                           <span className="text-slate-700 dark:text-slate-200">{label}</span>
                           {ev.detail && <span className="text-slate-500 dark:text-slate-400 break-words"> — {ev.detail}</span>}
+                          {ev.kind === 'activity' && (ev.input || ev.output) && (
+                            <div className="mt-1 space-y-1">
+                              {ev.input && (
+                                <p className="text-slate-600 dark:text-slate-300 break-words">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mr-1">Você:</span>{ev.input}
+                                </p>
+                              )}
+                              {ev.output && (
+                                <p className="text-slate-600 dark:text-slate-300 break-words">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mr-1">Lead:</span>{ev.output}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -183,7 +197,15 @@ export function PeriodReportBody({ data, onOpenLead, funnelRange, ownerId }) {
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                         {t.title}{t.date ? ` · ${new Date(t.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}` : ''}
                       </div>
-                      <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words">{t.content || '—'}</p>
+                      {/* Input em cima (o que o vendedor fez), output embaixo (o que o lead respondeu) — cada tarefa com o seu par. */}
+                      {(t.input || t.output) ? (
+                        <div className="mt-1 space-y-1">
+                          {t.input && <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words"><span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mr-1">Você:</span>{t.input}</p>}
+                          {t.output && <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words"><span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mr-1">Lead:</span>{t.output}</p>}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-400 dark:text-slate-500 italic">—</p>
+                      )}
                     </div>
                   ))}
                 </div>

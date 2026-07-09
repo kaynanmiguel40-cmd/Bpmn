@@ -5,13 +5,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  Users, Tag, Check, Plus, X,
+  Users, Tag, Plus, X, SlidersHorizontal, ShieldCheck,
 } from 'lucide-react';
 import { CrmPageHeader, CrmAvatar } from '../components/ui';
 import { useTeamMembers } from '../../../hooks/queries';
 import { updateTeamMember } from '../../../lib/teamService';
 import { useCrmAccess } from '../hooks/useCrmAccess';
 import { CRM_SECTIONS, normalizeBlocked, OWNER_EMAILS } from '../lib/crmAccess';
+import { CrmAccessModal } from '../components/CrmAccessModal';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -50,11 +51,13 @@ function SectionCard({ icon: Icon, color, title, subtitle, children }) {
 
 // ─── Tab: Equipe ──────────────────────────────────────────────────────────────
 
+const TOTAL_SECTIONS = CRM_SECTIONS.length;
+
 function EquipeTab() {
   const { data: teamMembers = [], refetch } = useTeamMembers();
   const { isAdmin } = useCrmAccess();
   const [savingId, setSavingId] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
+  const [accessMember, setAccessMember] = useState(null);
 
   const handleSetRole = async (memberId, crmRole) => {
     setSavingId(memberId);
@@ -66,18 +69,9 @@ function EquipeTab() {
     }
   };
 
-  const handleToggleSection = async (member, sectionKey) => {
-    const blocked = normalizeBlocked(member.crmBlockedSections);
-    const next = blocked.includes(sectionKey)
-      ? blocked.filter(k => k !== sectionKey)   // libera
-      : [...blocked, sectionKey];               // bloqueia
-    setSavingId(member.id);
-    try {
-      await updateTeamMember(member.id, { crmBlockedSections: next });
-      await refetch();
-    } finally {
-      setSavingId(null);
-    }
+  const handleSaveAccess = async (member, nextBlocked) => {
+    await updateTeamMember(member.id, { crmBlockedSections: nextBlocked });
+    await refetch();
   };
 
   const membersWithRole    = teamMembers.filter(m => m.crmRole);
@@ -94,114 +88,93 @@ function EquipeTab() {
         : 'Cargos e permissões da equipe (somente leitura — apenas admins editam).'}
     >
       {teamMembers.length === 0 ? (
-        <p className="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">
+        <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">
           Nenhum membro cadastrado. Adicione membros em Configurações gerais.
         </p>
       ) : (
-        <div className="space-y-1">
-          {membersWithRole.length > 0 && (
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
-              {membersWithRole.length} membro{membersWithRole.length !== 1 ? 's' : ''} com cargo
-            </p>
-          )}
+        <div className="divide-y divide-slate-100 dark:divide-slate-800/70 -mx-1">
           {ordered.map(member => {
-            const blocked = normalizeBlocked(member.crmBlockedSections);
+            const blocked = normalizeBlocked(member.crmBlockedSections).filter(k => CRM_SECTIONS.some(s => s.key === k));
             const isOwner = OWNER_EMAILS.includes((member.email || '').toLowerCase());
-            const allowedCount = CRM_SECTIONS.length - blocked.filter(k => CRM_SECTIONS.some(s => s.key === k)).length;
-            const isExpanded = expandedId === member.id;
+            const allowedCount = TOTAL_SECTIONS - blocked.length;
+            const restricted = blocked.length > 0;
 
             return (
-              <div key={member.id} className="border-b border-slate-50 dark:border-slate-800 last:border-0">
-                <div className="flex items-center gap-4 py-2.5">
-                  <CrmAvatar name={member.name} size="sm" color={member.color} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-                      {member.name}
-                      {isOwner && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-fyness-primary/10 text-fyness-primary align-middle">Admin</span>}
-                    </div>
-                    {member.role && <div className="text-xs text-slate-400 truncate">{member.role}</div>}
+              <div
+                key={member.id}
+                className="flex items-center gap-3 px-1 py-2.5 rounded-lg hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors"
+              >
+                <CrmAvatar name={member.name} size="sm" color={member.color} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{member.name}</span>
+                    {isOwner && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-fyness-primary/10 text-fyness-primary shrink-0">
+                        <ShieldCheck size={10} /> Admin
+                      </span>
+                    )}
                   </div>
-
-                  {/* Cargo CRM */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {CRM_ROLES.map(r => {
-                      const isActive = member.crmRole === r.value;
-                      if (!isAdmin) {
-                        return isActive ? (
-                          <span key={r.value} className={`px-2.5 py-1 text-xs font-medium rounded-md border ${r.color}`}>{r.label}</span>
-                        ) : null;
-                      }
-                      return (
-                        <button
-                          key={r.value}
-                          onClick={() => handleSetRole(member.id, isActive ? null : r.value)}
-                          disabled={savingId === member.id}
-                          className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-all disabled:opacity-50 ${
-                            isActive
-                              ? `${r.color} ring-1 ring-offset-1 dark:ring-offset-slate-900`
-                              : 'border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:border-slate-300 hover:text-slate-600 dark:hover:text-slate-300'
-                          }`}
-                        >
-                          {isActive && <Check size={10} className="inline mr-1 -mt-0.5" />}
-                          {r.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Acesso ao CRM (só admin edita; owner ignora restrições) */}
-                  {isAdmin && !isOwner && (
-                    <button
-                      onClick={() => setExpandedId(isExpanded ? null : member.id)}
-                      className={`px-2.5 py-1 text-xs font-medium rounded-md border shrink-0 transition-colors ${
-                        blocked.length > 0
-                          ? 'border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20'
-                          : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300'
-                      }`}
-                      title="Definir o que este membro acessa no CRM"
-                    >
-                      {blocked.length > 0 ? `Acesso: ${allowedCount}/${CRM_SECTIONS.length}` : 'Acesso total'}
-                    </button>
-                  )}
-
-                  {savingId === member.id && (
-                    <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin shrink-0" />
-                  )}
+                  {member.role && <div className="text-xs text-slate-400 dark:text-slate-500 truncate">{member.role}</div>}
                 </div>
 
-                {/* Editor de seções */}
-                {isAdmin && !isOwner && isExpanded && (
-                  <div className="pb-3 pt-1 sm:pl-12">
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
-                      Clique pra liberar/bloquear cada seção. Verde = pode acessar. O Dashboard fica sempre disponível.
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {CRM_SECTIONS.map(sec => {
-                        const allowed = !blocked.includes(sec.key);
-                        return (
-                          <button
-                            key={sec.key}
-                            onClick={() => handleToggleSection(member, sec.key)}
-                            disabled={savingId === member.id}
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${
-                              allowed
-                                ? 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20'
-                                : 'border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/40'
-                            }`}
-                          >
-                            {allowed ? <Check size={11} /> : <X size={11} />}
-                            {sec.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                {/* Cargo CRM — segmented */}
+                <div className="hidden sm:flex items-center rounded-lg bg-slate-100/70 dark:bg-slate-800/60 p-0.5 shrink-0">
+                  {CRM_ROLES.map(r => {
+                    const isActive = member.crmRole === r.value;
+                    if (!isAdmin) {
+                      return isActive ? (
+                        <span key={r.value} className={`px-2.5 py-1 text-xs font-medium rounded-md ${r.color}`}>{r.label}</span>
+                      ) : null;
+                    }
+                    return (
+                      <button
+                        key={r.value}
+                        onClick={() => handleSetRole(member.id, isActive ? null : r.value)}
+                        disabled={savingId === member.id}
+                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all disabled:opacity-50 ${
+                          isActive
+                            ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
+                            : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Botão de acesso — abre o modal */}
+                {isAdmin && !isOwner ? (
+                  <button
+                    onClick={() => setAccessMember(member)}
+                    className="inline-flex items-center gap-2 pl-2.5 pr-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-fyness-primary/50 hover:bg-fyness-primary/5 dark:hover:bg-fyness-primary/10 transition-colors shrink-0 group"
+                    title="Gerenciar o que este membro acessa no CRM"
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${restricted ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {restricted ? `${allowedCount}/${TOTAL_SECTIONS} seções` : 'Acesso total'}
+                    </span>
+                    <SlidersHorizontal size={13} className="text-slate-400 group-hover:text-fyness-primary transition-colors" />
+                  </button>
+                ) : isOwner ? (
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 shrink-0 hidden sm:inline">vê tudo</span>
+                ) : null}
+
+                {savingId === member.id && (
+                  <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin shrink-0" />
                 )}
               </div>
             );
           })}
         </div>
       )}
+
+      <CrmAccessModal
+        open={!!accessMember}
+        member={accessMember}
+        onClose={() => setAccessMember(null)}
+        onSave={(nextBlocked) => handleSaveAccess(accessMember, nextBlocked)}
+      />
     </SectionCard>
   );
 }

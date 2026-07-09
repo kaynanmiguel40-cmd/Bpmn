@@ -19,6 +19,7 @@ import {
 } from '../../hooks/queries';
 import { connectGCalServer } from '../../lib/googleCalendarService';
 import CrmCalendar from '../../modules/crm/components/agenda/CrmCalendar';
+import { CompleteActivityModal } from '../../modules/crm/components/CompleteActivityModal';
 import { useCompleteCrmActivity } from '../../modules/crm/hooks/useCrmQueries';
 import { useAgendaData, EVENT_TYPES, typeMeta, SOURCE_META, DEFAULT_SOURCES } from '../../hooks/useAgendaData';
 
@@ -146,6 +147,7 @@ export default function AgendaPage() {
   const updateEvent = useUpdateAgendaEvent();
   const deleteEvent = useDeleteAgendaEvent();
   const completeCrm = useCompleteCrmActivity();
+  const [completingTask, setCompletingTask] = useState(null); // { id, title } — abre o modal de conclusão (input/output)
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState(loadView);
@@ -315,7 +317,7 @@ export default function AgendaPage() {
           onToday={() => setCurrentDate(new Date())}
           onSelectEvent={handleSelectEvent}
           onSelectSlot={handleSelectSlot}
-          onCompleteTask={(ev) => { if (ev._crmActivityId) completeCrm.mutate(ev._crmActivityId); }}
+          onCompleteTask={(ev) => { if (ev._crmActivityId) setCompletingTask({ id: ev._crmActivityId, title: ev.title, type: ev.typeKey }); }}
         />
       </div>
 
@@ -327,6 +329,18 @@ export default function AgendaPage() {
         onClose={() => setModal(null)}
         onSave={handleSave}
         onDelete={handleDelete}
+      />
+
+      <CompleteActivityModal
+        open={!!completingTask}
+        onClose={() => setCompletingTask(null)}
+        activity={completingTask}
+        isPending={completeCrm.isPending}
+        onSubmit={({ input, output }) => {
+          completeCrm.mutate({ id: completingTask.id, input, output }, {
+            onSuccess: () => setCompletingTask(null),
+          });
+        }}
       />
     </div>
   );

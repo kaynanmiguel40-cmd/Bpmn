@@ -699,7 +699,7 @@ export function useDeleteCrmActivity() {
 export function useCompleteCrmActivity() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: completeCrmActivity,
+    mutationFn: ({ id, input, output } = {}) => completeCrmActivity(id, { input, output }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });

@@ -34,6 +34,7 @@ export function dbToCrmActivity(row) {
     assignedTo: row.assigned_to || null,
     assignedToName: row.assigned_to_name || null,
     completedBy: row.completed_by || null,
+    deliveryInput: row.delivery_input || '',
     deliveryReport: row.delivery_report || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -62,6 +63,7 @@ const activityService = createCRUDService({
     agendaEventId: 'agenda_event_id',
     assignedTo: 'assigned_to',
     assignedToName: 'assigned_to_name',
+    deliveryInput: 'delivery_input',
     deliveryReport: 'delivery_report',
   },
   orderBy: 'start_date',
@@ -299,13 +301,24 @@ export async function softDeleteCrmActivity(id) {
   return true;
 }
 
-export async function completeCrmActivity(id) {
+/**
+ * Conclui a tarefa registrando o par input (o que o vendedor fez/disse) /
+ * output (o que o lead respondeu) — cada tarefa guarda o seu.
+ */
+export async function completeCrmActivity(id, { input = '', output = '' } = {}) {
   const now = new Date().toISOString();
   const session = await supabase.auth.getSession();
   const completedBy = session.data?.session?.user?.id || null;
   const { data, error } = await supabase
     .from('crm_activities')
-    .update({ completed: true, completed_at: now, completed_by: completedBy, updated_at: now })
+    .update({
+      completed: true,
+      completed_at: now,
+      completed_by: completedBy,
+      delivery_input: input.trim() || null,
+      delivery_report: output.trim() || null,
+      updated_at: now,
+    })
     .eq('id', id)
     .select()
     .single();

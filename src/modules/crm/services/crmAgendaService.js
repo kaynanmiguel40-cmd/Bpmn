@@ -1,10 +1,13 @@
 /**
  * crmAgendaService - dados da Agenda do CRM (calendario + historico do lead).
  *
- * Duas responsabilidades:
+ * Tres responsabilidades:
  *  1. getCrmCalendarActivities(range)  -> atividades do CRM pra preencher o calendario.
  *  2. getLeadTimeline({ dealId, contactId }) -> timeline UNIFICADA de um lead:
  *     atividades + ligacoes + WhatsApp + mudancas de estagio + notas do deal.
+ *  3. getLeadActivityHistory({ dealId, contactId }) -> historico de INTERACOES:
+ *     mesmas fontes da timeline, mas pareando input do vendedor x output do
+ *     lead por toque, em ordem cronologica de execucao (mais antigo primeiro).
  *
  * O calendario combina estas atividades com os eventos do Google Calendar
  * (puxados via useGCalEvents) no componente — aqui so cuidamos do lado CRM.
@@ -111,22 +114,11 @@ export async function getCrmCalendarActivities({ start, end } = {}) {
 // ==================== TIMELINE DO LEAD ====================
 
 /**
- * Timeline unificada de um lead. Junta, ordenada no tempo:
- *  - atividades (feitas e agendadas)   kind: 'activity'
- *  - ligacoes (com resultado/notas)    kind: 'call'
- *  - WhatsApp (enviado/recebido)       kind: 'message'
- *  - mudancas de estagio do deal       kind: 'stage'
- * Mais o cabecalho do lead (estagio atual, valor, status, notas).
- *
- * Aceita dealId e/ou contactId. Quando ha deal, ele e a ancora principal e o
- * contactId e inferido a partir dele se nao vier.
- *
- * @returns {Promise<{ lead: object|null, items: object[] }>}
+ * Resolve o "lead" (deal ou, na falta dele, o contato) e monta o filtro OR
+ * pra casar deal_id/contact_id nas tabelas transacionais. Compartilhado por
+ * getLeadTimeline e getLeadActivityHistory pra manter a mesma âncora.
  */
-export async function getLeadTimeline({ dealId = null, contactId = null } = {}) {
-  if (!dealId && !contactId) return { lead: null, items: [] };
-
-  // 1) Ancora: o deal (se houver) traz estagio/valor/status/notas + contactId
+async function resolveLeadAndFilter({ dealId = null, contactId = null } = {}) {
   let lead = null;
   let resolvedContactId = contactId;
   if (dealId) {
@@ -178,13 +170,31 @@ export async function getLeadTimeline({ dealId = null, contactId = null } = {}) 
     }
   }
 
-  // Filtro OR pra casar deal_id OU contact_id (o que estiver disponivel)
   const orParts = [];
   if (dealId) orParts.push(`deal_id.eq.${dealId}`);
   if (resolvedContactId) orParts.push(`contact_id.eq.${resolvedContactId}`);
-  const orFilter = orParts.join(',');
+  return { lead, resolvedContactId, orFilter: orParts.join(',') };
+}
 
-  // 2) Buscar as 4 fontes em paralelo. crm_messages NAO tem deleted_at,
+/**
+ * Timeline unificada de um lead. Junta, ordenada no tempo:
+ *  - atividades (feitas e agendadas)   kind: 'activity'
+ *  - ligacoes (com resultado/notas)    kind: 'call'
+ *  - WhatsApp (enviado/recebido)       kind: 'message'
+ *  - mudancas de estagio do deal       kind: 'stage'
+ * Mais o cabecalho do lead (estagio atual, valor, status, notas).
+ *
+ * Aceita dealId e/ou contactId. Quando ha deal, ele e a ancora principal e o
+ * contactId e inferido a partir dele se nao vier.
+ *
+ * @returns {Promise<{ lead: object|null, items: object[] }>}
+ */
+export async function getLeadTimeline({ dealId = null, contactId = null } = {}) {
+  if (!dealId && !contactId) return { lead: null, items: [] };
+
+  const { lead, resolvedContactId, orFilter } = await resolveLeadAndFilter({ dealId, contactId });
+
+  // Buscar as 4 fontes em paralelo. crm_messages NAO tem deleted_at,
   // entao nao filtramos por isso ali.
   const [actsRes, callsRes, msgsRes, stageHistory] = await Promise.all([
     orFilter
@@ -301,4 +311,151 @@ export async function getLeadTimeline({ dealId = null, contactId = null } = {}) 
   items.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
   return { lead, items };
+}
+
+// ==================== HISTÓRICO DE INTERAÇÕES (input vendedor / output lead) ====================
+//
+// Diferença pra getLeadTimeline: aquela é uma lista plana de eventos (1 por
+// linha, mais recente primeiro, pensada pra feed). Aqui cada entrada PAREIA
+// o que o VENDEDOR fez/disse (input) com o que o LEAD respondeu/reagiu
+// (output) no mesmo toque, ordenada da mais antiga pra mais recente — ordem
+// de execução, pensada pra ler como uma história. Só entra o que já
+// aconteceu (sem pendências).
+
+/** Agrupa mensagens consecutivas da mesma direção em "turnos" de conversa. */
+function groupMessageTurns(messages) {
+  const sorted = [...messages].sort((a, b) => new Date(a.sentAt || a.createdAt) - new Date(b.sentAt || b.createdAt));
+  const turns = [];
+  for (const m of sorted) {
+    const last = turns[turns.length - 1];
+    if (last && last.direction === m.direction) last.messages.push(m);
+    else turns.push({ direction: m.direction, messages: [m] });
+  }
+  return turns;
+}
+
+function turnText(turn) {
+  return turn.messages
+    .map(m => m.content || (m.mediaType ? `[${m.mediaType}]` : '(sem conteúdo)'))
+    .join('\n');
+}
+
+function turnStart(turn) {
+  return turn.messages[0].sentAt || turn.messages[0].createdAt;
+}
+
+/** Pareia turno enviado (vendedor) com o turno seguinte recebido (lead), se houver. */
+function pairMessageTurns(turns) {
+  const entries = [];
+  let i = 0;
+  while (i < turns.length) {
+    const turn = turns[i];
+    const next = turns[i + 1];
+    if (turn.direction === 'outbound') {
+      const answered = !!next && next.direction === 'inbound';
+      entries.push({
+        occurredAt: turnStart(turn),
+        input: { text: turnText(turn), by: 'vendedor' },
+        output: answered ? { text: turnText(next), by: 'lead' } : null,
+      });
+      i += answered ? 2 : 1;
+    } else {
+      // Lead escreveu primeiro, sem toque anterior do vendedor nesse turno.
+      entries.push({ occurredAt: turnStart(turn), input: null, output: { text: turnText(turn), by: 'lead' } });
+      i += 1;
+    }
+  }
+  return entries;
+}
+
+/**
+ * @typedef {Object} ActivityHistoryEntry
+ * @property {string} id
+ * @property {'call'|'whatsapp'|'activity'|'stage'} kind
+ * @property {string} occurredAt - ISO, quando o toque começou
+ * @property {{ text: string, by: 'vendedor' }|null} input - o que o vendedor fez/disse
+ * @property {{ text: string, by: 'lead' }|null} output - o que o lead respondeu/reagiu
+ * @property {Object} meta - campos extras por kind (outcome, activityType, stageName, duração...)
+ */
+
+/**
+ * Histórico cronológico de INTERAÇÕES de um lead: junta ligações, WhatsApp
+ * (agrupado em turnos vendedor↔lead), atividades concluídas (com relato) e
+ * mudanças de etapa numa única linha do tempo com input/output pareados.
+ *
+ * @returns {Promise<{ lead: object|null, entries: ActivityHistoryEntry[] }>}
+ */
+export async function getLeadActivityHistory({ dealId = null, contactId = null } = {}) {
+  if (!dealId && !contactId) return { lead: null, entries: [] };
+
+  const { lead, resolvedContactId, orFilter } = await resolveLeadAndFilter({ dealId, contactId });
+  if (!orFilter) return { lead, entries: [] };
+
+  const [actsRes, callsRes, msgsRes, stageHistory] = await Promise.all([
+    supabase.from('crm_activities')
+      .select('*, crm_contacts(id, name, avatar_color), crm_deals(id, title, value)')
+      .or(orFilter).eq('completed', true).is('deleted_at', null),
+    supabase.from('crm_calls')
+      .select('*, crm_contacts(id, name, phone, avatar_color), crm_deals(id, title, value)')
+      .or(orFilter).is('deleted_at', null),
+    supabase.from('crm_messages').select('*').or(orFilter).order('sent_at', { ascending: true }).limit(200),
+    dealId ? getDealStageHistory(dealId) : Promise.resolve([]),
+  ]);
+
+  const entries = [];
+
+  // Ligações registradas criam uma atividade-espelho — não duplicar aqui tb.
+  const mirroredActivityIds = new Set((callsRes.data || []).map(r => r.activity_id).filter(Boolean));
+
+  (actsRes.data || []).forEach(row => {
+    if (mirroredActivityIds.has(row.id)) return;
+    const a = dbToCrmActivity(row);
+    const meta = activityMeta(a.type);
+    // input = o que o vendedor relatou ao concluir (delivery_input); sem isso
+    // (tarefa concluída antes dessa coluna existir), cai pro plano original.
+    entries.push({
+      id: `act_${a.id}`,
+      kind: 'activity',
+      occurredAt: a.completedAt || a.startDate,
+      input: { text: a.deliveryInput || a.description || a.title || meta.label, by: 'vendedor' },
+      output: a.deliveryReport ? { text: a.deliveryReport, by: 'lead' } : null,
+      meta: { activityType: a.type, typeLabel: meta.label },
+    });
+  });
+
+  (callsRes.data || []).forEach(row => {
+    const c = dbToCrmCall(row);
+    const outcomeLabel = c.outcome ? (CALL_OUTCOMES[c.outcome]?.label || c.outcome) : null;
+    const vendorInitiated = c.direction !== 'inbound';
+    entries.push({
+      id: `call_${c.id}`,
+      kind: 'call',
+      occurredAt: c.startedAt,
+      input: vendorInitiated ? { text: c.notes || 'Ligação realizada', by: 'vendedor' } : null,
+      output: vendorInitiated
+        ? (outcomeLabel ? { text: outcomeLabel, by: 'lead' } : null)
+        : { text: [outcomeLabel, c.notes].filter(Boolean).join(' — ') || 'Lead retornou a ligação', by: 'lead' },
+      meta: { outcome: c.outcome, durationSeconds: c.durationSeconds, direction: c.direction },
+    });
+  });
+
+  const messages = (msgsRes.data || []).map(dbToCrmMessage);
+  pairMessageTurns(groupMessageTurns(messages)).forEach((pair, idx) => {
+    entries.push({ id: `wa_${resolvedContactId || dealId}_${idx}`, kind: 'whatsapp', meta: {}, ...pair });
+  });
+
+  (stageHistory || []).forEach(h => {
+    entries.push({
+      id: `stage_${h.id}`,
+      kind: 'stage',
+      occurredAt: h.createdAt,
+      input: null,
+      output: { text: h.stage?.name ? `Avançou para ${h.stage.name}` : 'Mudou de etapa', by: 'lead' },
+      meta: { stageId: h.stage?.id, stageName: h.stage?.name, stageColor: h.stage?.color },
+    });
+  });
+
+  entries.sort((a, b) => new Date(a.occurredAt || 0) - new Date(b.occurredAt || 0));
+
+  return { lead, entries };
 }

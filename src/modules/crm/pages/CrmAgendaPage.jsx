@@ -15,7 +15,7 @@ import { CrmPageHeader } from '../components/ui';
 import CrmCalendar from '../components/agenda/CrmCalendar';
 import LeadHistoryPanel from '../components/agenda/LeadHistoryPanel';
 import { ActivityFormModal } from '../components/ActivityFormModal';
-import { DeliveryReportModal } from '../components/DeliveryReportModal';
+import { CompleteActivityModal } from '../components/CompleteActivityModal';
 import { useCrmCalendarActivities, useCompleteCrmActivity } from '../hooks/useCrmQueries';
 import { useGCalEvents, useGCalStatus } from '../../../hooks/queries';
 import { connectGCal } from '../../../lib/googleCalendarService';
@@ -62,7 +62,7 @@ export default function CrmAgendaPage() {
   const [formInitial, setFormInitial] = useState(null);
   const [editActivity, setEditActivity] = useState(null); // tarefa clicada (abre o form em edição, mostra a descrição)
   const [showGoogle, setShowGoogle] = useState(true); // camada Google Agenda visível
-  const [deliveryTask, setDeliveryTask] = useState(null); // tarefa pra escrever o relatório de entrega
+  const [completingTask, setCompletingTask] = useState(null); // { id, title } — abre o modal de conclusão (input/output)
 
   const [rangeStart, rangeEnd] = useMemo(() => computeRange(view, currentDate), [view, currentDate]);
   const startISO = rangeStart.toISOString();
@@ -231,9 +231,7 @@ export default function CrmAgendaPage() {
             onSelectSlot={handleSelectSlot}
             onCompleteTask={(ev) => {
               if (!ev.activityId) return;
-              // Concluiu → marca como feito e abre o relatório de ENTREGA da tarefa (entra no relatório do lead).
-              completeMutation.mutate(ev.activityId);
-              setDeliveryTask({ id: ev.activityId, title: ev.title || 'Tarefa', deliveryReport: '' });
+              setCompletingTask({ id: ev.activityId, title: ev.title, type: ev.typeKey });
             }}
             selectedLeadKey={selectedLeadKey}
           />
@@ -268,10 +266,16 @@ export default function CrmAgendaPage() {
         }}
       />
 
-      <DeliveryReportModal
-        open={!!deliveryTask}
-        task={deliveryTask}
-        onClose={() => setDeliveryTask(null)}
+      <CompleteActivityModal
+        open={!!completingTask}
+        onClose={() => setCompletingTask(null)}
+        activity={completingTask}
+        isPending={completeMutation.isPending}
+        onSubmit={({ input, output }) => {
+          completeMutation.mutate({ id: completingTask.id, input, output }, {
+            onSuccess: () => setCompletingTask(null),
+          });
+        }}
       />
     </div>
   );

@@ -11,6 +11,7 @@ import { CrmPageHeader, CrmDataTable, CrmBadge, CrmConfirmDialog } from '../comp
 import { useCrmActivities, useDeleteCrmActivity, useCompleteCrmActivity } from '../hooks/useCrmQueries';
 import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import { ActivityFormModal } from '../components/ActivityFormModal';
+import { CompleteActivityModal } from '../components/CompleteActivityModal';
 
 const typeIcons = {
   call: Phone,
@@ -82,6 +83,7 @@ export function CrmActivitiesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editActivity, setEditActivity] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [completingTask, setCompletingTask] = useState(null); // { id, title } — abre o modal de conclusão (input/output)
 
   useEffect(() => { setPage(1); }, [debouncedSearch, typeFilter, statusFilter]);
 
@@ -161,7 +163,7 @@ export function CrmActivitiesPage() {
       render: (_, row) => (
         <div className="flex items-center gap-0.5">
           {!row.completed && (
-            <button onClick={(e) => { e.stopPropagation(); completeMutation.mutate(row.id); }}
+            <button onClick={(e) => { e.stopPropagation(); setCompletingTask({ id: row.id, title: row.title, type: row.type }); }}
               title="Marcar como concluida"
               className="p-1.5 rounded-md text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors">
               <CheckCircle size={16} />
@@ -263,6 +265,18 @@ export function CrmActivitiesPage() {
         message={`Tem certeza que deseja excluir "${deleteTarget?.title}"? Esta acao nao pode ser desfeita.`}
         variant="danger"
         loading={deleteMutation.isPending}
+      />
+
+      <CompleteActivityModal
+        open={!!completingTask}
+        onClose={() => setCompletingTask(null)}
+        activity={completingTask}
+        isPending={completeMutation.isPending}
+        onSubmit={({ input, output }) => {
+          completeMutation.mutate({ id: completingTask.id, input, output }, {
+            onSuccess: () => setCompletingTask(null),
+          });
+        }}
       />
     </div>
   );
