@@ -386,13 +386,17 @@ export function useMoveCrmDeal() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
 
-      // Atualizar status do deal no cache do kanban
+      // Atualizar status do deal no cache do kanban. lastStageChangedAt tambem
+      // precisa ser resetado aqui — sem isso, o selo de dias parado na etapa
+      // (getStageHealth) continua mostrando a contagem antiga ate a proxima
+      // vez que a pagina buscar os dados do zero.
       const allQueries = qc.getQueriesData({ queryKey: ['crm', 'pipelineDeals'] });
+      const movedAt = new Date().toISOString();
       allQueries.forEach(([queryKey, oldData]) => {
         if (!oldData?.stages) return;
         const updatedStages = oldData.stages.map(stage => ({
           ...stage,
-          deals: stage.deals?.map(d => d.id === data.id ? { ...d, status: data.status, probability: data.probability } : d),
+          deals: stage.deals?.map(d => d.id === data.id ? { ...d, status: data.status, probability: data.probability, lastStageChangedAt: movedAt } : d),
         }));
         qc.setQueryData(queryKey, { ...oldData, stages: updatedStages });
       });
