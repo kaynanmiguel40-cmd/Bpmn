@@ -1,11 +1,11 @@
 -- ================================================================
 -- _apply_all_schema.sql  (gerado automaticamente)
 --
--- Reaplica TODAS as migrations de SCHEMA (035..066) em ordem.
+-- Reaplica TODAS as migrations de SCHEMA (035..077) em ordem.
 -- Todas idempotentes (IF NOT EXISTS / DO ... EXCEPTION duplicate_object).
 -- Seguro re-rodar: o que ja existe vira no-op.
 --
--- NAO inclui seeds nem cleanups (mexem em DADOS): 062_seed_apresentacao,
+-- NAO inclui seeds nem cleanups (mexem em DADOS): 078_seed_apresentacao,
 -- cleanup_*, clear_crm_activities, seed_os_teste, seeds/org_structure_demo*.
 -- ================================================================
 
@@ -1221,42 +1221,6 @@ ALTER TABLE public.crm_activities
   CHECK (type IN ('call', 'email', 'message', 'meeting', 'task', 'lunch', 'visit', 'follow_up'));
 
 
--- ===== 052_os_templates_checklist.sql =============================================
--- ============================================================
--- 052. OS_TEMPLATES: coluna `checklist` (estrutura de tarefas + briefings)
--- ------------------------------------------------------------
--- Permite salvar uma O.S. inteira como MODELO: grupos + tarefas +
--- o briefing de cada tarefa. Ao aplicar o modelo numa O.S. nova,
--- a estrutura inteira vem pronta (so renomear/ajustar).
---
--- Idempotente: pode rodar mais de uma vez sem erro.
--- ============================================================
-
-ALTER TABLE public.os_templates
-  ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb;
-
-
--- ===== 053_crm_deal_mrr.sql =============================================
--- ============================================================
--- 053_crm_deal_mrr.sql
---
--- Adiciona `mrr` (mensalidade / receita recorrente mensal) em crm_deals.
---
--- Contexto: o Fyness e SaaS. O campo `value` continua sendo o VALOR TOTAL
--- DO CONTRATO (ex: 12x a mensalidade, setups, etc.). `mrr` e a parcela
--- recorrente mensal — base pra metrica de "MRR novo": soma do mrr dos
--- negocios GANHOS no mes.
---
--- Idempotente.
--- ============================================================
-
-ALTER TABLE public.crm_deals
-  ADD COLUMN IF NOT EXISTS mrr NUMERIC;
-
-COMMENT ON COLUMN public.crm_deals.mrr IS
-  'Receita recorrente mensal (mensalidade) do negocio. value = contrato total; mrr = parcela mensal. Base pra "MRR novo".';
-
-
 -- ===== 053_close_weekly_os_cron.sql =============================================
 -- ============================================================
 -- 053_close_weekly_os_cron.sql
@@ -1380,29 +1344,6 @@ DO $$ BEGIN
     ON storage.objects FOR DELETE
     USING (bucket_id = 'os-uploads' AND auth.role() = 'authenticated');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-
--- ===== 055_crm_activities_responsavel.sql =============================================
--- ============================================================
--- 055_crm_activities_responsavel.sql
---
--- Atribuição por tarefa: quem é o RESPONSÁVEL por executar a atividade
--- (pode ser diferente de quem criou) + quem concluiu.
---
--- assigned_to      = id do responsável (auth user / team member). Sem FK de
---                    propósito (id pode vir de auth.users ou team_members).
--- assigned_to_name = nome do responsável (denormalizado, p/ exibir sem join).
--- completed_by     = quem marcou como concluída.
---
--- Idempotente.
--- ============================================================
-
-ALTER TABLE public.crm_activities ADD COLUMN IF NOT EXISTS assigned_to UUID;
-ALTER TABLE public.crm_activities ADD COLUMN IF NOT EXISTS assigned_to_name TEXT;
-ALTER TABLE public.crm_activities ADD COLUMN IF NOT EXISTS completed_by UUID;
-
-COMMENT ON COLUMN public.crm_activities.assigned_to IS
-  'Responsável por executar a tarefa (pode diferir de created_by). Usado na atribuição por tarefa da O.S. comercial.';
 
 
 -- ===== 055_commercial_plan_actions.sql =============================================
@@ -1906,15 +1847,26 @@ COMMENT ON COLUMN public.os_orders.judge IS
 
 ALTER TABLE public.notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 
--- Recarrega o cache de schema do PostgREST (pega as alteracoes acima na hora).
-NOTIFY pgrst, 'reload schema';
-
 
 -- ===== 065_crm_goals_funnel.sql =============================================
--- Metas de FUNIL (planejador reverso): crm_goals ganha kind/funnel_base/
--- conversion_rate. kind='revenue' (default) = meta em R$ (comportamento antigo);
--- kind='funnel' = meta em quantidade (vendas OU ligacoes) + taxa de conversao,
--- que alimenta o overlay de metas no Funil de Conversao. Idempotente.
+-- ============================================================
+-- 065_crm_goals_funnel.sql
+--
+-- Metas de FUNIL (planejador reverso) em cima da tabela crm_goals.
+--
+-- Ate aqui `crm_goals` so guardava meta de VALOR (R$): target_value em reais.
+-- Agora a mesma tabela ganha um segundo "tipo" de meta, baseado em QUANTIDADE:
+--
+--   kind='funnel'  -> target_value = nº alvo (vendas OU ligacoes)
+--                     funnel_base  = 'sales' | 'calls' (qual ponta o usuario digitou)
+--                     conversion_rate = % de conversao (ligacao/lead -> venda)
+--
+-- Com o alvo de uma ponta + a taxa de conversao, o app calcula a meta de cada
+-- etapa do funil (planejador reverso) e desenha por cima do Funil de Conversao.
+--
+-- kind='revenue' (default) = comportamento antigo, meta em R$. Nada muda pra ele.
+--
+-- Idempotente.
 -- ============================================================
 
 ALTER TABLE public.crm_goals
@@ -1934,9 +1886,22 @@ NOTIFY pgrst, 'reload schema';
 
 
 -- ===== 066_crm_member_access.sql =============================================
--- Permissao de acesso por MEMBRO a secoes do CRM. crm_blocked_sections (JSONB) =
--- lista de secoes que o membro NAO pode ver (NULL/[] = vê tudo). Admins ignoram.
--- Editado pelo admin em Configuracoes do CRM > Equipe. Idempotente.
+-- ============================================================
+-- 066_crm_member_access.sql
+--
+-- Permissao de acesso por MEMBRO a secoes do CRM.
+--
+-- `crm_blocked_sections` = lista (JSONB) das secoes que o membro NAO pode ver.
+--   - NULL ou []  -> vê TUDO (padrao; nao quebra ninguem que ja usa).
+--   - ['comparativo','automations'] -> tudo MENOS essas secoes.
+--
+-- Admins (dono por e-mail OU cargo gestor/admin) ignoram esta lista e veem tudo.
+-- O admin edita a lista de cada membro em Configuracoes do CRM > Equipe.
+--
+-- Semantica de BLOQUEIO (e nao de liberacao) de proposito: secao nova que a
+-- gente criar no futuro aparece por padrao pra todo mundo, ate o admin bloquear.
+--
+-- Idempotente.
 -- ============================================================
 
 ALTER TABLE public.team_members
@@ -1947,3 +1912,328 @@ COMMENT ON COLUMN public.team_members.crm_blocked_sections IS
 
 -- Recarrega o cache de schema do PostgREST (pega a coluna nova na hora).
 NOTIFY pgrst, 'reload schema';
+
+
+-- ===== 067_crm_activities_delivery_input.sql =============================================
+-- ============================================================
+-- 067_crm_activities_delivery_input.sql
+--
+-- Separa o relato de entrega da tarefa em DOIS lados: o que o VENDEDOR fez/
+-- disse (delivery_input) e o que o LEAD respondeu/reagiu (delivery_report,
+-- ja existente desde 056 — vira o "output"). Cada tarefa continua com o seu
+-- proprio par input/output.
+--
+-- Idempotente.
+-- ============================================================
+
+ALTER TABLE public.crm_activities ADD COLUMN IF NOT EXISTS delivery_input TEXT;
+
+COMMENT ON COLUMN public.crm_activities.delivery_input IS
+  'O que o VENDEDOR fez/disse ao concluir a tarefa (input). Preenchido junto com delivery_report (output = o que o lead respondeu) no mesmo modal de conclusao.';
+
+COMMENT ON COLUMN public.crm_activities.delivery_report IS
+  'O que o LEAD respondeu/reagiu (output) ao concluir a tarefa. Par de delivery_input (input do vendedor). Preenchido ao concluir.';
+
+
+-- ===== 069_crm_partners.sql =============================================
+-- ============================================================
+-- 069_crm_partners.sql
+--
+-- Cadastro de PARCEIROS INDICADORES (pessoas físicas que indicam leads,
+-- ex.: Edson, João, Robert — hoje só existiam como texto livre dentro de
+-- crm_deals.source, tipo "Indicação de parceiro (Edson)"). Diferente da
+-- pipeline "Parceiros" (que é prospecção de EMPRESAS pra virarem parceiros
+-- institucionais) — isso aqui é o registro da PESSOA que indica.
+--
+-- Sem FK em crm_deals de propósito: a contagem de leads por parceiro é
+-- feita casando o nome com o texto de crm_deals.source (ILIKE), pra não
+-- precisar de uma migração de dados nos ~500 deals existentes.
+--
+-- Idempotente.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.crm_partners (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  phone TEXT,
+  notes TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ
+);
+
+COMMENT ON TABLE public.crm_partners IS
+  'Pessoas físicas que indicam leads pro Fyness (ex.: Edson, João, Robert). Contagem de leads é calculada casando o nome com crm_deals.source (não tem FK).';
+
+ALTER TABLE public.crm_partners ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "crm_partners_all" ON public.crm_partners;
+CREATE POLICY "crm_partners_all" ON public.crm_partners FOR ALL USING (true);
+
+-- Seed dos parceiros já identificados no texto de crm_deals.source.
+INSERT INTO public.crm_partners (name)
+SELECT nome FROM (VALUES ('Edson'), ('Robert'), ('Claudio'), ('João'), ('Dudu'), ('Vinicius'), ('Lilian'), ('Luan')) AS v(nome)
+WHERE NOT EXISTS (SELECT 1 FROM public.crm_partners p WHERE p.name = v.nome);
+
+
+-- ===== 070_crm_lead_sources.sql =============================================
+-- ============================================================
+-- 070_crm_lead_sources.sql
+--
+-- Origens de lead (canal de aquisicao) cadastraveis pela equipe, no lugar
+-- da lista fixa hardcoded no formulario de negocio. crm_deals.source
+-- continua texto livre (sem FK) — essa tabela so alimenta as opcoes do
+-- dropdown + a tela de gestao em Configuracoes.
+--
+-- Idempotente.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.crm_lead_sources (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  position INT NOT NULL DEFAULT 0,
+  created_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.crm_lead_sources IS
+  'Origens de lead cadastraveis (canal de aquisicao). crm_deals.source continua texto livre (sem FK) — essa tabela so alimenta as opcoes do formulario.';
+
+ALTER TABLE public.crm_lead_sources ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "crm_lead_sources_all" ON public.crm_lead_sources;
+CREATE POLICY "crm_lead_sources_all" ON public.crm_lead_sources FOR ALL USING (true);
+
+-- Seed com as opcoes que ja existiam hardcoded no formulario.
+INSERT INTO public.crm_lead_sources (name, position)
+SELECT nome, pos FROM (VALUES
+  ('Prospeccao ativa', 0),
+  ('Indicacao de contador', 1),
+  ('Trafego pago', 2),
+  ('Indicacao / WhatsApp', 3),
+  ('Indicacao de parceiro', 4)
+) AS v(nome, pos)
+WHERE NOT EXISTS (SELECT 1 FROM public.crm_lead_sources s WHERE s.name = v.nome);
+
+
+-- ===== 071_crm_goals_funnel_rates.sql =============================================
+-- ============================================================
+-- 071_crm_goals_funnel_rates.sql
+--
+-- Meta de FUNIL (crm_goals kind='funnel') ganha 4 taxas independentes no
+-- lugar de uma taxa unica interpolada geometricamente. Etapas reais:
+--
+--   Lead -> Qualificado -> Reuniao agendada -> Reuniao realizada -> Fechamento
+--
+--   qual_rate     = % dos leads que qualificam
+--   schedule_rate = % dos qualificados que agendam reuniao
+--   show_rate     = % das reunioes agendadas que acontecem (100% - no-show)
+--   close_rate    = % das reunioes realizadas que fecham
+--
+-- conversion_rate (065) fica como legado/nao usado em metas novas; funnel_base
+-- ganha o valor 'leads' (planeja a partir do numero de leads, alem de 'sales'
+-- e 'calls' que ja existiam). Sem CHECK constraint em funnel_base, entao nao
+-- precisa migrar dado nenhum pra liberar o novo valor.
+--
+-- Idempotente.
+-- ============================================================
+
+ALTER TABLE public.crm_goals
+  ADD COLUMN IF NOT EXISTS qual_rate     NUMERIC,
+  ADD COLUMN IF NOT EXISTS schedule_rate NUMERIC,
+  ADD COLUMN IF NOT EXISTS show_rate     NUMERIC,
+  ADD COLUMN IF NOT EXISTS close_rate    NUMERIC;
+
+COMMENT ON COLUMN public.crm_goals.qual_rate IS
+  'So p/ kind=funnel: % dos leads que qualificam (Lead -> Qualificado).';
+COMMENT ON COLUMN public.crm_goals.schedule_rate IS
+  'So p/ kind=funnel: % dos qualificados que agendam reuniao (Qualificado -> Reuniao agendada).';
+COMMENT ON COLUMN public.crm_goals.show_rate IS
+  'So p/ kind=funnel: % das reunioes agendadas que acontecem (Reuniao agendada -> Reuniao realizada). O complemento e a taxa de no-show.';
+COMMENT ON COLUMN public.crm_goals.close_rate IS
+  'So p/ kind=funnel: % das reunioes realizadas que fecham (Reuniao realizada -> Fechamento).';
+
+-- Recarrega o cache de schema do PostgREST (pega as colunas novas na hora).
+NOTIFY pgrst, 'reload schema';
+
+
+-- ===== 072_crm_deals_churn.sql =============================================
+-- ============================================================
+-- 072_crm_deals_churn.sql
+--
+-- Visibilidade de churn: crm_deals ganha `churned_at`. Um deal GANHO
+-- (status='won') com churned_at NULL e um cliente ATIVO; com churned_at
+-- preenchido, o cliente cancelou naquela data (o deal continua status='won'
+-- pra preservar o historico de venda — churn e um estado A MAIS, nao troca
+-- o status original).
+--
+-- Base pro Dashboard: "Clientes ativos" (won + churned_at IS NULL) e
+-- "Cancelados no periodo" (churned_at dentro do range selecionado).
+--
+-- Idempotente.
+-- ============================================================
+
+ALTER TABLE public.crm_deals
+  ADD COLUMN IF NOT EXISTS churned_at TIMESTAMPTZ;
+
+COMMENT ON COLUMN public.crm_deals.churned_at IS
+  'Data em que o cliente cancelou (deal status continua won). NULL = cliente ativo.';
+
+-- Recarrega o cache de schema do PostgREST (pega a coluna nova na hora).
+NOTIFY pgrst, 'reload schema';
+
+
+-- ===== 073_crm_geral_qualificado_stage.sql =============================================
+-- ============================================================
+-- 073_crm_geral_qualificado_stage.sql
+--
+-- Adiciona a etapa "Qualificado" ao pipeline Geral, entre "Respondeu" (pos 3)
+-- e "Reunião / Demo" (pos 4) -- empurra as etapas seguintes uma posição pra
+-- frente. Ate aqui, "Respondeu" contava como qualificado no funil de vendas
+-- (getSalesFunnel, heuristico por nome) -- errado: responder nao e
+-- qualificar, e so sinaliza engajamento. "Qualificado" agora e o limiar real
+-- (ver src/modules/crm/services/crmDashboardService.js,
+-- detectFunnelStagePositions).
+--
+-- Idempotente: nao faz nada se o pipeline Geral ja tiver uma etapa
+-- "Qualificado".
+-- ============================================================
+
+DO $$
+DECLARE
+  v_pipeline_id uuid := '44b978de-616a-4256-a4cd-40cd4ec8a4a8'; -- Geral
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM crm_pipeline_stages
+    WHERE pipeline_id = v_pipeline_id AND name = 'Qualificado'
+  ) THEN
+    -- Ordem DESC: nunca ha 2 etapas com a mesma position ao mesmo tempo.
+    UPDATE crm_pipeline_stages SET position = 9 WHERE pipeline_id = v_pipeline_id AND position = 8; -- Cliente
+    UPDATE crm_pipeline_stages SET position = 8 WHERE pipeline_id = v_pipeline_id AND position = 7; -- Negociação
+    UPDATE crm_pipeline_stages SET position = 7 WHERE pipeline_id = v_pipeline_id AND position = 6; -- Trial / Teste
+    UPDATE crm_pipeline_stages SET position = 6 WHERE pipeline_id = v_pipeline_id AND position = 5; -- Proposta
+    UPDATE crm_pipeline_stages SET position = 5 WHERE pipeline_id = v_pipeline_id AND position = 4; -- Reunião / Demo
+
+    INSERT INTO crm_pipeline_stages (pipeline_id, name, position, color, is_win_stage)
+    VALUES (v_pipeline_id, 'Qualificado', 4, '#8b5cf6', false);
+  END IF;
+END $$;
+
+-- Recarrega o cache de schema do PostgREST.
+NOTIFY pgrst, 'reload schema';
+
+
+-- ===== 074_crm_workspace_settings.sql =============================================
+-- ============================================================
+-- 074_crm_workspace_settings.sql
+--
+-- Configuracao de workspace do CRM compartilhada entre todo mundo — ate aqui
+-- a Meta de MRR do Dashboard vivia so no localStorage (crmWorkspaceSettings.js
+-- no navegador). Quem definia numa maquina via mrrGoal=0 pra todo mundo em
+-- qualquer outro device/usuario, e a barra de progresso simplesmente sumia.
+--
+-- Singleton (1 linha so, id sempre true) — mesmo padrao de estado
+-- compartilhado ja usado em commercial_plan_actions (055).
+--
+-- Escopo desta migration: so a Meta de MRR. O plano do Funil (Planejamento)
+-- continua no localStorage de proposito — e escrito a cada tecla digitada
+-- (nome de etapa/contagem/taxa) e migrar isso sem debounce faria upsert no
+-- Supabase por tecla; fica pra uma proxima leva com essa peca resolvida.
+--
+-- Idempotente.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.crm_workspace_settings (
+  id               boolean      PRIMARY KEY DEFAULT true,
+  mrr_goal_monthly numeric      NOT NULL DEFAULT 0,
+  updated_at       timestamptz  NOT NULL DEFAULT now(),
+  CONSTRAINT crm_workspace_settings_singleton CHECK (id)
+);
+
+COMMENT ON TABLE public.crm_workspace_settings IS
+  'Config de workspace do CRM compartilhada (1 linha so, id=true). Hoje so a Meta de MRR mensal do Dashboard.';
+
+ALTER TABLE public.crm_workspace_settings ENABLE ROW LEVEL SECURITY;
+
+-- RLS aberto (mesmo padrao do resto do app / commercial_plan_actions).
+DO $$ BEGIN
+  CREATE POLICY "crm_workspace_settings_all"
+    ON public.crm_workspace_settings
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Garante a linha singleton (upsert de app depende dela existir).
+INSERT INTO public.crm_workspace_settings (id) VALUES (true)
+  ON CONFLICT (id) DO NOTHING;
+
+-- Recarrega o cache de schema do PostgREST (pega a tabela nova na hora).
+NOTIFY pgrst, 'reload schema';
+
+
+-- ===== 075_os_templates_checklist.sql =============================================
+-- ============================================================
+-- 075. OS_TEMPLATES: coluna `checklist` (estrutura de tarefas + briefings)
+-- ------------------------------------------------------------
+-- Renumerado de 052 pra 075 (colidia com 052_crm_activities_type_message.sql).
+--
+-- Permite salvar uma O.S. inteira como MODELO: grupos + tarefas +
+-- o briefing de cada tarefa. Ao aplicar o modelo numa O.S. nova,
+-- a estrutura inteira vem pronta (so renomear/ajustar).
+--
+-- Idempotente: pode rodar mais de uma vez sem erro.
+-- ============================================================
+
+ALTER TABLE public.os_templates
+  ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb;
+
+
+-- ===== 076_crm_deal_mrr.sql =============================================
+-- ============================================================
+-- 076_crm_deal_mrr.sql
+--
+-- Renumerado de 053 pra 076 (colidia com 053_close_weekly_os_cron.sql).
+--
+-- Adiciona `mrr` (mensalidade / receita recorrente mensal) em crm_deals.
+--
+-- Contexto: o Fyness e SaaS. O campo `value` continua sendo o VALOR TOTAL
+-- DO CONTRATO (ex: 12x a mensalidade, setups, etc.). `mrr` e a parcela
+-- recorrente mensal — base pra metrica de "MRR novo": soma do mrr dos
+-- negocios GANHOS no mes.
+--
+-- Idempotente.
+-- ============================================================
+
+ALTER TABLE public.crm_deals
+  ADD COLUMN IF NOT EXISTS mrr NUMERIC;
+
+COMMENT ON COLUMN public.crm_deals.mrr IS
+  'Receita recorrente mensal (mensalidade) do negocio. value = contrato total; mrr = parcela mensal. Base pra "MRR novo".';
+
+
+-- ===== 077_crm_activities_responsavel.sql =============================================
+-- ============================================================
+-- 077_crm_activities_responsavel.sql
+--
+-- Renumerado de 055 pra 077 (colidia com 055_commercial_plan_actions.sql).
+--
+-- Atribuição por tarefa: quem é o RESPONSÁVEL por executar a atividade
+-- (pode ser diferente de quem criou) + quem concluiu.
+--
+-- assigned_to      = id do responsável (auth user / team member). Sem FK de
+--                    propósito (id pode vir de auth.users ou team_members).
+-- assigned_to_name = nome do responsável (denormalizado, p/ exibir sem join).
+-- completed_by     = quem marcou como concluída.
+--
+-- Idempotente.
+-- ============================================================
+
+ALTER TABLE public.crm_activities ADD COLUMN IF NOT EXISTS assigned_to UUID;
+ALTER TABLE public.crm_activities ADD COLUMN IF NOT EXISTS assigned_to_name TEXT;
+ALTER TABLE public.crm_activities ADD COLUMN IF NOT EXISTS completed_by UUID;
+
+COMMENT ON COLUMN public.crm_activities.assigned_to IS
+  'Responsável por executar a tarefa (pode diferir de created_by). Usado na atribuição por tarefa da O.S. comercial.';

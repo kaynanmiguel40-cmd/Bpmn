@@ -1,6 +1,9 @@
 -- ============================================================
+-- 078_seed_apresentacao.sql
 -- SEED DE APRESENTAÇÃO — setor + projeto + 1 O.S. COMPLETA
 -- ------------------------------------------------------------
+-- Renumerado de 062 pra 078 (colidia com 062_crm_deal_source.sql).
+--
 -- Cria, prontos pra demonstrar:
 --   • 1 setor de O.S. novo  ........ "Implantação"
 --   • 1 projeto novo no setor ...... "Implantação — Contabilidade Silva"

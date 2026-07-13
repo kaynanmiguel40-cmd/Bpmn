@@ -41,6 +41,15 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 const isSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 const toKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+// Início–fim legível. endDate é opcional pra tipos pontuais (ligação/mensagem)
+// — sem fim real, mostra só o início em vez de repetir o mesmo horário 2x.
+const fmtRange = (startIso, endIso) => {
+  if (!startIso) return null;
+  const start = fmtTime(startIso);
+  if (!endIso) return start;
+  const end = fmtTime(endIso);
+  return end === start ? start : `${start}–${end}`;
+};
 
 function monthMatrix(date) {
   const first = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -93,7 +102,7 @@ function EventChip({ ev, onClick, onCompleteTask, dimmed, showOwner }) {
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onClick?.(ev); }}
-        title={`${ev.startDate ? fmtTime(ev.startDate) + ' · ' : ''}${ev.title}${ev.leadName ? ` — ${ev.leadName}` : ''}${isGoogle ? ' (Google Agenda)' : ''}`}
+        title={`${ev.startDate && !ev.isAllDay ? fmtRange(ev.startDate, ev.endDate) + ' · ' : ''}${ev.title}${ev.leadName ? ` — ${ev.leadName}` : ''}${isGoogle ? ' (Google Agenda)' : ''}`}
         className="flex-1 min-w-0 flex items-center gap-1 text-left cursor-pointer"
       >
         {ev.completed
@@ -230,8 +239,17 @@ function DayView({ current, eventsByDay, onSelectEvent, onSelectSlot, onComplete
             const isCrm = ev.source === 'crm';
             return (
             <div key={ev.id} className="group/day flex items-stretch gap-3">
-              <div className="w-14 shrink-0 text-right text-[11px] font-medium text-slate-500 dark:text-slate-400 pt-2 tabular-nums">
-                {ev.isAllDay || !ev.startDate ? 'dia' : fmtTime(ev.startDate)}
+              <div className="w-16 shrink-0 text-right pt-2 tabular-nums">
+                {ev.isAllDay || !ev.startDate ? (
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">dia</span>
+                ) : (
+                  <>
+                    <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300">{fmtTime(ev.startDate)}</div>
+                    {ev.endDate && fmtTime(ev.endDate) !== fmtTime(ev.startDate) && (
+                      <div className="text-[10px] text-slate-400 dark:text-slate-500">–{fmtTime(ev.endDate)}</div>
+                    )}
+                  </>
+                )}
               </div>
               <div className="w-1 rounded-full shrink-0" style={{ backgroundColor: ev.color }} />
               <button
@@ -286,8 +304,17 @@ function AgendaRow({ ev, onClick, onCompleteTask, dimmed, showOwner }) {
   return (
     <div className={`group/row w-full flex items-center gap-3 py-2.5 px-3 rounded-lg transition-colors
         hover:bg-slate-50 dark:hover:bg-white/5 ${dimmed ? 'opacity-30 hover:opacity-100' : ''}`}>
-      <span className="w-12 shrink-0 text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">
-        {ev.isAllDay || !ev.startDate ? '—' : fmtTime(ev.startDate)}
+      <span className="w-14 shrink-0 tabular-nums text-right">
+        {ev.isAllDay || !ev.startDate ? (
+          <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">—</span>
+        ) : (
+          <>
+            <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{fmtTime(ev.startDate)}</div>
+            {ev.endDate && fmtTime(ev.endDate) !== fmtTime(ev.startDate) && (
+              <div className="text-[10px] text-slate-400 dark:text-slate-500">–{fmtTime(ev.endDate)}</div>
+            )}
+          </>
+        )}
       </span>
       {/* Ícone do tipo (vira ✓ quando concluído) */}
       <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
