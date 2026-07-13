@@ -6,7 +6,7 @@ import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany,
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
 import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, ensureGeneralPipeline, consolidateSalesPipelinesIntoGeneral, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, markDealAsChurned, reactivateChurnedDeal, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
-import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal } from '../services/crmActivitiesService';
+import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal } from '../services/crmActivitiesService';
 import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel } from '../services/crmDashboardService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, getCrmProspectById, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
@@ -338,6 +338,20 @@ export function useCreateCadence() {
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+    },
+  });
+}
+
+export function useCancelCadence() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: cancelCadenceForDeal,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
     },
   });
 }

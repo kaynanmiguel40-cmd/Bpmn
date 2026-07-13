@@ -224,6 +224,36 @@ export async function createCadenceForDeal({ dealId, contactId = null }) {
   return created;
 }
 
+/**
+ * Cancela a cadência de um deal: soft-delete dos toques ainda PENDENTES
+ * criados por createCadenceForDeal (identificados pelo prefixo do título).
+ * Toques já concluídos não são tocados — ficam como histórico real do que
+ * já aconteceu. Não existia nenhuma forma de parar uma cadência iniciada.
+ */
+export async function cancelCadenceForDeal(dealId) {
+  if (!dealId) return 0;
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('crm_activities')
+    .update({ deleted_at: now })
+    .eq('deal_id', dealId)
+    .eq('completed', false)
+    .is('deleted_at', null)
+    .ilike('title', 'Cadência ·%')
+    .select('id');
+
+  if (error) {
+    toast(`Erro ao cancelar cadência: ${error.message}`, 'error');
+    return 0;
+  }
+
+  const count = data?.length || 0;
+  if (count > 0) {
+    toast(`Cadência cancelada — ${count} follow-up${count > 1 ? 's' : ''} pendente${count > 1 ? 's' : ''} removido${count > 1 ? 's' : ''}`, 'success');
+  }
+  return count;
+}
+
 export async function updateCrmActivity(id, updates) {
   const result = await activityService.update(id, updates);
 

@@ -18,14 +18,14 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Link2, Eye, EyeOff } from 'lucide-react';
-import { CrmPageHeader } from '../components/ui';
+import { CrmPageHeader, CrmConfirmDialog } from '../components/ui';
 import CrmCalendar from '../components/agenda/CrmCalendar';
 import LeadHistoryPanel from '../components/agenda/LeadHistoryPanel';
 import { TeamDailyBriefing } from '../components/agenda/TeamDailyBriefing';
 import { TeamActivitiesTable } from '../components/agenda/TeamActivitiesTable';
 import { ActivityFormModal } from '../components/ActivityFormModal';
 import { CompleteActivityModal } from '../components/CompleteActivityModal';
-import { useCrmCalendarActivities, useCompleteCrmActivity } from '../hooks/useCrmQueries';
+import { useCrmCalendarActivities, useCompleteCrmActivity, useDeleteCrmActivity } from '../hooks/useCrmQueries';
 import { useGCalEvents, useGCalStatus } from '../../../hooks/queries';
 import { connectGCal } from '../../../lib/googleCalendarService';
 import { useProfile } from '../../../hooks/useProfile';
@@ -119,6 +119,7 @@ function MyDayCalendar() {
   const [formInitial, setFormInitial] = useState(null);
   const [editActivity, setEditActivity] = useState(null); // tarefa clicada (abre o form em edição, mostra a descrição)
   const [completingTask, setCompletingTask] = useState(null); // { id, title } — abre o modal de conclusão (input/output)
+  const [deleteActivityTarget, setDeleteActivityTarget] = useState(null); // atividade a excluir (confirmação)
 
   const [rangeStart, rangeEnd] = useMemo(() => computeRange(view, currentDate), [view, currentDate]);
   const startISO = rangeStart.toISOString();
@@ -127,6 +128,7 @@ function MyDayCalendar() {
   // Atividades do CRM no recorte
   const { data: crmActivitiesRaw = [], isLoading: activitiesLoading, isError: activitiesError } = useCrmCalendarActivities(startISO, endISO);
   const completeMutation = useCompleteCrmActivity();
+  const deleteActivityMutation = useDeleteCrmActivity();
 
   // Por padrão, cada um vê só a SUA agenda (privacidade — evita que
   // produto/operação, ex.: Elias, veja a cadência de lead alheia). Quem é
@@ -365,6 +367,8 @@ function MyDayCalendar() {
               selected={selected}
               onClose={() => setSelected(null)}
               onOpenLead={(lead) => lead.dealId && navigate(`/crm/deals/${lead.dealId}`)}
+              onCompleteTask={(item) => setCompletingTask({ id: item.activityId, title: item.title, type: item.activityType })}
+              onDeleteTask={(item) => setDeleteActivityTarget(item)}
             />
           </aside>
         </div>
@@ -394,6 +398,21 @@ function MyDayCalendar() {
             onSuccess: () => setCompletingTask(null),
           });
         }}
+      />
+
+      <CrmConfirmDialog
+        open={!!deleteActivityTarget}
+        onClose={() => setDeleteActivityTarget(null)}
+        onConfirm={() => {
+          deleteActivityMutation.mutate(deleteActivityTarget.activityId, {
+            onSuccess: () => setDeleteActivityTarget(null),
+          });
+        }}
+        title="Excluir atividade"
+        message={`Tem certeza que deseja excluir "${deleteActivityTarget?.title || 'esta atividade'}"? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        variant="danger"
+        loading={deleteActivityMutation.isPending}
       />
     </div>
   );

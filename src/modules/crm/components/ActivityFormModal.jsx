@@ -6,8 +6,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus } from 'lucide-react';
+import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus, Trash2 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { CrmConfirmDialog } from './ui/CrmConfirmDialog';
 import { z } from 'zod';
 import { crmActivitySchema } from '../schemas/crmValidation';
 
@@ -30,6 +31,7 @@ import {
   useCrmDeals,
   useCreateCrmActivity,
   useUpdateCrmActivity,
+  useDeleteCrmActivity,
   useReportOwners,
 } from '../hooks/useCrmQueries';
 
@@ -150,7 +152,9 @@ export function ActivityFormModal({
   const isEdit = !!activity?.id;
   const createMutation = useCreateCrmActivity();
   const updateMutation = useUpdateCrmActivity();
+  const deleteMutation = useDeleteCrmActivity();
   const isPending = createMutation.isPending || updateMutation.isPending;
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(activityFormSchema),
@@ -236,6 +240,7 @@ export function ActivityFormModal({
     `w-full px-3 py-2 text-sm rounded-lg border ${errors[name] ? 'border-rose-300 dark:border-rose-700 focus:ring-rose-500' : 'border-slate-300 dark:border-slate-600 focus:ring-fyness-primary'} bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2`;
 
   return (
+    <>
     <CrmModal open={open} onClose={onClose} title={isEdit ? 'Editar Atividade' : 'Nova Atividade'} size="lg"
       footer={
         <>
@@ -244,6 +249,16 @@ export function ActivityFormModal({
               className="mr-auto px-3 py-2 text-sm font-medium text-fyness-primary hover:underline">
               Histórico do lead →
             </button>
+          )}
+          {isEdit && (
+            <>
+              <button type="button" onClick={() => setConfirmDeleteOpen(true)} disabled={isPending || deleteMutation.isPending}
+                title="Excluir atividade"
+                className={`${onOpenLeadHistory && (activity?.dealId || activity?.contactId) ? '' : 'mr-auto'} p-2 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg disabled:opacity-50`}>
+                <Trash2 size={16} />
+              </button>
+              <span className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5" aria-hidden="true" />
+            </>
           )}
           <button type="button" onClick={onClose} disabled={isPending}
             className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
@@ -397,6 +412,19 @@ export function ActivityFormModal({
         )}
       </form>
     </CrmModal>
+    <CrmConfirmDialog
+      open={confirmDeleteOpen}
+      onClose={() => setConfirmDeleteOpen(false)}
+      onConfirm={() => {
+        deleteMutation.mutate(activity.id, { onSuccess: () => { setConfirmDeleteOpen(false); onClose(); } });
+      }}
+      title="Excluir atividade"
+      message={`Tem certeza que deseja excluir "${activity?.title || 'esta atividade'}"? Esta ação não pode ser desfeita.`}
+      confirmLabel="Excluir"
+      variant="danger"
+      loading={deleteMutation.isPending}
+    />
+    </>
   );
 }
 

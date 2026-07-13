@@ -12,7 +12,7 @@
 import { useMemo } from 'react';
 import {
   X, Phone, MessageCircle, CalendarCheck, Flag, Mail, Users, Coffee,
-  MapPin, ExternalLink, Building2, CheckCircle2, Clock, ArrowRight,
+  MapPin, ExternalLink, Building2, CheckCircle2, Clock, ArrowRight, Trash2,
 } from 'lucide-react';
 import { useLeadTimeline } from '../../hooks/useCrmQueries';
 import { scheduleTiming } from '../../services/crmAgendaService';
@@ -61,12 +61,14 @@ function relativeLabel(iso) {
   return dateStr;
 }
 
-function TimelineRow({ item }) {
+function TimelineRow({ item, onComplete, onDelete }) {
   const Icon = item.kind === 'activity'
     ? (ACTIVITY_ICON[item.activityType] || CalendarCheck)
     : (KIND_ICON[item.kind] || CalendarCheck);
+  // So "A fazer" (atividade pendente) ganha acoes — historico e so leitura.
+  const isPendingActivity = item.kind === 'activity' && !item.done;
   return (
-    <div className="flex gap-3">
+    <div className="group/tl flex gap-3">
       {/* trilho + bolinha */}
       <div className="flex flex-col items-center">
         <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 ring-1 ring-inset"
@@ -83,6 +85,22 @@ function TimelineRow({ item }) {
             {item.title}
           </span>
           <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${item.color}22`, color: item.color }}>{item.typeLabel}</span>
+          {isPendingActivity && (onComplete || onDelete) && (
+            <span className="ml-auto flex items-center gap-1 md:opacity-0 md:group-hover/tl:opacity-100 transition-opacity">
+              {onComplete && (
+                <button type="button" onClick={() => onComplete(item)} title="Marcar como concluída"
+                  className="p-1 text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded">
+                  <CheckCircle2 size={14} />
+                </button>
+              )}
+              {onDelete && (
+                <button type="button" onClick={() => onDelete(item)} title="Excluir atividade"
+                  className="p-1 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded">
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </span>
+          )}
         </div>
         {/* Input/output da tarefa concluída — mesmo par "Você"/"Lead" do Histórico do Negócio */}
         {(item.deliveryInput || item.deliveryReport) ? (
@@ -119,7 +137,7 @@ function TimelineRow({ item }) {
   );
 }
 
-export default function LeadHistoryPanel({ selected, onClose, onOpenLead }) {
+export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onCompleteTask, onDeleteTask }) {
   const { data, isLoading } = useLeadTimeline(selected || {});
   const lead = data?.lead;
   const items = data?.items || [];
@@ -196,7 +214,7 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead }) {
                 <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 flex items-center gap-1.5">
                   <Clock size={12} /> A fazer
                 </h4>
-                <div>{upcoming.map(i => <TimelineRow key={i.id} item={i} />)}</div>
+                <div>{upcoming.map(i => <TimelineRow key={i.id} item={i} onComplete={onCompleteTask} onDelete={onDeleteTask} />)}</div>
               </section>
             )}
 

@@ -5,10 +5,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle, Repeat, Upload, Combine, ArrowLeftRight } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useCancelCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral } from '../hooks/useCrmQueries';
 import { getDealLeadInfo } from '../services/crmDealsService';
 import { useTeamMembers } from '../../../hooks/queries';
 import { useUrlState } from '../../../hooks/useUrlState';
@@ -74,7 +74,9 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
   const navigate = useNavigate();
   const isDragging = useRef(false);
   const cadenceMutation = useCreateCadence();
+  const cancelCadenceMutation = useCancelCadence();
   const [stagePickerOpen, setStagePickerOpen] = useState(false);
+  const [confirmCancelCadence, setConfirmCancelCadence] = useState(false);
   const stagePickerRef = useRef(null);
 
   useEffect(() => {
@@ -108,6 +110,9 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
   };
   // So oferece "iniciar cadencia" em deal aberto que ainda nao tem follow-ups
   const canStartCadence = deal.status === 'open' && (!deal.cadence || !deal.cadence.total);
+  // "Cancelar cadencia" so quando ha toque(s) pendente(s) — nao dava pra parar
+  // uma cadencia depois de iniciada, ela so ia acumulando follow-ups vencidos.
+  const canCancelCadence = deal.status === 'open' && deal.cadence?.total > 0 && deal.cadence.done < deal.cadence.total;
 
   const handleStartCadence = (e) => {
     e.stopPropagation();
@@ -115,7 +120,13 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
     cadenceMutation.mutate({ dealId: deal.id, contactId: deal.contactId || deal.contact?.id || null });
   };
 
+  const handleCancelCadence = (e) => {
+    e.stopPropagation();
+    setConfirmCancelCadence(true);
+  };
+
   return (
+    <>
     <div
       draggable
       onDragStart={(e) => {
@@ -250,6 +261,16 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
             <Repeat size={11} />
           </button>
         )}
+        {canCancelCadence && (
+          <button
+            onClick={handleCancelCadence}
+            disabled={cancelCadenceMutation.isPending}
+            className="p-1 rounded bg-white dark:bg-slate-800 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 shadow-sm border border-slate-200 dark:border-slate-700 disabled:opacity-50"
+            title="Cancelar cadência (remove os follow-ups ainda pendentes)"
+          >
+            <Ban size={11} />
+          </button>
+        )}
         {deal.status === 'open' && (
           <>
             <button
@@ -304,6 +325,17 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
         </div>
       )}
     </div>
+    <CrmConfirmDialog
+      open={confirmCancelCadence}
+      onClose={() => setConfirmCancelCadence(false)}
+      onConfirm={() => { cancelCadenceMutation.mutate(deal.id); setConfirmCancelCadence(false); }}
+      title="Cancelar cadência"
+      message={`Isso remove ${deal.cadence.total - deal.cadence.done} follow-up(s) ainda pendente(s) desse negócio. Os que já foram concluídos ficam no histórico. Não pode ser desfeito.`}
+      confirmLabel="Cancelar cadência"
+      variant="danger"
+      loading={cancelCadenceMutation.isPending}
+    />
+    </>
   );
 }
 
