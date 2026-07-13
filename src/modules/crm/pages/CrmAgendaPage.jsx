@@ -25,7 +25,7 @@ import { TeamDailyBriefing } from '../components/agenda/TeamDailyBriefing';
 import { TeamActivitiesTable } from '../components/agenda/TeamActivitiesTable';
 import { ActivityFormModal } from '../components/ActivityFormModal';
 import { CompleteActivityModal } from '../components/CompleteActivityModal';
-import { useCrmCalendarActivities, useCompleteCrmActivity, useDeleteCrmActivity } from '../hooks/useCrmQueries';
+import { useCrmCalendarActivities, useCompleteCrmActivity, useDeleteCrmActivity, useUpdateCrmActivity } from '../hooks/useCrmQueries';
 import { useGCalEvents, useGCalStatus } from '../../../hooks/queries';
 import { connectGCal } from '../../../lib/googleCalendarService';
 import { useProfile } from '../../../hooks/useProfile';
@@ -129,6 +129,7 @@ function MyDayCalendar() {
   const { data: crmActivitiesRaw = [], isLoading: activitiesLoading, isError: activitiesError } = useCrmCalendarActivities(startISO, endISO);
   const completeMutation = useCompleteCrmActivity();
   const deleteActivityMutation = useDeleteCrmActivity();
+  const updateActivityMutation = useUpdateCrmActivity();
 
   // Por padrão, cada um vê só a SUA agenda (privacidade — evita que
   // produto/operação, ex.: Elias, veja a cadência de lead alheia). Quem é
@@ -200,6 +201,8 @@ function MyDayCalendar() {
       stageName: a.stageName,
       completed: a.completed,
       completedAt: a.completedAt,
+      deliveryInput: a.deliveryInput,
+      deliveryReport: a.deliveryReport,
       typeLabel: a.typeLabel,
       dealId: a.dealId,
       contactId: a.contactId,
@@ -347,6 +350,10 @@ function MyDayCalendar() {
               if (!ev.activityId) return;
               setCompletingTask({ id: ev.activityId, title: ev.title, type: ev.typeKey });
             }}
+            onEditDelivery={(ev) => {
+              if (!ev.activityId) return;
+              setCompletingTask({ id: ev.activityId, title: ev.title, type: ev.typeKey, completed: true, deliveryInput: ev.deliveryInput, deliveryReport: ev.deliveryReport });
+            }}
             selectedLeadKey={selectedLeadKey}
             extraActions={calendarActions}
             showOwner={showOwner}
@@ -368,6 +375,7 @@ function MyDayCalendar() {
               onClose={() => setSelected(null)}
               onOpenLead={(lead) => lead.dealId && navigate(`/crm/deals/${lead.dealId}`)}
               onCompleteTask={(item) => setCompletingTask({ id: item.activityId, title: item.title, type: item.activityType })}
+              onEditDelivery={(item) => setCompletingTask({ id: item.activityId, title: item.title, type: item.activityType, completed: true, deliveryInput: item.deliveryInput, deliveryReport: item.deliveryReport })}
               onDeleteTask={(item) => setDeleteActivityTarget(item)}
             />
           </aside>
@@ -392,11 +400,19 @@ function MyDayCalendar() {
         open={!!completingTask}
         onClose={() => setCompletingTask(null)}
         activity={completingTask}
-        isPending={completeMutation.isPending}
+        isPending={completeMutation.isPending || updateActivityMutation.isPending}
         onSubmit={({ input, output }) => {
-          completeMutation.mutate({ id: completingTask.id, input, output }, {
-            onSuccess: () => setCompletingTask(null),
-          });
+          if (completingTask.completed) {
+            // Editando entrega de tarefa já concluída — só atualiza os campos.
+            updateActivityMutation.mutate(
+              { id: completingTask.id, updates: { deliveryInput: input, deliveryReport: output } },
+              { onSuccess: () => setCompletingTask(null) }
+            );
+          } else {
+            completeMutation.mutate({ id: completingTask.id, input, output }, {
+              onSuccess: () => setCompletingTask(null),
+            });
+          }
         }}
       />
 

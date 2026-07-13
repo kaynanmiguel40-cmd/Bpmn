@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus, Trash2 } from 'lucide-react';
+import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus, Trash2, CheckCircle2 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { CrmConfirmDialog } from './ui/CrmConfirmDialog';
 import { z } from 'zod';
@@ -155,6 +155,11 @@ export function ActivityFormModal({
   const deleteMutation = useDeleteCrmActivity();
   const isPending = createMutation.isPending || updateMutation.isPending;
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  // Entrega (input/output) da tarefa concluída — editável aqui pra quem
+  // concluiu pulando os detalhes voltar e preencher. Fica fora do
+  // react-hook-form/schema (que valida só o agendamento da tarefa).
+  const [deliveryInput, setDeliveryInput] = useState('');
+  const [deliveryReport, setDeliveryReport] = useState('');
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(activityFormSchema),
@@ -199,6 +204,8 @@ export function ActivityFormModal({
         assignedTo: activity.assignedTo || null,
         assignedToName: activity.assignedToName || null,
       });
+      setDeliveryInput(activity.deliveryInput || '');
+      setDeliveryReport(activity.deliveryReport || '');
     } else if (open) {
       // Default: agora, arredondado pra proxima meia-hora, duracao 30min
       const now = new Date();
@@ -228,6 +235,12 @@ export function ActivityFormModal({
       startDate: toIsoUtc(data.startDate),
       endDate: toIsoUtc(data.endDate),
     };
+    // Só grava a entrega quando a tarefa já está concluída (é aí que os
+    // campos aparecem). Tarefa em aberto não tem entrega ainda.
+    if (isEdit && activity.completed) {
+      payload.deliveryInput = deliveryInput.trim();
+      payload.deliveryReport = deliveryReport.trim();
+    }
     if (isEdit) {
       await updateMutation.mutateAsync({ id: activity.id, updates: payload });
     } else {
@@ -386,27 +399,25 @@ export function ActivityFormModal({
             className={`${fieldClass('description')} resize-none`} />
         </div>
 
-        {/* Entrega registrada na conclusao — so aparecia no Historico do lead,
-            que exige dealId/contactId. Tarefa avulsa (sem negocio/contato)
-            tinha essa nota capturada e nunca mais mostrada em lugar nenhum. */}
-        {isEdit && (activity?.deliveryInput || activity?.deliveryReport) && (
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">
-              Entrega registrada na conclusão
+        {/* Entrega da tarefa concluída (input/output) — EDITÁVEL: quem concluiu
+            pulando os detalhes volta aqui e preenche. Só aparece pra tarefa já
+            concluída (em aberto a entrega vem depois, na conclusão). */}
+        {isEdit && activity?.completed && (
+          <div className="rounded-xl border border-emerald-200/70 dark:border-emerald-800/40 bg-emerald-50/40 dark:bg-emerald-900/10 p-3 space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+              <CheckCircle2 size={13} /> Entrega da tarefa concluída
             </p>
-            <div className="space-y-1.5">
-              {activity.deliveryInput && (
-                <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2.5 py-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
-                  <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{activity.deliveryInput}</span>
-                </div>
-              )}
-              {activity.deliveryReport && (
-                <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
-                  <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{activity.deliveryReport}</span>
-                </div>
-              )}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">O que você fez/disse</label>
+              <textarea value={deliveryInput} onChange={(e) => setDeliveryInput(e.target.value)} rows={2}
+                placeholder="Ex.: liguei e apresentei a proposta, mandei o áudio explicando o preço..."
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">O que o lead respondeu</label>
+              <textarea value={deliveryReport} onChange={(e) => setDeliveryReport(e.target.value)} rows={2}
+                placeholder="Ex.: achou caro, pediu pra ligar semana que vem, topou agendar reunião..."
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none" />
             </div>
           </div>
         )}

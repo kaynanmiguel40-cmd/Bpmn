@@ -12,7 +12,7 @@
 import { useMemo } from 'react';
 import {
   X, Phone, MessageCircle, CalendarCheck, Flag, Mail, Users, Coffee,
-  MapPin, ExternalLink, Building2, CheckCircle2, Clock, ArrowRight, Trash2,
+  MapPin, ExternalLink, Building2, CheckCircle2, Clock, ArrowRight, Trash2, Pencil,
 } from 'lucide-react';
 import { useLeadTimeline } from '../../hooks/useCrmQueries';
 import { scheduleTiming } from '../../services/crmAgendaService';
@@ -61,12 +61,14 @@ function relativeLabel(iso) {
   return dateStr;
 }
 
-function TimelineRow({ item, onComplete, onDelete }) {
+function TimelineRow({ item, onComplete, onDelete, onEditDelivery }) {
   const Icon = item.kind === 'activity'
     ? (ACTIVITY_ICON[item.activityType] || CalendarCheck)
     : (KIND_ICON[item.kind] || CalendarCheck);
-  // So "A fazer" (atividade pendente) ganha acoes — historico e so leitura.
   const isPendingActivity = item.kind === 'activity' && !item.done;
+  // Atividade concluída pode ter a entrega (input/output) editada depois —
+  // quem concluiu pulando os detalhes volta e preenche.
+  const isDoneActivity = item.kind === 'activity' && item.done;
   return (
     <div className="group/tl flex gap-3">
       {/* trilho + bolinha */}
@@ -100,6 +102,13 @@ function TimelineRow({ item, onComplete, onDelete }) {
                 </button>
               )}
             </span>
+          )}
+          {isDoneActivity && onEditDelivery && (
+            <button type="button" onClick={() => onEditDelivery(item)}
+              title={item.deliveryInput || item.deliveryReport ? 'Editar o que foi feito/respondido' : 'Preencher o que foi feito/respondido'}
+              className="ml-auto p-1 text-slate-400 dark:text-slate-500 hover:text-fyness-primary hover:bg-fyness-primary/10 rounded md:opacity-0 md:group-hover/tl:opacity-100 transition-opacity">
+              <Pencil size={13} />
+            </button>
           )}
         </div>
         {/* Input/output da tarefa concluída — mesmo par "Você"/"Lead" do Histórico do Negócio */}
@@ -137,7 +146,7 @@ function TimelineRow({ item, onComplete, onDelete }) {
   );
 }
 
-export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onCompleteTask, onDeleteTask }) {
+export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onCompleteTask, onDeleteTask, onEditDelivery }) {
   const { data, isLoading } = useLeadTimeline(selected || {});
   const lead = data?.lead;
   const items = data?.items || [];
@@ -223,7 +232,7 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
               {past.length === 0 ? (
                 <p className="text-xs text-slate-400 dark:text-slate-500 py-4">Nenhum registro ainda — ligações, mensagens, atividades e mudanças de estágio vão aparecer aqui.</p>
               ) : (
-                <div>{past.map(i => <TimelineRow key={i.id} item={i} />)}</div>
+                <div>{past.map(i => <TimelineRow key={i.id} item={i} onEditDelivery={onEditDelivery} />)}</div>
               )}
             </section>
           </>

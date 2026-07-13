@@ -8,7 +8,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import {
-  ChevronLeft, ChevronRight, Check, Circle, CheckCircle2,
+  ChevronLeft, ChevronRight, Check, Circle, CheckCircle2, Pencil,
   Phone, Mail, MessageCircle, Users, MapPin, CheckSquare, Coffee, ArrowRight, CalendarClock,
 } from 'lucide-react';
 import { scheduleTiming } from '../../services/crmAgendaService';
@@ -83,7 +83,7 @@ function OwnerBadge({ name, color, size = 15 }) {
 
 // ==================== CHIP DE EVENTO ====================
 
-function EventChip({ ev, onClick, onCompleteTask, dimmed, showOwner }) {
+function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner }) {
   const isGoogle = ev.source === 'google';
   const isCrm = ev.source === 'crm';
   const Icon = iconFor(ev);
@@ -126,13 +126,23 @@ function EventChip({ ev, onClick, onCompleteTask, dimmed, showOwner }) {
           <CheckCircle2 size={12} />
         </button>
       )}
+      {isCrm && ev.completed && onEditDelivery && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
+          title="Editar o que foi feito/respondido"
+          className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-fyness-primary transition-colors md:opacity-0 md:group-hover/chip:opacity-100"
+        >
+          <Pencil size={11} />
+        </button>
+      )}
     </div>
   );
 }
 
 // ==================== VIEWS ====================
 
-function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDay, onCompleteTask, selectedLeadKey, showOwner }) {
+function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDay, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
   const today = new Date();
   const cells = useMemo(() => monthMatrix(current), [current]);
   const month = current.getMonth();
@@ -167,7 +177,7 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
             </div>
             <div className="mt-0.5 space-y-0.5">
               {shown.map(ev => (
-                <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
+                <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
                   dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
               ))}
               {extra > 0 && (
@@ -276,7 +286,7 @@ function NowLine({ startH, endH }) {
   );
 }
 
-function GridEventBlock({ item, onClick, onCompleteTask, dimmed, showOwner, startH }) {
+function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner, startH }) {
   const { ev, startMin, endMin, col, cols } = item;
   const isGoogle = ev.source === 'google';
   const isCrm = ev.source === 'crm';
@@ -345,12 +355,24 @@ function GridEventBlock({ item, onClick, onCompleteTask, dimmed, showOwner, star
           <CheckCircle2 size={12} />
         </span>
       )}
+      {isCrm && ev.completed && onEditDelivery && (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEditDelivery(ev); } }}
+          title="Editar o que foi feito/respondido"
+          className="hidden group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-fyness-primary transition-colors cursor-pointer"
+        >
+          <Pencil size={12} />
+        </span>
+      )}
     </button>
   );
 }
 
 // Faixa de eventos "dia inteiro" acima da grade (não têm horário pra plotar).
-function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, selectedLeadKey, showOwner }) {
+function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
   const anyAllDay = days.some(day => (eventsByDay.get(toKey(day)) || []).some(ev => ev.isAllDay));
   if (!anyAllDay) return null;
   return (
@@ -361,7 +383,7 @@ function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, selecte
         return (
           <div key={toKey(day)} className="bg-white/60 dark:bg-slate-900/40 p-0.5 space-y-0.5">
             {dayEvents.map(ev => (
-              <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
+              <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
                 dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
             ))}
           </div>
@@ -377,7 +399,7 @@ function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, selecte
  * por horário real. onSelectSlot recebe a data JÁ com a hora clicada (em vez
  * de sempre cair em 9h como no clique de célula do Mês).
  */
-function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
+function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
   const today = new Date();
   const dayGroups = useMemo(() => days.map(d => eventsByDay.get(toKey(d)) || []), [days, eventsByDay]);
   const { startH, endH } = useMemo(() => computeGridHours(dayGroups), [dayGroups]);
@@ -397,7 +419,7 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTa
 
   return (
     <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-200/70 dark:border-white/10 overflow-hidden">
-      <AllDayStrip days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />
+      <AllDayStrip days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />
       {/* Cabeçalho dos dias (Semana) — Dia usa 1 coluna só, cabeçalho fica no título do topo do calendário */}
       {days.length > 1 && (
         <div className="grid bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/70 dark:border-white/10" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
@@ -442,7 +464,7 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTa
                 ))}
                 {isToday && <NowLine startH={startH} endH={endH} />}
                 {laidOut.map(item => (
-                  <GridEventBlock key={item.ev.id} item={item} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
+                  <GridEventBlock key={item.ev.id} item={item} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
                     dimmed={!!selectedLeadKey && item.ev.leadKey !== selectedLeadKey} showOwner={showOwner} startH={startH} />
                 ))}
               </div>
@@ -454,16 +476,16 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTa
   );
 }
 
-function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
+function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
   const days = useMemo(() => weekDays(current), [current]);
   return <TimeGrid days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot}
-    onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />;
+    onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />;
 }
 
-function DayView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
+function DayView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
   const days = useMemo(() => [startOfDay(current)], [current]);
   return <TimeGrid days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot}
-    onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />;
+    onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />;
 }
 
 // ==================== AGENDA (LISTA) ====================
@@ -477,7 +499,7 @@ function dayHeading(date) {
   return date.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' });
 }
 
-function AgendaRow({ ev, onClick, onCompleteTask, dimmed, showOwner }) {
+function AgendaRow({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner }) {
   const isGoogle = ev.source === 'google';
   const isCrm = ev.source === 'crm';
   const Icon = iconFor(ev);
@@ -530,11 +552,19 @@ function AgendaRow({ ev, onClick, onCompleteTask, dimmed, showOwner }) {
           <CheckCircle2 size={20} />
         </button>
       )}
+      {/* Editar entrega — tarefa do CRM já concluída */}
+      {isCrm && ev.completed && onEditDelivery && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
+          title="Editar o que foi feito/respondido"
+          className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-fyness-primary transition-colors md:opacity-0 md:group-hover/row:opacity-100">
+          <Pencil size={18} />
+        </button>
+      )}
     </div>
   );
 }
 
-function AgendaListView({ current, eventsByDay, onSelectEvent, onCompleteTask, selectedLeadKey, showOwner }) {
+function AgendaListView({ current, eventsByDay, onSelectEvent, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
   const days = useMemo(() => {
     const out = [];
     for (let i = 0; i < 31; i++) {
@@ -563,7 +593,7 @@ function AgendaListView({ current, eventsByDay, onSelectEvent, onCompleteTask, s
               <span className="ml-2 text-[11px] text-slate-400 dark:text-slate-500">{events.length} {events.length === 1 ? 'item' : 'itens'}</span>
             </div>
             {events.map(ev => (
-              <AgendaRow key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
+              <AgendaRow key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
                 dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
             ))}
           </section>
@@ -588,6 +618,7 @@ export default function CrmCalendar({
   onSelectSlot,
   onShowDay,
   onCompleteTask,
+  onEditDelivery,
   selectedLeadKey,
   extraActions,
   showOwner,
@@ -671,10 +702,10 @@ export default function CrmCalendar({
         </div>
       ) : (
         <>
-          {view === 'agenda' && <AgendaListView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
-          {view === 'month' && <MonthView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onShowDay={onShowDay} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
-          {view === 'week' && <WeekView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
-          {view === 'day' && <DayView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
+          {view === 'agenda' && <AgendaListView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
+          {view === 'month' && <MonthView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onShowDay={onShowDay} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
+          {view === 'week' && <WeekView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
+          {view === 'day' && <DayView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
         </>
       )}
 

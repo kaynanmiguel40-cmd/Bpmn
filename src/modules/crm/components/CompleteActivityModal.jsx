@@ -6,6 +6,10 @@
  * respondeu/reagiu, embaixo). Cada tarefa grava o seu próprio par — vira a
  * "entrega" da tarefa e alimenta o relatório do dia/semana/mês.
  *
+ * Se a tarefa JÁ está concluída (activity.completed), o modal entra em modo
+ * EDIÇÃO: pré-preenche com a entrega atual e salva por cima (quem concluiu
+ * pulando os detalhes pode voltar e preencher depois).
+ *
  * Mesmo padrão do PostCallModal (chamada), mas genérico pra qualquer tipo
  * de atividade.
  */
@@ -17,19 +21,21 @@ import { CrmModal } from './ui/CrmModal';
 export function CompleteActivityModal({
   open,
   onClose,
-  activity,     // { title, type } — a tarefa sendo concluída
+  activity,     // { title, type, completed?, deliveryInput?, deliveryReport? }
   onSubmit,     // ({ input, output }) => void
   isPending,
 }) {
+  const isEditing = !!activity?.completed;
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
   const handleConfirmRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
-    setInput('');
-    setOutput('');
-  }, [open, activity?.id]);
+    // Editando entrega de tarefa concluída → pré-preenche com o que já tem.
+    setInput(activity?.deliveryInput || '');
+    setOutput(activity?.deliveryReport || '');
+  }, [open, activity?.id, activity?.deliveryInput, activity?.deliveryReport]);
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +69,7 @@ export function CompleteActivityModal({
     <CrmModal
       open={open}
       onClose={onClose}
-      title="Concluir tarefa"
+      title={isEditing ? 'Editar entrega da tarefa' : 'Concluir tarefa'}
       size="md"
       footer={
         <>
@@ -74,22 +80,24 @@ export function CompleteActivityModal({
           >
             Cancelar
           </button>
-          <button
-            onClick={handleSkipDetails}
-            disabled={!canSubmit}
-            title="Conclui a tarefa sem preencher o que foi feito/respondido"
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
-          >
-            Pular detalhes e concluir
-          </button>
+          {!isEditing && (
+            <button
+              onClick={handleSkipDetails}
+              disabled={!canSubmit}
+              title="Conclui a tarefa sem preencher o que foi feito/respondido"
+              className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+            >
+              Pular detalhes e concluir
+            </button>
+          )}
           <button
             onClick={handleConfirm}
             disabled={!canSubmit}
-            title="Ctrl+Enter pra concluir"
+            title={isEditing ? 'Ctrl+Enter pra salvar' : 'Ctrl+Enter pra concluir'}
             className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            <CheckCircle2 size={15} /> Concluir
+            <CheckCircle2 size={15} /> {isEditing ? 'Salvar' : 'Concluir'}
           </button>
         </>
       }
