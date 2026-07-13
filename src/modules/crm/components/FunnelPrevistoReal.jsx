@@ -2,25 +2,24 @@
  * FunnelPrevistoReal — funil comparativo LADO A LADO: Meta Prevista × Real.
  * A Prevista é a META do plano comercial — vem PRONTA (via prop `previsto`,
  * já nas 4 categorias fixas lead/qualified/meeting/closing) do plano cravado
- * do Comparativo (a mesma fonte que já alimenta o resto da página: hero,
- * tabela mês a mês etc). Não é o funil livre de /crm/planejamento — aqui não
- * tem etapa customizável, é a meta.
+ * do Comparativo (a mesma fonte que já alimenta o resto da página: tabela mês
+ * a mês etc). Não é o funil livre de /crm/planejamento — aqui não tem etapa
+ * customizável, é a meta FIXA (não reage ao real).
  *
  * Uma etapa = uma linha, com as duas fatias de funil lado a lado — sem
  * duplicar rótulo/ícone (aparecem uma vez por linha).
  *
- * Embaixo do funil, um selo tipo "no ritmo / abaixo do ritmo" (igual o do
- * hero do mês, lá em cima do Comparativo) EXPLICA o motivo do desvio — qual
- * conversão caiu — e reajusta o previsto: mantendo a MESMA meta final de
- * vendas, recalcula quanto é preciso lá em cima (Leads) dado como a taxa
- * real de conversão está se comportando.
+ * Embaixo do funil, um selo DIAGNÓSTICO aponta o gargalo do mês — qual
+ * conversão real caiu mais vs a prevista. É só leitura do real: NÃO mexe na
+ * meta (a meta é linha de base fixa; antes esse selo reescalava o Previsto de
+ * Leads, o que fazia a meta reagir ao real — removido).
  */
 
 import { useMemo } from 'react';
 import {
   UserPlus, BadgeCheck, CalendarCheck, Crown, ArrowRight, TrendingUp, TrendingDown, Gauge,
 } from 'lucide-react';
-import { stageProgress, reajustarFunnelComReal } from '../lib/funnelGoals';
+import { stageProgress } from '../lib/funnelGoals';
 
 const fmtInt = (v) => new Intl.NumberFormat('pt-BR').format(Math.round(v) || 0);
 const fmtPct = (v) => `${Math.round(v * 100)}%`;
@@ -138,45 +137,32 @@ function ComparativoRow({ stepKey, previstoCount, realCount, goal, pTopW, pBotW,
   );
 }
 
-export function FunnelPrevistoReal({ previsto, real, monthLabel, metaAtivosNota }) {
+export function FunnelPrevistoReal({ previsto, real, monthLabel }) {
   const previstoCounts = ORDER.map(k => Number(previsto?.[k]) || 0);
   const realCounts = ORDER.map(k => Number(real?.[k]) || 0);
 
   const previstoWidths = useMemo(() => computeWidths(previstoCounts), [previstoCounts]);
   const realWidths = useMemo(() => computeWidths(realCounts), [realCounts]);
 
-  // Gargalo (qual conversão real caiu mais vs prevista) + reajuste: mantendo
-  // a MESMA meta final, quanto precisa lá em cima dado o ritmo real.
+  // Gargalo: qual conversão real caiu mais vs a prevista. Só diagnóstico —
+  // aponta onde travou. NÃO mexe na meta (a meta prevista é fixa).
   const bottleneck = useMemo(() => worstLeg(previstoCounts, realCounts), [previstoCounts, realCounts]);
-  const reajustadoCounts = useMemo(() => reajustarFunnelComReal(previstoCounts, realCounts), [previstoCounts, realCounts]);
 
-  // Selo de ritmo (mesma linguagem do hero do mês, lá em cima): explica o
-  // desvio pelo gargalo encontrado e o que precisa mudar lá no topo pra
-  // ainda bater a mesma meta final.
-  const readjustBadge = useMemo(() => {
+  const bottleneckBadge = useMemo(() => {
     if (!bottleneck || bottleneck.ratio >= 0.97) return null;
-    // Nunca mostrar "sobe de X pra X" — se o reajuste nao mudou o topo do
-    // funil de verdade (ex: taxa real caiu pro fallback do previsto), o
-    // selo so confundiria alegando um problema sem nenhum numero diferente.
-    if (Math.round(reajustadoCounts[0]) === Math.round(previstoCounts[0])) return null;
     const fromLabel = STEP_META[ORDER[bottleneck.i]].label;
     const toLabel = STEP_META[ORDER[bottleneck.i + 1]].label;
-    const lastLabel = STEP_META[ORDER[ORDER.length - 1]].label.toLowerCase();
-    const topLabel = STEP_META[ORDER[0]].label.toLowerCase();
     return {
-      text: `Conversão ${fromLabel} → ${toLabel} real está em ${fmtPct(bottleneck.realRate)} (previsto: ${fmtPct(bottleneck.plannedRate)}). `
-        + `Nesse ritmo, pra ainda bater a meta de ${fmtInt(previstoCounts[previstoCounts.length - 1])} ${lastLabel}, `
-        + `o previsto de ${topLabel} sobe de ${fmtInt(previstoCounts[0])} pra ${fmtInt(reajustadoCounts[0])}.`,
+      text: `Gargalo do mês: conversão ${fromLabel} → ${toLabel} real está em ${fmtPct(bottleneck.realRate)} (previsto: ${fmtPct(bottleneck.plannedRate)}).`,
     };
-  }, [bottleneck, previstoCounts, reajustadoCounts]);
+  }, [bottleneck]);
 
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
       <div className="mb-3">
         <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Funil do mês · Previsto × Real</h3>
         <p className="text-[11px] text-slate-400 dark:text-slate-500">
-          Meta de {monthLabel || 'este mês'} · plano comercial
-          {metaAtivosNota && <> · <span className="text-fyness-primary font-medium">{metaAtivosNota}</span></>}
+          Meta de {monthLabel || 'este mês'} · plano comercial (fixo)
         </p>
       </div>
 
@@ -207,12 +193,12 @@ export function FunnelPrevistoReal({ previsto, real, monthLabel, metaAtivosNota 
         })}
       </div>
 
-      {/* Selo de reajuste — só aparece quando o real medido já mostra um
-          gargalo relevante (ratio < 97%), com a razão do desvio. */}
-      {readjustBadge && (
+      {/* Selo diagnóstico — só aparece quando o real medido já mostra um
+          gargalo relevante (ratio < 97%). Aponta a etapa, não mexe na meta. */}
+      {bottleneckBadge && (
         <div className="mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs leading-snug bg-amber-50 dark:bg-amber-900/15 text-amber-700 dark:text-amber-300">
           <TrendingDown size={14} className="shrink-0 mt-0.5" />
-          <span>{readjustBadge.text}</span>
+          <span>{bottleneckBadge.text}</span>
         </div>
       )}
     </div>

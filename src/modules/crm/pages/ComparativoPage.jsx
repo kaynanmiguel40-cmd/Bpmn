@@ -24,7 +24,6 @@ import {
 } from '../../../lib/commercialPlanActions';
 import { useProfile } from '../../../hooks/useProfile';
 import { FunnelPrevistoReal } from '../components/FunnelPrevistoReal';
-import { reescalarFunnelParaMeta } from '../lib/funnelGoals';
 import { toast } from '../../../contexts/ToastContext';
 
 const fmtBRL = (v) => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
@@ -58,17 +57,21 @@ function MetaMiniCard({ label, hint, children }) {
   );
 }
 
-function MetaMensalPanel({ planRow, prevMrr, real, fechNecessario }) {
-  const [metric, setMetric] = useState('vendas'); // 'vendas' (nº) | 'mrr' (R$)
+function MetaMensalPanel({ planRow, currentReal }) {
+  const [metric, setMetric] = useState('clientes'); // 'clientes' (ativos) | 'mrr' (R$)
   const isMrr = metric === 'mrr';
 
-  // So a meta do mes, sem pace-tracking. O alvo (reescalado, bate Clientes
-  // Ativos) inclui atraso acumulado de meses anteriores — pro-ratear isso
-  // dia a dia / semana a semana so produzia numero e grafico enganoso.
-  const displayTarget = isMrr ? Math.max(0, (planRow.mrr || 0) - (prevMrr || 0)) : (fechNecessario ?? planRow.novos ?? 0);
+  // Meta = ALVO ACUMULADO do plano (clientes ativos ou MRR total do mes), FIXO.
+  // O alvo NAO muda — quem anda e o Real (quantos ja sao) e, por consequencia,
+  // o "faltam". Antes o card mostrava so o "faltam" (43 ativos − ganhos), que
+  // encolhia a cada venda e parecia a meta mudando. Agora a meta e o alvo fixo
+  // e o "faltam" e claramente progresso, nao meta.
+  const metaAlvo = isMrr ? (planRow.mrr || 0) : (planRow.ativos || 0);
+  const realHoje = isMrr ? (currentReal?.mrrAccum ?? 0) : (currentReal?.clientesAccum ?? 0);
+  const faltam = Math.max(0, metaAlvo - realHoje);
   const fmt = (v) => (isMrr ? fmtBRL(v) : `${Math.round(v || 0)}`);
-  const unit = isMrr ? 'MRR' : Math.round(displayTarget) === 1 ? 'venda' : 'vendas';
-  const mrrNovoMeta = Math.max(0, (planRow.mrr || 0) - (prevMrr || 0));
+  const unit = isMrr ? 'de MRR' : (Math.round(metaAlvo) === 1 ? 'cliente ativo' : 'clientes ativos');
+  const pct = metaAlvo > 0 ? Math.min(100, Math.round((realHoje / metaAlvo) * 100)) : 0;
 
   return (
     <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
@@ -78,7 +81,7 @@ function MetaMensalPanel({ planRow, prevMrr, real, fechNecessario }) {
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Meta do mes · {planMonthLong(planRow.m)}</h3>
         </div>
         <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-[11px] font-semibold">
-          {[['vendas', 'Vendas'], ['mrr', 'MRR']].map(([m, lbl]) => (
+          {[['clientes', 'Clientes'], ['mrr', 'MRR']].map(([m, lbl]) => (
             <button
               key={m}
               onClick={() => setMetric(m)}
@@ -90,13 +93,15 @@ function MetaMensalPanel({ planRow, prevMrr, real, fechNecessario }) {
         </div>
       </div>
 
-      <MetaMiniCard label="Meta do mes" hint={isMrr
-        ? `${fmtBRL(mrrNovoMeta)} de MRR novo`
-        : (fechNecessario != null && Math.round(fechNecessario) !== planRow.novos
-            ? `reescalado p/ bater ${planRow.ativos} ativos previstos (plano original: ${planRow.novos})`
-            : `${planRow.novos} novos clientes`)}>
-        <span className="text-2xl font-bold text-slate-900 dark:text-white">{fmt(displayTarget)}</span>
+      <MetaMiniCard
+        label={isMrr ? 'Meta de MRR (acumulado no mes)' : 'Meta de clientes ativos'}
+        hint={`${fmt(realHoje)} hoje · faltam ${fmt(faltam)} pra bater`}>
+        <span className="text-2xl font-bold text-slate-900 dark:text-white">{fmt(metaAlvo)}</span>
         <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">{unit}</span>
+        {/* Barra de progresso real rumo ao alvo fixo */}
+        <div className="mt-2.5 h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
+          <div className="h-full rounded-full bg-fyness-primary transition-all" style={{ width: `${pct}%` }} />
+        </div>
       </MetaMiniCard>
     </section>
   );
@@ -204,7 +209,7 @@ function MonthlyTable({ real }) {
 }
 
 // ---------- Funil + premissas do mes atual ----------
-function FunnelCompare({ real, planRow, fechNecessario }) {
+function FunnelCompare({ real, planRow }) {
   const f = real?.funnel;
   const premReal = {
     qualif: f?.qualRate,
@@ -213,26 +218,15 @@ function FunnelCompare({ real, planRow, fechNecessario }) {
     reativacao: null, // nao rastreado direto
   };
 
-  // fechNecessario vem pronto do componente pai (mesma conta usada no
-  // Acompanhamento da meta — nao duplica aqui).
-  const previstoBase = [planRow.leads, planRow.qualif, planRow.reun, planRow.fech];
-  const [leadsAjust, qualifAjust, reunAjust, fechAjust] = reescalarFunnelParaMeta(previstoBase, fechNecessario);
-  const fechArredondado = Math.round(fechAjust);
-  const metaAtivosNota = fechArredondado !== planRow.fech
-    ? (fechArredondado > planRow.fech
-        ? `reescalado pra recuperar atraso em Clientes Ativos (fechamento sobe de ${planRow.fech} pra ${fechArredondado})`
-        : `reescalado pra baixo — base de Clientes Ativos já está adiantada (fechamento cai de ${planRow.fech} pra ${fechArredondado})`)
-    : null;
-
   return (
     <div className="grid md:grid-cols-2 gap-4">
-      {/* Funil Previsto × Real — a meta vem direto do plano comercial cravado
-          desta página (planRow), reescalada pra ainda bater Clientes Ativos. */}
+      {/* Funil Previsto × Real — o Previsto vem CRAVADO do plano comercial
+          (planRow), fixo. Nao reescala com o real: meta e linha de base, so
+          o lado Real anda. */}
       <FunnelPrevistoReal
-        previsto={{ lead: leadsAjust, qualified: qualifAjust, meeting: reunAjust, closing: fechAjust }}
+        previsto={{ lead: planRow.leads, qualified: planRow.qualif, meeting: planRow.reun, closing: planRow.fech }}
         real={{ lead: f?.lead, qualified: f?.qualif, meeting: f?.reun, closing: f?.fech }}
         monthLabel={planMonthLong(planRow.m)}
-        metaAtivosNota={metaAtivosNota}
       />
 
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
@@ -433,12 +427,6 @@ export default function ComparativoPage() {
   const currentM = real.currentM || 1;
   const planRow = PLAN_MONTHS.find(p => p.m === currentM) || PLAN_MONTHS[0];
   const currentReal = real.byMonth[currentM] || null;
-  // MRR previsto do mes anterior (base pro "MRR novo do mes"). M1 parte da posicao atual.
-  const prevMrr = currentM > 1 ? (PLAN_MONTHS.find(p => p.m === currentM - 1)?.mrr ?? PLAN_POSITION.mrr) : PLAN_POSITION.mrr;
-  // Fechamentos necessarios pra bater a meta de Clientes Ativos do mes (meta
-  // acumulada) — calculado uma vez aqui, usado no funil E no acompanhamento
-  // da meta, pra nao ter 2 contas divergentes pro mesmo numero.
-  const fechNecessario = Math.max(0, (planRow.ativos ?? 0) - (currentReal?.clientesAccum ?? 0));
 
   return (
     <div className="max-w-7xl mx-auto space-y-5">
@@ -467,8 +455,8 @@ export default function ComparativoPage() {
       {/* Funil do mês — vira o topo da página (substitui o hero de mês atual):
           já mostra previsto x real por etapa, reescalado pra bater a meta de
           Clientes Ativos, com o motivo do desvio explicado. */}
-      <FunnelCompare real={currentReal} planRow={planRow} fechNecessario={fechNecessario} />
-      <MetaMensalPanel planRow={planRow} prevMrr={prevMrr} real={real} fechNecessario={fechNecessario} />
+      <FunnelCompare real={currentReal} planRow={planRow} />
+      <MetaMensalPanel planRow={planRow} currentReal={currentReal} />
       <MrrChart real={real} />
       <MonthlyTable real={real} />
       <PlanChecklist />
