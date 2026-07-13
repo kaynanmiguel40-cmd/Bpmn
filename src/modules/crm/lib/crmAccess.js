@@ -28,9 +28,14 @@ export const CRM_SECTIONS = [
   { key: 'agenda',      label: 'Agenda',           group: 'Vendas' },
   { key: 'prospects',   label: 'Gerador de Lista', group: 'Prospecção' },
   { key: 'automations', label: 'Automações',       group: 'Prospecção' },
+  // Traffic nao tem item na sidebar (oculto por enquanto), mas a rota segue
+  // ativa — sem essa chave o controle de acesso nao conseguia bloquear/liberar
+  // essa secao pra ninguem, ficando implicitamente aberta pra quem soubesse a URL.
+  { key: 'traffic',     label: 'Tráfego Pago',     group: 'Prospecção' },
   { key: 'cadastros',   label: 'Cadastros',        group: 'Cadastros' },
   { key: 'comparativo', label: 'Comparativo',      group: 'Gestão' },
   { key: 'goals',       label: 'Metas',            group: 'Gestão' },
+  { key: 'planejamento',label: 'Planejamento',     group: 'Gestão' },
   { key: 'equipe',      label: 'Equipe',           group: 'Gestão' },
   { key: 'settings',    label: 'Configurações',    group: 'Gestão' },
 ];

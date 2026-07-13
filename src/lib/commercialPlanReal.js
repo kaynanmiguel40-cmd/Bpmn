@@ -13,7 +13,6 @@
 
 import { supabase } from './supabase';
 import { getSalesFunnel } from '../modules/crm/services/crmDashboardService';
-import { getTrafficKPIs } from '../modules/crm/services/crmTrafficService';
 import { PLAN_START, PLAN_MONTHS } from './commercialPlan';
 
 function planMonthRange(m) {
@@ -145,41 +144,11 @@ export async function getCommercialPlanReal() {
       .map(d => ({ closedAt: d.closed.toISOString(), mrr: d.mrr, value: d.value }));
   }
 
-  // 6) Marketing (trafego pago) do mes atual — lido do CRM (crm_paid_traffic).
-  //    Usa o mes inteiro (entradas de trafego sao por periodo, nao por dia).
-  let marketing = null;
-  if (currentM) {
-    const { start, end } = planMonthRange(currentM);
-    try {
-      const k = await getTrafficKPIs({ startDate: start.toISOString(), endDate: end.toISOString() });
-      if (k) {
-        const novos = byMonth[currentM]?.novos || 0;
-        marketing = {
-          spent: k.totalSpent,
-          leads: k.totalLeads,
-          conversions: k.totalConversions,
-          revenue: k.totalRevenue,
-          impressions: k.totalImpressions,
-          clicks: k.totalClicks,
-          cpl: k.cpl,
-          cpc: k.cpc,
-          ctr: k.ctr,
-          roas: k.roas,
-          cac: novos > 0 ? k.totalSpent / novos : 0,
-          hasData: (k.totalSpent || 0) > 0 || (k.totalLeads || 0) > 0,
-        };
-      }
-    } catch {
-      marketing = null;
-    }
-  }
-
   return {
     byMonth,
     currentM,
     monthElapsedPct,
     hasData: won.length > 0,
-    marketing,
     currentMonthWon,
     currentMonthRange,
   };

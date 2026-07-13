@@ -176,15 +176,20 @@ export function CrmDialerPage() {
 
   const handleStartCall = () => {
     if (!currentContact?.phone) return;
+    // Telefone sem nenhum digito valido (ex: so texto/pontuacao) — sem isso
+    // o cronometro entrava em "Em chamada" mesmo sem nada discado, dando a
+    // falsa impressao de ligacao em andamento.
+    const href = toTelHref(currentContact.phone);
+    if (!href) {
+      toast('Telefone invalido pra esse contato — nao da pra discar', 'error');
+      return;
+    }
     setElapsed(0);
     setCallStartedAt(new Date().toISOString());
     setTimerRunning(true);
     // Abre discador nativo (no desktop pode nao fazer nada — usuario disca manual).
-    const href = toTelHref(currentContact.phone);
-    if (href) {
-      // window.location ao inves de criar <a> evita pop-up bloqueio em mobile.
-      window.location.href = href;
-    }
+    // window.location ao inves de criar <a> evita pop-up bloqueio em mobile.
+    window.location.href = href;
   };
 
   const handleEndCall = () => {
@@ -479,6 +484,7 @@ export function CrmDialerPage() {
         elapsedSeconds={elapsed}
         onSubmit={handleSubmitPostCall}
         isPending={createCallMutation.isPending}
+        isDesktop={!env.isMobile}
       />
     </div>
   );

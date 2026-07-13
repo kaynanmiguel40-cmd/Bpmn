@@ -126,10 +126,6 @@ export const crmGoalSchema = z.object({
   periodStart: z.string().min(1, 'Data de inicio e obrigatoria'),
   periodEnd: z.string().min(1, 'Data de fim e obrigatoria'),
   status: z.enum(['active', 'completed', 'cancelled']).default('active'),
-  // Meta de FUNIL (planejador reverso). kind='revenue' (default) = meta em R$.
-  kind: z.enum(['revenue', 'funnel']).default('revenue'),
-  funnelBase: z.enum(['sales', 'calls']).nullable().optional().default(null),
-  conversionRate: z.number().min(0).max(100).nullable().optional().default(null),
 }).passthrough();
 
 // ==================== PAID TRAFFIC ====================
@@ -171,5 +167,21 @@ export const crmProspectSchema = z.object({
   partnerCategory: z.enum(['contabilidade', 'financeira', 'advocacia', 'associacao']).nullable().optional().default(null),
   assignedTo: z.string().nullable().optional().default(null),
   listName: nullableStr,
+}).passthrough();
+
+// ==================== PARTNER (parceiro indicador) ====================
+
+export const crmPartnerSchema = z.object({
+  name: z.string().min(1, 'Nome do parceiro e obrigatorio'),
+  phone: nullableStr,
+  notes: z.string().optional().default(''),
+  active: z.boolean().optional().default(true),
+}).passthrough();
+
+// ==================== LEAD SOURCE (origem do lead) ====================
+
+export const crmLeadSourceSchema = z.object({
+  name: z.string().min(1, 'Nome da origem e obrigatorio'),
+  position: z.number().optional().default(0),
 }).passthrough();
 

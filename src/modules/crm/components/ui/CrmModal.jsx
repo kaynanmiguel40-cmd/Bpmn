@@ -8,6 +8,10 @@
  * - size: 'sm' | 'md' | 'lg' | 'xl'
  * - children: conteudo
  * - footer: React node para footer (botoes)
+ * - onBeforeClose: () => boolean (opcional) — chamado antes de fechar via Escape,
+ *   clique no backdrop ou no X. Devolver `false` cancela o fechamento (ex: pra
+ *   avisar o usuario que ha dado nao salvo). Sem essa prop o comportamento eh
+ *   o de sempre — fecha direto.
  */
 
 import { useEffect, useRef } from 'react';
@@ -41,18 +45,26 @@ function releaseBodyLock() {
   }
 }
 
-export function CrmModal({ open, onClose, title, size = 'md', children, footer }) {
+export function CrmModal({ open, onClose, title, size = 'md', children, footer, onBeforeClose }) {
   const overlayRef = useRef(null);
+
+  // Fechamento "protegido": da chance do consumidor barrar (ex: form com dado
+  // nao salvo) antes de Escape/backdrop/X dispararem o onClose de verdade.
+  const guardedClose = () => {
+    if (onBeforeClose && onBeforeClose() === false) return;
+    onClose?.();
+  };
 
   // Fechar com Escape
   useEffect(() => {
     if (!open) return;
     const handleEsc = (e) => {
-      if (e.key === 'Escape') onClose?.();
+      if (e.key === 'Escape') guardedClose();
     };
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [open, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, onClose, onBeforeClose]);
 
   // Bloquear scroll do body (stack-safe — conta modais empilhados)
   useEffect(() => {
@@ -69,7 +81,7 @@ export function CrmModal({ open, onClose, title, size = 'md', children, footer }
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === overlayRef.current) onClose?.(); }}
+      onClick={(e) => { if (e.target === overlayRef.current) guardedClose(); }}
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-md" />
@@ -80,7 +92,7 @@ export function CrmModal({ open, onClose, title, size = 'md', children, footer }
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/60 dark:border-white/10 shrink-0">
           <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">{title}</h3>
           <button
-            onClick={onClose}
+            onClick={guardedClose}
             className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             aria-label="Fechar modal"
           >

@@ -1,15 +1,19 @@
 /**
- * workspaceSettings.js — Configuracoes globais do CRM persistidas em localStorage.
+ * workspaceSettings.js — Configuracoes do CRM persistidas em localStorage
+ * (por navegador, NAO compartilhadas entre vendedores/devices).
  *
- * Atualmente cobre o roteamento de "deal perdido":
- *   - lostTargetPipelineId: pipeline pra onde o deal vai (ex: "Nurturing")
- *   - lostTargetStageId:    stage de entrada na pipeline alvo (ex: "Em Nutricao")
- *   - discardStageId:       stage final pra deals ja na pipeline alvo (ex: "Descarte")
+ * Cobre:
+ *   - Roteamento de "deal perdido": lostTargetPipelineId / lostTargetStageId
+ *     (pipeline+stage de entrada, ex: "Nurturing" / "Em Nutricao") e
+ *     discardStageId (stage final pra deals ja na pipeline alvo, ex: "Descarte").
+ *   - Plano do Funil (pagina /crm/planejamento) — etapas 100% customizaveis.
  *
- * Por enquanto eh localStorage (consistente com os outros settings do CRM —
- * crm-segments, crm-currency). Se um dia precisar virar config de workspace
- * compartilhada entre vendedores, migra pra Supabase preservando a mesma
- * shape de objeto.
+ * A Meta de MRR do Dashboard SAIU daqui — agora vive em crm_workspace_settings
+ * (Supabase), compartilhada entre todo mundo (ver crmWorkspaceSettingsService.js
+ * / useCrmWorkspaceSettings). O Plano do Funil continua aqui de proposito: e
+ * escrito a cada tecla digitada (nome/contagem/taxa por etapa) e migrar isso
+ * sem debounce viraria upsert no Supabase por tecla — fica pra uma proxima
+ * leva com essa peca resolvida (ver comentario na migration 074).
  */
 
 const STORAGE_KEY = 'crm-workspace-config';
@@ -18,14 +22,13 @@ const EMPTY_SETTINGS = {
   lostTargetPipelineId: null,
   lostTargetStageId: null,
   discardStageId: null,
-  // Alvo mensal de MRR novo (R$/mes) — meta do dashboard comercial (SaaS).
-  mrrGoalMonthly: 0,
-  // Previsto do Funil (planejador reverso) — camada "previsto" da visualizacao
-  // Previsto x Real no Funil de Conversao. Definido inline no card do funil,
-  // sem passar por Metas. Uma Meta de funil salva, se existir, tem prioridade.
-  funnelPlanBase: null,   // 'sales' | 'calls' | null (desativado)
-  funnelPlanTarget: 0,    // nº alvo (vendas ou ligacoes)
-  funnelPlanRate: 0,      // taxa de conversao %
+  // Plano do Funil (pagina /crm/planejamento) — etapas 100% customizaveis.
+  // O usuario pode digitar a contagem em QUALQUER etapa e a taxa em QUALQUER
+  // transicao; o resto e resolvido por propagacao (ver resolveFunnelPlan em
+  // funnelGoals.js). Alimenta o previsto do Funil de Conversao.
+  funnelPlanStages: null,   // string[] | null (desativado) — nomes das etapas, topo->base
+  funnelPlanCounts: null,   // (number|null)[] | null — contagem digitada por etapa
+  funnelPlanRates: null,    // (number|null)[] | null — taxa % digitada por transicao
 };
 
 export function getCrmWorkspaceSettings() {

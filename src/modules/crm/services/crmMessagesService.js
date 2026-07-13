@@ -13,6 +13,7 @@
 
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
+import { escapeOrIlike } from '../lib/searchFilters';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -80,32 +81,20 @@ export async function getConversationMessages({ contactId, prospectId, limit = 1
   return (data || []).map(dbToCrmMessage).reverse();
 }
 
+// Select + joins compartilhados pelas duas rotas de busca abaixo (default e search).
+const INBOX_MESSAGE_SELECT = `
+  *,
+  crm_contacts(id, name, phone, avatar_color, avatar_url, created_by),
+  crm_prospects(id, contact_name, company_name, phone, avatar_url, assigned_to),
+  crm_whatsapp_instances(phone_number, instance_name)
+`;
+
 /**
- * Lista de conversas pro Inbox (ultima mensagem agrupada por contato/prospect).
- * NOTA: implementacao client-side; pra escala, criar RPC `crm_inbox_conversations`.
- *
- * Retorna: [{ contactId|prospectId, otherName, otherPhone, lastMessage, unreadCount, lastAt }]
+ * Agrupa mensagens (ordenadas DESC por sent_at) por conversa (contato/prospect),
+ * mantendo a 1a ocorrencia de cada chave (= mensagem mais recente) e somando
+ * unread nas ocorrencias seguintes. Compartilhado pelas 2 rotas de listagem.
  */
-export async function getInboxConversations({ limit = 100 } = {}) {
-  // Busca ultimas N mensagens com join basico em contact/prospect
-  const { data: msgs, error } = await supabase
-    .from('crm_messages')
-    .select(`
-      *,
-      crm_contacts(id, name, phone, avatar_color, avatar_url),
-      crm_prospects(id, contact_name, company_name, phone, avatar_url),
-      crm_whatsapp_instances(phone_number, instance_name)
-    `)
-    .is('deleted_at', null)
-    .order('sent_at', { ascending: false })
-    .limit(limit * 5); // pega mais pra agrupar
-
-  if (error) {
-    toast(`Erro ao carregar inbox: ${error.message}`, 'error');
-    return [];
-  }
-
-  // Agrupa por (contactId || prospectId) e pega a primeira ocorrencia (mais recente)
+function groupMessagesIntoConversations(msgs, limit) {
   const seen = new Map();
   for (const m of (msgs || [])) {
     const key = m.contact_id ? `c:${m.contact_id}` : `p:${m.prospect_id}`;
@@ -139,15 +128,108 @@ export async function getInboxConversations({ limit = 100 } = {}) {
       avatarUrl:    contact?.avatar_url || prospect?.avatar_url || null,
       otherName,
       otherPhone,
+      // Dono da conversa: contato usa quem criou (created_by = auth user id);
+      // prospect usa o responsavel atribuido (assigned_to = team_member.id).
+      // Sao 2 espacos de id diferentes — resolvidos na UI contra a lista de membros.
+      ownerAuthUserId: contact?.created_by || null,
+      ownerMemberId:   prospect?.assigned_to || null,
       lastMessage:  m.content || (m.media_type ? `[${m.media_type}]` : ''),
       lastDirection: m.direction,
       lastAt:       m.sent_at,
       lastStatus:   m.status,
       unreadCount:  (m.direction === 'inbound' && m.status !== 'read') ? 1 : 0,
     });
-    if (seen.size >= limit) break;
+    if (limit && seen.size >= limit) break;
   }
   return Array.from(seen.values());
+}
+
+/**
+ * Busca conversas cujo contato/prospect bate com `term` (nome ou telefone),
+ * direto no crm_contacts/crm_prospects — nao depende da janela recente de
+ * mensagens. Sem isso, um lead que mandou mensagem ha muito tempo (fora das
+ * ultimas ~N mensagens do sistema) sumia da busca, indistinguivel de nunca
+ * ter existido.
+ */
+async function searchInboxConversations(term, limit) {
+  const q = escapeOrIlike(term);
+
+  const [{ data: contacts, error: contactsErr }, { data: prospects, error: prospectsErr }] = await Promise.all([
+    supabase
+      .from('crm_contacts')
+      .select('id')
+      .is('deleted_at', null)
+      .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
+      .limit(200),
+    supabase
+      .from('crm_prospects')
+      .select('id')
+      .is('deleted_at', null)
+      .or(`contact_name.ilike.%${q}%,company_name.ilike.%${q}%,phone.ilike.%${q}%`)
+      .limit(200),
+  ]);
+
+  if (contactsErr || prospectsErr) {
+    toast(`Erro ao buscar conversas: ${(contactsErr || prospectsErr).message}`, 'error');
+    return [];
+  }
+
+  const contactIds  = (contacts || []).map((c) => c.id);
+  const prospectIds = (prospects || []).map((p) => p.id);
+  if (contactIds.length === 0 && prospectIds.length === 0) return [];
+
+  const orParts = [];
+  if (contactIds.length)  orParts.push(`contact_id.in.(${contactIds.join(',')})`);
+  if (prospectIds.length) orParts.push(`prospect_id.in.(${prospectIds.join(',')})`);
+
+  // Mensagens JA restritas aos contatos/prospects encontrados — sem precisar
+  // do "limit * 5" do caminho default (aquele hack compensava agrupar sobre
+  // TODAS as mensagens do sistema; aqui o escopo ja e so quem deu match).
+  const { data: msgs, error } = await supabase
+    .from('crm_messages')
+    .select(INBOX_MESSAGE_SELECT)
+    .is('deleted_at', null)
+    .or(orParts.join(','))
+    .order('sent_at', { ascending: false })
+    .limit(2000);
+
+  if (error) {
+    toast(`Erro ao buscar conversas: ${error.message}`, 'error');
+    return [];
+  }
+
+  return groupMessagesIntoConversations(msgs, limit);
+}
+
+/**
+ * Lista de conversas pro Inbox (ultima mensagem agrupada por contato/prospect).
+ * NOTA: implementacao client-side; pra escala, criar RPC `crm_inbox_conversations`.
+ *
+ * @param {object}  [opts]
+ * @param {number}  [opts.limit=100]
+ * @param {string}  [opts.search] - quando preenchido, busca direto no
+ *   contato/prospect em vez de so olhar a janela recente de mensagens.
+ *
+ * Retorna: [{ contactId|prospectId, otherName, otherPhone, lastMessage, unreadCount, lastAt }]
+ */
+export async function getInboxConversations({ limit = 100, search = '' } = {}) {
+  const term = (search || '').trim();
+  if (term) return searchInboxConversations(term, limit);
+
+  // Busca ultimas N mensagens com join basico em contact/prospect
+  const { data: msgs, error } = await supabase
+    .from('crm_messages')
+    .select(INBOX_MESSAGE_SELECT)
+    .is('deleted_at', null)
+    .order('sent_at', { ascending: false })
+    .limit(limit * 5); // pega mais pra agrupar
+
+  if (error) {
+    toast(`Erro ao carregar inbox: ${error.message}`, 'error');
+    return [];
+  }
+
+  return groupMessagesIntoConversations(msgs, limit);
 }
 
 // ==================== ENVIO (Edge Function) ====================

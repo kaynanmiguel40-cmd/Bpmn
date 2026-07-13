@@ -1,17 +1,16 @@
 /**
- * crmLeadReportsService - relato diário por lead + consolidação do dia.
+ * crmLeadReportsService - consolidação do relatório do dia/semana/mês.
  *
- *  - saveLeadReport / getLeadReport: o vendedor escreve, no painel da Agenda,
- *    uma observação sobre um lead naquele dia (tabela crm_lead_daily_reports).
- *  - getDailyReport(date): monta o "relatório grande" do dia — os leads que o
- *    vendedor atendeu (ligação / mensagem / atividade concluída) com os
- *    contadores do que foi feito + o relato escrito de cada um.
+ * getDailyReport(date): monta o "relatório grande" do dia — os leads que o
+ * vendedor atendeu (ligação / mensagem / atividade concluída) com os
+ * contadores do que foi feito + o input/output de cada atividade concluída
+ * (capturados na hora da conclusão via CompleteActivityModal — substituiu o
+ * antigo campo de relato manual por lead).
  *
  * Tudo filtrado pelo autor logado (cada vendedor gera o relatório dele).
  */
 
 import { supabase } from '../../../lib/supabase';
-import { toast } from '../../../contexts/ToastContext';
 
 /** Chave estável do lead (bate com o lead_key da tabela). */
 export function leadKeyOf(dealId, contactId) {
@@ -28,55 +27,6 @@ function dayBounds(dateStr) {
   const start = new Date(`${dateStr}T00:00:00`);
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   return { startISO: start.toISOString(), endISO: end.toISOString() };
-}
-
-// ==================== RELATO POR LEAD (escrita no painel) ====================
-
-/** Relato do lead naquele dia, do autor logado (ou null). */
-export async function getLeadReport({ dealId = null, contactId = null, date }) {
-  if (!date || (!dealId && !contactId)) return null;
-  const uid = await currentUserId();
-  const { data, error } = await supabase
-    .from('crm_lead_daily_reports')
-    .select('*')
-    .eq('lead_key', leadKeyOf(dealId, contactId))
-    .eq('report_date', date)
-    .eq('created_by', uid)
-    .maybeSingle();
-  if (error) return null; // tabela ausente / sem relato — silencioso (campo fica vazio)
-  return data || null;
-}
-
-/** Cria ou atualiza o relato do lead no dia (upsert por lead/dia/autor). */
-export async function saveLeadReport({ dealId = null, contactId = null, content, date }) {
-  if (!date || (!dealId && !contactId)) return { ok: false, error: 'Lead ou data ausente' };
-  const uid = await currentUserId();
-  const lead_key = leadKeyOf(dealId, contactId);
-
-  const { data: existing } = await supabase
-    .from('crm_lead_daily_reports')
-    .select('id')
-    .eq('lead_key', lead_key)
-    .eq('report_date', date)
-    .eq('created_by', uid)
-    .maybeSingle();
-
-  if (existing?.id) {
-    const { error } = await supabase
-      .from('crm_lead_daily_reports')
-      .update({ content })
-      .eq('id', existing.id);
-    if (error) { toast(`Erro ao salvar relato: ${error.message}`, 'error'); return { ok: false, error: error.message }; }
-    return { ok: true, id: existing.id };
-  }
-
-  const { data, error } = await supabase
-    .from('crm_lead_daily_reports')
-    .insert({ lead_key, deal_id: dealId, contact_id: contactId, report_date: date, content, created_by: uid })
-    .select('id')
-    .single();
-  if (error) { toast(`Erro ao salvar relato: ${error.message}`, 'error'); return { ok: false, error: error.message }; }
-  return { ok: true, id: data.id };
 }
 
 // ==================== RELATÓRIO DO DIA (consolidação) ====================

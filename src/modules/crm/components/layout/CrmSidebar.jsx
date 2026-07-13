@@ -8,6 +8,7 @@
 import { useState, useMemo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useCrmAccess } from '../../hooks/useCrmAccess';
+import { useCrmWhatsAppInstances } from '../../hooks/useCrmQueries';
 import {
   LayoutDashboard,
   Kanban,
@@ -22,6 +23,7 @@ import {
   Zap,
   PhoneCall,
   MessageCircle,
+  Filter,
 } from 'lucide-react';
 import logoFyness from '../../../../assets/logo-fyness.png';
 
@@ -36,16 +38,13 @@ const PinIcon = ({ pinned }) => (
 const crmNavItems = [
   { section: 'Vendas' },
   { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline', sectionKey: 'pipeline' },
-  // Ganhos oculto da sidebar (a rota /crm/ganhos e a página seguem ativas).
-  // Pra religar: re-importe CircleDollarSign do lucide-react e adicione aqui:
-  //   { to: '/crm/ganhos', icon: CircleDollarSign, label: 'Ganhos' },
   { to: '/crm/discador', icon: PhoneCall, label: 'Discador', sectionKey: 'discador' },
   { to: '/crm/inbox', icon: MessageCircle, label: 'Inbox WhatsApp', sectionKey: 'inbox' },
+  // Agenda = controle do dia a dia (toggle interno "Meu Dia" / "Time"). As
+  // antigas Atividades e Daily do Time viraram abas dentro dela — nao tem
+  // mais item proprio na sidebar (rotas antigas /crm/activities e /crm/daily
+  // redirecionam pra /crm/agenda?visao=team, ver App.jsx).
   { to: '/crm/agenda', icon: CalendarDays, label: 'Agenda', sectionKey: 'agenda' },
-  // Atividades agora vivem dentro da Agenda — item oculto da sidebar.
-  // A rota /crm/activities e a página seguem ativas (lista, filtros, editar,
-  // concluir). Pra religar: re-importe CalendarCheck e adicione aqui:
-  //   { to: '/crm/activities', icon: CalendarCheck, label: 'Atividades' },
   { section: 'Prospecao' },
   { to: '/crm/prospects', icon: Crosshair, label: 'Gerador de Lista', sectionKey: 'prospects' },
   // Tráfego Pago oculto por enquanto (a rota /crm/traffic e a página seguem ativas).
@@ -58,9 +57,7 @@ const crmNavItems = [
   { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true }, // landing, sempre visível
   { to: '/crm/comparativo', icon: Target, label: 'Comparativo', sectionKey: 'comparativo' },
   { to: '/crm/goals', icon: Trophy, label: 'Metas', sectionKey: 'goals' },
-  // Forecast oculto por enquanto (a rota /crm/forecast e a página seguem ativas).
-  // Pra religar: re-importe TrendingUp do lucide-react e adicione aqui:
-  //   { to: '/crm/forecast', icon: TrendingUp, label: 'Forecast' },
+  { to: '/crm/planejamento', icon: Filter, label: 'Planejamento', sectionKey: 'planejamento' },
   { divider: true },
   { to: '/crm/equipe', icon: UserCog, label: 'Equipe', sectionKey: 'equipe' },
   { to: '/crm/settings', icon: Settings, label: 'Configuracoes', sectionKey: 'settings' },
@@ -80,7 +77,7 @@ function filterNavItems(items, canAccess) {
   });
 }
 
-function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact }) {
+function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact, showAlertDot }) {
   const location = useLocation();
   const isActive = exact
     ? location.pathname === to
@@ -100,10 +97,20 @@ function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact }) {
         }
         ${isCollapsed ? 'justify-center' : ''}
       `}
-      title={isCollapsed ? label : undefined}
+      title={isCollapsed ? (showAlertDot ? `${label} — numero com problema de conexao` : label) : undefined}
     >
-      <Icon size={18} className="shrink-0" />
-      {!isCollapsed && <span className="truncate">{label}</span>}
+      <span className="relative shrink-0">
+        <Icon size={18} />
+        {showAlertDot && (
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-orange-500 ring-1 ring-white dark:ring-slate-900" />
+        )}
+      </span>
+      {!isCollapsed && (
+        <span className="truncate flex items-center gap-1.5">
+          {label}
+          {showAlertDot && <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" title="Numero com problema de conexao" />}
+        </span>
+      )}
     </NavLink>
   );
 }
@@ -112,6 +119,10 @@ export function CrmSidebar() {
   const navigate = useNavigate();
   const { canAccess } = useCrmAccess();
   const navItems = useMemo(() => filterNavItems(crmNavItems, canAccess), [canAccess]);
+  // Sinal de saude do WhatsApp visivel fora da propria pagina do Inbox —
+  // antes so dava pra saber que um numero caiu clicando em Inbox por acaso.
+  const { data: whatsappInstances = [] } = useCrmWhatsAppInstances();
+  const whatsappHasProblem = whatsappInstances.some(i => i.status !== 'connected');
   const [isPinned, setIsPinned] = useState(() => {
     try { return localStorage.getItem('crm-sidebar-pinned') === 'true'; } catch { return false; }
   });
@@ -184,6 +195,7 @@ export function CrmSidebar() {
               label={item.label}
               isCollapsed={isCollapsed}
               exact={item.exact}
+              showAlertDot={item.sectionKey === 'inbox' && whatsappHasProblem}
             />
           )
         )}

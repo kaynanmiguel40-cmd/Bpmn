@@ -89,6 +89,8 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       meetingsWeekRes,
       callsTodayRes,
       callsWeekRes,
+      activeClientsRes,
+      churnedInPeriodRes,
     ] = await Promise.all([
       // Total contatos ativos
       supabase.from('crm_contacts').select('id', { count: 'exact', head: true }).is('deleted_at', null),
@@ -220,6 +222,24 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
         .select('id', { count: 'exact', head: true })
         .is('deleted_at', null)
         .gte('started_at', last7dStart),
+
+      // Clientes ativos: negocios GANHOS sem churn (situacao atual, sem filtro de periodo) — so vendas
+      supabase.from('crm_deals')
+        .select('id, company_id, mrr')
+        .eq('status', 'won')
+        .in('pipeline_id', scopedIds)
+        .is('churned_at', null)
+        .is('deleted_at', null),
+
+      // Cancelados no periodo selecionado — visibilidade de churn
+      supabase.from('crm_deals')
+        .select('id, mrr')
+        .eq('status', 'won')
+        .in('pipeline_id', scopedIds)
+        .not('churned_at', 'is', null)
+        .gte('churned_at', periodStart)
+        .lte('churned_at', periodEnd)
+        .is('deleted_at', null),
     ]);
 
     // Calcular KPIs
@@ -228,6 +248,14 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
     const allClosed = allClosedRes.data || [];
     const wonLast12 = wonLast12Res.data || [];
     const hotDeals = hotDealsRes.data || [];
+
+    // Saude de cliente: ativos = ganhos sem churn (situacao atual); cancelados = churn no periodo.
+    const activeClientDeals = activeClientsRes.data || [];
+    const churnedDeals = churnedInPeriodRes.data || [];
+    const activeClients = new Set(activeClientDeals.map(d => d.company_id || d.id)).size;
+    const activeMrr = activeClientDeals.reduce((sum, d) => sum + (d.mrr || 0), 0);
+    const churnedInPeriod = churnedDeals.length;
+    const churnedMrr = churnedDeals.reduce((sum, d) => sum + (d.mrr || 0), 0);
     const nurturingPipelineIds = new Set(nurturingIds);
     const scopedSet = new Set(targetIds);
 
@@ -467,6 +495,10 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       periodWonDeals,
       avgTicket,
       avgCycleDays,
+      activeClients,
+      activeMrr,
+      churnedInPeriod,
+      churnedMrr,
       periodLostLeads: lostCount,
       totalLostLeads: totalLostRes.count || 0,
       hotDeals: hotDeals.length,
@@ -503,6 +535,10 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       periodWonDeals: 0,
       avgTicket: 0,
       avgCycleDays: 0,
+      activeClients: 0,
+      activeMrr: 0,
+      churnedInPeriod: 0,
+      churnedMrr: 0,
       periodLostLeads: 0,
       totalLostLeads: 0,
       hotDeals: 0,
@@ -681,12 +717,51 @@ export async function getBonificacaoProgress(startDate, endDate) {
 // ("desses leads, quantos qualificaram / tiveram reunião / fecharam").
 //
 // As etapas reais variam por pipeline, então detectamos por nome:
-//   Qualificado = primeiro estágio de engajamento (Respondeu / Qualificação...)
+//   Qualificado = estágio chamado "Qualificado" (se existir); senão cai pro
+//                 heurístico antigo (Respondeu / engajou / conectou / ICP) —
+//                 "Respondeu" sozinho NÃO qualifica um lead, só sinaliza que
+//                 respondeu; qualificação é uma etapa própria, mais adiante.
 //   Reunião     = estágio de reunião / demo / apresentação
 //   Fechamento  = estágio de vitória (is_win_stage) ou status 'won'
 
-const QUAL_STAGE_RE    = /respond|qualifica|engaj|conect|icp/i;
+const QUAL_STAGE_EXPLICIT_RE = /qualific/i;
+const QUAL_STAGE_FALLBACK_RE = /respond|engaj|conect|icp/i;
 const MEETING_STAGE_RE = /reuni|demo|apresenta/i;
+
+/**
+ * Detecta, por pipeline, a posição mínima de estágio que conta como
+ * "Qualificado" e "Reunião" — a partir dos nomes dos estágios. PURA e
+ * testável (separada de getSalesFunnel, que faz I/O).
+ *
+ * @param {Record<string, Array<{position:number, name:string, is_win_stage?:boolean}>>} stagesByPipeline
+ * @returns {{ qualPosByPipeline: Record<string, number>, meetingPosByPipeline: Record<string, number> }}
+ */
+export function detectFunnelStagePositions(stagesByPipeline) {
+  const qualPosByPipeline = {};
+  const meetingPosByPipeline = {};
+  for (const [pid, list] of Object.entries(stagesByPipeline)) {
+    const ordered = list.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const n = ordered.length;
+    const qualMatch =
+      ordered.find(s => QUAL_STAGE_EXPLICIT_RE.test(s.name || '')) ||
+      ordered.find(s => QUAL_STAGE_FALLBACK_RE.test(s.name || ''));
+    const meetMatch = ordered.find(s => MEETING_STAGE_RE.test(s.name || ''));
+    const winIdx = ordered.findIndex(s => s.is_win_stage);
+
+    const qualPos = qualMatch
+      ? (qualMatch.position ?? 0)
+      : (ordered[Math.max(0, Math.floor(n * 0.33))]?.position ?? 0);
+    const meetPosRaw = meetMatch
+      ? (meetMatch.position ?? 0)
+      : (winIdx > 0 ? (ordered[Math.max(0, winIdx - 1)]?.position ?? 0)
+                    : (ordered[Math.max(0, Math.floor(n * 0.66))]?.position ?? 0));
+
+    qualPosByPipeline[pid] = qualPos;
+    // Reunião nunca antes de qualificado (garante funil monotônico).
+    meetingPosByPipeline[pid] = Math.max(meetPosRaw, qualPos);
+  }
+  return { qualPosByPipeline, meetingPosByPipeline };
+}
 
 /**
  * Monta o funil de pipeline a partir de dados já carregados. PURA e testável.
@@ -797,27 +872,7 @@ export async function getSalesFunnel(range = {}, scope = 'sales', ownerId = null
       stagePosById[s.id] = s.position ?? 0;
       (stagesByPipeline[s.pipeline_id] = stagesByPipeline[s.pipeline_id] || []).push(s);
     }
-    const qualPosByPipeline = {};
-    const meetingPosByPipeline = {};
-    for (const [pid, list] of Object.entries(stagesByPipeline)) {
-      const ordered = list.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-      const n = ordered.length;
-      const qualMatch = ordered.find(s => QUAL_STAGE_RE.test(s.name || ''));
-      const meetMatch = ordered.find(s => MEETING_STAGE_RE.test(s.name || ''));
-      const winIdx = ordered.findIndex(s => s.is_win_stage);
-
-      const qualPos = qualMatch
-        ? (qualMatch.position ?? 0)
-        : (ordered[Math.max(0, Math.floor(n * 0.33))]?.position ?? 0);
-      const meetPosRaw = meetMatch
-        ? (meetMatch.position ?? 0)
-        : (winIdx > 0 ? (ordered[Math.max(0, winIdx - 1)]?.position ?? 0)
-                      : (ordered[Math.max(0, Math.floor(n * 0.66))]?.position ?? 0));
-
-      qualPosByPipeline[pid] = qualPos;
-      // Reunião nunca antes de qualificado (garante funil monotônico).
-      meetingPosByPipeline[pid] = Math.max(meetPosRaw, qualPos);
-    }
+    const { qualPosByPipeline, meetingPosByPipeline } = detectFunnelStagePositions(stagesByPipeline);
 
     // Jornada real: maior posição que cada negócio JÁ alcançou. Começa pelo
     // estágio atual e sobe com o histórico de transições — assim um lead que

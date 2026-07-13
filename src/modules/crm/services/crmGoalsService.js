@@ -27,10 +27,6 @@ export function dbToCrmGoal(row) {
     periodStart: row.period_start,
     periodEnd: row.period_end,
     status: row.status || 'active',
-    // Meta de funil (planejador reverso)
-    kind: row.kind || 'revenue',
-    funnelBase: row.funnel_base || null,
-    conversionRate: row.conversion_rate != null ? Number(row.conversion_rate) : null,
     createdBy: row.created_by || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -56,9 +52,6 @@ const goalService = createCRUDService({
     periodStart: 'period_start',
     periodEnd: 'period_end',
     status: 'status',
-    kind: 'kind',
-    funnelBase: 'funnel_base',
-    conversionRate: 'conversion_rate',
   },
   orderBy: 'period_end',
   orderAsc: true,
@@ -117,14 +110,10 @@ export async function softDeleteCrmGoal(id) {
 }
 
 /**
- * Busca progresso automatico de todas as goals ativas.
+ * Busca progresso automatico de todas as goals ativas (R$ dos deals won no periodo).
  * Retorna map de goalId -> { autoValue }.
  *
- * - Meta de VALOR (kind=revenue): autoValue = SOMA (R$) dos deals won no periodo.
- * - Meta de FUNIL base=sales: autoValue = QUANTIDADE de deals won no periodo.
- * - Meta de FUNIL base=calls: autoValue = QUANTIDADE de ligacoes no periodo.
- *
- * Meta global soma/conta o time todo; individual filtra pelo owner.
+ * Meta global soma o time todo; individual filtra pelo owner.
  */
 export async function getGoalsProgress(goals) {
   if (!goals || goals.length === 0) return {};
@@ -144,33 +133,19 @@ export async function getGoalsProgress(goals) {
   // no ultimo dia da meta. Estende o limite superior para o fim do dia.
   const maxEndBound = maxEnd.length <= 10 ? `${maxEnd}T23:59:59.999` : maxEnd;
 
-  // So busca ligacoes se existir meta de funil baseada em ligacoes (evita egress a toa).
-  const needsCalls = goals.some(g => g.kind === 'funnel' && g.funnelBase === 'calls');
+  const { data, error } = await supabase
+    .from('crm_deals')
+    .select('created_by, value, closed_at')
+    .eq('status', 'won')
+    .gte('closed_at', minStart)
+    .lte('closed_at', maxEndBound)
+    .is('deleted_at', null);
 
-  const [dealsRes, callsRes] = await Promise.all([
-    supabase
-      .from('crm_deals')
-      .select('created_by, value, closed_at')
-      .eq('status', 'won')
-      .gte('closed_at', minStart)
-      .lte('closed_at', maxEndBound)
-      .is('deleted_at', null),
-    needsCalls
-      ? supabase
-          .from('crm_calls')
-          .select('created_by, started_at')
-          .gte('started_at', minStart)
-          .lte('started_at', maxEndBound)
-          .is('deleted_at', null)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-
-  if (dealsRes.error) {
-    console.error('[CRM Goals] Erro ao buscar progresso:', dealsRes.error);
+  if (error) {
+    console.error('[CRM Goals] Erro ao buscar progresso:', error);
     return {};
   }
-  const deals = dealsRes.data || [];
-  const calls = callsRes.data || [];
+  const deals = data || [];
 
   const inPeriod = (dateStr, goal) => {
     if (!dateStr) return false;
@@ -183,62 +158,15 @@ export async function getGoalsProgress(goals) {
   const progressMap = {};
 
   for (const goal of goals) {
-    let autoValue = 0;
-
-    if (goal.kind === 'funnel' && goal.funnelBase === 'calls') {
-      // Meta de funil por ligacoes: conta ligacoes no periodo
-      autoValue = calls.filter(c => inPeriod(c.started_at, goal) && ownerMatch(c, goal)).length;
-    } else if (goal.kind === 'funnel') {
-      // Meta de funil por vendas: conta deals won no periodo
-      autoValue = deals.filter(d => inPeriod(d.closed_at, goal) && ownerMatch(d, goal)).length;
-    } else {
-      // Meta de valor: soma R$ dos deals won no periodo
-      autoValue = deals
-        .filter(d => inPeriod(d.closed_at, goal) && ownerMatch(d, goal))
-        .reduce((sum, d) => sum + (d.value || 0), 0);
-    }
+    // Meta de valor: soma R$ dos deals won no periodo
+    const autoValue = deals
+      .filter(d => inPeriod(d.closed_at, goal) && ownerMatch(d, goal))
+      .reduce((sum, d) => sum + (d.value || 0), 0);
 
     progressMap[goal.id] = { autoValue };
   }
 
   return progressMap;
-}
-
-/**
- * Busca as metas de FUNIL ativas que se sobrepoem ao periodo dado — usadas pra
- * desenhar o overlay de metas no Funil de Conversao. Filtra por dono quando
- * `ownerId` (auth user id) e informado; senao considera globais + individuais.
- *
- * @param {{ start?: string, end?: string }} [range]
- * @param {string|null} [ownerAuthUserId] - auth user id do dono (opcional).
- * @returns {Promise<Array>} metas de funil (dbToCrmGoal).
- */
-export async function getActiveFunnelGoals(range = {}, ownerAuthUserId = null) {
-  const startDay = (range.start || '').split('T')[0] || null;
-  const endDay = (range.end || '').split('T')[0] || null;
-
-  let query = supabase
-    .from('crm_goals')
-    .select('*, team_members(id, name, color, auth_user_id)')
-    .eq('kind', 'funnel')
-    .eq('status', 'active')
-    .is('deleted_at', null);
-
-  // Sobreposicao de periodos: goal.start <= range.end AND goal.end >= range.start
-  if (endDay) query = query.lte('period_start', endDay);
-  if (startDay) query = query.gte('period_end', startDay);
-
-  const { data, error } = await query;
-  if (error) {
-    console.warn('[CRM Goals] Erro ao buscar metas de funil ativas:', error.message);
-    return [];
-  }
-
-  let goals = (data || []).map(dbToCrmGoal);
-  if (ownerAuthUserId) {
-    goals = goals.filter(g => g.type === 'global' || g.owner?.authUserId === ownerAuthUserId);
-  }
-  return goals;
 }
 
 /**

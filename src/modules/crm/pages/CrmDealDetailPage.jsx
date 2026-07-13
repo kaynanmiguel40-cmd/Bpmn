@@ -1,12 +1,14 @@
 /**
  * CrmDealDetailPage - Detalhe completo de um negocio (estilo RD Station).
- * Layout 2 colunas: sidebar info + main com tabs (atividades, historico, notas).
+ * Layout 2 colunas: sidebar info + main com tabs (atividades, notas). A aba
+ * Atividades traz tudo junto: pendentes (A fazer) + concluidas/mudancas de
+ * estagio (Historico) — sem aba separada de Historico.
  */
 
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Pencil, XCircle, Plus,
+  ArrowLeft, Pencil, XCircle, Plus, CheckCircle2, CalendarDays,
   Mail, Phone, Smartphone, MessageCircle, Building2, CalendarCheck, Target,
   CheckSquare, Video, Coffee, MapPin, StickyNote,
   Clock, DollarSign, TrendingUp, GitBranch, User,
@@ -14,10 +16,12 @@ import {
 import { CrmBadge, CrmAvatar } from '../components/ui';
 import {
   useCrmDeal, useUpdateCrmDeal, useMarkDealLost,
-  useDealActivities, useDealStageHistory,
+  useDealActivities, useDealStageHistory, useCompleteCrmActivity,
 } from '../hooks/useCrmQueries';
+import { getDealLeadInfo } from '../services/crmDealsService';
 import { DealFormModal } from '../components/DealFormModal';
 import { ActivityFormModal } from '../components/ActivityFormModal';
+import { CompleteActivityModal } from '../components/CompleteActivityModal';
 import { LostReasonModal } from '../components/LostReasonModal';
 
 const formatCurrency = (val) =>
@@ -76,7 +80,6 @@ const ACTIVITY_LABELS = {
 
 const TABS = [
   { id: 'activities', label: 'Atividades', icon: CalendarCheck },
-  { id: 'history', label: 'Historico', icon: GitBranch },
   { id: 'notes', label: 'Notas', icon: StickyNote },
 ];
 
@@ -92,10 +95,13 @@ export function CrmDealDetailPage() {
 
   const updateMutation = useUpdateCrmDeal();
   const lostMutation = useMarkDealLost();
+  const completeMutation = useCompleteCrmActivity();
 
   const [activeTab, setActiveTab] = useState('activities');
   const [editOpen, setEditOpen] = useState(false);
   const [activityFormOpen, setActivityFormOpen] = useState(false);
+  const [editActivity, setEditActivity] = useState(null);
+  const [completingTask, setCompletingTask] = useState(null);
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [notes, setNotes] = useState(null);
   const [notesSaving, setNotesSaving] = useState(false);
@@ -150,6 +156,13 @@ export function CrmDealDetailPage() {
           <ArrowLeft size={16} /> Pipeline
         </button>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate(`/crm/agenda?dealId=${dealId}`)}
+            title="Ver as tarefas deste negócio na Agenda"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          >
+            <CalendarDays size={13} /> Ver na Agenda
+          </button>
           {deal.status === 'open' && (
             <button
               onClick={() => setLostModalOpen(true)}
@@ -273,11 +286,9 @@ export function CrmDealDetailPage() {
           {/* Separador */}
           <div className="border-t border-slate-200 dark:border-slate-700/50" />
 
-          {/* Contato — mostra dados do contato joineado OU dos campos denormalizados do deal */}
+          {/* Contato — vinculado sempre vence; digitado no deal e so fallback (getDealLeadInfo) */}
           {(() => {
-            const ctName  = deal.contact?.name  || deal.contactName  || '';
-            const ctEmail = deal.contact?.email || deal.contactEmail || '';
-            const ctPhone = deal.contact?.phone || deal.contactPhone || '';
+            const { name: ctName, phone: ctPhone, email: ctEmail } = getDealLeadInfo(deal);
             if (!ctName && !ctEmail && !ctPhone) return null;
 
             const phoneType = detectPhoneType(ctPhone);
@@ -416,64 +427,9 @@ export function CrmDealDetailPage() {
             </div>
           </div>
 
-          {/* Tab: Atividades (somente pendentes) */}
+          {/* Tab: Atividades — pendentes (A fazer) + concluidas/mudancas de estagio (Historico), tudo junto */}
           {activeTab === 'activities' && (() => {
             const pending = activities.filter(a => !a.completed);
-            return (
-              <div>
-                <button
-                  onClick={() => setActivityFormOpen(true)}
-                  className="mb-4 flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-fyness-primary hover:bg-fyness-secondary text-white transition-colors"
-                >
-                  <Plus size={15} /> Nova Atividade
-                </button>
-
-                {pending.length === 0 ? (
-                  <div className="py-12 text-center text-sm text-slate-400 dark:text-slate-500">
-                    Nenhuma atividade pendente
-                  </div>
-                ) : (
-                  <div className="relative pl-6">
-                    <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700/50" />
-                    <div className="space-y-1">
-                      {pending.map(act => {
-                        const Icon = ACTIVITY_ICONS[act.type] || CalendarCheck;
-                        const label = ACTIVITY_LABELS[act.type] || act.type;
-                        return (
-                          <div key={act.id} className="flex items-start gap-3 py-2.5 relative">
-                            <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px] bg-blue-100 dark:bg-blue-900/30">
-                              <Icon size={12} className="text-blue-600 dark:text-blue-400" />
-                            </div>
-                            <div className="flex-1 min-w-0 crm-glass rounded-2xl px-4 py-3">
-                              <div className="flex items-center justify-between gap-2 mb-0.5">
-                                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{act.title}</span>
-                                <CrmBadge variant="neutral" size="sm">{label}</CrmBadge>
-                              </div>
-                              {act.description && (
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{act.description}</p>
-                              )}
-                              <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
-                                <span>{formatDateTime(act.startDate)}</span>
-                                {act.contact && (
-                                  <>
-                                    <span>·</span>
-                                    <span>{act.contact.name}</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Tab: Historico (movimentacoes + atividades concluidas) */}
-          {activeTab === 'history' && (() => {
             const completedActs = activities.filter(a => a.completed).map(a => ({
               _type: 'activity', _date: a.completedAt || a.startDate, ...a,
             }));
@@ -486,86 +442,162 @@ export function CrmDealDetailPage() {
 
             return (
               <div>
-                {timeline.length === 0 ? (
+                <button
+                  onClick={() => { setEditActivity(null); setActivityFormOpen(true); }}
+                  className="mb-4 flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-fyness-primary hover:bg-fyness-secondary text-white transition-colors"
+                >
+                  <Plus size={15} /> Nova Atividade
+                </button>
+
+                {pending.length === 0 && timeline.length === 0 ? (
                   <div className="py-12 text-center text-sm text-slate-400 dark:text-slate-500">
-                    Nenhum historico registrado
+                    Nenhuma atividade registrada
                   </div>
                 ) : (
-                  <div className="relative pl-6">
-                    <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700/50" />
-                    <div className="space-y-1">
-                      {timeline.map((item, idx) => {
-                        if (item._type === 'activity') {
-                          const Icon = ACTIVITY_ICONS[item.type] || CalendarCheck;
-                          const label = ACTIVITY_LABELS[item.type] || item.type;
-                          return (
-                            <div key={`act-${item.id}`} className="flex items-start gap-3 py-2.5 relative">
-                              <div className="w-[26px] h-[26px] rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px]">
-                                <Icon size={12} className="text-emerald-600 dark:text-emerald-400" />
-                              </div>
-                              <div className="flex-1 min-w-0 crm-glass rounded-2xl px-4 py-3">
-                                <div className="flex items-center justify-between gap-2 mb-0.5">
-                                  <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{item.title}</span>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Concluida</span>
-                                    <CrmBadge variant="neutral" size="sm">{label}</CrmBadge>
+                  <>
+                    {/* A fazer */}
+                    {pending.length > 0 && (
+                      <div className="mb-6">
+                        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">A fazer</h4>
+                        <div className="relative pl-6">
+                          <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700/50" />
+                          <div className="space-y-1">
+                            {pending.map(act => {
+                              const Icon = ACTIVITY_ICONS[act.type] || CalendarCheck;
+                              const label = ACTIVITY_LABELS[act.type] || act.type;
+                              return (
+                                <div key={act.id} className="flex items-start gap-3 py-2.5 relative">
+                                  <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px] bg-blue-100 dark:bg-blue-900/30">
+                                    <Icon size={12} className="text-blue-600 dark:text-blue-400" />
                                   </div>
-                                </div>
-                                {(item.deliveryInput || item.deliveryReport) ? (
-                                  <div className="mt-2 space-y-1.5">
-                                    {item.deliveryInput && (
-                                      <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2.5 py-1.5">
-                                        <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
-                                        <span className="text-xs text-slate-700 dark:text-slate-200">{item.deliveryInput}</span>
-                                      </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setEditActivity(act); setActivityFormOpen(true); }}
+                                    className="flex-1 min-w-0 text-left crm-glass rounded-2xl px-4 py-3 hover:ring-1 hover:ring-fyness-primary/30 transition-shadow"
+                                  >
+                                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{act.title}</span>
+                                      <CrmBadge variant="neutral" size="sm">{label}</CrmBadge>
+                                    </div>
+                                    {act.description && (
+                                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{act.description}</p>
                                     )}
-                                    {item.deliveryReport && (
-                                      <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1.5">
-                                        <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
-                                        <span className="text-xs text-slate-700 dark:text-slate-200">{item.deliveryReport}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : item.description && (
-                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{item.description}</p>
-                                )}
-                                <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
-                                  <span>{formatDateTime(item.completedAt || item.startDate)}</span>
-                                  {item.contact && (
-                                    <>
-                                      <span>·</span>
-                                      <span>{item.contact.name}</span>
-                                    </>
-                                  )}
+                                    <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
+                                      <span>{formatDateTime(act.startDate)}</span>
+                                      {act.contact && (
+                                        <>
+                                          <span>·</span>
+                                          <span>{act.contact.name}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); navigate(`/crm/agenda?dealId=${dealId}&date=${encodeURIComponent(act.startDate)}`); }}
+                                    title="Ver esta tarefa na Agenda"
+                                    className="shrink-0 self-center text-slate-400 dark:text-slate-500 hover:text-fyness-primary transition-colors"
+                                  >
+                                    <CalendarDays size={18} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setCompletingTask({ id: act.id, title: act.title, type: act.type }); }}
+                                    title="Marcar como concluída"
+                                    className="shrink-0 self-center text-slate-400 dark:text-slate-500 hover:text-emerald-500 transition-colors"
+                                  >
+                                    <CheckCircle2 size={20} />
+                                  </button>
                                 </div>
-                              </div>
-                            </div>
-                          );
-                        }
-                        // stage transition
-                        return (
-                          <div key={`stg-${item.id || idx}`} className="flex items-start gap-3 py-2 relative">
-                            <div className="w-[22px] h-[22px] rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[17px]">
-                              <GitBranch size={10} className="text-slate-500 dark:text-slate-400" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                {item.stage ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.stage.color }} />
-                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{item.stage.name}</span>
-                                  </div>
-                                ) : (
-                                  <span className="text-sm text-slate-500">Estagio movido</span>
-                                )}
-                              </div>
-                              <span className="text-[10px] text-slate-400">{formatDateTime(item.createdAt)}</span>
-                            </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Historico — concluidas (verde) + mudancas de estagio */}
+                    {timeline.length > 0 && (
+                      <div>
+                        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Historico</h4>
+                        <div className="relative pl-6">
+                          <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700/50" />
+                          <div className="space-y-1">
+                            {timeline.map((item, idx) => {
+                              if (item._type === 'activity') {
+                                const Icon = ACTIVITY_ICONS[item.type] || CalendarCheck;
+                                const label = ACTIVITY_LABELS[item.type] || item.type;
+                                return (
+                                  <div key={`act-${item.id}`} className="flex items-start gap-3 py-2.5 relative">
+                                    <div className="w-[26px] h-[26px] rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px]">
+                                      <Icon size={12} className="text-emerald-600 dark:text-emerald-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0 crm-glass rounded-2xl px-4 py-3">
+                                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{item.title}</span>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Concluida</span>
+                                          <CrmBadge variant="neutral" size="sm">{label}</CrmBadge>
+                                        </div>
+                                      </div>
+                                      {(item.deliveryInput || item.deliveryReport) ? (
+                                        <div className="mt-2 space-y-1.5">
+                                          {item.deliveryInput && (
+                                            <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2.5 py-1.5">
+                                              <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
+                                              <span className="text-xs text-slate-700 dark:text-slate-200">{item.deliveryInput}</span>
+                                            </div>
+                                          )}
+                                          {item.deliveryReport && (
+                                            <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1.5">
+                                              <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
+                                              <span className="text-xs text-slate-700 dark:text-slate-200">{item.deliveryReport}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : item.description && (
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{item.description}</p>
+                                      )}
+                                      <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
+                                        <span>{formatDateTime(item.completedAt || item.startDate)}</span>
+                                        {item.contact && (
+                                          <>
+                                            <span>·</span>
+                                            <span>{item.contact.name}</span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              // stage transition
+                              return (
+                                <div key={`stg-${item.id || idx}`} className="flex items-start gap-3 py-2 relative">
+                                  <div className="w-[22px] h-[22px] rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[17px]">
+                                    <GitBranch size={10} className="text-slate-500 dark:text-slate-400" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      {item.stage ? (
+                                        <div className="flex items-center gap-1.5">
+                                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.stage.color }} />
+                                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{item.stage.name}</span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-sm text-slate-500">Estagio movido</span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-slate-400">{formatDateTime(item.createdAt)}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             );
@@ -603,9 +635,23 @@ export function CrmDealDetailPage() {
       {/* Activity Form Modal */}
       <ActivityFormModal
         open={activityFormOpen}
-        onClose={() => setActivityFormOpen(false)}
+        onClose={() => { setActivityFormOpen(false); setEditActivity(null); }}
+        activity={editActivity}
         defaultDealId={dealId}
         defaultContactId={deal.contactId}
+      />
+
+      {/* Complete Activity Modal — input/output da tarefa concluída */}
+      <CompleteActivityModal
+        open={!!completingTask}
+        onClose={() => setCompletingTask(null)}
+        activity={completingTask}
+        isPending={completeMutation.isPending}
+        onSubmit={({ input, output }) => {
+          completeMutation.mutate({ id: completingTask.id, input, output }, {
+            onSuccess: () => setCompletingTask(null),
+          });
+        }}
       />
 
       {/* Lost Reason Modal */}

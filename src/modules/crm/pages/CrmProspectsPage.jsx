@@ -434,6 +434,73 @@ function EditLeadModal({ open, onClose, prospect }) {
   );
 }
 
+// ==================== MODAL AJUSTAR SALDO CASA DOS DADOS ====================
+// Substitui window.prompt() nativo — pode ser bloqueado por configuracao do
+// navegador e nao valida entrada. Modal proprio (padrao do resto do app) com
+// input numerico validado.
+
+function CdBalanceModal({ open, onClose, currentValue, onSave }) {
+  const [value, setValue] = useState('');
+
+  useEffect(() => {
+    if (open) setValue(String(currentValue ?? ''));
+  }, [open, currentValue]);
+
+  const parsed = parseInt(value, 10);
+  const isValid = value.trim() !== '' && !Number.isNaN(parsed) && parsed >= 0;
+
+  const handleSave = () => {
+    if (!isValid) return;
+    onSave(parsed);
+    onClose();
+  };
+
+  return (
+    <CrmModal
+      open={open}
+      onClose={onClose}
+      title="Ajustar saldo de créditos"
+      size="sm"
+      footer={
+        <>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!isValid}
+            className="px-4 py-2 text-sm bg-fyness-primary hover:bg-fyness-secondary text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Salvar
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+          Saldo atual de créditos Casa dos Dados
+        </label>
+        <input
+          type="number"
+          min="0"
+          step="1"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+          autoFocus
+          className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+        />
+        {!isValid && value.trim() !== '' && (
+          <p className="text-xs text-rose-500">Informe um numero valido (0 ou mais)</p>
+        )}
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          Ajuste apos renovar o plano ou comprar creditos adicionais.
+        </p>
+      </div>
+    </CrmModal>
+  );
+}
+
 // ==================== PAGINA PRINCIPAL (Exact Sales Layout) ====================
 
 export function CrmProspectsPage() {
@@ -490,6 +557,7 @@ export function CrmProspectsPage() {
   const [editProspect, setEditProspect] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [pipelineModalOpen, setPipelineModalOpen] = useState(false);
+  const [cdBalanceModalOpen, setCdBalanceModalOpen] = useState(false);
 
   // Enriquecimento Google Places — Map<prospectId, enrichedData|'miss'|'loading'>
   const [enrichments, setEnrichments] = useState(() => new Map());
@@ -585,16 +653,40 @@ export function CrmProspectsPage() {
     clientRange,
   ].filter(Boolean).length;
 
+  // Troca de modo/aba descarta a lista gerada + selecao sem aviso — unico
+  // lugar da pagina sem o padrao confirm-before-destroy (delete de lead etc
+  // usa CrmConfirmDialog). So pede confirmacao quando ha algo pra perder.
+  const [pendingSwitch, setPendingSwitch] = useState(null);
+  const hasUnsavedList = generated && (prospects.length > 0 || selectedIds.size > 0);
+
+  const runOrConfirmSwitch = (action) => {
+    if (hasUnsavedList) setPendingSwitch(() => action);
+    else action();
+  };
+
   // Reset filters when switching mode
   const switchMode = (mode) => {
-    setProspectMode(mode);
-    setSegment('');
-    setSize('');
-    setRevenueRange('');
-    setClientRange('');
-    setGenerated(false);
-    setAppliedFilters({});
-    setSelectedIds(new Set());
+    if (mode === prospectMode) return;
+    runOrConfirmSwitch(() => {
+      setProspectMode(mode);
+      setSegment('');
+      setSize('');
+      setRevenueRange('');
+      setClientRange('');
+      setGenerated(false);
+      setAppliedFilters({});
+      setSelectedIds(new Set());
+    });
+  };
+
+  const handleTabChange = (tab) => {
+    if (tab === activeTab) return;
+    runOrConfirmSwitch(() => {
+      setActiveTab(tab);
+      setGenerated(false);
+      setAppliedFilters({});
+      setSelectedIds(new Set());
+    });
   };
 
   // Reset selecao + enrichments apenas quando filtros mudam (nova busca);
@@ -1051,7 +1143,7 @@ export function CrmProspectsPage() {
         {/* Tab Bar */}
         <div className="flex items-center border-b border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-900 shrink-0">
           <button
-            onClick={() => { setActiveTab('list'); setGenerated(false); setAppliedFilters({}); setSelectedIds(new Set()); }}
+            onClick={() => handleTabChange('list')}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
               activeTab === 'list'
                 ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
@@ -1062,7 +1154,7 @@ export function CrmProspectsPage() {
             Gerar Lista
           </button>
           <button
-            onClick={() => { setActiveTab('po'); setGenerated(false); setAppliedFilters({}); setSelectedIds(new Set()); }}
+            onClick={() => handleTabChange('po')}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
               activeTab === 'po'
                 ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
@@ -1107,13 +1199,7 @@ export function CrmProspectsPage() {
             <span className="text-slate-400">· {usage.cd.balanceRemaining.toLocaleString('pt-BR')} de {usage.cd.balanceTotal.toLocaleString('pt-BR')} créditos</span>
             <button
               type="button"
-              onClick={() => {
-                const v = prompt('Saldo atual de créditos Casa dos Dados:', String(usage.cd.balanceTotal));
-                if (v !== null) {
-                  setCdBalance(v);
-                  setUsage(getUsage());
-                }
-              }}
+              onClick={() => setCdBalanceModalOpen(true)}
               className="ml-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
               title="Ajustar saldo (após renovar plano ou comprar créditos)"
             >
@@ -1156,6 +1242,11 @@ export function CrmProspectsPage() {
                   {total > prospects.length && (
                     <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">
                       · {total.toLocaleString('pt-BR')} na base
+                    </span>
+                  )}
+                  {data?.dedupedCount > 0 && (
+                    <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500" title="CNPJs que ja existem como empresa no CRM (provavelmente ja convertidos antes) foram ocultados desta busca.">
+                      · {data.dedupedCount} ja no CRM (ocultos)
                     </span>
                   )}
                 </>
@@ -1590,6 +1681,23 @@ export function CrmProspectsPage() {
         message={`Tem certeza que deseja excluir "${deleteTarget?.companyName}" da lista?`}
         variant="danger"
         loading={deleteMutation.isPending}
+      />
+
+      <CdBalanceModal
+        open={cdBalanceModalOpen}
+        onClose={() => setCdBalanceModalOpen(false)}
+        currentValue={usage.cd.balanceTotal}
+        onSave={(n) => { setCdBalance(n); setUsage(getUsage()); }}
+      />
+
+      <CrmConfirmDialog
+        open={!!pendingSwitch}
+        onClose={() => setPendingSwitch(null)}
+        onConfirm={() => { pendingSwitch?.(); setPendingSwitch(null); }}
+        title="Descartar lista gerada?"
+        message={`Voce tem ${prospects.length} lead${prospects.length !== 1 ? 's' : ''} gerado${prospects.length !== 1 ? 's' : ''}${selectedIds.size > 0 ? ` (${selectedIds.size} selecionado${selectedIds.size !== 1 ? 's' : ''})` : ''} na tela. Trocar agora descarta a lista e a selecao atual.`}
+        confirmLabel="Trocar mesmo assim"
+        variant="warning"
       />
     </div>
   );

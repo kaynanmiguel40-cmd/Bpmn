@@ -11,6 +11,9 @@
  * - pagination: { page, perPage, total, onPageChange }
  * - sortConfig: { key, direction }
  * - onSort: (key) => void
+ * - hasFilters: boolean — true quando busca/filtro esta ativo (diferencia
+ *   "sem dado nenhum" de "filtro atual nao achou nada")
+ * - onClearFilters: () => void — mostra um link "Limpar filtros" no vazio
  */
 
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -37,6 +40,8 @@ export function CrmDataTable({
   pagination,
   sortConfig,
   onSort,
+  hasFilters = false,
+  onClearFilters,
 }) {
   const totalPages = pagination
     ? Math.ceil(pagination.total / pagination.perPage)
@@ -77,7 +82,17 @@ export function CrmDataTable({
                       <EmptyIcon size={40} className="text-slate-300 dark:text-slate-600" />
                     </div>
                   )}
-                  <p className="text-slate-400 dark:text-slate-500">{emptyMessage}</p>
+                  <p className="text-slate-400 dark:text-slate-500">
+                    {hasFilters ? 'Nenhum resultado para os filtros aplicados' : emptyMessage}
+                  </p>
+                  {hasFilters && onClearFilters && (
+                    <button
+                      onClick={onClearFilters}
+                      className="mt-2 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Limpar filtros
+                    </button>
+                  )}
                 </td>
               </tr>
             ) : (

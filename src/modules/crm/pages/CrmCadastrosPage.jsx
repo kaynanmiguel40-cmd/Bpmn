@@ -8,15 +8,17 @@
  * internos — toda a logica de listagem/CRUD continua nelas.
  */
 
-import { Users, Building2 } from 'lucide-react';
+import { Users, Building2, Handshake } from 'lucide-react';
 import { CrmPageHeader } from '../components/ui';
 import { useUrlState } from '../../../hooks/useUrlState';
 import CrmContactsPage from './CrmContactsPage';
 import CrmCompaniesPage from './CrmCompaniesPage';
+import CrmPartnersPage from './CrmPartnersPage';
 
 const TABS = [
   { id: 'contatos', label: 'Contatos',  icon: Users },
   { id: 'empresas', label: 'Empresas',  icon: Building2 },
+  { id: 'parceiros', label: 'Parceiros', icon: Handshake },
 ];
 
 export function CrmCadastrosPage() {
@@ -27,7 +29,7 @@ export function CrmCadastrosPage() {
     <div className="space-y-4">
       <CrmPageHeader
         title="Cadastros"
-        subtitle="Contatos e empresas em um so lugar"
+        subtitle="Contatos, empresas e parceiros em um so lugar"
       />
 
       {/* Sub-tabs */}
@@ -55,6 +57,7 @@ export function CrmCadastrosPage() {
       {/* Conteudo da sub-tab */}
       {active.id === 'contatos' && <CrmContactsPage embedded />}
       {active.id === 'empresas' && <CrmCompaniesPage embedded />}
+      {active.id === 'parceiros' && <CrmPartnersPage embedded />}
     </div>
   );
 }

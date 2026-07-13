@@ -105,6 +105,10 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
     if (!form.channel) errs.channel = 'Selecione um canal';
     if (!form.periodStart) errs.periodStart = 'Data inicio obrigatoria';
     if (!form.periodEnd) errs.periodEnd = 'Data fim obrigatoria';
+    // Formato YYYY-MM-DD do <input type="date"> compara corretamente como string.
+    if (form.periodStart && form.periodEnd && form.periodEnd < form.periodStart) {
+      errs.periodEnd = 'Data fim deve ser igual ou posterior ao inicio';
+    }
     const spent = parseFloat(form.amountSpent);
     if (isNaN(spent) || spent < 0) errs.amountSpent = 'Valor gasto invalido';
     setErrors(errs);

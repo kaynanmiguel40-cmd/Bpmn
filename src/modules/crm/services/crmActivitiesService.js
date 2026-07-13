@@ -324,8 +324,13 @@ export async function completeCrmActivity(id, { input = '', output = '' } = {}) 
     .single();
 
   if (error) {
-    toast(`Erro ao concluir atividade: ${error.message}`, 'error');
-    return null;
+    // Precisa propagar (nao so tostar e devolver null): a mutation que
+    // chama isso trata sucesso vs erro pelo resultado da Promise. Se
+    // resolvesse com null aqui, o onSuccess do useMutation disparava do
+    // mesmo jeito — usuario via o toast de erro seguido, contraditoriamente,
+    // de "Atividade concluida", e o modal fechava como se tivesse dado certo.
+    console.error('[completeCrmActivity]', error);
+    throw error;
   }
 
   const result = dbToCrmActivity(data);

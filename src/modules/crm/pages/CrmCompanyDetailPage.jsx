@@ -3,14 +3,14 @@
  * Header, info, secao Contatos, secao Deals.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Pencil, Phone, Mail, Globe, MapPin, Building2,
-  Users, Target, Plus,
+  Users, Target, Plus, HeartPulse, UserX, RotateCcw,
 } from 'lucide-react';
-import { CrmAvatar, CrmBadge } from '../components/ui';
-import { useCrmCompany } from '../hooks/useCrmQueries';
+import { CrmAvatar, CrmBadge, CrmConfirmDialog } from '../components/ui';
+import { useCrmCompany, useMarkDealChurned, useReactivateChurnedDeal } from '../hooks/useCrmQueries';
 import { CompanyFormModal } from '../components/CompanyFormModal';
 import { ContactFormModal } from '../components/ContactFormModal';
 
@@ -43,9 +43,30 @@ export function CrmCompanyDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { data: company, isLoading } = useCrmCompany(id);
+  const markChurned = useMarkDealChurned();
+  const reactivate = useReactivateChurnedDeal();
 
   const [editOpen, setEditOpen] = useState(false);
   const [newContactOpen, setNewContactOpen] = useState(false);
+  // Confirmacao antes de mudar status de cliente (cancelado/reativar) — esse
+  // status alimenta direto o resumo de saude/MRR logo acima, entao um clique
+  // acidental ao rolar a pagina nao pode contar como churn sem confirmar.
+  const [churnTarget, setChurnTarget] = useState(null);
+  const [reactivateTarget, setReactivateTarget] = useState(null);
+
+  // Saude de cliente: entre os negocios GANHOS, quantos estao ativos (sem
+  // churn) e quanto de MRR isso representa — visibilidade que faltava aqui.
+  const clientHealth = useMemo(() => {
+    const won = (company?.deals || []).filter(d => d.status === 'won');
+    const active = won.filter(d => !d.churnedAt);
+    const churned = won.filter(d => d.churnedAt);
+    if (won.length === 0) return null;
+    return {
+      activeCount: active.length,
+      churnedCount: churned.length,
+      activeMrr: active.reduce((sum, d) => sum + (d.mrr || 0), 0),
+    };
+  }, [company?.deals]);
 
   if (isLoading) {
     return (
@@ -178,11 +199,23 @@ export function CrmCompanyDetailPage() {
 
       {/* Deals da empresa */}
       <div className="crm-glass rounded-2xl p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Target size={16} className="text-slate-400" />
-          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-            Negocios ({(company.deals || []).length})
-          </h3>
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <Target size={16} className="text-slate-400" />
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              Negocios ({(company.deals || []).length})
+            </h3>
+          </div>
+          {clientHealth && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <HeartPulse size={13} className={clientHealth.churnedCount > 0 && clientHealth.activeCount === 0 ? 'text-rose-500' : 'text-emerald-500'} />
+              <span className="text-slate-500 dark:text-slate-400">
+                {clientHealth.activeCount} ativo{clientHealth.activeCount !== 1 ? 's' : ''}
+                {clientHealth.activeMrr > 0 && <> · {formatCurrency(clientHealth.activeMrr)}/mes</>}
+                {clientHealth.churnedCount > 0 && <span className="text-rose-500"> · {clientHealth.churnedCount} cancelado{clientHealth.churnedCount !== 1 ? 's' : ''}</span>}
+              </span>
+            </div>
+          )}
         </div>
 
         {(company.deals || []).length === 0 ? (
@@ -190,7 +223,12 @@ export function CrmCompanyDetailPage() {
         ) : (
           <div className="space-y-1">
             {company.deals.map(deal => {
-              const ds = DEAL_STATUS[deal.status] || DEAL_STATUS.open;
+              const isWon = deal.status === 'won';
+              const isChurned = isWon && !!deal.churnedAt;
+              const ds = isWon
+                ? (isChurned ? { label: 'Cancelado', variant: 'danger' } : { label: 'Cliente ativo', variant: 'success' })
+                : (DEAL_STATUS[deal.status] || DEAL_STATUS.open);
+              const busy = markChurned.isPending || reactivate.isPending;
               return (
                 <div key={deal.id} className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <div className="flex-1 min-w-0">
@@ -198,6 +236,17 @@ export function CrmCompanyDetailPage() {
                   </div>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 shrink-0">{formatCurrency(deal.value)}</span>
                   <CrmBadge variant={ds.variant} dot size="sm">{ds.label}</CrmBadge>
+                  {isWon && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      title={isChurned ? 'Reativar cliente' : 'Marcar como cancelado'}
+                      onClick={() => (isChurned ? setReactivateTarget(deal) : setChurnTarget(deal))}
+                      className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-40 shrink-0"
+                    >
+                      {isChurned ? <RotateCcw size={14} /> : <UserX size={14} />}
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -211,6 +260,28 @@ export function CrmCompanyDetailPage() {
         open={newContactOpen}
         onClose={() => setNewContactOpen(false)}
         contact={{ companyId: company.id }}
+      />
+
+      <CrmConfirmDialog
+        open={!!churnTarget}
+        onClose={() => setChurnTarget(null)}
+        onConfirm={async () => { await markChurned.mutateAsync(churnTarget.id); setChurnTarget(null); }}
+        title="Marcar cliente como cancelado"
+        message={`Tem certeza que deseja marcar "${churnTarget?.title}" como cancelado? Isso remove o MRR ativo do resumo de saude do cliente.`}
+        confirmLabel="Marcar como cancelado"
+        variant="warning"
+        loading={markChurned.isPending}
+      />
+
+      <CrmConfirmDialog
+        open={!!reactivateTarget}
+        onClose={() => setReactivateTarget(null)}
+        onConfirm={async () => { await reactivate.mutateAsync(reactivateTarget.id); setReactivateTarget(null); }}
+        title="Reativar cliente"
+        message={`Tem certeza que deseja reativar "${reactivateTarget?.title}"? O negocio volta a contar como cliente ativo.`}
+        confirmLabel="Reativar"
+        variant="info"
+        loading={reactivate.isPending}
       />
     </div>
   );

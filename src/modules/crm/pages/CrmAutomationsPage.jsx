@@ -232,7 +232,9 @@ function RulesTab({ onNew, onEdit }) {
                       )}
                     </div>
 
-                    {/* Ações */}
+                    {/* Ações — Excluir fica isolada por um divisor: é a única
+                        irreversível do grupo e não pode ficar coladinha no
+                        Pausar/Ativar (mesmo tamanho, mesmo tom de cinza). */}
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => toggleMutation.mutate({ id: auto.id, active: !auto.active })}
@@ -248,6 +250,7 @@ function RulesTab({ onNew, onEdit }) {
                       >
                         <Pencil size={14} />
                       </button>
+                      <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" aria-hidden="true" />
                       <button
                         onClick={() => setDeleteTarget(auto)}
                         title="Excluir"

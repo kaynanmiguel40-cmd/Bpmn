@@ -6,7 +6,7 @@ import { createCrmCompany } from './crmCompaniesService';
 import { createCrmDeal } from './crmDealsService';
 import { searchProspectsByGoogle, markGooglePlaceConverted } from '../../../lib/googlePlacesService';
 import { trackCdSearch, trackCdLookup } from '../../../lib/usageTracker';
-import { SEGMENT_TO_CNAE, CNAE_TO_SEGMENT, SIZE_TO_PORTE, PORTE_TO_SIZE, REVENUE_TO_CAPITAL, PARTNER_CATEGORY_TO_CNAE, CNAE_TO_PARTNER_CATEGORY, PARTNER_CATEGORY_LABELS } from '../data/cnaeMapping';
+import { SEGMENT_TO_CNAE, CNAE_TO_SEGMENT, SIZE_TO_PORTE, PORTE_TO_SIZE, PROSPECT_SIZE_TO_COMPANY_SIZE, REVENUE_TO_CAPITAL, PARTNER_CATEGORY_TO_CNAE, CNAE_TO_PARTNER_CATEGORY, PARTNER_CATEGORY_LABELS } from '../data/cnaeMapping';
 import { escapeOrIlike } from '../lib/searchFilters';
 
 // API Casa dos Dados — chave via env var (nunca hardcode!)
@@ -578,20 +578,24 @@ function applyDddFilter(prospects, dddFilter) {
 /**
  * Remove prospects cujo CNPJ ja existe em crm_companies (lead ja convertido).
  * NAO eh cacheado — depende do estado atual do CRM. Roda apos cache hit.
+ *
+ * Retorna tambem quantos foram removidos — antes o dedup era silencioso e o
+ * usuario nao entendia por que a lista vinha menor que o esperado.
  */
 async function excludeConvertedCnpjs(prospects) {
   const cnpjs = prospects.map(p => p.cnpj).filter(Boolean);
-  if (cnpjs.length === 0) return prospects;
+  if (cnpjs.length === 0) return { filtered: prospects, excludedCount: 0 };
 
   const { data: existing } = await supabase
     .from('crm_companies')
     .select('cnpj')
     .in('cnpj', cnpjs)
     .is('deleted_at', null);
-  if (!existing || existing.length === 0) return prospects;
+  if (!existing || existing.length === 0) return { filtered: prospects, excludedCount: 0 };
 
   const existingSet = new Set(existing.map(c => c.cnpj));
-  return prospects.filter(p => !existingSet.has(p.cnpj));
+  const filtered = prospects.filter(p => !existingSet.has(p.cnpj));
+  return { filtered, excludedCount: prospects.length - filtered.length };
 }
 
 // ─── API call (sem dedup, sem DDD — pos-processado fora) ──────────────────────
@@ -652,9 +656,9 @@ async function searchLeadsViaAPI(filters = {}) {
 
   // Pos-processamento (DDD + dedup contra crm_companies). Nao cacheado pq
   // dedup depende do estado atual do CRM e DDD ja eh chave do cache.
-  let data = applyDddFilter(result.data, filters.ddd);
-  data = await excludeConvertedCnpjs(data);
-  return { ...result, data };
+  const ddFiltered = applyDddFilter(result.data, filters.ddd);
+  const { filtered, excludedCount } = await excludeConvertedCnpjs(ddFiltered);
+  return { ...result, data: filtered, dedupedCount: excludedCount };
 }
 
 function buildPartnerApiBody(filters) {
@@ -711,9 +715,9 @@ async function searchPartnersViaAPI(filters = {}) {
   if (!result) return null;
   // Mesmo pos-processamento dos leads: o DDD nao eh enviado a API (filtro client)
   // e parceiros ja importados precisam sair do resultado (dedup contra crm_companies).
-  let data = applyDddFilter(result.data, filters.ddd);
-  data = await excludeConvertedCnpjs(data);
-  return { ...result, data };
+  const ddFiltered = applyDddFilter(result.data, filters.ddd);
+  const { filtered, excludedCount } = await excludeConvertedCnpjs(ddFiltered);
+  return { ...result, data: filtered, dedupedCount: excludedCount };
 }
 
 // ==================== FALLBACK: BUSCA NO CRM LOCAL ====================
@@ -882,6 +886,15 @@ export async function updateCrmProspect(id, updates) {
   return prospectService.update(id, updates);
 }
 
+/**
+ * Busca 1 prospect por id (linha crua, sem os joins/fallback offline de
+ * getCrmProspects). Usado onde so precisamos de nome/telefone/empresa —
+ * ex: cabecalho do Inbox quando a conversa ainda nao tem historico de mensagem.
+ */
+export async function getCrmProspectById(id) {
+  return prospectService.getById(id);
+}
+
 export async function softDeleteCrmProspect(id) {
   const { error } = await supabase
     .from('crm_prospects')
@@ -972,7 +985,7 @@ export async function sendToPipeline(prospects, pipelineId, stageId, opts = {}) 
           name: merged.companyName,
           cnpj: merged.cnpj || '',
           segment: merged.segment || '',
-          size: merged.size || '',
+          size: PROSPECT_SIZE_TO_COMPANY_SIZE[merged.size] || '',
           phone: bestPhone,
           email: merged.email || '',
           website: googleSite || merged.website || '',

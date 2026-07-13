@@ -11,7 +11,7 @@ import { ConversationList } from '../components/inbox/ConversationList';
 import { MessageThread } from '../components/inbox/MessageThread';
 import { MessageComposer } from '../components/inbox/MessageComposer';
 import { WhatsAppStatusBanner } from '../components/inbox/WhatsAppStatusBanner';
-import { useCrmInboxConversations, useCrmWhatsAppInstances } from '../hooks/useCrmQueries';
+import { useCrmInboxConversations, useCrmWhatsAppInstances, useCrmContact, useCrmProspect } from '../hooks/useCrmQueries';
 
 export function CrmInboxPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,20 +21,41 @@ export function CrmInboxPage() {
   const { data: conversations = [] } = useCrmInboxConversations();
   const { data: instances = [] } = useCrmWhatsAppInstances();
 
+  // Contato/prospect sem historico de mensagem ainda nao tem conversa na lista —
+  // busca direto em crm_contacts/crm_prospects pra nao renderizar cabecalho em
+  // branco na primeira conversa (so habilitado quando realmente vira stub, logo abaixo).
+  const stubContactId  = contactParam && !conversations.some((c) => c.contactId === contactParam) ? contactParam : null;
+  const stubProspectId = prospectParam && !conversations.some((c) => c.prospectId === prospectParam) ? prospectParam : null;
+  const { data: stubContact }  = useCrmContact(stubContactId);
+  const { data: stubProspect } = useCrmProspect(stubProspectId);
+
   // Conversa ativa: busca na lista pelo param da URL
   const activeConversation = useMemo(() => {
     if (contactParam) {
       const c = conversations.find((c) => c.contactId === contactParam);
+      if (c) return c;
       // Se nao tem conversa ainda mas tem contactId, monta stub minimo
       // (acontece quando vem do detalhe do contato pra abrir conversa pela primeira vez)
-      return c || (contactParam ? { contactId: contactParam, otherName: '', otherPhone: '' } : null);
+      return {
+        contactId: contactParam,
+        otherName: stubContact?.name || '',
+        otherPhone: stubContact?.phone || '',
+        avatarColor: stubContact?.avatarColor || null,
+        avatarUrl: stubContact?.avatarUrl || null,
+      };
     }
     if (prospectParam) {
       const p = conversations.find((c) => c.prospectId === prospectParam);
-      return p || (prospectParam ? { prospectId: prospectParam, otherName: '', otherPhone: '' } : null);
+      if (p) return p;
+      return {
+        prospectId: prospectParam,
+        otherName: stubProspect?.contactName || stubProspect?.companyName || '',
+        otherPhone: stubProspect?.phone || '',
+        avatarUrl: stubProspect?.avatarUrl || null,
+      };
     }
     return null;
-  }, [conversations, contactParam, prospectParam]);
+  }, [conversations, contactParam, prospectParam, stubContact, stubProspect]);
 
   const activeKey = activeConversation
     ? activeConversation.contactId
@@ -65,7 +86,7 @@ export function CrmInboxPage() {
 
   return (
     <div className="-m-4 md:-m-6 flex flex-col h-[calc(100vh-3.5rem)]">
-      <WhatsAppStatusBanner instanceName={activeInstance?.instanceName} />
+      <WhatsAppStatusBanner />
       <div className="flex-1 flex min-h-0">
         <ConversationList activeKey={activeKey} onSelect={handleSelect} />
         <MessageThread conversation={activeConversation}>

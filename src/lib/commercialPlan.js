@@ -89,3 +89,28 @@ export function planMonthForDate(date) {
   const m = abs - planMonthAbsolute(1) + 1;
   return m >= 1 && m <= 12 ? m : null;
 }
+
+/**
+ * Reajusta a trajetoria de MRR PREVISTA a partir de agora — como se o plano
+ * reiniciasse do zero na posicao REAL atual, preservando o "formato" (ritmo
+ * relativo mes a mes) da trajetoria original ate a MESMA meta final. Meses
+ * ja decorridos mantem o previsto original intocado (e historia, nao muda).
+ *
+ * @param {Array<{m:number, mrr:number}>} planMonths - PLAN_MONTHS.
+ * @param {number} currentM - mes atual do plano (1..12).
+ * @param {number} realMrrNow - MRR real acumulado agora.
+ * @param {number} goalMrr - meta final de MRR.
+ * @returns {number[]} previsto reajustado, um valor por mes de planMonths (mesma ordem).
+ */
+export function reajustarTrajetoriaMrr(planMonths, currentM, realMrrNow, goalMrr) {
+  const currentRow = planMonths.find(p => p.m === currentM);
+  if (!currentRow) return planMonths.map(p => p.mrr);
+  const originalStart = currentRow.mrr;
+  const span = goalMrr - originalStart;
+  return planMonths.map(p => {
+    if (p.m < currentM) return p.mrr;
+    if (span === 0) return goalMrr;
+    const progress = (p.mrr - originalStart) / span; // 0 no mes atual, ~1 no ultimo mes do plano
+    return realMrrNow + progress * (goalMrr - realMrrNow);
+  });
+}

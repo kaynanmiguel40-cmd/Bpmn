@@ -212,6 +212,19 @@ export const PORTE_TO_SIZE = {
   '05': 'media',    // Demais → Media/Grande (sem distincao na RF)
 };
 
+// Prospect (mei/me/epp/media/grande, vocabulario Receita Federal) → Empresa
+// (micro/small/medium/large, vocabulario do CompanyFormModal). Sem essa
+// traducao, empresa criada a partir de um lead gravava um valor que nao
+// batia com nenhuma <option> do select de porte da empresa — campo ficava
+// em branco silenciosamente ao abrir pra editar.
+export const PROSPECT_SIZE_TO_COMPANY_SIZE = {
+  mei: 'micro',
+  me: 'micro',
+  epp: 'small',
+  media: 'medium',
+  grande: 'large',
+};
+
 // ==================== PARCEIROS — CATEGORIAS E CNAEs ====================
 
 /**

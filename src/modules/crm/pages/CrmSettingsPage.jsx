@@ -1,11 +1,11 @@
 /**
  * CrmSettingsPage — Configurações do CRM
- * Tabs: Equipe | Segmentos | Preferências
+ * Tabs: Equipe | Segmentos | Origens
  */
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  Users, Tag, Plus, X, SlidersHorizontal, ShieldCheck,
+  Users, Tag, Plus, X, SlidersHorizontal, ShieldCheck, GitBranch,
 } from 'lucide-react';
 import { CrmPageHeader, CrmAvatar } from '../components/ui';
 import { useTeamMembers } from '../../../hooks/queries';
@@ -13,6 +13,8 @@ import { updateTeamMember } from '../../../lib/teamService';
 import { useCrmAccess } from '../hooks/useCrmAccess';
 import { CRM_SECTIONS, normalizeBlocked, OWNER_EMAILS } from '../lib/crmAccess';
 import { CrmAccessModal } from '../components/CrmAccessModal';
+import { useCrmLeadSources, useCreateCrmLeadSource, useDeleteCrmLeadSource } from '../hooks/useCrmQueries';
+import { DEFAULT_SEGMENTS, loadSegments, saveSegments } from '../lib/crmSegments';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -20,11 +22,6 @@ const CRM_ROLES = [
   { value: 'vendedor',    label: 'Vendedor',    color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700' },
   { value: 'pre_vendedor',label: 'Pré-vendedor',color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700' },
   { value: 'gestor',      label: 'Gestor',      color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700' },
-];
-
-const DEFAULT_SEGMENTS = [
-  'Agro', 'Varejo', 'Industria', 'Tecnologia', 'Educacao',
-  'Saude', 'Financeiro', 'Construcao', 'Servicos',
 ];
 
 // ─── Helpers de estilo ────────────────────────────────────────────────────────
@@ -117,6 +114,15 @@ function EquipeTab() {
                   {member.role && <div className="text-xs text-slate-400 dark:text-slate-500 truncate">{member.role}</div>}
                 </div>
 
+                {/* Cargo CRM — badge compacto no celular (o segmentado exige espaço em linha) */}
+                {member.crmRole && (
+                  <span className={`sm:hidden shrink-0 px-2 py-0.5 text-[11px] font-medium rounded-full border ${
+                    CRM_ROLES.find(r => r.value === member.crmRole)?.color || 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                  }`}>
+                    {CRM_ROLES.find(r => r.value === member.crmRole)?.label || member.crmRole}
+                  </span>
+                )}
+
                 {/* Cargo CRM — segmented */}
                 <div className="hidden sm:flex items-center rounded-lg bg-slate-100/70 dark:bg-slate-800/60 p-0.5 shrink-0">
                   {CRM_ROLES.map(r => {
@@ -181,20 +187,12 @@ function EquipeTab() {
 // ─── Tab: Segmentos ───────────────────────────────────────────────────────────
 
 function SegmentosTab() {
-  const storageKey = 'crm-segments';
-  const load = () => {
-    try {
-      const s = localStorage.getItem(storageKey);
-      return s ? JSON.parse(s) : DEFAULT_SEGMENTS;
-    } catch { return DEFAULT_SEGMENTS; }
-  };
-
-  const [segments, setSegments] = useState(load);
+  const [segments, setSegments] = useState(loadSegments);
   const [newSeg, setNewSeg]     = useState('');
 
   const save = (list) => {
     setSegments(list);
-    try { localStorage.setItem(storageKey, JSON.stringify(list)); } catch {}
+    saveSegments(list);
   };
 
   const add = () => {
@@ -264,12 +262,75 @@ function SegmentosTab() {
   );
 }
 
+// ─── Tab: Origens do Lead ─────────────────────────────────────────────────────
+
+function OrigensTab() {
+  const { data: sources = [] } = useCrmLeadSources();
+  const createMutation = useCreateCrmLeadSource();
+  const deleteMutation = useDeleteCrmLeadSource();
+  const [newSource, setNewSource] = useState('');
+
+  const add = () => {
+    const val = newSource.trim();
+    if (!val || sources.some(s => s.name.toLowerCase() === val.toLowerCase())) return;
+    createMutation.mutate({ name: val });
+    setNewSource('');
+  };
+
+  return (
+    <SectionCard
+      icon={GitBranch}
+      color="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+      title="Origens do Lead"
+      subtitle="Canais de aquisição disponíveis no formulário de negócio (ex: Indicação de contador, Tráfego pago)."
+    >
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {sources.map(s => (
+            <span
+              key={s.id}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full"
+            >
+              {s.name}
+              <button
+                onClick={() => deleteMutation.mutate(s.id)}
+                disabled={deleteMutation.isPending}
+                className="text-slate-400 hover:text-red-500 transition-colors ml-0.5 disabled:opacity-50"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            value={newSource}
+            onChange={e => setNewSource(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') add(); }}
+            placeholder="Nova origem (ex: Indicação de Instagram)"
+            className={`${inputCls} flex-1`}
+          />
+          <button
+            onClick={add}
+            disabled={createMutation.isPending}
+            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 // Automações saiu daqui — vive na sidebar do CRM (/crm/automations).
 const TABS = [
-  { id: 'equipe',       label: 'Equipe',       Icon: Users    },
-  { id: 'segmentos',    label: 'Segmentos',    Icon: Tag      },
+  { id: 'equipe',       label: 'Equipe',       Icon: Users     },
+  { id: 'segmentos',    label: 'Segmentos',    Icon: Tag       },
+  { id: 'origens',      label: 'Origens',      Icon: GitBranch },
 ];
 
 export function CrmSettingsPage() {
@@ -306,6 +367,7 @@ export function CrmSettingsPage() {
       {/* Conteúdo */}
       {activeTab === 'equipe'       && <EquipeTab />}
       {activeTab === 'segmentos'    && <SegmentosTab />}
+      {activeTab === 'origens'      && <OrigensTab />}
     </div>
   );
 }

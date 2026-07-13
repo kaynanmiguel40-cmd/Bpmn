@@ -9,7 +9,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Kanban, PhoneCall, MessageCircle, CalendarDays, Crosshair, Zap, Users,
-  Target, Trophy, UserCog, Settings, LayoutDashboard, Lock, ShieldCheck,
+  Target, Trophy, UserCog, Settings, Lock, ShieldCheck, Filter,
+  AlertTriangle,
 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { CrmAvatar } from './ui/CrmAvatar';
@@ -26,6 +27,7 @@ const SECTION_UI = {
   cadastros:   { icon: Users,         tint: 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800' },
   comparativo: { icon: Target,        tint: 'text-fuchsia-600 dark:text-fuchsia-400 bg-fuchsia-50 dark:bg-fuchsia-900/25' },
   goals:       { icon: Trophy,        tint: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/25' },
+  planejamento:{ icon: Filter,        tint: 'text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/25' },
   equipe:      { icon: UserCog,       tint: 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800' },
   settings:    { icon: Settings,      tint: 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800' },
 };
@@ -49,6 +51,10 @@ function ToggleVisual({ checked }) {
 
 const ROLE_LABEL = { vendedor: 'Vendedor', pre_vendedor: 'Pré-vendedor', gestor: 'Gestor' };
 
+// Seções que são o trabalho principal de vendedor/pré-vendedor (não-gestor).
+// Bloquear qualquer uma delas corta o dia a dia da pessoa — merece aviso.
+const CORE_WORK_KEYS = ['pipeline', 'discador', 'inbox', 'agenda'];
+
 export function CrmAccessModal({ open, member, onClose, onSave }) {
   const [blocked, setBlocked] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -62,6 +68,7 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
   const allowedCount = total - CRM_SECTIONS.filter(s => blockedSet.has(s.key)).length;
   const pct = Math.round((allowedCount / total) * 100);
   const dirty = member ? normalizeBlocked(member.crmBlockedSections).sort().join(',') !== [...blocked].sort().join(',') : false;
+  const blocksCoreWork = member?.crmRole !== 'gestor' && CORE_WORK_KEYS.some(k => blockedSet.has(k));
 
   const toggle = (key) => {
     setBlocked(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
@@ -162,16 +169,24 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
         </div>
       </div>
 
-      {/* Dashboard — sempre disponível (não editável) */}
-      <div className="flex items-center gap-3 px-3 py-2.5 mb-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700">
-        <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-fyness-primary bg-fyness-primary/10">
-          <LayoutDashboard size={16} />
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Dashboard</div>
-          <div className="text-[11px] text-slate-400 dark:text-slate-500">Página inicial — sempre disponível</div>
+      {/* Aviso: bloquear o trabalho principal do time comercial não tem o
+          mesmo peso de bloquear Metas/Comparativo — precisa de atrito extra. */}
+      {blocksCoreWork && (
+        <div className="flex items-start gap-2 px-3 py-2.5 mb-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <AlertTriangle size={14} className="text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Atenção: esse membro vai perder acesso a negócios, mensagens e/ou agenda — o trabalho principal dele.
+          </p>
         </div>
-        <Lock size={14} className="text-slate-300 dark:text-slate-600 shrink-0" />
+      )}
+
+      {/* Dashboard — sempre disponível (não editável). Sem card/hover: é só uma
+          nota informativa, não um toggle, então não pode parecer um. */}
+      <div className="flex items-center gap-2 px-1 mb-3 text-[11px] text-slate-400 dark:text-slate-500">
+        <Lock size={11} className="shrink-0" />
+        <span>
+          <span className="font-medium text-slate-500 dark:text-slate-400">Dashboard</span> — página inicial, sempre disponível para todos
+        </span>
       </div>
 
       {/* Seções agrupadas */}

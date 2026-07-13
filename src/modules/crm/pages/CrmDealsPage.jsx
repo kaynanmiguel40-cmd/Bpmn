@@ -51,6 +51,7 @@ export function CrmDealsPage() {
   const [editDeal, setEditDeal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [lostDealId, setLostDealId] = useState(null);
+  const [wonTarget, setWonTarget] = useState(null);
 
   const handleNew = () => { setEditDeal(null); setFormOpen(true); };
   const handleEdit = (deal) => { setEditDeal(deal); setFormOpen(true); };
@@ -68,6 +69,14 @@ export function CrmDealsPage() {
   const handleClearSearch = () => {
     setSearch('');
     setAppliedSearch('');
+    setPage(1);
+  };
+
+  const hasActiveFilters = !!(appliedSearch || statusFilter);
+  const handleClearFilters = () => {
+    setSearch('');
+    setAppliedSearch('');
+    setStatusFilter('');
     setPage(1);
   };
 
@@ -152,7 +161,7 @@ export function CrmDealsPage() {
         <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           {row.status === 'open' && (
             <>
-              <button onClick={(e) => { e.stopPropagation(); wonMutation.mutate(row.id); }}
+              <button onClick={(e) => { e.stopPropagation(); setWonTarget(row); }}
                 title="Marcar como ganho"
                 className="p-1.5 rounded-md text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors">
                 <Trophy size={14} />
@@ -228,7 +237,17 @@ export function CrmDealsPage() {
         columns={columns}
         data={data?.data || []}
         loading={isLoading}
-        emptyMessage="Nenhum negocio encontrado"
+        emptyMessage={hasActiveFilters ? (
+          <>
+            Nenhum negocio encontrado com esses filtros
+            <button
+              onClick={handleClearFilters}
+              className="block mx-auto mt-2 text-xs font-medium text-fyness-primary hover:underline"
+            >
+              Limpar filtros
+            </button>
+          </>
+        ) : 'Nenhum negocio encontrado'}
         emptyIcon={Target}
         onRowClick={(row) => navigate(`/crm/deals/${row.id}`)}
         sortConfig={sortConfig}
@@ -261,6 +280,21 @@ export function CrmDealsPage() {
         message={`Tem certeza que deseja excluir "${deleteTarget?.title}"? Esta acao nao pode ser desfeita.`}
         variant="danger"
         loading={deleteMutation.isPending}
+      />
+
+      <CrmConfirmDialog
+        open={!!wonTarget}
+        onCancel={() => setWonTarget(null)}
+        onConfirm={() => {
+          wonMutation.mutate(wonTarget.id, {
+            onSuccess: () => setWonTarget(null),
+          });
+        }}
+        title="Marcar negocio como ganho"
+        message={`Marcar "${wonTarget?.title}" como ganho? O negocio sera movido para a etapa de fechamento da pipeline.`}
+        confirmLabel="Marcar como ganho"
+        variant="info"
+        loading={wonMutation.isPending}
       />
     </div>
   );

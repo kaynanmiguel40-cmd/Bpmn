@@ -5,20 +5,23 @@ import { toast } from '../../../contexts/ToastContext';
 import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany, softDeleteCrmCompany } from '../services/crmCompaniesService';
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
 import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, ensureGeneralPipeline, consolidateSalesPipelinesIntoGeneral, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
-import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
+import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, markDealAsChurned, reactivateChurnedDeal, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
 import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal } from '../services/crmActivitiesService';
 import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel } from '../services/crmDashboardService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
-import { getCrmProspects, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
-import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress, getActiveFunnelGoals } from '../services/crmGoalsService';
-import { getSalesReport, getFunnelReport, getForecastReport, getLearnedProbabilities } from '../services/crmReportsService';
+import { getCrmProspects, getCrmProspectById, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
+import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
+import { getSalesReport, getLearnedProbabilities } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
 import { getCrmCalendarActivities, getLeadTimeline } from '../services/crmAgendaService';
-import { getLeadReport, saveLeadReport, getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
+import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
 import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead } from '../services/crmMessagesService';
 import { listCrmWhatsAppInstances, getCrmWhatsAppInstanceByName, getDefaultCrmWhatsAppInstance, createCrmWhatsAppInstance } from '../services/crmWhatsAppInstanceService';
+import { getCrmPartners, getLeadsByPartner, createCrmPartner, updateCrmPartner, softDeleteCrmPartner } from '../services/crmPartnersService';
+import { getCrmLeadSources, createCrmLeadSource, deleteCrmLeadSource } from '../services/crmLeadSourcesService';
+import { getCrmWorkspaceSettingsRemote, updateCrmWorkspaceSettingsRemote } from '../services/crmWorkspaceSettingsService';
 
 // ==================== QUERY KEYS ====================
 
@@ -34,7 +37,6 @@ export const crmQueryKeys = {
   activities: ['crm', 'activities'],
   calendarActivities: (start, end) => ['crm', 'calendarActivities', start, end],
   leadTimeline: (key) => ['crm', 'leadTimeline', key],
-  leadReport: (key) => ['crm', 'leadReport', key],
   dailyReport: (date, ownerId) => ['crm', 'dailyReport', date, ownerId || 'me'],
   weeklyReport: (weekStart, ownerId) => ['crm', 'weeklyReport', weekStart, ownerId || 'me'],
   monthlyReport: (monthStart, ownerId) => ['crm', 'monthlyReport', monthStart, ownerId || 'me'],
@@ -45,8 +47,6 @@ export const crmQueryKeys = {
   dashboard: ['crm', 'dashboard'],
   bonificacao: (start, end) => ['crm', 'bonificacao', start, end],
   salesReport: (start, end) => ['crm', 'salesReport', start, end],
-  funnelReport: (id) => ['crm', 'funnelReport', id],
-  forecastReport: ['crm', 'forecastReport'],
   learnedProbabilities: (pipelineId) => ['crm', 'learnedProbabilities', pipelineId || 'all'],
   dailyScoreboard: (start, end) => ['crm', 'dailyScoreboard', start, end],
   dailyBriefing: ['crm', 'dailyBriefing'],
@@ -55,6 +55,7 @@ export const crmQueryKeys = {
   trafficByChannel: ['crm', 'trafficByChannel'],
   trafficOverTime: ['crm', 'trafficOverTime'],
   prospects: ['crm', 'prospects'],
+  prospect: (id) => ['crm', 'prospect', id],
   automations: ['crm', 'automations'],
   automationLogs: ['crm', 'automationLogs'],
   automationLogStats: (days) => ['crm', 'automationLogStats', days],
@@ -67,6 +68,10 @@ export const crmQueryKeys = {
   inbox: ['crm', 'inbox'],
   whatsappInstances: ['crm', 'whatsappInstances'],
   whatsappInstance: (name) => ['crm', 'whatsappInstance', name],
+  partners: ['crm', 'partners'],
+  leadsByPartner: (name) => ['crm', 'leadsByPartner', name],
+  leadSources: ['crm', 'leadSources'],
+  workspaceSettings: ['crm', 'workspaceSettings'],
 };
 
 // ==================== COMPANIES ====================
@@ -120,6 +125,88 @@ export function useDeleteCrmCompany() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.companies });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       toast('Empresa excluida', 'success');
+    },
+  });
+}
+
+// ==================== PARTNERS (parceiros indicadores) ====================
+
+export function useCrmPartners() {
+  return useQuery({
+    queryKey: crmQueryKeys.partners,
+    queryFn: getCrmPartners,
+    staleTime: 30_000,
+  });
+}
+
+export function useLeadsByPartner(name) {
+  return useQuery({
+    queryKey: crmQueryKeys.leadsByPartner(name),
+    queryFn: () => getLeadsByPartner(name),
+    enabled: !!name,
+  });
+}
+
+export function useCreateCrmPartner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createCrmPartner,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.partners });
+      toast('Parceiro criado com sucesso', 'success');
+    },
+  });
+}
+
+export function useUpdateCrmPartner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }) => updateCrmPartner(id, updates),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.partners });
+      toast('Parceiro atualizado', 'success');
+    },
+  });
+}
+
+export function useDeleteCrmPartner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: softDeleteCrmPartner,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.partners });
+      toast('Parceiro excluido', 'success');
+    },
+  });
+}
+
+// ==================== LEAD SOURCES (origem do lead) ====================
+
+export function useCrmLeadSources() {
+  return useQuery({
+    queryKey: crmQueryKeys.leadSources,
+    queryFn: getCrmLeadSources,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateCrmLeadSource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createCrmLeadSource,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.leadSources });
+    },
+  });
+}
+
+export function useDeleteCrmLeadSource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteCrmLeadSource,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.leadSources });
+      toast('Origem removida', 'success');
     },
   });
 }
@@ -524,6 +611,36 @@ export function useMarkDealLost() {
   });
 }
 
+export function useMarkDealChurned() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: markDealAsChurned,
+    onSuccess: () => toast('Cliente marcado como cancelado', 'warning'),
+    onError: () => toast('Erro ao marcar cliente como cancelado', 'error'),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.companies });
+      qc.invalidateQueries({ queryKey: ['crm', 'company'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+    },
+  });
+}
+
+export function useReactivateChurnedDeal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: reactivateChurnedDeal,
+    onSuccess: () => toast('Cliente reativado', 'success'),
+    onError: () => toast('Erro ao reativar cliente', 'error'),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.companies });
+      qc.invalidateQueries({ queryKey: ['crm', 'company'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+    },
+  });
+}
+
 // ==================== DEAL DETAIL ====================
 
 export function useDealActivities(dealId) {
@@ -571,31 +688,6 @@ export function useLeadTimeline({ dealId = null, contactId = null } = {}) {
     queryFn: () => getLeadTimeline({ dealId, contactId }),
     enabled: !!(dealId || contactId),
     staleTime: 15_000,
-  });
-}
-
-// Relato diario que o vendedor escreve sobre um lead (painel da Agenda).
-export function useLeadDailyReport({ dealId = null, contactId = null, date } = {}) {
-  return useQuery({
-    queryKey: crmQueryKeys.leadReport(`${dealId || ''}:${contactId || ''}:${date || ''}`),
-    queryFn: () => getLeadReport({ dealId, contactId, date }),
-    enabled: !!(dealId || contactId) && !!date,
-    staleTime: 10_000,
-  });
-}
-
-export function useSaveLeadReport() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: saveLeadReport,
-    onSuccess: (_res, vars) => {
-      qc.invalidateQueries({ queryKey: crmQueryKeys.leadReport(`${vars.dealId || ''}:${vars.contactId || ''}:${vars.date || ''}`) });
-      qc.invalidateQueries({ queryKey: ['crm', 'dailyReport'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'weeklyReport'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'monthlyReport'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'ownerReportIndex'] });
-    },
-    onError: (err) => toast(`Erro ao salvar relato: ${err.message}`, 'error'),
   });
 }
 
@@ -712,6 +804,9 @@ export function useCompleteCrmActivity() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
       toast('Atividade concluida', 'success');
+    },
+    onError: (err) => {
+      toast(`Erro ao concluir atividade: ${err.message}`, 'error');
     },
   });
 }
@@ -845,6 +940,29 @@ export function useCrmDashboardKPIs(range, scope = 'sales') {
   });
 }
 
+// Config de workspace compartilhada (hoje so a Meta de MRR — ver
+// crmWorkspaceSettingsService.js). Antes vivia so no localStorage do
+// navegador; quem definisse a meta numa maquina, via mrrGoal=0 em qualquer
+// outro device/usuario.
+export function useCrmWorkspaceSettings() {
+  return useQuery({
+    queryKey: crmQueryKeys.workspaceSettings,
+    queryFn: getCrmWorkspaceSettingsRemote,
+    staleTime: 60_000,
+  });
+}
+
+export function useUpdateCrmWorkspaceSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: updateCrmWorkspaceSettingsRemote,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.workspaceSettings });
+      toast('Configuracao salva', 'success');
+    },
+  });
+}
+
 export function useBonificacaoProgress(startDate, endDate) {
   return useQuery({
     queryKey: crmQueryKeys.bonificacao(startDate, endDate),
@@ -862,16 +980,6 @@ export function useSalesFunnel(range, scope = 'sales', ownerId = null) {
   });
 }
 
-// Metas de funil ativas no periodo (planejador reverso) — overlay no funil.
-export function useActiveFunnelGoals(range, ownerId = null) {
-  return useQuery({
-    queryKey: [...crmQueryKeys.goals, 'funnel-active', range || null, ownerId || 'all'],
-    queryFn: () => getActiveFunnelGoals(range, ownerId),
-    enabled: !!range?.start && !!range?.end,
-    staleTime: 60_000,
-  });
-}
-
 // ==================== REPORTS ====================
 
 export function useSalesReport(startDate, endDate) {
@@ -880,23 +988,6 @@ export function useSalesReport(startDate, endDate) {
     queryFn: () => getSalesReport(startDate, endDate),
     enabled: !!startDate && !!endDate,
     staleTime: 120_000,
-  });
-}
-
-export function useFunnelReport(pipelineId) {
-  return useQuery({
-    queryKey: crmQueryKeys.funnelReport(pipelineId),
-    queryFn: () => getFunnelReport(pipelineId),
-    enabled: !!pipelineId,
-    staleTime: 60_000,
-  });
-}
-
-export function useForecastReport() {
-  return useQuery({
-    queryKey: crmQueryKeys.forecastReport,
-    queryFn: getForecastReport,
-    staleTime: 60_000,
   });
 }
 
@@ -1009,6 +1100,19 @@ export function useCrmProspects(filters) {
     queryFn: () => getCrmProspects(filters),
     staleTime: 10 * 60_000, // 10 min — economizar creditos da API Casa dos Dados
     enabled: !!filters,     // so dispara quando ha filtros reais (apos clicar "Gerar Lista")
+  });
+}
+
+/**
+ * Busca 1 prospect por id — ex: cabecalho do Inbox pra resolver nome/telefone
+ * de uma conversa nova que ainda nao tem historico de mensagem.
+ */
+export function useCrmProspect(id) {
+  return useQuery({
+    queryKey: crmQueryKeys.prospect(id),
+    queryFn: () => getCrmProspectById(id),
+    enabled: !!id,
+    staleTime: 30_000,
   });
 }
 

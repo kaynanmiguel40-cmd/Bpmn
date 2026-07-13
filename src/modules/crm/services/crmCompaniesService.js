@@ -60,8 +60,12 @@ const companyService = createCRUDService({
 export async function getCrmCompanies(filters = {}) {
   const { search, segment, page, perPage = 25, sortBy, sortOrder } = filters;
 
-  // Se tem filtros avancados, fazer query customizada
-  if (search || segment || sortBy) {
+  // Query bounded sempre que houver filtro OU paginacao explicita — inclui
+  // o caso de busca vazia com perPage (comboboxes de empresa em Contato/Deal/
+  // Atividade sempre mandam perPage, mesmo antes de o usuario digitar nada).
+  // Sem isso, abrir "Novo Contato" sem buscar caia no getAll() abaixo e
+  // baixava a tabela inteira de empresas (egress desnecessario).
+  if (search || segment || sortBy || filters.perPage != null || page) {
     let query = supabase
       .from('crm_companies')
       .select('*', { count: 'exact' })
@@ -80,6 +84,8 @@ export async function getCrmCompanies(filters = {}) {
     if (page && perPage) {
       const from = (page - 1) * perPage;
       query = query.range(from, from + perPage - 1);
+    } else if (perPage) {
+      query = query.limit(perPage);
     }
 
     const { data, error, count } = await query;
@@ -93,8 +99,8 @@ export async function getCrmCompanies(filters = {}) {
     };
   }
 
-  // Sem filtros: usar factory. Normalizar para { data, count } — consumidores
-  // (ex: EntityCombobox) esperam esse shape.
+  // Sem filtro nem paginacao — unico caso de "trazer tudo": usar factory.
+  // Normalizar para { data, count } — consumidores esperam esse shape.
   const all = await companyService.getAll();
   return { data: all, count: all.length };
 }
@@ -107,7 +113,7 @@ export async function getCrmCompanyById(id) {
     .select(`
       *,
       crm_contacts(id, name, email, phone, position, status, deleted_at),
-      crm_deals(id, title, value, status, stage_id, created_at, deleted_at)
+      crm_deals(id, title, value, mrr, status, stage_id, churned_at, created_at, deleted_at)
     `)
     .eq('id', id)
     .is('deleted_at', null)
@@ -132,7 +138,8 @@ export async function getCrmCompanyById(id) {
     .filter(r => !r.deleted_at)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .map(r => ({
-      id: r.id, title: r.title, value: r.value, status: r.status, stageId: r.stage_id,
+      id: r.id, title: r.title, value: r.value, mrr: r.mrr || 0, status: r.status, stageId: r.stage_id,
+      churnedAt: r.churned_at || null,
     }));
 
   return company;
@@ -141,6 +148,21 @@ export async function getCrmCompanyById(id) {
 export async function createCrmCompany(data) {
   const session = await supabase.auth.getSession();
   const userId = session.data?.session?.user?.id;
+
+  // Aviso (nao bloqueia) de possivel duplicata por CNPJ — diferente do fluxo
+  // prospect->pipeline, criacao manual de empresa nao tem dedup automatico.
+  if (data.cnpj) {
+    const { data: dup } = await supabase
+      .from('crm_companies')
+      .select('id, name')
+      .eq('cnpj', data.cnpj)
+      .is('deleted_at', null)
+      .limit(1);
+    if (dup?.length) {
+      toast(`Ja existe uma empresa com esse CNPJ: "${dup[0].name}" — verifique antes de duplicar`, 'warning');
+    }
+  }
+
   return companyService.create(data, { created_by: userId });
 }
 

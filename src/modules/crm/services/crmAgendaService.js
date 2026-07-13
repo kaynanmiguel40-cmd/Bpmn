@@ -239,6 +239,10 @@ export async function getLeadTimeline({ dealId = null, contactId = null } = {}) 
       activityType: a.type,
       title: a.title,
       detail: a.description || '',
+      // Input/output capturados ao concluir (CompleteActivityModal) — mesmo
+      // par "Você"/"Lead" mostrado no Histórico da página do Negócio.
+      deliveryInput: a.deliveryInput || '',
+      deliveryReport: a.deliveryReport || '',
       date: when,
       endDate: a.endDate || null,
       completedAt: a.completedAt || null,

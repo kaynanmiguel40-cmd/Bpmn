@@ -130,6 +130,22 @@ export async function getCrmContactById(id) {
   return contact;
 }
 
+/**
+ * Busca contato existente por email ou telefone (nessa ordem). Usado so pra
+ * avisar o usuario de possivel duplicata na criacao manual — nao bloqueia.
+ */
+async function findDuplicateContact(email, phone) {
+  if (email) {
+    const { data } = await supabase.from('crm_contacts').select('id, name').eq('email', email).is('deleted_at', null).limit(1);
+    if (data?.length) return data[0];
+  }
+  if (phone) {
+    const { data } = await supabase.from('crm_contacts').select('id, name').eq('phone', phone).is('deleted_at', null).limit(1);
+    if (data?.length) return data[0];
+  }
+  return null;
+}
+
 export async function createCrmContact(data) {
   const session = await supabase.auth.getSession();
   const userId = session.data?.session?.user?.id;
@@ -138,6 +154,14 @@ export async function createCrmContact(data) {
   if (!data.avatarColor) {
     data.avatarColor = avatarColors[Math.floor(Math.random() * avatarColors.length)];
   }
+
+  // Criacao manual nao passa pelo dedup automatico do import CSV — so avisa,
+  // nao bloqueia (podem existir contatos parecidos legitimos).
+  const dup = await findDuplicateContact(data.email, data.phone);
+  if (dup) {
+    toast(`Ja existe um contato parecido: "${dup.name}" — verifique antes de duplicar`, 'warning');
+  }
+
   return contactService.create(data, { created_by: userId });
 }
 
@@ -158,6 +182,38 @@ export async function softDeleteCrmContact(id) {
   return true;
 }
 
+/**
+ * Parser de 1 linha CSV com suporte a campo entre aspas (pode conter virgula
+ * e aspas escapadas ""). Split ingenuo por virgula quebrava qualquer campo
+ * com virgula dentro (ex: endereco "Rua X, 123"), deslocando as colunas
+ * seguintes e corrompendo a linha inteira silenciosamente.
+ */
+function parseCsvLine(line) {
+  const out = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        cur += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      out.push(cur.trim());
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur.trim());
+  return out;
+}
+
 export async function importContactsCSV(csvText) {
   const lines = csvText.trim().split('\n');
   if (lines.length < 2) {
@@ -165,14 +221,15 @@ export async function importContactsCSV(csvText) {
     return [];
   }
 
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const headers = parseCsvLine(lines[0]).map(h => h.trim().toLowerCase());
   const contacts = [];
 
   const session = await supabase.auth.getSession();
   const userId = session.data?.session?.user?.id;
 
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    if (!lines[i].trim()) continue;
+    const values = parseCsvLine(lines[i]);
     const row = {};
     headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
 
@@ -194,9 +251,33 @@ export async function importContactsCSV(csvText) {
     return [];
   }
 
+  // Dedup contra contatos existentes por e-mail ou telefone (evita duplicar
+  // ao reimportar uma lista sobreposta).
+  const emails = contacts.map(c => c.email).filter(Boolean);
+  const phones = contacts.map(c => c.phone).filter(Boolean);
+  let existing = [];
+  if (emails.length || phones.length) {
+    const orParts = [];
+    if (emails.length) orParts.push(`email.in.(${emails.map(e => `"${e}"`).join(',')})`);
+    if (phones.length) orParts.push(`phone.in.(${phones.map(p => `"${p}"`).join(',')})`);
+    const { data } = await supabase.from('crm_contacts').select('email, phone').is('deleted_at', null).or(orParts.join(','));
+    existing = data || [];
+  }
+  const existingEmails = new Set(existing.map(e => e.email).filter(Boolean));
+  const existingPhones = new Set(existing.map(e => e.phone).filter(Boolean));
+  const toInsert = contacts.filter(c =>
+    !(c.email && existingEmails.has(c.email)) && !(c.phone && existingPhones.has(c.phone))
+  );
+  const skipped = contacts.length - toInsert.length;
+
+  if (toInsert.length === 0) {
+    toast(`Nenhum contato novo — os ${contacts.length} do arquivo ja existem no CRM`, 'warning');
+    return [];
+  }
+
   const { data, error } = await supabase
     .from('crm_contacts')
-    .insert(contacts)
+    .insert(toInsert)
     .select();
 
   if (error) {
@@ -204,7 +285,7 @@ export async function importContactsCSV(csvText) {
     return [];
   }
 
-  toast(`${(data || []).length} contato(s) importado(s)`, 'success');
+  toast(`${(data || []).length} contato(s) importado(s)` + (skipped > 0 ? ` — ${skipped} ja existiam e foram ignorados` : ''), 'success');
   return (data || []).map(dbToCrmContact);
 }
 

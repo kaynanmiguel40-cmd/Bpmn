@@ -21,15 +21,16 @@ export interface CrmDeal {
   contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
-  contact: { id: string; name: string; avatarColor?: string | null; email?: string | null } | null;
+  contact: { id: string; name: string; avatarColor?: string | null; email?: string | null; phone?: string | null } | null;
   companyId: string | null;
-  company: { id: string; name: string; segment?: string | null } | null;
+  company: { id: string; name: string; segment?: string | null; phone?: string | null } | null;
   pipelineId: string | null;
   stageId: string | null;
   stage: { id: string; name: string; color?: string | null } | null;
   expectedCloseDate: string | null;
   closedAt: string | null;
   status: DealStatus;
+  churnedAt: string | null;
   lostReason: string | null;
   segment: string | null;
   source: string | null;
@@ -53,15 +54,16 @@ export interface CrmDealRow {
   contact_name?: string | null;
   contact_phone?: string | null;
   contact_email?: string | null;
-  crm_contacts?: { id: string; name: string; avatar_color?: string | null; email?: string | null } | null;
+  crm_contacts?: { id: string; name: string; avatar_color?: string | null; email?: string | null; phone?: string | null } | null;
   company_id?: string | null;
-  crm_companies?: { id: string; name: string; segment?: string | null } | null;
+  crm_companies?: { id: string; name: string; segment?: string | null; phone?: string | null } | null;
   pipeline_id?: string | null;
   stage_id?: string | null;
   crm_pipeline_stages?: { id: string; name: string; color?: string | null } | null;
   expected_close_date?: string | null;
   closed_at?: string | null;
   status?: DealStatus | null;
+  churned_at?: string | null;
   lost_reason?: string | null;
   segment?: string | null;
   source?: string | null;
@@ -107,12 +109,14 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
       name: row.crm_contacts.name,
       avatarColor: row.crm_contacts.avatar_color,
       email: row.crm_contacts.email,
+      phone: row.crm_contacts.phone,
     } : null,
     companyId: row.company_id || null,
     company: row.crm_companies ? {
       id: row.crm_companies.id,
       name: row.crm_companies.name,
       segment: row.crm_companies.segment || null,
+      phone: row.crm_companies.phone,
     } : null,
     pipelineId: row.pipeline_id || null,
     stageId: row.stage_id || null,
@@ -124,6 +128,7 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
     expectedCloseDate: row.expected_close_date || null,
     closedAt: row.closed_at || null,
     status: row.status || 'open',
+    churnedAt: row.churned_at || null,
     lostReason: row.lost_reason || null,
     segment: row.segment || null,
     source: row.source || null,
@@ -138,6 +143,25 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at || null,
+  };
+}
+
+/**
+ * Resolve o nome/telefone/email "do lead" de um deal com UMA regra só:
+ * o registro vinculado (contato, depois empresa) sempre vence; o texto
+ * digitado direto no deal (contactName/contactPhone/contactEmail — usado
+ * quando o negocio foi criado sem vincular um Contato) e so um fallback.
+ *
+ * Existiam 4 ordens de prioridade diferentes espalhadas pelo Pipeline/Deal
+ * Detail, cada uma resolvendo esse empate de um jeito — o mesmo lead podia
+ * mostrar telefone diferente dependendo da tela. Use esta função em vez de
+ * repetir o fallback manual.
+ */
+export function getDealLeadInfo(deal: Pick<CrmDeal, 'contact' | 'company' | 'contactName' | 'contactPhone' | 'contactEmail'> | null | undefined) {
+  return {
+    name: deal?.contact?.name || deal?.company?.name || deal?.contactName || '',
+    phone: deal?.contact?.phone || deal?.contactPhone || deal?.company?.phone || '',
+    email: deal?.contact?.email || deal?.contactEmail || '',
   };
 }
 
@@ -217,7 +241,7 @@ export async function getCrmDeals(filters: CrmDealFilters = {}): Promise<{ data:
 export async function getCrmDealById(id: string): Promise<CrmDeal | null> {
   const { data, error } = await supabase
     .from('crm_deals')
-    .select('*, crm_contacts(id, name, avatar_color, email, phone, position), crm_companies(id, name, segment), crm_pipeline_stages(id, name, color), team_members(id, name, color)')
+    .select('*, crm_contacts(id, name, avatar_color, email, phone, position), crm_companies(id, name, segment, phone), crm_pipeline_stages(id, name, color), team_members(id, name, color)')
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -534,6 +558,33 @@ export async function markDealAsLost(dealId: string, reason = ''): Promise<CrmDe
   const result = dbToCrmDeal(data as CrmDealRow);
   if (result) result._movedTo = movedTo;
   return result;
+}
+
+/**
+ * Marca um cliente (deal ganho) como cancelado. O status continua 'won' —
+ * churn e um estado a mais, nao desfaz o historico da venda.
+ */
+export async function markDealAsChurned(dealId: string): Promise<CrmDeal | null> {
+  const { data, error } = await supabase
+    .from('crm_deals')
+    .update({ churned_at: new Date().toISOString() })
+    .eq('id', dealId)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return dbToCrmDeal(data as CrmDealRow);
+}
+
+/** Reativa um cliente cancelado (limpa churned_at). */
+export async function reactivateChurnedDeal(dealId: string): Promise<CrmDeal | null> {
+  const { data, error } = await supabase
+    .from('crm_deals')
+    .update({ churned_at: null })
+    .eq('id', dealId)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return dbToCrmDeal(data as CrmDealRow);
 }
 
 // ==================== DEAL ACTIVITIES & HISTORY ====================

@@ -5,10 +5,11 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle, Repeat, Upload, Combine } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle, Repeat, Upload, Combine, ArrowLeftRight } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
 import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral } from '../hooks/useCrmQueries';
+import { getDealLeadInfo } from '../services/crmDealsService';
 import { useTeamMembers } from '../../../hooks/queries';
 import { useUrlState } from '../../../hooks/useUrlState';
 import { supabase } from '../../../lib/supabase';
@@ -69,13 +70,25 @@ function getWhatsappLink(phone) {
 
 // ==================== DEAL CARD ====================
 
-function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
+function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onMoveStage }) {
   const navigate = useNavigate();
   const isDragging = useRef(false);
   const cadenceMutation = useCreateCadence();
+  const [stagePickerOpen, setStagePickerOpen] = useState(false);
+  const stagePickerRef = useRef(null);
 
-  // Telefone preferencial: contactPhone do deal -> contact.phone joineado -> company.phone
-  const phone = deal.contactPhone || deal.contact?.phone || deal.company?.phone || '';
+  useEffect(() => {
+    if (!stagePickerOpen) return;
+    const handleClick = (e) => { if (stagePickerRef.current && !stagePickerRef.current.contains(e.target)) setStagePickerOpen(false); };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [stagePickerOpen]);
+
+  // Etapas pra onde este deal pode ir (exclui a atual)
+  const otherStages = allStages.filter(s => s.id !== deal.stageId);
+
+  // Contato/empresa vinculado sempre vence; contactPhone digitado e so fallback (getDealLeadInfo).
+  const { phone } = getDealLeadInfo(deal);
   const whatsappLink = getWhatsappLink(phone);
 
   const health = getStageHealth(deal);
@@ -238,13 +251,17 @@ function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
           </button>
         )}
         {deal.status === 'open' && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onMarkLost(deal.id); }}
-            className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 shadow-sm border border-rose-200 dark:border-rose-800"
-            title="Marcar como perdido"
-          >
-            Perdido
-          </button>
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); onMarkLost(deal.id); }}
+              className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 shadow-sm border border-rose-200 dark:border-rose-800"
+              title="Marcar como perdido"
+            >
+              Perdido
+            </button>
+            {/* Separador: destrutivo (Excluir) nao pode ficar colado no "Perdido" */}
+            <span className="w-px h-3.5 bg-slate-200 dark:bg-slate-700/70 mx-0.5 shrink-0" aria-hidden="true" />
+          </>
         )}
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(deal); }}
@@ -254,6 +271,38 @@ function DealCard({ deal, onDragStart, onMarkLost, onDelete }) {
           <Trash2 size={11} />
         </button>
       </div>
+
+      {/* Mover de etapa — sempre visivel (nao depende de hover), unica alternativa
+          ao drag and drop nativo em telas de toque, onde eventos HTML5 nao disparam */}
+      {otherStages.length > 0 && (
+        <div className="absolute right-1.5 bottom-1.5 z-10" ref={stagePickerRef}>
+          <button
+            onClick={(e) => { e.stopPropagation(); setStagePickerOpen(o => !o); }}
+            title="Mover de etapa"
+            className="p-1 rounded bg-white dark:bg-slate-800 text-slate-400 hover:text-fyness-primary hover:bg-fyness-primary/10 shadow-sm border border-slate-200 dark:border-slate-700"
+          >
+            <ArrowLeftRight size={11} />
+          </button>
+          {stagePickerOpen && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="absolute right-0 bottom-full mb-1 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+            >
+              {otherStages.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => { onMoveStage(deal.id, s.id); setStagePickerOpen(false); }}
+                  className="w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                >
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -335,7 +384,13 @@ function QuickAddInline({ onCreate, onCancel, isPending }) {
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); submit(); }
-          if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            // So descarta direto se nao ha rascunho — com texto digitado,
+            // confirma antes (Esc nao pode apagar o titulo silenciosamente).
+            if (title.trim() && !window.confirm('Descartar o negocio que voce esta digitando?')) return;
+            onCancel();
+          }
         }}
         onBlur={() => { if (!title.trim()) onCancel(); }}
         placeholder="Titulo do negocio (Enter)"
@@ -359,7 +414,7 @@ function QuickAddInline({ onCreate, onCancel, isPending }) {
 
 // ==================== STAGE COLUMN ====================
 
-function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete }) {
+function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete, allStages, onMoveStage }) {
   const isDragOver = dragOverStageId === stage.id;
   const learnedStage = learned?.stages?.find(s => s.position === stage.position);
   const showConv = learnedStage && learnedStage.sampleSize >= 5;
@@ -443,9 +498,11 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           <DealCard
             key={deal.id}
             deal={deal}
+            allStages={allStages}
             onDragStart={onDragStart}
             onMarkLost={onMarkLost}
             onDelete={onDelete}
+            onMoveStage={onMoveStage}
           />
         ))}
 
@@ -490,7 +547,7 @@ function LostDealCard({ deal, onDelete }) {
 
       {(deal.contact || deal.company) && (
         <div className="text-xs text-slate-500 dark:text-slate-400 truncate mb-1">
-          {deal.contact?.name || deal.contactName || deal.company?.name}
+          {getDealLeadInfo(deal).name}
         </div>
       )}
 
@@ -843,7 +900,7 @@ function PipelineListView({ pipelineData, filterDeals, onMarkLost, onDelete }) {
                   <td className="px-4 py-2.5">
                     <div className="font-medium text-slate-800 dark:text-slate-200">{deal.title}</div>
                     <div className="text-xs text-slate-400">
-                      {deal.company?.name || deal.contact?.name || ''}
+                      {getDealLeadInfo(deal).name}
                     </div>
                   </td>
                   <td className="px-4 py-2.5">
@@ -1123,6 +1180,24 @@ export function CrmPipelinePage() {
     draggingDealId.current = null;
   };
 
+  // Mesmo efeito do drop, mas via clique no botao "mover de etapa" do card —
+  // fallback pra touch/mobile, onde o drag and drop HTML5 nao dispara.
+  const handleMoveStage = (dealId, newStageId) => {
+    moveMutation.mutate({ dealId, stageId: newStageId }, {
+      onSuccess: (data) => {
+        if (data?.status === 'won') {
+          setShowConfetti(true);
+          playWinSound();
+        }
+      },
+    });
+  };
+
+  const allPipelineStages = useMemo(
+    () => (pipelineData?.stages || []).map(s => ({ id: s.id, name: s.name, color: s.color })),
+    [pipelineData],
+  );
+
   const isLoading = loadingPipelines || loadingDeals;
 
   return (
@@ -1329,6 +1404,8 @@ export function CrmPipelinePage() {
               onMarkLost={(dealId) => setLostModalDealId(dealId)}
               onDelete={(deal) => setDeleteDealTarget(deal)}
               onDragStart={(id) => { draggingDealId.current = id; }}
+              allStages={allPipelineStages}
+              onMoveStage={handleMoveStage}
               onDrop={{
                 execute: handleDrop,
                 setDragOver: setDragOverStageId,

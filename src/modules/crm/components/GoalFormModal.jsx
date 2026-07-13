@@ -3,13 +3,12 @@
  * Inclui sugestao SMART baseada em dados reais do CRM.
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import { Brain, Sparkles, AlertTriangle, ArrowRight, Check, DollarSign, Target } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Brain, Sparkles, AlertTriangle, ArrowRight, Check } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { useCreateCrmGoal, useUpdateCrmGoal } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
 import { getSmartSuggestion } from '../services/crmGoalsService';
-import { buildFunnelPlan, FUNNEL_BASES, funnelPlanHeadline } from '../lib/funnelGoals';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Ativa' },
@@ -20,9 +19,6 @@ const STATUS_OPTIONS = [
 const EMPTY_FORM = {
   title: '',
   description: '',
-  kind: 'revenue',
-  funnelBase: 'sales',
-  conversionRate: '',
   type: 'individual',
   ownerId: '',
   targetValue: '',
@@ -45,7 +41,7 @@ function getDefaultPeriod() {
 const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 
-export function GoalFormModal({ open, onClose, goal = null, defaultType = 'individual', defaultKind = 'revenue' }) {
+export function GoalFormModal({ open, onClose, goal = null, defaultType = 'individual' }) {
   const isEdit = !!goal?.id;
   const createMutation = useCreateCrmGoal();
   const updateMutation = useUpdateCrmGoal();
@@ -67,9 +63,6 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
       setForm({
         title: goal.title || '',
         description: goal.description || '',
-        kind: goal.kind || 'revenue',
-        funnelBase: goal.funnelBase || 'sales',
-        conversionRate: goal.conversionRate != null ? String(goal.conversionRate) : '',
         type: goal.type || 'individual',
         ownerId: goal.ownerId || '',
         targetValue: goal.targetValue || '',
@@ -83,26 +76,12 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
       setSmartOpen(false);
     } else if (open) {
       const defaults = getDefaultPeriod();
-      setForm({ ...EMPTY_FORM, ...defaults, type: defaultType, kind: defaultKind });
+      setForm({ ...EMPTY_FORM, ...defaults, type: defaultType });
       setErrors({});
       setSmartData(null);
       setSmartOpen(false);
     }
   }, [open, goal]);
-
-  const isFunnel = form.kind === 'funnel';
-  const baseMeta = FUNNEL_BASES.find(b => b.value === form.funnelBase) || FUNNEL_BASES[0];
-
-  // Preview ao vivo do planejador reverso.
-  const plan = useMemo(() => (
-    isFunnel
-      ? buildFunnelPlan({
-          base: form.funnelBase,
-          targetCount: parseFloat(form.targetValue),
-          conversionRate: parseFloat(form.conversionRate),
-        })
-      : null
-  ), [isFunnel, form.funnelBase, form.targetValue, form.conversionRate]);
 
   const setField = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -116,12 +95,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
     if (!form.periodEnd) errs.periodEnd = 'Data fim e obrigatoria';
     if (form.type === 'individual' && !form.ownerId) errs.ownerId = 'Selecione um responsavel';
     const target = parseFloat(form.targetValue);
-    if (!target || target <= 0) errs.targetValue = isFunnel ? 'Informe um numero alvo maior que 0' : 'Valor alvo deve ser maior que 0';
-    if (isFunnel) {
-      const rate = parseFloat(form.conversionRate);
-      if (!rate || rate <= 0) errs.conversionRate = 'Informe a taxa de conversao';
-      else if (rate > 100) errs.conversionRate = 'Taxa deve ser ate 100%';
-    }
+    if (!target || target <= 0) errs.targetValue = 'Valor alvo deve ser maior que 0';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -133,9 +107,6 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
     const data = {
       title: form.title.trim(),
       description: form.description.trim(),
-      kind: form.kind,
-      funnelBase: isFunnel ? form.funnelBase : null,
-      conversionRate: isFunnel ? (parseFloat(form.conversionRate) || 0) : null,
       type: form.type,
       ownerId: form.type === 'individual' ? form.ownerId || null : null,
       targetValue: parseFloat(form.targetValue) || 0,
@@ -210,35 +181,6 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
       }
     >
       <form id="goal-form" onSubmit={handleSubmit} className="space-y-4">
-        {/* Tipo de meta: Valor (R$) ou Funil (quantidade + conversão) */}
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { value: 'revenue', label: 'Meta de Valor', sub: 'em R$', icon: DollarSign },
-            { value: 'funnel', label: 'Meta de Funil', sub: 'vendas / ligações', icon: Target },
-          ].map(opt => {
-            const OptIcon = opt.icon;
-            const active = form.kind === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setField('kind', opt.value)}
-                className={`flex items-center gap-2.5 px-4 py-3 rounded-lg border text-left transition-colors ${
-                  active
-                    ? 'border-fyness-primary bg-fyness-primary/10 text-fyness-primary'
-                    : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                }`}
-              >
-                <OptIcon size={18} className="shrink-0" />
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold leading-tight">{opt.label}</span>
-                  <span className="block text-[11px] opacity-70 leading-tight">{opt.sub}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
         {/* Escopo: Individual ou Global */}
         <div className="flex gap-3">
           {[{ value: 'individual', label: 'Individual' }, { value: 'global', label: 'Global (Equipe)' }].map(opt => (
@@ -320,80 +262,6 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
           </div>
         </div>
 
-        {/* ===== Campos da META DE FUNIL (planejador reverso) ===== */}
-        {isFunnel && (
-          <div className="space-y-4">
-            {/* Base do funil: Vendas ou Ligações */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Meço a meta por</label>
-              <div className="flex gap-3">
-                {FUNNEL_BASES.map(opt => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setField('funnelBase', opt.value)}
-                    className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border transition-colors ${
-                      form.funnelBase === opt.value
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-                        : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Número alvo + taxa de conversão */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Nº de {baseMeta.unit} alvo *
-                </label>
-                <input type="number" min="0" step="1" value={form.targetValue}
-                  onChange={(e) => setField('targetValue', e.target.value)}
-                  placeholder={form.funnelBase === 'calls' ? '200' : '10'} className={fieldClass('targetValue')} />
-                {errors.targetValue && <p className="text-xs text-rose-500 mt-0.5">{errors.targetValue}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Taxa de conversão (%) *</label>
-                <input type="number" min="0" max="100" step="0.1" value={form.conversionRate}
-                  onChange={(e) => setField('conversionRate', e.target.value)}
-                  placeholder="5" className={fieldClass('conversionRate')} />
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  {form.funnelBase === 'calls' ? '% das ligações que viram venda' : '% dos leads que viram venda'}
-                </p>
-                {errors.conversionRate && <p className="text-xs text-rose-500 mt-0.5">{errors.conversionRate}</p>}
-              </div>
-            </div>
-
-            {/* Ajuste manual (contagem) */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Ajuste manual</label>
-              <input type="number" min="0" step="1" value={form.currentValue}
-                onChange={(e) => setField('currentValue', e.target.value)}
-                placeholder="0" className={fieldClass('currentValue')} />
-              <p className="text-[11px] text-slate-400 mt-0.5">Somado ao progresso automático (opcional)</p>
-            </div>
-
-            {/* Resumo do plano (a visualização Previsto × Real fica no Funil de Conversão) */}
-            {plan && (
-              <div className="flex items-start gap-2 rounded-lg border border-fyness-primary/20 bg-fyness-primary/5 dark:bg-fyness-primary/10 px-3 py-2.5">
-                <Target size={14} className="text-fyness-primary shrink-0 mt-0.5" />
-                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {funnelPlanHeadline(plan)}
-                  <span className="block text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                    Vira o previsto do funil (Leads {new Intl.NumberFormat('pt-BR').format(plan.stageTargets.lead)} → Fechamentos {new Intl.NumberFormat('pt-BR').format(plan.stageTargets.closing)}). Você acompanha o Previsto × Real no Funil de Conversão.
-                  </span>
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ===== Campos da META DE VALOR (R$) ===== */}
-        {!isFunnel && (
-        <>
         {/* Valor alvo + Botao SMART */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -506,8 +374,6 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
               </div>
             ) : null}
           </div>
-        )}
-        </>
         )}
 
         {/* Status (so edit) */}

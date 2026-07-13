@@ -51,6 +51,14 @@ export function CompleteActivityModal({
   };
   handleConfirmRef.current = handleConfirm;
 
+  // "Pular" antes so fechava o modal sem concluir a tarefa (agia como
+  // Cancelar disfarcado). Agora pula so o preenchimento do input/output e
+  // ainda conclui a atividade — quem quer desistir de vez usa "Cancelar".
+  const handleSkipDetails = () => {
+    if (!canSubmit) return;
+    onSubmit?.({ input: '', output: '' });
+  };
+
   return (
     <CrmModal
       open={open}
@@ -64,7 +72,15 @@ export function CompleteActivityModal({
             disabled={isPending}
             className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
           >
-            Pular
+            Cancelar
+          </button>
+          <button
+            onClick={handleSkipDetails}
+            disabled={!canSubmit}
+            title="Conclui a tarefa sem preencher o que foi feito/respondido"
+            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+          >
+            Pular detalhes e concluir
           </button>
           <button
             onClick={handleConfirm}

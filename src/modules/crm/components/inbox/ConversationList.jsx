@@ -1,6 +1,24 @@
-import { useState, useMemo } from 'react';
-import { Search, MessageSquare, Image as ImageIcon, Video, Mic, FileText, Check, CheckCheck } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Search, MessageSquare, Image as ImageIcon, Video, Mic, FileText, Check, CheckCheck, Clock } from 'lucide-react';
 import { useCrmInboxConversations, useCrmWhatsAppInstances } from '../../hooks/useCrmQueries';
+import { useTeamMembers } from '../../../../hooks/queries';
+import { useAuth } from '../../../../contexts/AuthContext';
+
+// Limiar pra considerar uma conversa "sem resposta" — a ultima mensagem foi do
+// lead/cliente (inbound) e ninguem respondeu depois desse tanto de tempo.
+const OVERDUE_HOURS = 2;
+
+function hoursSince(iso) {
+  if (!iso) return null;
+  return (Date.now() - new Date(iso).getTime()) / 3_600_000;
+}
+
+/** Dono da conversa: contato usa quem criou; prospect usa o responsavel atribuido. */
+function resolveOwner(conv, membersById, membersByAuthId) {
+  if (conv.ownerMemberId) return membersById.get(conv.ownerMemberId) || null;
+  if (conv.ownerAuthUserId) return membersByAuthId.get(conv.ownerAuthUserId) || null;
+  return null;
+}
 
 function formatRelativeTime(iso) {
   if (!iso) return '';
@@ -20,6 +38,19 @@ function initials(name) {
   if (!name) return '?';
   return name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('');
 }
+
+function useDebounce(value, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
+// Sentinela pra aba "Todos" — distinto de qualquer telefone real e do `null`
+// que representa "nenhuma escolha ainda, usa o default (1o numero)".
+const ALL_INSTANCES = '__all__';
 
 // "fyness-principal" -> "Fyness", "lorena-consultora" -> "Lorena"
 function numberLabel(instanceName) {
@@ -56,22 +87,35 @@ function LastMessage({ conv }) {
   );
 }
 
-function ConversationItem({ conv, active, onSelect }) {
+function ConversationItem({ conv, active, onSelect, owner, overdueH, showInstanceBadge }) {
   const unread = conv.unreadCount > 0;
+  const overdue = overdueH != null;
   return (
     <button
       onClick={() => onSelect(conv)}
-      className={`w-full flex items-center gap-3 pl-3 pr-2 py-2.5 text-left transition-colors
+      className={`relative w-full flex items-center gap-3 pl-3 pr-2 py-2.5 text-left transition-colors
         ${active ? 'bg-[#f0f2f5] dark:bg-[#2a3942]' : 'hover:bg-[#f5f6f6] dark:hover:bg-[#202c33]'}`}
     >
-      {conv.avatarUrl ? (
-        <img src={conv.avatarUrl} alt={conv.otherName} referrerPolicy="no-referrer"
-          onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling.style.display = 'flex'; }}
-          className="w-12 h-12 rounded-full object-cover shrink-0 bg-slate-200 dark:bg-slate-700" />
-      ) : null}
-      <div className={`w-12 h-12 rounded-full items-center justify-center text-white text-base font-semibold shrink-0 ${conv.avatarUrl ? 'hidden' : 'flex'}`}
-        style={{ backgroundColor: conv.avatarColor || '#6366f1' }}>
-        {initials(conv.otherName)}
+      {overdue && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-rose-500" />}
+      <div className="relative shrink-0">
+        {conv.avatarUrl ? (
+          <img src={conv.avatarUrl} alt={conv.otherName} referrerPolicy="no-referrer"
+            onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling.style.display = 'flex'; }}
+            className="w-12 h-12 rounded-full object-cover bg-slate-200 dark:bg-slate-700" />
+        ) : null}
+        <div className={`w-12 h-12 rounded-full items-center justify-center text-white text-base font-semibold ${conv.avatarUrl ? 'hidden' : 'flex'}`}
+          style={{ backgroundColor: conv.avatarColor || '#6366f1' }}>
+          {initials(conv.otherName)}
+        </div>
+        {owner && (
+          <span
+            title={`Responsável: ${owner.name}`}
+            className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full ring-2 ring-white dark:ring-[#111b21] flex items-center justify-center text-[9px] font-bold text-white"
+            style={{ backgroundColor: owner.color || '#64748b' }}
+          >
+            {initials(owner.name)}
+          </span>
+        )}
       </div>
 
       <div className="flex-1 min-w-0 border-b border-black/5 dark:border-white/5 pb-2.5 -mb-2.5">
@@ -86,6 +130,19 @@ function ConversationItem({ conv, active, onSelect }) {
         <div className="flex items-center justify-between gap-2 mt-0.5">
           <LastMessage conv={conv} />
           <div className="flex items-center gap-1.5 shrink-0">
+            {showInstanceBadge && conv.instanceName && (
+              <span
+                title={`Número: ${numberLabel(conv.instanceName)}`}
+                className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+              >
+                {numberLabel(conv.instanceName)}
+              </span>
+            )}
+            {overdue && (
+              <span className="flex items-center gap-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                <Clock size={11} /> {Math.round(overdueH)}h
+              </span>
+            )}
             {conv.prospectId && !conv.contactId && !unread && (
               <span className="text-[9px] uppercase font-bold text-orange-500 tracking-wide">novo</span>
             )}
@@ -108,9 +165,34 @@ function ConversationItem({ conv, active, onSelect }) {
  */
 export function ConversationList({ activeKey, onSelect }) {
   const [search, setSearch] = useState('');
-  const [filterPhone, setFilterPhone] = useState(null); // null = Todos
-  const { data: conversations = [], isLoading } = useCrmInboxConversations();
+  const debouncedSearch = useDebounce(search, 300);
+  const [filterPhone, setFilterPhone] = useState(null); // null = ainda nao escolheu (usa default); ALL_INSTANCES = aba "Todos"
+  const [ownerFilter, setOwnerFilter] = useState('all'); // 'all' | 'mine'
+  const [onlyOverdue, setOnlyOverdue] = useState(false);
+  // Sem termo: {} — mesma query key que outros consumidores (ex: CrmInboxPage)
+  // usam sem opts, entao continua compartilhando cache/network com eles.
+  // Com termo: busca server-side (ver crmMessagesService.getInboxConversations),
+  // que nao depende da janela recente de mensagens e por isso acha conversas antigas.
+  const inboxOpts = useMemo(() => (
+    debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}
+  ), [debouncedSearch]);
+  const { data: conversations = [], isLoading } = useCrmInboxConversations(inboxOpts);
   const { data: instances = [] } = useCrmWhatsAppInstances();
+  const { data: members = [] } = useTeamMembers();
+  const { user } = useAuth();
+
+  const membersById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+  const membersByAuthId = useMemo(() => new Map(members.filter((m) => m.authUserId).map((m) => [m.authUserId, m])), [members]);
+  const myMemberId = useMemo(() => (user?.id ? membersByAuthId.get(user.id)?.id : null), [user, membersByAuthId]);
+
+  // Dono + "sem resposta" calculados uma vez por conversa (nao por render de item).
+  const enriched = useMemo(() => conversations.map((c) => {
+    const owner = resolveOwner(c, membersById, membersByAuthId);
+    const h = c.lastDirection === 'inbound' ? hoursSince(c.lastAt) : null;
+    return { ...c, _owner: owner, _overdueH: h != null && h >= OVERDUE_HOURS ? h : null };
+  }), [conversations, membersById, membersByAuthId]);
+
+  const overdueCount = useMemo(() => enriched.filter((c) => c._overdueH != null).length, [enriched]);
 
   // Abas por número (dedup por telefone)
   const numberTabs = useMemo(() => {
@@ -125,23 +207,30 @@ export function ConversationList({ activeKey, onSelect }) {
     return tabs;
   }, [instances]);
 
-  // unread por telefone (badge na aba)
+  // unread por telefone (badge na aba) + total (badge da aba "Todos")
   const unreadByPhone = useMemo(() => {
     const m = {};
-    for (const c of conversations) {
+    for (const c of enriched) {
       if (c.unreadCount) m[c.instancePhone] = (m[c.instancePhone] || 0) + c.unreadCount;
     }
     return m;
-  }, [conversations]);
+  }, [enriched]);
+  const totalUnread = useMemo(() => enriched.reduce((sum, c) => sum + (c.unreadCount || 0), 0), [enriched]);
 
-  // Sem "Todos": sempre UM número selecionado (default = 1º da lista = Fyness).
+  const showingAll = filterPhone === ALL_INSTANCES;
+  // Default (nada escolhido ainda) = 1º numero da lista = Fyness.
   const selectedPhone = filterPhone ?? numberTabs[0]?.phone ?? null;
 
   const filtered = useMemo(() => {
-    let list = conversations;
-    // Mantem conversas de instancias ainda sem phone_number sincronizado visiveis
-    // em qualquer aba — senao elas somem sem nenhuma UI pra limpar o filtro.
-    if (selectedPhone) list = list.filter((c) => !c.instancePhone || c.instancePhone === selectedPhone);
+    let list = enriched;
+    // Aba "Todos" combina os 2 numeros — pula o filtro por telefone.
+    if (!showingAll && selectedPhone) {
+      // Mantem conversas de instancias ainda sem phone_number sincronizado visiveis
+      // em qualquer aba — senao elas somem sem nenhuma UI pra limpar o filtro.
+      list = list.filter((c) => !c.instancePhone || c.instancePhone === selectedPhone);
+    }
+    if (ownerFilter === 'mine' && myMemberId) list = list.filter((c) => c._owner?.id === myMemberId);
+    if (onlyOverdue) list = list.filter((c) => c._overdueH != null);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((c) =>
@@ -151,7 +240,7 @@ export function ConversationList({ activeKey, onSelect }) {
       );
     }
     return list;
-  }, [conversations, search, selectedPhone]);
+  }, [enriched, search, showingAll, selectedPhone, ownerFilter, myMemberId, onlyOverdue]);
 
   return (
     <aside className="w-full max-w-sm flex flex-col bg-white dark:bg-[#111b21] border-r border-black/10 dark:border-white/5">
@@ -170,21 +259,47 @@ export function ConversationList({ activeKey, onSelect }) {
           />
         </div>
 
-        {/* abas por número — um por vez (sem "Todos") */}
+        {/* abas por número — "Todos" combina os 2, ou escolhe um numero especifico */}
         {numberTabs.length > 1 && (
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            <FilterPill
+              label="Todos"
+              badge={totalUnread}
+              active={showingAll}
+              onClick={() => setFilterPhone(ALL_INSTANCES)}
+            />
             {numberTabs.map((t) => (
               <FilterPill
                 key={t.phone}
                 label={t.label}
                 badge={unreadByPhone[t.phone] || 0}
-                active={selectedPhone === t.phone}
+                active={!showingAll && selectedPhone === t.phone}
                 onClick={() => setFilterPhone(t.phone)}
               />
             ))}
           </div>
         )}
+
+        {/* dono: minhas conversas vs todas do time */}
+        {myMemberId && (
+          <div className="flex items-center gap-1.5">
+            <FilterPill label="Todas" active={ownerFilter === 'all'} onClick={() => setOwnerFilter('all')} />
+            <FilterPill label="Minhas" active={ownerFilter === 'mine'} onClick={() => setOwnerFilter('mine')} />
+          </div>
+        )}
       </div>
+
+      {/* aviso de conversas sem resposta ha muito tempo */}
+      {overdueCount > 0 && (
+        <button
+          onClick={() => setOnlyOverdue((v) => !v)}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-medium text-left shrink-0 transition-colors border-b border-black/5 dark:border-white/5
+            ${onlyOverdue ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : 'bg-rose-50 dark:bg-rose-900/15 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/25'}`}
+        >
+          <Clock size={13} className="shrink-0" />
+          {overdueCount} conversa{overdueCount > 1 ? 's' : ''} sem resposta há mais de {OVERDUE_HOURS}h
+        </button>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
@@ -193,7 +308,7 @@ export function ConversationList({ activeKey, onSelect }) {
           <div className="p-6 text-center">
             <MessageSquare className="mx-auto mb-2 text-slate-300 dark:text-slate-600" size={32} />
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {search ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa nesse número ainda'}
+              {search ? 'Nenhuma conversa encontrada' : showingAll ? 'Nenhuma conversa ainda' : 'Nenhuma conversa nesse número ainda'}
             </p>
           </div>
         ) : (
@@ -203,6 +318,9 @@ export function ConversationList({ activeKey, onSelect }) {
               conv={conv}
               active={activeKey === conv.key}
               onSelect={onSelect}
+              owner={conv._owner}
+              overdueH={conv._overdueH}
+              showInstanceBadge={showingAll}
             />
           ))
         )}

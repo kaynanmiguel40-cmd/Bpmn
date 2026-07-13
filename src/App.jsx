@@ -24,20 +24,17 @@ const ArquivosPage = lazy(() => import('./pages/arquivos/ArquivosPage'))
 // CRM Module (lazy loaded — app dentro do app)
 const CrmLayout = lazy(() => import('./modules/crm/components/layout/CrmLayout'))
 const CrmDashboardPage = lazy(() => import('./modules/crm/pages/CrmDashboardPage'))
-const CrmDailyPage = lazy(() => import('./modules/crm/pages/CrmDailyPage'))
 const CrmPipelinePage = lazy(() => import('./modules/crm/pages/CrmPipelinePage'))
 const CrmDealsPage = lazy(() => import('./modules/crm/pages/CrmDealsPage'))
 const CrmDealDetailPage = lazy(() => import('./modules/crm/pages/CrmDealDetailPage'))
-const CrmGanhosPage = lazy(() => import('./modules/crm/pages/CrmGanhosPage'))
 const CrmContactsPage = lazy(() => import('./modules/crm/pages/CrmContactsPage'))
 const CrmContactDetailPage = lazy(() => import('./modules/crm/pages/CrmContactDetailPage'))
 const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage'))
 const CrmCompanyDetailPage = lazy(() => import('./modules/crm/pages/CrmCompanyDetailPage'))
-const CrmActivitiesPage = lazy(() => import('./modules/crm/pages/CrmActivitiesPage'))
 const CrmAgendaPage = lazy(() => import('./modules/crm/pages/CrmAgendaPage'))
 const CrmGoalsPage = lazy(() => import('./modules/crm/pages/CrmGoalsPage'))
+const CrmPlanningPage = lazy(() => import('./modules/crm/pages/CrmPlanningPage'))
 const ComparativoPage = lazy(() => import('./modules/crm/pages/ComparativoPage'))
-const CrmForecastPage = lazy(() => import('./modules/crm/pages/CrmForecastPage'))
 const CrmTrafficPage = lazy(() => import('./modules/crm/pages/CrmTrafficPage'))
 const CrmProspectsPage = lazy(() => import('./modules/crm/pages/CrmProspectsPage'))
 const CrmSettingsPage = lazy(() => import('./modules/crm/pages/CrmSettingsPage'))
@@ -105,25 +102,26 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route path="/crm" element={<ErrorBoundary><CrmLayout /></ErrorBoundary>}>
                 <Route index element={<ErrorBoundary><CrmDashboardPage /></ErrorBoundary>} />
-                <Route path="daily" element={<ErrorBoundary><CrmDailyPage /></ErrorBoundary>} />
+                {/* Daily virou a aba "Time" da Agenda — mantem o link antigo funcionando. */}
+                <Route path="daily" element={<Navigate to="/crm/agenda?visao=team" replace />} />
                 <Route path="pipeline" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="pipeline/:pipelineId" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="deals" element={<ErrorBoundary><CrmDealsPage /></ErrorBoundary>} />
                 <Route path="deals/:dealId" element={<ErrorBoundary><CrmDealDetailPage /></ErrorBoundary>} />
-                <Route path="ganhos" element={<ErrorBoundary><CrmGanhosPage /></ErrorBoundary>} />
                 <Route path="cadastros" element={<ErrorBoundary><CrmCadastrosPage /></ErrorBoundary>} />
                 <Route path="contacts" element={<ErrorBoundary><CrmContactsPage /></ErrorBoundary>} />
                 <Route path="contacts/:id" element={<ErrorBoundary><CrmContactDetailPage /></ErrorBoundary>} />
                 <Route path="companies" element={<ErrorBoundary><CrmCompaniesPage /></ErrorBoundary>} />
                 <Route path="companies/:id" element={<ErrorBoundary><CrmCompanyDetailPage /></ErrorBoundary>} />
-                <Route path="activities" element={<ErrorBoundary><CrmActivitiesPage /></ErrorBoundary>} />
+                {/* Atividades virou a tabela da aba "Time" da Agenda — mantem o link antigo funcionando. */}
+                <Route path="activities" element={<Navigate to="/crm/agenda?visao=team" replace />} />
                 <Route path="agenda" element={<ErrorBoundary><CrmAgendaPage /></ErrorBoundary>} />
                 <Route path="discador" element={<ErrorBoundary><CrmDialerPage /></ErrorBoundary>} />
                 <Route path="discador/historico" element={<ErrorBoundary><CrmCallHistoryPage /></ErrorBoundary>} />
                 <Route path="inbox" element={<ErrorBoundary><CrmInboxPage /></ErrorBoundary>} />
                 <Route path="whatsapp" element={<ErrorBoundary><CrmWhatsAppSetupPage /></ErrorBoundary>} />
-                <Route path="forecast" element={<ErrorBoundary><CrmForecastPage /></ErrorBoundary>} />
                 <Route path="goals" element={<ErrorBoundary><CrmGoalsPage /></ErrorBoundary>} />
+                <Route path="planejamento" element={<ErrorBoundary><CrmPlanningPage /></ErrorBoundary>} />
                 <Route path="comparativo" element={<ErrorBoundary><ComparativoPage /></ErrorBoundary>} />
                 <Route path="traffic" element={<ErrorBoundary><CrmTrafficPage /></ErrorBoundary>} />
                 <Route path="prospects" element={<ErrorBoundary><CrmProspectsPage /></ErrorBoundary>} />

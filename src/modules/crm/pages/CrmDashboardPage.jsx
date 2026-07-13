@@ -12,23 +12,23 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  TrendingUp,
-  TrendingDown,
   Target,
   Clock,
   ChevronRight,
   AlertTriangle,
-  Zap,
   Globe,
   User,
   DollarSign,
   Phone,
 } from 'lucide-react';
 import { CrmKpiCard, CrmAvatar, CrmBadge, CrmPanel } from '../components/ui';
-import { useCrmDashboardKPIs, useCrmGoals, useGoalsProgress } from '../hooks/useCrmQueries';
+import {
+  useCrmDashboardKPIs, useCrmGoals, useGoalsProgress,
+  useCrmWorkspaceSettings, useUpdateCrmWorkspaceSettings,
+} from '../hooks/useCrmQueries';
 import { useProfile } from '../../../hooks/useProfile';
 import SalesFunnel from '../../../components/dashboard/SalesFunnel';
-import { getCrmWorkspaceSettings, saveCrmWorkspaceSettings } from '../lib/workspaceSettings';
+import { getGoalHealth } from '../lib/goalHealth';
 
 // ==================== HELPERS ====================
 
@@ -41,11 +41,6 @@ const formatCurrencyFull = (val) =>
 const formatNumber = (val) =>
   new Intl.NumberFormat('pt-BR').format(val || 0);
 
-// Formata o valor no "idioma" da meta: R$ p/ valor, contagem+unidade p/ funil.
-const fmtGoalValue = (goal, val) =>
-  (goal?.kind || 'revenue') === 'funnel'
-    ? `${formatNumber(Math.round(val) || 0)} ${goal?.funnelBase === 'calls' ? 'ligações' : 'vendas'}`
-    : formatCurrency(val);
 
 function getDaysRemaining(dateStr) {
   if (!dateStr) return 999;
@@ -140,27 +135,7 @@ function getPeriodRange(period) {
 }
 
 // ==================== GOAL HEALTH ====================
-
-function getGoalHealth(goal, currentProgress) {
-  if (goal.status !== 'active' || !goal.periodStart || !goal.periodEnd || goal.targetValue <= 0) {
-    return null;
-  }
-  const now = new Date();
-  const start = new Date(goal.periodStart + 'T00:00:00');
-  const end = new Date(goal.periodEnd + 'T00:00:00');
-  if (now < start) return null;
-
-  const totalDays = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
-  const elapsedDays = Math.min(totalDays, (now - start) / (1000 * 60 * 60 * 24));
-  const timePercent = elapsedDays / totalDays;
-  const expectedProgress = goal.targetValue * timePercent;
-  const ritmo = expectedProgress > 0 ? currentProgress / expectedProgress : 0;
-
-  if (ritmo < 0.6) return { label: 'Apertada', color: 'text-rose-600 dark:text-rose-400', bgColor: 'bg-rose-500/10', barColor: 'bg-rose-500', icon: AlertTriangle };
-  if (ritmo < 0.85) return { label: 'Atencao', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-500/10', barColor: 'bg-amber-500', icon: TrendingDown };
-  if (ritmo <= 1.3) return { label: 'No Ritmo', color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-500/10', barColor: 'bg-emerald-500', icon: TrendingUp };
-  return { label: 'Meta Leve', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-500/10', barColor: 'bg-blue-500', icon: Zap };
-}
+// getGoalHealth vem de ../lib/goalHealth — mesmo selo/cor/tooltip do CrmGoalsPage.
 
 // Stat compacto pra usar DENTRO dos paineis (sem glass/sombra propria — nada de
 // card flutuante; é um numero ancorado no painel).
@@ -190,20 +165,23 @@ function MiniStat({ label, value, sub, tone = 'slate' }) {
 export function CrmDashboardPage() {
   const [period, setPeriod] = useState('month');
   const [scope, setScope] = useState('sales'); // 'sales' | 'partners' | 'all'
-  const [mrrGoal, setMrrGoal] = useState(() => getCrmWorkspaceSettings().mrrGoalMonthly || 0);
   const [editingMrrGoal, setEditingMrrGoal] = useState(false);
   const [mrrGoalDraft, setMrrGoalDraft] = useState('');
   const range = useMemo(() => getPeriodRange(period), [period]);
-  const { data: kpis, isLoading } = useCrmDashboardKPIs(range, scope);
+  const { data: kpis, isLoading, isError, error: kpisError, refetch: refetchKpis } = useCrmDashboardKPIs(range, scope);
   const { profile } = useProfile();
 
-  // Meta de MRR novo (alvo mensal, guardado nas configs do CRM).
+  // Meta de MRR novo (alvo mensal) — guardada no Supabase (crm_workspace_settings),
+  // compartilhada entre todo mundo. Antes era so localStorage: quem definisse
+  // numa maquina, via 0 (barra some) em qualquer outro device/usuario.
+  const { data: workspaceSettings } = useCrmWorkspaceSettings();
+  const mrrGoal = workspaceSettings?.mrrGoalMonthly || 0;
+  const updateWorkspaceSettings = useUpdateCrmWorkspaceSettings();
   const mrrPct = mrrGoal > 0 ? Math.min(100, Math.round(((kpis?.periodNewMrr || 0) / mrrGoal) * 100)) : 0;
   const openMrrGoalEditor = () => { setMrrGoalDraft(mrrGoal ? String(mrrGoal) : ''); setEditingMrrGoal(true); };
   const saveMrrGoal = () => {
     const n = Math.max(0, parseFloat(mrrGoalDraft) || 0);
-    saveCrmWorkspaceSettings({ mrrGoalMonthly: n });
-    setMrrGoal(n);
+    updateWorkspaceSettings.mutate({ mrrGoalMonthly: n });
     setEditingMrrGoal(false);
   };
 
@@ -264,7 +242,28 @@ export function CrmDashboardPage() {
         </div>
       </div>
 
+      {/* Falha real de fetch (RLS/rede) != conta nova vazia — sem isso os KPIs
+          caem pra R$0/0%/— e parecem dado real. */}
+      {isError && (
+        <div className="rounded-2xl border border-rose-200 dark:border-rose-800/60 bg-rose-50 dark:bg-rose-900/20 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 min-w-0">
+            <AlertTriangle size={16} className="shrink-0" />
+            <p className="text-sm font-medium truncate">
+              Não foi possível carregar os KPIs{kpisError?.message ? ` (${kpisError.message})` : ''}.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => refetchKpis()}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition-colors shrink-0"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
       {/* Resultado do Mês — MRR novo (métrica SaaS) */}
+      {!isError && (
       <CrmPanel
         title="Resultado do Mês"
         icon={DollarSign}
@@ -328,17 +327,25 @@ export function CrmDashboardPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-200/70 dark:border-slate-700/70">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-slate-200/70 dark:border-slate-700/70">
           <MiniStat label="Ticket médio (contrato)" value={formatCurrency(kpis?.avgTicket)} tone="emerald" />
           <MiniStat label="Win rate" value={`${Math.round(kpis?.conversionRate || 0)}%`} tone="blue" />
           <MiniStat label="Ciclo médio" value={kpis?.avgCycleDays ? `${kpis.avgCycleDays}d` : '—'} tone="violet" />
+          <MiniStat
+            label="Clientes ativos"
+            value={formatNumber(kpis?.activeClients)}
+            sub={kpis?.churnedInPeriod > 0 ? `${kpis.churnedInPeriod} cancelado${kpis.churnedInPeriod > 1 ? 's' : ''} no período` : (kpis?.activeMrr > 0 ? `${formatCurrency(kpis.activeMrr)}/mês` : undefined)}
+            tone={kpis?.churnedInPeriod > 0 ? 'rose' : 'emerald'}
+          />
         </div>
       </CrmPanel>
+      )}
 
       {/* Funil de Conversão — atividade -> venda (herói do dashboard comercial) */}
       <SalesFunnel range={range} scope={scope} />
 
       {/* Ritmo do time + Saúde do pipeline */}
+      {!isError && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <CrmPanel title="Ritmo do Time" icon={Phone} accent="blue">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
@@ -371,10 +378,18 @@ export function CrmDashboardPage() {
           </div>
         </CrmPanel>
       </div>
+      )}
 
       {/* Progresso das Metas */}
       {activeGoals.length > 0 && (
         <CrmPanel title="Metas Ativas" icon={Target} accent="emerald">
+          {/* crm_goals nao tem coluna de scope — metas sao sempre do time de
+              Vendas, independente do filtro "Visao" la em cima. */}
+          {scope !== 'sales' && (
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3">
+              Metas sempre mostram o time de Vendas, independente da Visao selecionada acima.
+            </p>
+          )}
           <div className="space-y-4">
             {activeGoals.map((goal) => {
               const autoValue = progressMap[goal.id]?.autoValue || 0;
@@ -400,7 +415,10 @@ export function CrmDashboardPage() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {health && (
-                        <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${health.color} ${health.bgColor}`}>
+                        <div
+                          title={health.tooltip}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${health.color} ${health.bgColor}`}
+                        >
                           <health.icon size={11} />
                           {health.label}
                         </div>
@@ -418,7 +436,7 @@ export function CrmDashboardPage() {
                       />
                     </div>
                     <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap tnum">
-                      {fmtGoalValue(goal, totalProgress)} / {fmtGoalValue(goal, goal.targetValue)}
+                      {formatCurrency(totalProgress)} / {formatCurrency(goal.targetValue)}
                     </span>
                   </div>
                 </div>
@@ -429,6 +447,7 @@ export function CrmDashboardPage() {
       )}
 
       {/* Deals vencendo esta semana (largura total) */}
+      {!isError && (
       <div>
 
         {/* Deals Vencendo Esta Semana */}
@@ -437,9 +456,9 @@ export function CrmDashboardPage() {
           icon={Clock}
           accent="amber"
           action={(kpis?.dealsClosingSoonList || []).length > 5 && (
-            <button className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5">
+            <Link to="/crm/pipeline" className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5">
               Ver todos <ChevronRight size={12} />
-            </button>
+            </Link>
           )}
         >
           {(kpis?.dealsClosingSoonList || []).length === 0 ? (
@@ -481,6 +500,7 @@ export function CrmDashboardPage() {
           )}
         </CrmPanel>
       </div>
+      )}
     </div>
   );
 }

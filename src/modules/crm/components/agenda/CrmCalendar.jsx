@@ -53,15 +53,34 @@ function weekDays(date) {
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
+// ==================== BADGE DE DONO ====================
+
+// Só aparece na visão "Todos os vendedores" (showOwner) — numa agenda de uma
+// pessoa só o dono já é óbvio pelo contexto, então mostrar sempre seria ruído.
+// Sem isso, um admin em "Todos" podia concluir a tarefa errada sem perceber
+// de quem era (achado do audit de usabilidade).
+function OwnerBadge({ name, color, size = 15 }) {
+  if (!name) return null;
+  return (
+    <span
+      title={name}
+      className="shrink-0 rounded-full flex items-center justify-center text-white font-bold leading-none"
+      style={{ backgroundColor: color || '#94a3b8', width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.55)) }}
+    >
+      {name.charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
 // ==================== CHIP DE EVENTO ====================
 
-function EventChip({ ev, onClick, onCompleteTask, dimmed }) {
+function EventChip({ ev, onClick, onCompleteTask, dimmed, showOwner }) {
   const isGoogle = ev.source === 'google';
   const isCrm = ev.source === 'crm';
   const Icon = iconFor(ev);
   const label = ev.leadName && isCrm ? ev.leadName : ev.title;
 
-  // Tudo é bloco. Itens do CRM podem ser concluídos (botão no hover).
+  // Tudo é bloco. Itens do CRM podem ser concluídos (botão sempre visível).
   return (
     <div
       className={`group/chip w-full flex items-center gap-1 rounded-md pl-1 pr-1 py-1 transition-colors duration-150
@@ -83,16 +102,17 @@ function EventChip({ ev, onClick, onCompleteTask, dimmed }) {
         {ev.startDate && !ev.isAllDay && (
           <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtTime(ev.startDate)}</span>
         )}
-        <span className={`truncate text-[11px] ${ev.completed ? 'line-through text-slate-400 dark:text-slate-500' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
+        <span className={`flex-1 min-w-0 truncate text-[11px] ${ev.completed ? 'line-through text-slate-400 dark:text-slate-500' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
           {label}
         </span>
+        {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={13} />}
       </button>
       {isCrm && !ev.completed && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
           title="Marcar como concluída"
-          className="shrink-0 opacity-0 group-hover/chip:opacity-100 transition-opacity text-slate-300 dark:text-slate-600 hover:text-emerald-500"
+          className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-emerald-500 transition-colors"
         >
           <CheckCircle2 size={12} />
         </button>
@@ -103,7 +123,7 @@ function EventChip({ ev, onClick, onCompleteTask, dimmed }) {
 
 // ==================== VIEWS ====================
 
-function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey }) {
+function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDay, onCompleteTask, selectedLeadKey, showOwner }) {
   const today = new Date();
   const cells = useMemo(() => monthMatrix(current), [current]);
   const month = current.getMonth();
@@ -139,9 +159,20 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onComple
             <div className="mt-0.5 space-y-0.5">
               {shown.map(ev => (
                 <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
-                  dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} />
+                  dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
               ))}
-              {extra > 0 && <div className="text-[10px] text-slate-400 dark:text-slate-500 pl-1">+{extra} mais</div>}
+              {extra > 0 && (
+                // Handler próprio + stopPropagation: sem isso o clique cai no
+                // onClick da célula (abre "nova tarefa") em vez de mostrar os
+                // itens do dia — "+N mais" parecia link mas não fazia nada.
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onShowDay?.(day); }}
+                  className="w-full text-left text-[10px] text-slate-400 dark:text-slate-500 hover:text-fyness-primary hover:underline pl-1 cursor-pointer"
+                >
+                  +{extra} mais
+                </button>
+              )}
             </div>
           </div>
         );
@@ -150,7 +181,7 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onComple
   );
 }
 
-function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey }) {
+function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
   const today = new Date();
   const days = useMemo(() => weekDays(current), [current]);
   return (
@@ -170,7 +201,7 @@ function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onComplet
               {dayEvents.length === 0 && <div className="text-[10px] text-slate-300 dark:text-slate-600 text-center pt-3">—</div>}
               {dayEvents.map(ev => (
                 <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
-                  dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} />
+                  dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
               ))}
             </div>
           </div>
@@ -180,11 +211,17 @@ function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onComplet
   );
 }
 
-function DayView({ current, eventsByDay, onSelectEvent, onCompleteTask, selectedLeadKey }) {
+function DayView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
   const key = toKey(current);
   const dayEvents = eventsByDay.get(key) || [];
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-slate-200/70 dark:border-white/10 bg-white/40 dark:bg-slate-900/30 p-3">
+    // onSelectSlot no container (não só em Mês/Semana) — clicar em área vazia
+    // do Dia também abre "nova tarefa" já em 09h daquele dia. Itens dentro
+    // (evento, concluir) fazem stopPropagation pra não abrir o form junto.
+    <div
+      onClick={() => onSelectSlot?.(current)}
+      className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-slate-200/70 dark:border-white/10 bg-white/40 dark:bg-slate-900/30 p-3 cursor-pointer"
+    >
       {dayEvents.length === 0 ? (
         <div className="text-center text-sm text-slate-400 dark:text-slate-500 py-12">Nenhuma atividade neste dia.</div>
       ) : (
@@ -198,7 +235,7 @@ function DayView({ current, eventsByDay, onSelectEvent, onCompleteTask, selected
               </div>
               <div className="w-1 rounded-full shrink-0" style={{ backgroundColor: ev.color }} />
               <button
-                onClick={() => onSelectEvent?.(ev)}
+                onClick={(e) => { e.stopPropagation(); onSelectEvent?.(ev); }}
                 className={`flex-1 text-left rounded-lg px-3 py-2 border border-slate-200/70 dark:border-white/10 hover:border-fyness-primary/40 hover:bg-fyness-primary/5 transition-colors
                   ${!!selectedLeadKey && ev.leadKey !== selectedLeadKey ? 'opacity-40' : ''}`}
               >
@@ -208,13 +245,14 @@ function DayView({ current, eventsByDay, onSelectEvent, onCompleteTask, selected
                   </span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${ev.color}22`, color: ev.color }}>{ev.typeLabel}</span>
                   {ev.source === 'google' && <span className="text-[10px] text-slate-400 dark:text-slate-500">Google</span>}
+                  {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={16} />}
                 </div>
                 {ev.leadName && ev.source === 'crm' && <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{ev.leadName}</div>}
               </button>
               {isCrm && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); if (!ev.completed) onCompleteTask?.(ev); }}
                   title={ev.completed ? 'Concluída' : 'Marcar como concluída'}
-                  className={`shrink-0 self-center cursor-pointer transition-opacity ${ev.completed ? 'text-emerald-500' : 'text-slate-300 dark:text-slate-600 opacity-0 group-hover/day:opacity-100 hover:text-emerald-500'}`}>
+                  className={`shrink-0 self-center cursor-pointer transition-colors ${ev.completed ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500 hover:text-emerald-500'}`}>
                   <CheckCircle2 size={18} />
                 </button>
               )}
@@ -237,7 +275,7 @@ function dayHeading(date) {
   return date.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' });
 }
 
-function AgendaRow({ ev, onClick, onCompleteTask, dimmed }) {
+function AgendaRow({ ev, onClick, onCompleteTask, dimmed, showOwner }) {
   const isGoogle = ev.source === 'google';
   const isCrm = ev.source === 'crm';
   const Icon = iconFor(ev);
@@ -272,11 +310,12 @@ function AgendaRow({ ev, onClick, onCompleteTask, dimmed }) {
           </div>
         )}
       </button>
-      {/* Concluir — aparece no hover (itens do CRM ainda não concluídos) */}
+      {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={22} />}
+      {/* Concluir — sempre visível (itens do CRM ainda não concluídos) */}
       {isCrm && !ev.completed && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
           title="Marcar como concluída"
-          className="shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity text-slate-300 dark:text-slate-600 hover:text-emerald-500">
+          className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-emerald-500 transition-colors">
           <CheckCircle2 size={20} />
         </button>
       )}
@@ -284,7 +323,7 @@ function AgendaRow({ ev, onClick, onCompleteTask, dimmed }) {
   );
 }
 
-function AgendaListView({ current, eventsByDay, onSelectEvent, onCompleteTask, selectedLeadKey }) {
+function AgendaListView({ current, eventsByDay, onSelectEvent, onCompleteTask, selectedLeadKey, showOwner }) {
   const days = useMemo(() => {
     const out = [];
     for (let i = 0; i < 31; i++) {
@@ -314,7 +353,7 @@ function AgendaListView({ current, eventsByDay, onSelectEvent, onCompleteTask, s
             </div>
             {events.map(ev => (
               <AgendaRow key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
-                dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} />
+                dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
             ))}
           </section>
         ))}
@@ -336,8 +375,13 @@ export default function CrmCalendar({
   onToday,
   onSelectEvent,
   onSelectSlot,
+  onShowDay,
   onCompleteTask,
   selectedLeadKey,
+  extraActions,
+  showOwner,
+  isLoading,
+  isError,
 }) {
   // Indexa eventos por dia (uma vez). Eventos sem data sao ignorados.
   const eventsByDay = useMemo(() => {
@@ -391,20 +435,37 @@ export default function CrmCalendar({
           </div>
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 capitalize">{title}</h2>
         </div>
-        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100/80 dark:bg-slate-800/60">
-          {VIEWS.map(v => (
-            <button key={v.id} onClick={() => onViewChange?.(v.id)}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${view === v.id ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}>
-              {v.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {extraActions}
+          <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100/80 dark:bg-slate-800/60">
+            {VIEWS.map(v => (
+              <button key={v.id} onClick={() => onViewChange?.(v.id)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${view === v.id ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}>
+                {v.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {view === 'agenda' && <AgendaListView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} />}
-      {view === 'month' && <MonthView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} />}
-      {view === 'week' && <WeekView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} />}
-      {view === 'day' && <DayView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} />}
+      {isLoading ? (
+        // Skeleton — sem isso, um fetch lento renderizava igual a um dia
+        // genuinamente vazio ("Nenhuma atividade"), sem sinal de carregando.
+        <div className="flex-1 min-h-0 rounded-xl border border-slate-200/70 dark:border-white/10 p-3 space-y-2">
+          {[0, 1, 2, 3].map(i => <div key={i} className="h-10 bg-slate-100 dark:bg-slate-800/60 rounded-lg animate-pulse" />)}
+        </div>
+      ) : isError ? (
+        <div className="flex-1 min-h-0 flex items-center justify-center text-center text-sm text-rose-600 dark:text-rose-400 rounded-xl border border-rose-200/60 dark:border-rose-900/30 bg-rose-50/50 dark:bg-rose-900/10 p-6">
+          Não foi possível carregar a agenda. Tente atualizar a página.
+        </div>
+      ) : (
+        <>
+          {view === 'agenda' && <AgendaListView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
+          {view === 'month' && <MonthView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onShowDay={onShowDay} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
+          {view === 'week' && <WeekView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
+          {view === 'day' && <DayView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
+        </>
+      )}
 
       {/* Legenda — explica as cores/ícones e separa CRM de Google */}
       {(legend.types.length > 0 || legend.hasGoogle) && (

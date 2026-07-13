@@ -8,6 +8,7 @@ import { Mail, MessageSquare, Type, Image, Video, Mic, Zap } from 'lucide-react'
 import { CrmModal } from './ui/CrmModal';
 import { useCrmPipelines } from '../hooks/useCrmQueries';
 import { useCreateAutomation, useUpdateAutomation } from '../hooks/useCrmQueries';
+import { loadSegments } from '../lib/crmSegments';
 
 const CHANNELS = [
   { id: 'email',     label: 'E-mail',    icon: Mail },
@@ -19,11 +20,6 @@ const MESSAGE_TYPES = [
   { id: 'image', label: 'Imagem',  icon: Image },
   { id: 'video', label: 'Vídeo',   icon: Video },
   { id: 'audio', label: 'Áudio',   icon: Mic },
-];
-
-const SEGMENT_OPTIONS = [
-  'Agro', 'Varejo', 'Industria', 'Tecnologia', 'Educacao',
-  'Saude', 'Financeiro', 'Construcao', 'Servicos', 'Outro',
 ];
 
 function emptyForm() {
@@ -38,13 +34,18 @@ function emptyForm() {
     mediaUrl: '',
     segmentFilter: '',
     delayMinutes: 0,
-    active: true,
+    // Nasce inativa: automacao nova (ainda sendo configurada/testada) nao
+    // deve poder disparar mensagem real pro primeiro deal que cair na etapa.
+    active: false,
   };
 }
 
 export function AutomationFormModal({ open, onClose, automation }) {
   const isEdit = !!automation?.id;
   const [form, setForm] = useState(emptyForm());
+  // Recarregado a cada abertura — a lista de Segmentos (Configurações) pode ter
+  // mudado desde a última vez que este modal foi aberto.
+  const [segmentOptions, setSegmentOptions] = useState(() => loadSegments());
 
   const { data: pipelinesData } = useCrmPipelines();
   const pipelines = pipelinesData || [];
@@ -60,6 +61,7 @@ export function AutomationFormModal({ open, onClose, automation }) {
   // Preencher formulário ao editar
   useEffect(() => {
     if (open) {
+      setSegmentOptions(loadSegments());
       setForm(automation ? {
         name:           automation.name           || '',
         pipelineId:     automation.pipelineId     || '',
@@ -213,7 +215,7 @@ export function AutomationFormModal({ open, onClose, automation }) {
           </div>
           {form.channel === 'whatsapp' && (
             <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-              Requer integração com Meta Business API ou Z-API para envio real.
+              Envio real via a instância WhatsApp conectada (Evolution API) — mensagens de teste chegam de verdade no lead.
             </p>
           )}
           {form.channel === 'email' && (
@@ -304,7 +306,7 @@ export function AutomationFormModal({ open, onClose, automation }) {
               className={inputCls}
             >
               <option value="">Todos os segmentos</option>
-              {SEGMENT_OPTIONS.map(s => (
+              {segmentOptions.map(s => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>

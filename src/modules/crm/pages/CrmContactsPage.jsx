@@ -15,9 +15,10 @@ import {
   useCrmContacts, useDeleteCrmContact, useImportCrmContacts,
   useCrmCompanies,
 } from '../hooks/useCrmQueries';
-import { exportContactsCSV } from '../services/crmContactsService';
+import { exportContactsCSV, getCrmContacts } from '../services/crmContactsService';
 import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import { ContactFormModal } from '../components/ContactFormModal';
+import { toast } from '../../../contexts/ToastContext';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos' },
@@ -70,6 +71,7 @@ export function CrmContactsPage({ embedded = false } = {}) {
   const [formOpen, setFormOpen] = useState(false);
   const [editContact, setEditContact] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   const debouncedSearch = useDebounce(search);
 
@@ -127,15 +129,35 @@ export function CrmContactsPage({ embedded = false } = {}) {
     setDeleteTarget(null);
   };
 
-  const handleExport = () => {
-    const csv = exportContactsCSV(contacts);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `contatos_crm_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // Exporta TODOS os contatos que batem com o filtro atual, nao so a pagina
+  // visivel (~25 linhas) — reusa getCrmContacts sem page/perPage pra trazer
+  // o total inteiro numa unica chamada.
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data: allContacts } = await getCrmContacts({
+        search: debouncedSearch,
+        status: statusFilter || undefined,
+        companyId: companyFilter || undefined,
+        tag: tagFilter || undefined,
+        sortBy: sortConfig.key,
+        sortOrder: sortConfig.direction,
+      });
+      if (allContacts.length === 0) {
+        toast('Nenhum contato para exportar', 'warning');
+        return;
+      }
+      const csv = exportContactsCSV(allContacts);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contatos_crm_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleImport = async (e) => {
@@ -151,6 +173,13 @@ export function CrmContactsPage({ embedded = false } = {}) {
   };
 
   const hasActiveFilters = statusFilter || companyFilter || tagFilter;
+  const hasAnyFilter = hasActiveFilters || !!debouncedSearch;
+  const handleClearAllFilters = () => {
+    setSearch('');
+    setStatusFilter('');
+    setCompanyFilter('');
+    setTagFilter('');
+  };
 
   const columns = [
     {
@@ -282,11 +311,11 @@ export function CrmContactsPage({ embedded = false } = {}) {
       {/* Export */}
       <button
         onClick={handleExport}
-        disabled={contacts.length === 0}
+        disabled={total === 0 || exporting}
         className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-40"
-        title="Exportar CSV"
+        title="Exportar CSV (todos os contatos filtrados)"
       >
-        <Download size={14} />
+        {exporting ? <div className="w-3.5 h-3.5 border-2 border-slate-400/40 border-t-slate-500 rounded-full animate-spin" /> : <Download size={14} />}
         <span className="hidden lg:inline">Exportar</span>
       </button>
 
@@ -362,6 +391,8 @@ export function CrmContactsPage({ embedded = false } = {}) {
         loading={isLoading}
         emptyMessage="Nenhum contato encontrado"
         emptyIcon={Users}
+        hasFilters={hasAnyFilter}
+        onClearFilters={handleClearAllFilters}
         onRowClick={(row) => navigate(`/crm/contacts/${row.id}`)}
         sortConfig={sortConfig}
         onSort={handleSort}

@@ -40,6 +40,19 @@ function fmtDuration(s) {
   return `${m}:${sec}`;
 }
 
+// Limites reais do WhatsApp Business API por tipo de midia — bem abaixo do
+// generico de 50MB que so descobria o problema depois de um upload inteiro.
+const MEDIA_SIZE_LIMITS = {
+  image: 5 * 1024 * 1024,
+  video: 16 * 1024 * 1024,
+  audio: 16 * 1024 * 1024,
+  document: 100 * 1024 * 1024,
+};
+
+function mediaSizeLimitFor(mediaType) {
+  return MEDIA_SIZE_LIMITS[mediaType] ?? MEDIA_SIZE_LIMITS.document;
+}
+
 export function MessageComposer({ conversation, instanceName, disabled, placeholder = 'Mensagem' }) {
   const [text, setText] = useState('');
   const [attachment, setAttachment] = useState(null); // { file, preview, mediaType }
@@ -51,6 +64,9 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
   // gravação de voz
   const [recording, setRecording] = useState(false);
   const [recSeconds, setRecSeconds] = useState(0);
+  // true entre o stop da gravação e a mutation resolver — mantém a barra visível
+  // com "Enviando áudio…" em vez de voltar pro composer normal (mic estático, sem feedback).
+  const [audioSending, setAudioSending] = useState(false);
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
@@ -105,8 +121,12 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (file.size > 50 * 1024 * 1024) { toast('Arquivo maior que 50MB', 'error'); return; }
     const mediaType = detectMediaType(file.type);
+    const limit = mediaSizeLimitFor(mediaType);
+    if (file.size > limit) {
+      toast(`Arquivo maior que o limite do WhatsApp pra esse tipo (${(limit / (1024 * 1024)).toFixed(0)}MB)`, 'error');
+      return;
+    }
     const preview = (mediaType === 'image' || mediaType === 'video') ? URL.createObjectURL(file) : null;
     setAttachment({ file, preview, mediaType });
     setAttachMenuOpen(false);
@@ -133,11 +153,20 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
         const type = rec.mimeType || mime || 'audio/webm';
         const blob = new Blob(chunksRef.current, { type });
         chunksRef.current = [];
-        setRecording(false);
         setRecSeconds(0);
-        if (wasCancelled || blob.size < 800) return;
+        if (wasCancelled || blob.size < 800) {
+          setRecording(false);
+          return;
+        }
+        // Mantem a barra visivel (agora em modo "enviando") ate a mutation resolver —
+        // senao o composer volta pro estado normal com um microfone estatico e
+        // desabilitado, sem nenhum sinal de que o audio ainda esta subindo.
+        setAudioSending(true);
         const file = new File([blob], `voz-${Date.now()}.${audioExt(type)}`, { type });
-        await sendMedia({ file, mediaType: 'audio' });
+        const ok = await sendMedia({ file, mediaType: 'audio' });
+        setRecording(false);
+        setAudioSending(false);
+        if (ok) toast('Áudio enviado', 'success');
       };
       streamRef.current = stream;
       recorderRef.current = rec;
@@ -236,14 +265,14 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
   return (
     <div ref={rootRef} className="px-3 py-2.5 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-black/5 dark:border-white/5 relative">
       {/* painel de emoji */}
-      {emojiOpen && !recording && (
+      {emojiOpen && !recording && !audioSending && (
         <div className="absolute bottom-[60px] left-3 z-30">
           <EmojiPicker onPick={insertEmoji} />
         </div>
       )}
 
       {/* preview de anexo */}
-      {attachment && !recording && (
+      {attachment && !recording && !audioSending && (
         <div className="mb-2 flex items-center gap-3 bg-white dark:bg-[#2a3942] rounded-lg p-2 border border-black/5 dark:border-white/10">
           {attachment.mediaType === 'image' && attachment.preview ? (
             <img src={attachment.preview} alt="preview" className="w-12 h-12 rounded object-cover" />
@@ -265,7 +294,7 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
       )}
 
       {/* menu de anexo */}
-      {attachMenuOpen && !recording && (
+      {attachMenuOpen && !recording && !audioSending && (
         <div className="absolute bottom-[60px] left-3 bg-white dark:bg-[#233138] rounded-xl shadow-xl border border-black/5 dark:border-white/10 overflow-hidden z-20 py-1 min-w-[180px]">
           <button type="button" onClick={() => mediaInputRef.current?.click()}
             className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-100 hover:bg-black/5 dark:hover:bg-white/10 w-full">
@@ -283,21 +312,34 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
       <input ref={mediaInputRef} type="file" accept="image/*,video/*" onChange={handleFileSelect} className="hidden" />
       <input ref={docInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" onChange={handleFileSelect} className="hidden" />
 
-      {recording ? (
-        /* barra de gravação */
+      {recording || audioSending ? (
+        /* barra de gravação / envio */
         <div className="flex items-center gap-3 h-11">
-          <button type="button" onClick={() => stopRecording(true)} title="Cancelar" className="p-2 rounded-full text-red-500 hover:bg-red-500/10">
-            <Trash2 size={20} />
-          </button>
-          <div className="flex-1 flex items-center gap-2 text-slate-600 dark:text-slate-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-sm tabular-nums font-medium">{fmtDuration(recSeconds)}</span>
-            <span className="text-xs text-slate-400 hidden sm:inline">gravando… toque na lixeira pra cancelar</span>
-          </div>
-          <button type="button" onClick={() => stopRecording(false)} title="Enviar áudio"
-            className="w-11 h-11 rounded-full bg-[#00a884] text-white flex items-center justify-center hover:bg-[#06cf9c] shadow">
-            {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-          </button>
+          {audioSending ? (
+            <>
+              <span className="w-9 h-9 rounded-full flex items-center justify-center text-[#00a884] shrink-0">
+                <Loader2 size={20} className="animate-spin" />
+              </span>
+              <div className="flex-1 flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                <span className="text-sm font-medium">Enviando áudio…</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={() => stopRecording(true)} title="Cancelar" className="p-2 rounded-full text-red-500 hover:bg-red-500/10">
+                <Trash2 size={20} />
+              </button>
+              <div className="flex-1 flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-sm tabular-nums font-medium">{fmtDuration(recSeconds)}</span>
+                <span className="text-xs text-slate-400 hidden sm:inline">gravando… toque na lixeira pra cancelar</span>
+              </div>
+              <button type="button" onClick={() => stopRecording(false)} title="Enviar áudio"
+                className="w-11 h-11 rounded-full bg-[#00a884] text-white flex items-center justify-center hover:bg-[#06cf9c] shadow">
+                <Send size={20} />
+              </button>
+            </>
+          )}
         </div>
       ) : (
         /* barra normal */

@@ -1,17 +1,21 @@
 /**
- * CrmActivitiesPage - Lista de atividades com filtros, busca e CRUD completo.
+ * TeamActivitiesTable - Busca e CRUD completo das atividades do TIME
+ * (todas, nao so as do usuario logado). Vive dentro da Agenda (aba "Time"),
+ * complementando o placar/briefing com uma tabela filtravel/pesquisavel —
+ * util pra achar uma atividade especifica ou auditar o que ja foi feito.
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CalendarCheck, Plus, Phone, Mail, Video, FileText, MapPin, Coffee, MessageCircle,
   Pencil, Trash2, CheckCircle, Search, X,
 } from 'lucide-react';
-import { CrmPageHeader, CrmDataTable, CrmBadge, CrmConfirmDialog } from '../components/ui';
-import { useCrmActivities, useDeleteCrmActivity, useCompleteCrmActivity } from '../hooks/useCrmQueries';
-import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
-import { ActivityFormModal } from '../components/ActivityFormModal';
-import { CompleteActivityModal } from '../components/CompleteActivityModal';
+import { CrmDataTable, CrmBadge, CrmConfirmDialog } from '../ui';
+import { useCrmActivities, useDeleteCrmActivity, useCompleteCrmActivity } from '../../hooks/useCrmQueries';
+import { useUrlState, useUrlInt } from '../../../../hooks/useUrlState';
+import { ActivityFormModal } from '../ActivityFormModal';
+import { CompleteActivityModal } from '../CompleteActivityModal';
 
 const typeIcons = {
   call: Phone,
@@ -49,20 +53,17 @@ function useDebounce(value, delay = 300) {
   return debounced;
 }
 
-export function CrmActivitiesPage() {
-  // Filtros (persistidos em URL)
-  const [page, setPage] = useUrlInt('page', 1);
-  const [search, setSearch] = useUrlState('q', '');
-  const [typeFilter, setTypeFilter] = useUrlState('type', '');
-  const [statusFilter, setStatusFilter] = useUrlState('status', '');
-  const [sortKey, setSortKey] = useUrlState('sort', 'start_date');
-  const [sortDir, setSortDir] = useUrlState('dir', 'desc');
+export function TeamActivitiesTable() {
+  const navigate = useNavigate();
+  // Filtros (persistidos em URL, prefixo "at" pra nao colidir com outros
+  // params da Agenda, ex: "visao").
+  const [page, setPage] = useUrlInt('atPage', 1);
+  const [search, setSearch] = useUrlState('atQ', '');
+  const [typeFilter, setTypeFilter] = useUrlState('atType', '');
+  const [statusFilter, setStatusFilter] = useUrlState('atStatus', '');
+  const [sortKey, setSortKey] = useUrlState('atSort', 'start_date');
+  const [sortDir, setSortDir] = useUrlState('atDir', 'desc');
   const sortConfig = { key: sortKey, direction: sortDir };
-  const setSortConfig = (next) => {
-    const v = typeof next === 'function' ? next(sortConfig) : next;
-    setSortKey(v.key);
-    setSortDir(v.direction);
-  };
 
   const debouncedSearch = useDebounce(search);
 
@@ -83,7 +84,7 @@ export function CrmActivitiesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editActivity, setEditActivity] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [completingTask, setCompletingTask] = useState(null); // { id, title } — abre o modal de conclusão (input/output)
+  const [completingTask, setCompletingTask] = useState(null);
 
   useEffect(() => { setPage(1); }, [debouncedSearch, typeFilter, statusFilter]);
 
@@ -186,58 +187,55 @@ export function CrmActivitiesPage() {
 
   return (
     <div>
-      <CrmPageHeader
-        title="Atividades"
-        subtitle="Ligacoes, reunioes, tarefas e follow-ups"
-        actions={
-          <div className="flex items-center gap-2">
-            {/* Busca */}
-            <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar atividade..."
-                className="pl-8 pr-7 py-1.5 text-sm bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg w-44 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
-              />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-
-            {/* Filtro tipo */}
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="text-xs bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
-            >
-              <option value="">Todos os tipos</option>
-              {Object.entries(typeLabels).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
-
-            {/* Filtro status */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
-            >
-              <option value="">Todas</option>
-              <option value="pending">Pendentes</option>
-              <option value="done">Concluidas</option>
-            </select>
-
-            <button onClick={handleNew}
-              className="flex items-center gap-2 px-4 py-2 bg-fyness-primary hover:bg-fyness-secondary text-white text-sm font-medium rounded-lg transition-colors">
-              <Plus size={16} /> Nova Atividade
-            </button>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Todas as atividades</h3>
+          <p className="text-xs text-slate-400 dark:text-slate-500">Ligações, reuniões, tarefas e follow-ups do time inteiro</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar atividade..."
+              className="pl-8 pr-7 py-1.5 text-sm bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg w-44 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X size={13} />
+              </button>
+            )}
           </div>
-        }
-      />
+
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="text-xs bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+          >
+            <option value="">Todos os tipos</option>
+            {Object.entries(typeLabels).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="text-xs bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+          >
+            <option value="">Todas</option>
+            <option value="pending">Pendentes</option>
+            <option value="done">Concluidas</option>
+          </select>
+
+          <button onClick={handleNew}
+            className="flex items-center gap-2 px-3 py-1.5 bg-fyness-primary hover:bg-fyness-secondary text-white text-sm font-medium rounded-lg transition-colors">
+            <Plus size={15} /> Nova
+          </button>
+        </div>
+      </div>
 
       <CrmDataTable
         columns={columns}
@@ -255,6 +253,7 @@ export function CrmActivitiesPage() {
         open={formOpen}
         onClose={() => { setFormOpen(false); setEditActivity(null); }}
         activity={editActivity}
+        onOpenLeadHistory={(act) => (act?.dealId || act?.contactId) && navigate(`/crm/agenda?dealId=${act.dealId || ''}&contactId=${act.contactId || ''}`)}
       />
 
       <CrmConfirmDialog
@@ -282,4 +281,4 @@ export function CrmActivitiesPage() {
   );
 }
 
-export default CrmActivitiesPage;
+export default TeamActivitiesTable;

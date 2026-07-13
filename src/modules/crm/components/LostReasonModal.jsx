@@ -38,8 +38,11 @@ export function LostReasonModal({ open, onClose, onConfirm, isPending }) {
           onChange={(e) => setReason(e.target.value)}
           rows={3}
           placeholder="Ex: Cliente escolheu concorrente, preco muito alto, sem orcamento..."
-          className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none mb-4"
+          className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none mb-2"
         />
+        <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
+          Esse negocio vai sair desta pipeline e ir pra Nurturing (reativacao futura), se ainda nao tiver uma etapa propria de perdidos aqui.
+        </p>
 
         <div className="flex items-center justify-end gap-2">
           <button
@@ -51,7 +54,8 @@ export function LostReasonModal({ open, onClose, onConfirm, isPending }) {
           </button>
           <button
             onClick={() => onConfirm(reason)}
-            disabled={isPending}
+            disabled={isPending || reason.trim().length < 3}
+            title={reason.trim().length < 3 ? 'Escreva o motivo da perda' : undefined}
             className="px-4 py-2 text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
           >
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}

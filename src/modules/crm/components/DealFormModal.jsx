@@ -14,8 +14,11 @@ import {
   useCrmContacts,
   useCrmCompanies,
   useCreateCrmCompany,
+  useCreateCrmContact,
   useCreateCrmDeal,
   useUpdateCrmDeal,
+  useCrmLeadSources,
+  useCreateCrmLeadSource,
 } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
 
@@ -40,10 +43,14 @@ function formatCurrencyInput(num) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
 }
 
+// "Perdido" NAO entra aqui: so pode ser setado pelo fluxo dedicado (botao
+// "Perdido" no Pipeline/Detalhe -> markDealAsLost), que move o deal pra
+// Nurturing/Descarte e exige motivo. Deixar como opcao solta neste dropdown
+// so trocava o campo status sem mover o deal — dois caminhos gerando o
+// mesmo badge "Perdido" com efeitos reais bem diferentes no banco.
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Aberto' },
   { value: 'won', label: 'Ganho' },
-  { value: 'lost', label: 'Perdido' },
 ];
 
 const SEGMENT_OPTIONS = [
@@ -52,16 +59,6 @@ const SEGMENT_OPTIONS = [
   'Saude', 'Servicos', 'Tecnologia', 'Varejo', 'Outros',
 ];
 
-// Origem do lead (canal de aquisicao). Sugestoes rapidas — o time pode escrever
-// a propria via "Outros". Trocam o antigo "uma pipeline por canal".
-const SOURCE_OPTIONS = [
-  'Prospeccao ativa',
-  'Indicacao de contador',
-  'Trafego pago',
-  'Indicacao / WhatsApp',
-  'Indicacao de parceiro',
-  'Outros',
-];
 
 function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField = 'name', extraInfo }) {
   const [search, setSearch] = useState('');
@@ -264,11 +261,15 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   const createMutation = useCreateCrmDeal();
   const updateMutation = useUpdateCrmDeal();
   const createCompanyMutation = useCreateCrmCompany();
-  const isPending = createMutation.isPending || updateMutation.isPending || createCompanyMutation.isPending;
+  const createContactMutation = useCreateCrmContact();
+  const createLeadSourceMutation = useCreateCrmLeadSource();
+  const isPending = createMutation.isPending || updateMutation.isPending || createCompanyMutation.isPending || createContactMutation.isPending;
 
   const { data: pipelines = [] } = useCrmPipelines();
   const { data: allMembers = [] } = useTeamMembers();
+  const { data: leadSources = [] } = useCrmLeadSources();
   const crmMembers = allMembers.filter(m => m.crmRole);
+  const SOURCE_OPTIONS = [...leadSources.map(s => s.name), 'Outros'];
 
   const { register, handleSubmit, control, reset, watch, setValue, getValues, formState: { errors } } = useForm({
     resolver: zodResolver(crmDealSchema),
@@ -285,6 +286,14 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   const selectedStatus = watch('status');
   const stages = pipelines?.find(p => p.id === selectedPipelineId)?.stages || [];
 
+  // Se o deal ja esta perdido, mantemos a opcao (desabilitada) no dropdown so
+  // pra o <select> nativo nao perder o valor selecionado ao renderizar —
+  // reabrir (status "Aberto") continua possivel, mas nao da pra selecionar
+  // "Perdido" de novo por aqui.
+  const statusSelectOptions = selectedStatus === 'lost'
+    ? [...STATUS_OPTIONS, { value: 'lost', label: 'Perdido', disabled: true }]
+    : STATUS_OPTIONS;
+
   // Modo "Outros" do segmento — controla exibicao do input livre independente
   // do valor do form (que e o texto final digitado).
   const [isCustomSegment, setIsCustomSegment] = useState(false);
@@ -297,7 +306,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   useEffect(() => {
     if (!open) return;
     const knownSegments = SEGMENT_OPTIONS.filter(s => s !== 'Outros');
-    const knownSources = SOURCE_OPTIONS.filter(s => s !== 'Outros');
+    const knownSources = leadSources.map(s => s.name);
     if (deal) {
       setIsCustomSegment(!!deal.segment && !knownSegments.includes(deal.segment));
       setIsCustomSource(!!deal.source && !knownSources.includes(deal.source));
@@ -332,7 +341,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         ownerId: null,
       });
     }
-  }, [open, deal, reset]);
+  }, [open, deal, reset, leadSources]);
 
   // Aplicar pipeline/stage default quando a lista carrega — via setValue
   // (preserva os demais campos digitados) e so se ainda estiver vazio.
@@ -382,9 +391,35 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
       }
     }
 
+    // Mesmo espirito da empresa: nome de contato digitado sem vinculo virava
+    // so texto solto no deal (contact_name) e nunca virava um crm_contacts
+    // pesquisavel — inconsistente com o que acontece ao digitar empresa.
+    let contactId = data.contactId || null;
+    const typedContact = (data.contactName || '').trim();
+    if (!contactId && typedContact) {
+      try {
+        const newContact = await createContactMutation.mutateAsync({
+          name: typedContact,
+          phone: data.contactPhone || '',
+          email: data.contactEmail || '',
+        });
+        contactId = newContact?.id || null;
+      } catch (_) {
+        // toast de erro ja disparado pelo service; aborta submit
+        return;
+      }
+    }
+
+    // Origem nova digitada em "Outros": cadastra pra virar opcao no dropdown
+    // de todo mundo daqui pra frente (mesmo espirito da empresa criada inline).
+    const typedSource = (data.source || '').trim();
+    if (typedSource && !leadSources.some(s => s.name.toLowerCase() === typedSource.toLowerCase())) {
+      createLeadSourceMutation.mutate({ name: typedSource });
+    }
+
     // companyName e campo so da UI — nao vai pro banco do deal
     const { companyName: _ignore, ...rest } = data;
-    const payload = { ...rest, companyId, ownerId: data.ownerId || null };
+    const payload = { ...rest, companyId, contactId, ownerId: data.ownerId || null };
 
     if (isEdit) {
       await updateMutation.mutateAsync({ id: deal.id, updates: payload });
@@ -680,8 +715,11 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
             <select {...register('status')} className={fieldClass('status')}>
-              {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {statusSelectOptions.map(o => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
             </select>
+            {selectedStatus === 'lost' && (
+              <p className="text-xs text-slate-400 mt-1">Use o botao "Perdido" (fora deste formulario) pra reabrir ou remarcar — ele move o negocio corretamente entre as pipelines.</p>
+            )}
           </div>
         </div>
 

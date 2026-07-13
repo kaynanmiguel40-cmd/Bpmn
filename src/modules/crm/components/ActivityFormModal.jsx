@@ -11,11 +11,20 @@ import { CrmModal } from './ui/CrmModal';
 import { z } from 'zod';
 import { crmActivitySchema } from '../schemas/crmValidation';
 
-// No modal, INÍCIO e ENTREGA são obrigatórios. (No schema base endDate fica
-// opcional pra não quebrar cadência/criações automáticas.)
-const activityFormSchema = crmActivitySchema.extend({
-  endDate: z.string().min(1, 'Data de entrega é obrigatória'),
-});
+// Tipos pontuais (ligacao/mensagem) nao tem uma "janela" real de horario —
+// exigir ENTREGA igual reuniao forcava o vendedor a chutar um segundo
+// horario sem sentido. So exige ENTREGA pros demais tipos (tarefa/email/
+// reuniao/visita/almoco).
+const INSTANT_ACTIVITY_TYPES = ['call', 'message'];
+
+// No modal, INÍCIO é sempre obrigatório; ENTREGA só quando o tipo não é pontual.
+const activityFormSchema = crmActivitySchema
+  .extend({ endDate: z.string().nullable().optional() })
+  .superRefine((data, ctx) => {
+    if (!INSTANT_ACTIVITY_TYPES.includes(data.type) && !data.endDate) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'Data de entrega é obrigatória' });
+    }
+  });
 import {
   useCrmContacts,
   useCrmDeals,
@@ -130,7 +139,14 @@ function AttendeesInput({ value = [], onChange }) {
 
 const EVENT_TYPE_VALUES = ['meeting', 'visit', 'lunch'];
 
-export function ActivityFormModal({ open, onClose, activity = null, defaultDealId = null, defaultContactId = null, onOpenLeadHistory = null }) {
+export function ActivityFormModal({
+  open, onClose, activity = null, defaultDealId = null, defaultContactId = null, onOpenLeadHistory = null,
+  // Responsavel padrao pra tarefa NOVA — normalmente quem esta logado, mas
+  // uma agenda aberta na visao de outro vendedor deve herdar esse vendedor
+  // como padrao (sem isso, "Nova tarefa" no calendario do Joao criava a
+  // tarefa pra quem clicou, nao pro Joao).
+  defaultAssignedTo = null, defaultAssignedToName = null,
+}) {
   const isEdit = !!activity?.id;
   const createMutation = useCreateCrmActivity();
   const updateMutation = useUpdateCrmActivity();
@@ -150,13 +166,19 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
   const assignedTo = watch('assignedTo');
   const { data: owners = [] } = useReportOwners();
 
-  // Em tarefa NOVA, responsável já vem como você (quando a lista de vendedores carrega).
+  // Em tarefa NOVA, responsável já vem preenchido: o vendedor cuja agenda
+  // está sendo vista (defaultAssignedTo), ou você mesmo na ausência disso.
   useEffect(() => {
     if (open && !isEdit && owners.length && !assignedTo) {
+      if (defaultAssignedTo) {
+        setValue('assignedTo', defaultAssignedTo);
+        setValue('assignedToName', defaultAssignedToName || owners.find(o => o.authUserId === defaultAssignedTo)?.name || null);
+        return;
+      }
       const me = owners.find(o => o.isMe) || owners[0];
       if (me) { setValue('assignedTo', me.authUserId); setValue('assignedToName', me.name); }
     }
-  }, [open, isEdit, owners, assignedTo, setValue]);
+  }, [open, isEdit, owners, assignedTo, setValue, defaultAssignedTo, defaultAssignedToName]);
 
   useEffect(() => {
     if (open && activity) {
@@ -276,7 +298,9 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
             {errors.startDate && <p className="text-xs text-rose-500 mt-0.5">{errors.startDate.message}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Entrega *</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Entrega{!INSTANT_ACTIVITY_TYPES.includes(selectedType) && ' *'}
+            </label>
             <input type="datetime-local" {...register('endDate')} className={fieldClass('endDate')} />
             {errors.endDate && <p className="text-xs text-rose-500 mt-0.5">{errors.endDate.message}</p>}
           </div>
@@ -346,6 +370,31 @@ export function ActivityFormModal({ open, onClose, activity = null, defaultDealI
           <textarea {...register('description')} rows={3} placeholder="Detalhes da atividade..."
             className={`${fieldClass('description')} resize-none`} />
         </div>
+
+        {/* Entrega registrada na conclusao — so aparecia no Historico do lead,
+            que exige dealId/contactId. Tarefa avulsa (sem negocio/contato)
+            tinha essa nota capturada e nunca mais mostrada em lugar nenhum. */}
+        {isEdit && (activity?.deliveryInput || activity?.deliveryReport) && (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">
+              Entrega registrada na conclusão
+            </p>
+            <div className="space-y-1.5">
+              {activity.deliveryInput && (
+                <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2.5 py-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
+                  <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{activity.deliveryInput}</span>
+                </div>
+              )}
+              {activity.deliveryReport && (
+                <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
+                  <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{activity.deliveryReport}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </form>
     </CrmModal>
   );

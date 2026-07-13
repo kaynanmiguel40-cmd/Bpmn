@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Phone, Building2, Clock } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { CrmConfirmDialog } from './ui/CrmConfirmDialog';
 import { CALL_OUTCOMES } from '../services/crmCallsService';
 
 const OUTCOME_GROUPS = [
@@ -48,11 +49,15 @@ export function PostCallModal({
   elapsedSeconds,    // numero — cronometro
   onSubmit,          // ({ outcome, notes, durationSeconds, followUpAt }) => Promise
   isPending,
+  isDesktop,         // true = tel: pode nao ter discado de verdade (sem Phone Link pareado)
 }) {
   const [outcome, setOutcome] = useState(null);
   const [notes, setNotes] = useState('');
   const [duration, setDuration] = useState(elapsedSeconds || 0);
   const [followUpAt, setFollowUpAt] = useState('');
+  // Dialog de "tem certeza" antes de fechar com resultado/notas preenchidos —
+  // Escape/clique fora saiam apagando tudo sem avisar (nota de ligacao real perdida).
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const handleConfirmRef = useRef(null);
   // Snapshot da duracao no momento da abertura, lido via ref para NAO entrar
   // nas deps do effect de reset abaixo.
@@ -67,6 +72,7 @@ export function PostCallModal({
     setOutcome(null);
     setNotes('');
     setDuration(elapsedRef.current);
+    setConfirmDiscardOpen(false);
     // Sugere amanha 09:00 como default de retorno
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -108,16 +114,35 @@ export function PostCallModal({
   };
   handleConfirmRef.current = handleConfirm;
 
+  // Ha resultado/nota preenchidos que Escape/backdrop/X apagariam sem avisar.
+  const hasUnsavedInput = !!(outcome || notes.trim());
+
+  // Chamado pelo CrmModal antes de fechar via Escape/backdrop/X. Se ha dado
+  // preenchido, barra o fechamento e abre o dialog de confirmacao em vez de
+  // deixar o CrmModal chamar onClose direto.
+  const handleBeforeClose = () => {
+    if (!hasUnsavedInput) return true;
+    setConfirmDiscardOpen(true);
+    return false;
+  };
+
+  // Usado pelo botao "Pular registro" — mesmo guard do Escape/backdrop.
+  const requestClose = () => {
+    if (handleBeforeClose()) onClose?.();
+  };
+
   return (
+    <>
     <CrmModal
       open={open}
       onClose={onClose}
+      onBeforeClose={handleBeforeClose}
       title="Registrar resultado da ligacao"
       size="md"
       footer={
         <>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             disabled={isPending}
             className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
           >
@@ -184,6 +209,11 @@ export function PostCallModal({
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
             Resultado *
           </label>
+          {isDesktop && (
+            <p className="mb-2 text-[11px] text-amber-600 dark:text-amber-400">
+              Nesse dispositivo o tel: pode não ter discado de verdade — só marque "Atendeu"/agendamento se a ligação realmente aconteceu. Se nada tocou, use um dos motivos em "Não falou".
+            </p>
+          )}
           <div className="space-y-3">
             {OUTCOME_GROUPS.map((group) => (
               <div key={group.label}>
@@ -247,6 +277,17 @@ export function PostCallModal({
         </div>
       </div>
     </CrmModal>
+
+    <CrmConfirmDialog
+      open={confirmDiscardOpen}
+      onConfirm={() => { setConfirmDiscardOpen(false); onClose?.(); }}
+      onCancel={() => setConfirmDiscardOpen(false)}
+      title="Descartar anotacao da ligacao?"
+      message="Voce preencheu resultado e/ou notas dessa ligacao. Fechar agora sem registrar vai perder essas informacoes."
+      confirmLabel="Descartar"
+      variant="warning"
+    />
+    </>
   );
 }
 

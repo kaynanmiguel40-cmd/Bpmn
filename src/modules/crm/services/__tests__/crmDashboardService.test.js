@@ -7,7 +7,7 @@ vi.mock('../../../../lib/supabase', () => ({
 }));
 vi.mock('../../../../contexts/ToastContext', () => ({ toast: vi.fn() }));
 
-import { buildSalesFunnel } from '../crmDashboardService';
+import { buildSalesFunnel, detectFunnelStagePositions } from '../crmDashboardService';
 
 describe('buildSalesFunnel (Lead → Qualificado → Reunião → Fechamento)', () => {
   // pipeline p1: qualificado >= pos 3, reunião >= pos 4, fechamento = won
@@ -88,5 +88,45 @@ describe('buildSalesFunnel (Lead → Qualificado → Reunião → Fechamento)', 
     expect(byKey.meeting).toBe(1);
     expect(byKey.closing).toBe(1);
     expect(r.revenue).toBe(500);
+  });
+});
+
+describe('detectFunnelStagePositions', () => {
+  it('pipeline Geral (com etapa "Qualificado" própria): usa ela, não "Respondeu"', () => {
+    const stages = [
+      { position: 1, name: 'A contatar' },
+      { position: 2, name: 'Em cadência' },
+      { position: 3, name: 'Respondeu' },
+      { position: 4, name: 'Qualificado' },
+      { position: 5, name: 'Reunião / Demo' },
+      { position: 6, name: 'Proposta' },
+      { position: 7, name: 'Trial / Teste' },
+      { position: 8, name: 'Negociação' },
+      { position: 9, name: 'Cliente', is_win_stage: true },
+    ];
+    const { qualPosByPipeline, meetingPosByPipeline } = detectFunnelStagePositions({ geral: stages });
+    expect(qualPosByPipeline.geral).toBe(4); // "Qualificado", não "Respondeu" (pos 3)
+    expect(meetingPosByPipeline.geral).toBe(5); // "Reunião / Demo"
+  });
+
+  it('pipeline SEM etapa "Qualificado" explícita: cai no heurístico antigo (Respondeu/engajou/...)', () => {
+    const stages = [
+      { position: 1, name: 'A contatar' },
+      { position: 2, name: 'Em cadência' },
+      { position: 3, name: 'Respondeu' },
+      { position: 4, name: 'Reunião / Demo' },
+      { position: 5, name: 'Cliente', is_win_stage: true },
+    ];
+    const { qualPosByPipeline } = detectFunnelStagePositions({ p1: stages });
+    expect(qualPosByPipeline.p1).toBe(3); // sem "Qualificado", usa "Respondeu" (fallback)
+  });
+
+  it('reunião nunca fica antes de qualificado (funil monotônico)', () => {
+    const stages = [
+      { position: 1, name: 'Qualificado' },
+      { position: 2, name: 'A contatar' }, // sem match de reunião nessa pipeline
+    ];
+    const { qualPosByPipeline, meetingPosByPipeline } = detectFunnelStagePositions({ p1: stages });
+    expect(meetingPosByPipeline.p1).toBeGreaterThanOrEqual(qualPosByPipeline.p1);
   });
 });

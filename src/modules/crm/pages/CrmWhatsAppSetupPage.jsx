@@ -78,7 +78,16 @@ function InstanceCard({ instance }) {
 
       {instance.status === 'disconnected' && (
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-          Acesse o painel da Evolution API (<code>{import.meta.env.VITE_EVOLUTION_URL || 'EVOLUTION_URL'}/manager</code>) pra reconectar.
+          Acesse o painel da Evolution API (
+          <a
+            href={`${import.meta.env.VITE_EVOLUTION_URL || ''}/manager`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-fyness-primary hover:underline"
+          >
+            {import.meta.env.VITE_EVOLUTION_URL || 'EVOLUTION_URL'}/manager
+          </a>
+          ) pra reconectar.
         </p>
       )}
 

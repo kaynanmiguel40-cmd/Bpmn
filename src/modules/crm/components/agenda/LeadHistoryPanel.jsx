@@ -9,19 +9,14 @@
  * Os dados vem de useLeadTimeline (junta as 4 fontes no servico).
  */
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import {
   X, Phone, MessageCircle, CalendarCheck, Flag, Mail, Users, Coffee,
-  MapPin, ExternalLink, Building2, CheckCircle2, Clock, ArrowRight, PenLine,
+  MapPin, ExternalLink, Building2, CheckCircle2, Clock, ArrowRight,
 } from 'lucide-react';
-import { useLeadTimeline, useLeadDailyReport, useSaveLeadReport } from '../../hooks/useCrmQueries';
+import { useLeadTimeline } from '../../hooks/useCrmQueries';
 import { scheduleTiming } from '../../services/crmAgendaService';
 import { CrmBadge } from '../ui';
-
-const todayKey = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
 
 const hm = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const TIMING_CLASS = {
@@ -89,7 +84,25 @@ function TimelineRow({ item }) {
           </span>
           <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${item.color}22`, color: item.color }}>{item.typeLabel}</span>
         </div>
-        {item.detail && <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 break-words">{item.detail}</p>}
+        {/* Input/output da tarefa concluída — mesmo par "Você"/"Lead" do Histórico do Negócio */}
+        {(item.deliveryInput || item.deliveryReport) ? (
+          <div className="mt-1.5 space-y-1.5">
+            {item.deliveryInput && (
+              <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2.5 py-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
+                <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{item.deliveryInput}</span>
+              </div>
+            )}
+            {item.deliveryReport && (
+              <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
+                <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{item.deliveryReport}</span>
+              </div>
+            )}
+          </div>
+        ) : item.detail && (
+          <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 break-words">{item.detail}</p>
+        )}
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{relativeLabel(item.date)}</p>
         {item.kind === 'activity' && item.done && item.completedAt && (() => {
           const t = scheduleTiming(item.endDate || item.date, item.completedAt);
@@ -102,52 +115,6 @@ function TimelineRow({ item }) {
           );
         })()}
       </div>
-    </div>
-  );
-}
-
-// Campo onde o vendedor escreve o relato do lead no dia de hoje. Salva ao
-// sair do campo (blur) ou no botão; alimenta a página de Relatório Diário.
-function LeadReportField({ dealId, contactId }) {
-  const date = todayKey();
-  const { data: report } = useLeadDailyReport({ dealId, contactId, date });
-  const saveMut = useSaveLeadReport();
-  const [text, setText] = useState('');
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => { setText(report?.content || ''); setDirty(false); }, [report?.content, dealId, contactId]);
-
-  const save = () => {
-    if (!dirty) return;
-    saveMut.mutate({ dealId, contactId, content: text, date }, { onSuccess: () => setDirty(false) });
-  };
-
-  return (
-    <div className="mb-5 rounded-xl border border-slate-200/70 dark:border-white/10 bg-slate-50/60 dark:bg-slate-800/30 p-3">
-      <div className="flex items-center justify-between mb-1.5">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-          <PenLine size={12} /> Relato de hoje
-        </h4>
-        <span className="text-[10px] text-slate-400 dark:text-slate-500">
-          {saveMut.isPending ? 'salvando…' : dirty ? 'não salvo' : (text ? 'salvo' : '')}
-        </span>
-      </div>
-      <textarea
-        value={text}
-        onChange={(e) => { setText(e.target.value); setDirty(true); }}
-        onBlur={save}
-        rows={3}
-        placeholder="O que rolou com esse lead hoje? (vai pro relatório do dia)"
-        className="w-full text-sm rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-800/60 text-slate-800 dark:text-slate-100 placeholder-slate-400 p-2 resize-y focus:outline-none focus:ring-2 focus:ring-fyness-primary/40"
-      />
-      {dirty && (
-        <div className="flex justify-end mt-1.5">
-          <button onClick={save} disabled={saveMut.isPending}
-            className="text-xs font-medium px-2.5 py-1 rounded-lg bg-fyness-primary hover:bg-fyness-secondary text-white disabled:opacity-50">
-            Salvar relato
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -216,9 +183,8 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead }) {
         )}
       </div>
 
-      {/* Conteúdo: relato de hoje + timeline */}
+      {/* Conteúdo: timeline (a fazer + histórico) */}
       <div className="flex-1 overflow-y-auto p-4">
-        <LeadReportField dealId={selected.dealId} contactId={selected.contactId} />
         {isLoading ? (
           <div className="flex items-center justify-center py-10">
             <div className="w-6 h-6 border-2 border-fyness-primary border-t-transparent rounded-full animate-spin" />

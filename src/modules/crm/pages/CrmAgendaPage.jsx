@@ -1,19 +1,28 @@
 /**
- * CrmAgendaPage - Agenda do CRM: execução de tarefas + histórico do lead.
+ * CrmAgendaPage - Agenda do CRM: controle do dia a dia, num lugar só.
  *
- * Layout: calendário (mês/semana/dia) à esquerda + painel lateral com a
- * timeline unificada do lead selecionado à direita. Integra com o Google
- * Calendar de forma bidirecional: as atividades do CRM já são espelhadas
- * pro Google (push, em crmActivitiesService) e aqui também PUXAMOS os
- * eventos do Google (pull, useGCalEvents) pra mostrar junto.
+ * 2 visões (toggle "Meu Dia" / "Time"), pra não espalhar o dia a dia em 3
+ * telas diferentes (Agenda, Atividades e Daily viravam 3 destinos separados
+ * pro mesmo tipo de coisa — controle de atividade):
+ *
+ *   Meu Dia - calendário (mês/semana/dia/lista) + histórico do lead.
+ *             Integra com o Google Calendar de forma bidirecional: as
+ *             atividades do CRM já são espelhadas pro Google (push, em
+ *             crmActivitiesService) e aqui também PUXAMOS os eventos do
+ *             Google (pull, useGCalEvents) pra mostrar junto.
+ *   Time     - placar do time (ligações/reuniões/contratos, meta do mês,
+ *             agendado/atrasados do time inteiro) + tabela buscável de
+ *             todas as atividades (qualquer vendedor, qualquer período).
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Link2, Eye, EyeOff, FileText } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, Link2, Eye, EyeOff } from 'lucide-react';
 import { CrmPageHeader } from '../components/ui';
 import CrmCalendar from '../components/agenda/CrmCalendar';
 import LeadHistoryPanel from '../components/agenda/LeadHistoryPanel';
+import { TeamDailyBriefing } from '../components/agenda/TeamDailyBriefing';
+import { TeamActivitiesTable } from '../components/agenda/TeamActivitiesTable';
 import { ActivityFormModal } from '../components/ActivityFormModal';
 import { CompleteActivityModal } from '../components/CompleteActivityModal';
 import { useCrmCalendarActivities, useCompleteCrmActivity } from '../hooks/useCrmQueries';
@@ -21,6 +30,9 @@ import { useGCalEvents, useGCalStatus } from '../../../hooks/queries';
 import { connectGCal } from '../../../lib/googleCalendarService';
 import { useProfile } from '../../../hooks/useProfile';
 import { namesMatch } from '../../../lib/kpiUtils';
+import { useUrlState } from '../../../hooks/useUrlState';
+import { useTeamMembers } from '../../../hooks/queries';
+import { useCrmAccess } from '../hooks/useCrmAccess';
 
 const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -53,15 +65,59 @@ function dedupeKey(title, startDate) {
   return `${t}|${ms}`;
 }
 
-export default function CrmAgendaPage() {
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-colors ${
+        active
+          ? 'bg-fyness-primary text-white shadow-sm'
+          : 'text-slate-600 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-white/5'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MyDayCalendar() {
   const navigate = useNavigate();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState('agenda');
-  const [selected, setSelected] = useState(null); // { dealId, contactId }
+  // Deep-link vindo de fora (ex.: botão "Ver na Agenda" no Negócio): abre já
+  // com o lead em foco e, se veio uma data (de uma tarefa específica), pula
+  // pro dia certo. Só lido na primeira renderização (seed do estado inicial).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedDealId = searchParams.get('dealId');
+  const linkedContactId = searchParams.get('contactId');
+  const linkedDate = searchParams.get('date');
+
+  // view/data/dono-visto/toggle do Google via URL — sem isso, trocar pra aba
+  // "Time" e voltar descartava tudo (MyDayCalendar desmonta ao trocar de aba).
+  // "date" é o mesmo param usado pelo deep-link (linkedDate) acima: ele já
+  // seed a URL, então o useUrlState só continua sincronizando dali pra frente.
+  // Default de "view" é congelado no mount (useState) — se recalculasse a
+  // cada render a partir de linkedDate, apertar "Hoje" (que limpa o param
+  // "date") mudaria o default e resetaria a view sozinho.
+  const [initialView] = useState(() => (linkedDate ? 'day' : 'agenda'));
+  const [view, setView] = useUrlState('view', initialView);
+  const [dateISO, setDateISO] = useUrlState('date', '');
+  const currentDate = useMemo(() => (dateISO ? new Date(dateISO) : new Date()), [dateISO]);
+  const [viewingMemberId, setViewingMemberId] = useUrlState('member', ''); // '' = eu | 'all' = todos | authUserId de alguém
+  const [gcalParam, setGcalParam] = useUrlState('gcal', '1');
+  const showGoogle = gcalParam !== '0'; // camada Google Agenda visível
+  const setShowGoogle = useCallback((next) => {
+    setGcalParam(prev => {
+      const prevBool = prev !== '0';
+      const nextBool = typeof next === 'function' ? next(prevBool) : next;
+      return nextBool ? '1' : '0';
+    });
+  }, [setGcalParam]);
+
+  const [selected, setSelected] = useState(() => // { dealId, contactId }
+    (linkedDealId || linkedContactId) ? { dealId: linkedDealId || null, contactId: linkedContactId || null } : null
+  );
   const [formOpen, setFormOpen] = useState(false);
   const [formInitial, setFormInitial] = useState(null);
   const [editActivity, setEditActivity] = useState(null); // tarefa clicada (abre o form em edição, mostra a descrição)
-  const [showGoogle, setShowGoogle] = useState(true); // camada Google Agenda visível
   const [completingTask, setCompletingTask] = useState(null); // { id, title } — abre o modal de conclusão (input/output)
 
   const [rangeStart, rangeEnd] = useMemo(() => computeRange(view, currentDate), [view, currentDate]);
@@ -69,23 +125,41 @@ export default function CrmAgendaPage() {
   const endISO = rangeEnd.toISOString();
 
   // Atividades do CRM no recorte
-  const { data: crmActivitiesRaw = [] } = useCrmCalendarActivities(startISO, endISO);
+  const { data: crmActivitiesRaw = [], isLoading: activitiesLoading, isError: activitiesError } = useCrmCalendarActivities(startISO, endISO);
   const completeMutation = useCompleteCrmActivity();
 
-  // Cada um vê só a SUA agenda: filtra pelo dono (responsável → nome do
-  // responsável → criador). Sem identidade carregada = nada (privacidade) —
-  // evita que produto/operação (ex.: Elias) veja a cadência de lead alheia.
+  // Por padrão, cada um vê só a SUA agenda (privacidade — evita que
+  // produto/operação, ex.: Elias, veja a cadência de lead alheia). Quem é
+  // admin do CRM pode trocar pra ver a agenda de outro vendedor ou de todos.
   const { profile } = useProfile();
+  const { isAdmin } = useCrmAccess();
+  const { data: allMembers = [] } = useTeamMembers();
+  const crmMembers = useMemo(() => allMembers.filter(m => m.crmRole && m.authUserId), [allMembers]);
+
+  // Identidade de quem esta sendo visto (self quando nao-admin ou sem selecao).
+  // Usada tanto pro filtro de atividades quanto pro responsavel padrao de
+  // tarefa nova — sem isso, "Nova tarefa" na agenda de outra pessoa sempre
+  // criava a tarefa pra quem clicou, nao pra pessoa cuja agenda estava aberta.
+  const viewingMember = useMemo(() => (
+    isAdmin && viewingMemberId && viewingMemberId !== 'all'
+      ? crmMembers.find(m => m.authUserId === viewingMemberId)
+      : null
+  ), [isAdmin, viewingMemberId, crmMembers]);
+  const viewingUid = viewingMember ? viewingMember.authUserId : (profile?.id || null);
+  const viewingUname = viewingMember ? viewingMember.name : (profile?.name || null);
+
   const crmActivities = useMemo(() => {
-    const uid = profile?.id || null;
-    const uname = profile?.name || null;
+    if (isAdmin && viewingMemberId === 'all') return crmActivitiesRaw;
+
+    const uid = viewingUid;
+    const uname = viewingUname;
     if (!uid && !uname) return [];
     return crmActivitiesRaw.filter((a) => {
       if (a.assignedTo) return a.assignedTo === uid;
       if (a.assignedToName && uname) return namesMatch(a.assignedToName, uname);
       return a.createdBy === uid;
     });
-  }, [crmActivitiesRaw, profile]);
+  }, [crmActivitiesRaw, profile, isAdmin, viewingMemberId, crmMembers]);
 
   // Lookup das atividades completas (com descrição/responsável/etc.) por id,
   // pra abrir o form de edição ao clicar — o objeto do evento é enxuto.
@@ -99,6 +173,15 @@ export default function CrmAgendaPage() {
   const { data: gcalStatus } = useGCalStatus();
   const gcalConnected = !!gcalStatus?.id && !gcalStatus?.expired;
   const { data: gcalEvents = [] } = useGCalEvents(rangeStart, rangeEnd, gcalConnected);
+
+  // Nome+cor por membro (mesma cor usada no placar do time) — pra pintar o
+  // avatar de dono no chip quando o admin está vendo "Todos os vendedores".
+  const memberByUid = useMemo(() => {
+    const m = new Map();
+    for (const mem of crmMembers) m.set(mem.authUserId, { name: mem.name, color: mem.color });
+    return m;
+  }, [crmMembers]);
+  const showOwner = isAdmin && viewingMemberId === 'all';
 
   // Mescla CRM + Google, deduplicando o que o CRM já espelhou pro Google.
   const events = useMemo(() => {
@@ -119,8 +202,13 @@ export default function CrmAgendaPage() {
       dealId: a.dealId,
       contactId: a.contactId,
       leadKey: `${a.dealId || ''}:${a.contactId || ''}`,
+      assignedToName: a.assignedToName || memberByUid.get(a.assignedTo)?.name || null,
+      assignedToColor: memberByUid.get(a.assignedTo)?.color || '#94a3b8',
     }));
-    if (!gcalConnected || !showGoogle || gcalEvents.length === 0) return crm;
+    // Google Agenda é sempre a do usuário logado — só faz sentido misturar
+    // quando ele está olhando o PRÓPRIO dia, não a agenda de outro vendedor.
+    const viewingSelf = !viewingMemberId;
+    if (!viewingSelf || !gcalConnected || !showGoogle || gcalEvents.length === 0) return crm;
 
     const seen = new Set(crm.map(e => dedupeKey(e.title, e.startDate)));
     const google = gcalEvents
@@ -138,19 +226,32 @@ export default function CrmAgendaPage() {
         leadKey: null,
       }));
     return [...crm, ...google];
-  }, [crmActivities, gcalEvents, gcalConnected, showGoogle]);
+  }, [crmActivities, gcalEvents, gcalConnected, showGoogle, viewingMemberId, memberByUid]);
 
   // Navegação do calendário
   const handleNavigate = useCallback((dir) => {
-    setCurrentDate(prev => {
-      const d = new Date(prev);
-      if (view === 'month') d.setMonth(d.getMonth() + dir);
-      else if (view === 'week') d.setDate(d.getDate() + dir * 7);
-      else if (view === 'agenda') d.setDate(d.getDate() + dir * 30);
-      else d.setDate(d.getDate() + dir);
-      return d;
-    });
-  }, [view]);
+    const d = new Date(currentDate);
+    if (view === 'month') d.setMonth(d.getMonth() + dir);
+    else if (view === 'week') d.setDate(d.getDate() + dir * 7);
+    else if (view === 'agenda') d.setDate(d.getDate() + dir * 30);
+    else d.setDate(d.getDate() + dir);
+    setDateISO(d.toISOString());
+  }, [view, currentDate, setDateISO]);
+
+  // "+N mais" no Mês: pula direto pro Dia daquela data (em vez de só existir
+  // como texto sem clique, que caía no onClick da célula e abria tarefa nova).
+  // Os 2 params (date/view) precisam ir num único setSearchParams: chamar
+  // setDateISO e setView em sequência perderia um dos dois — cada useUrlState
+  // fecha sobre o searchParams do render atual, então a 2ª chamada sobrescreve
+  // a 1ª em vez de empilhar (confirmado no código do react-router-dom).
+  const handleShowDay = useCallback((day) => {
+    setSearchParams(prev => {
+      const sp = new URLSearchParams(prev);
+      sp.set('date', new Date(day).toISOString());
+      sp.set('view', 'day');
+      return sp;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const handleSelectEvent = useCallback((ev) => {
     if (ev.source === 'google') {
@@ -183,41 +284,49 @@ export default function CrmAgendaPage() {
 
   const selectedLeadKey = selected ? `${selected.dealId || ''}:${selected.contactId || ''}` : null;
 
+  const calendarActions = (
+    <>
+      {isAdmin && crmMembers.length > 0 && (
+        <select
+          value={viewingMemberId}
+          onChange={(e) => setViewingMemberId(e.target.value)}
+          title="Ver a agenda de"
+          className="text-xs bg-white dark:bg-slate-800 border border-slate-200/70 dark:border-white/10 rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+        >
+          <option value="">Meu calendário</option>
+          <option value="all">Todos os vendedores</option>
+          {crmMembers.map(m => (
+            <option key={m.authUserId} value={m.authUserId}>{m.name}</option>
+          ))}
+        </select>
+      )}
+      {!gcalConnected ? (
+        <button onClick={() => connectGCal()} title="Conectar Google Agenda"
+          className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 rounded-lg border border-slate-200/70 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5">
+          <Link2 size={13} /> Google
+        </button>
+      ) : (
+        <button
+          onClick={() => setShowGoogle(v => !v)}
+          title={showGoogle ? 'Ocultar eventos do Google Agenda' : 'Mostrar eventos do Google Agenda'}
+          className={`p-1.5 rounded-lg border transition-colors ${
+            showGoogle
+              ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
+              : 'text-slate-400 dark:text-slate-500 border-slate-200/70 dark:border-white/10 hover:text-slate-600 dark:hover:text-slate-300'
+          }`}
+        >
+          {showGoogle ? <Eye size={14} /> : <EyeOff size={14} />}
+        </button>
+      )}
+      <button onClick={openNewTask}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg shadow-sm">
+        <Plus size={14} /> Nova tarefa
+      </button>
+    </>
+  );
+
   return (
     <div className="h-full flex flex-col">
-      <CrmPageHeader
-        title="Agenda"
-        subtitle="Execução de tarefas e histórico de cada lead em calendário"
-        actions={
-          <div className="flex items-center gap-2">
-            {!gcalConnected && (
-              <button onClick={() => connectGCal()}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200/70 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5">
-                <Link2 size={15} /> Conectar Google Agenda
-              </button>
-            )}
-            {gcalConnected && (
-              <button
-                onClick={() => setShowGoogle(v => !v)}
-                title={showGoogle ? 'Ocultar eventos do Google Agenda' : 'Mostrar eventos do Google Agenda'}
-                className={`flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium rounded-lg border transition-colors ${
-                  showGoogle
-                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
-                    : 'text-slate-400 dark:text-slate-500 border-slate-200/70 dark:border-white/10 hover:text-slate-600 dark:hover:text-slate-300'
-                }`}
-              >
-                {showGoogle ? <Eye size={14} /> : <EyeOff size={14} />} Google Agenda
-              </button>
-            )}
-            {/* CRM-only: botão "Relatórios" (ia pro /arquivos do sistema) removido. */}
-            <button onClick={openNewTask}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg shadow-sm">
-              <Plus size={16} /> Nova tarefa
-            </button>
-          </div>
-        }
-      />
-
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 min-w-0">
           <CrmCalendar
@@ -226,14 +335,19 @@ export default function CrmAgendaPage() {
             onViewChange={setView}
             currentDate={currentDate}
             onNavigate={handleNavigate}
-            onToday={() => setCurrentDate(new Date())}
+            onToday={() => setDateISO('')}
             onSelectEvent={handleSelectEvent}
             onSelectSlot={handleSelectSlot}
+            onShowDay={handleShowDay}
             onCompleteTask={(ev) => {
               if (!ev.activityId) return;
               setCompletingTask({ id: ev.activityId, title: ev.title, type: ev.typeKey });
             }}
             selectedLeadKey={selectedLeadKey}
+            extraActions={calendarActions}
+            showOwner={showOwner}
+            isLoading={activitiesLoading}
+            isError={activitiesError}
           />
         </div>
       </div>
@@ -258,6 +372,8 @@ export default function CrmAgendaPage() {
         open={formOpen || !!editActivity}
         onClose={() => { setFormOpen(false); setFormInitial(null); setEditActivity(null); }}
         activity={editActivity || formInitial}
+        defaultAssignedTo={viewingUid}
+        defaultAssignedToName={viewingUname}
         onOpenLeadHistory={(act) => {
           setEditActivity(null);
           if (act?.dealId || act?.contactId) {
@@ -277,6 +393,39 @@ export default function CrmAgendaPage() {
           });
         }}
       />
+    </div>
+  );
+}
+
+export default function CrmAgendaPage() {
+  const [tab, setTab] = useUrlState('visao', 'mine');
+  const isMine = tab !== 'team';
+
+  return (
+    <div className={isMine ? 'h-full flex flex-col' : ''}>
+      <CrmPageHeader
+        title="Agenda"
+        subtitle="Controle do seu dia e do time"
+        actions={
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100/80 dark:bg-slate-800/60">
+            <TabButton active={isMine} onClick={() => setTab('mine')}>Meu Dia</TabButton>
+            <TabButton active={!isMine} onClick={() => setTab('team')}>Time</TabButton>
+          </div>
+        }
+      />
+
+      {isMine ? (
+        <MyDayCalendar />
+      ) : (
+        <div className="max-w-6xl mx-auto space-y-6">
+          <div className="crm-glass rounded-2xl p-5">
+            <TeamDailyBriefing />
+          </div>
+          <div className="crm-glass rounded-2xl p-5">
+            <TeamActivitiesTable />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

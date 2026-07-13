@@ -84,6 +84,12 @@ export function CrmCompaniesPage({ embedded = false } = {}) {
 
   useEffect(() => { setPage(1); }, [debouncedSearch, segmentFilter]);
 
+  const hasAnyFilter = !!segmentFilter || !!debouncedSearch;
+  const handleClearAllFilters = () => {
+    setSearch('');
+    setSegmentFilter('');
+  };
+
   // Le o estado vivo (sortKey/sortDir) e os declara nas deps. Com deps [] o
   // sortConfig do 1o render ficava congelado e a direcao travava em 'desc'.
   const handleSort = useCallback((key) => {
@@ -268,6 +274,8 @@ export function CrmCompaniesPage({ embedded = false } = {}) {
         loading={isLoading}
         emptyMessage="Nenhuma empresa encontrada"
         emptyIcon={Building2}
+        hasFilters={hasAnyFilter}
+        onClearFilters={handleClearAllFilters}
         onRowClick={(row) => navigate(`/crm/companies/${row.id}`)}
         sortConfig={sortConfig}
         onSort={handleSort}

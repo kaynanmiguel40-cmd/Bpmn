@@ -40,3 +40,4 @@ supabase/.temp/
 .claude/settings.json
 .claude/claude-council.local.md
 nul
+.qa-tmp/
