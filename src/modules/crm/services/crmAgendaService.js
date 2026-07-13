@@ -64,9 +64,15 @@ export function scheduleTiming(plannedISO, doneISO) {
   return { state: diffMin > 0 ? 'late' : 'early', label: `${diffMin > 0 ? '+' : '−'}${dur}`, diffMin };
 }
 
-/** Nome curto do lead a partir de uma atividade (deal tem prioridade sobre contato). */
+/**
+ * Nome curto do lead a partir de uma atividade (deal tem prioridade sobre
+ * contato). null quando a atividade e avulsa (sem deal/contato) — antes
+ * caia num fallback 'Sem vínculo' que, sendo string nao-vazia, enganava o
+ * chip do calendario (que troca o titulo pelo leadName sempre que ele existe)
+ * e mostrava "Sem vínculo" no lugar do titulo real da tarefa.
+ */
 function leadLabel({ deal, contact }) {
-  return deal?.title || contact?.name || 'Sem vínculo';
+  return deal?.title || contact?.name || null;
 }
 
 // ==================== CALENDÁRIO ====================
