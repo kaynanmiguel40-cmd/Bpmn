@@ -272,10 +272,12 @@ function MyDayCalendar() {
     }
   }, [activitiesById]);
 
-  // Clicar num dia vazio: abre o form de nova tarefa já naquela data (09h)
-  const handleSelectSlot = useCallback((day) => {
+  // Clicar num dia vazio: abre o form de nova tarefa já naquela data.
+  // hasTime=true vem da grade de horário (Semana/Dia) — já traz a hora
+  // exata clicada; sem isso (célula do Mês, só a data), cai em 9h por padrão.
+  const handleSelectSlot = useCallback((day, hasTime = false) => {
     const d = new Date(day);
-    d.setHours(9, 0, 0, 0);
+    if (!hasTime) d.setHours(9, 0, 0, 0);
     setFormInitial({ startDate: d.toISOString() });
     setFormOpen(true);
   }, []);

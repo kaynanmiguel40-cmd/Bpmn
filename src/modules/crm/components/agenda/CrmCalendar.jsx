@@ -6,7 +6,7 @@
  * Clicar num evento chama onSelectEvent; clicar num dia vazio, onSelectSlot.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Check, Circle, CheckCircle2,
   Phone, Mail, MessageCircle, Users, MapPin, CheckSquare, Coffee, ArrowRight, CalendarClock,
@@ -190,29 +190,180 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
   );
 }
 
-function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
-  const today = new Date();
-  const days = useMemo(() => weekDays(current), [current]);
+// ==================== GRADE DE HORÁRIO (Semana / Dia) ====================
+//
+// Antes Semana/Dia eram só uma lista de chips em sequência, sem eixo de
+// horário — dava pra ver A ORDEM das tarefas mas não ONDE elas caíam no dia
+// nem quanto elas duravam (achado de usabilidade: "difícil entender início
+// e fim"). Agora é uma grade de verdade: posição vertical = horário,
+// altura do bloco = duração — igual Google Calendar/Outlook.
+
+const GRID_HOUR_PX = 56; // altura de 1h na grade
+const GRID_MIN_PX = GRID_HOUR_PX / 60;
+const GRID_DEFAULT_START_H = 6;
+const GRID_DEFAULT_END_H = 22;
+const GRID_MIN_BLOCK_MIN = 28; // altura mínima (em "minutos equivalentes") pra tarefa curta/pontual não virar um traço
+
+const minutesOfDay = (iso) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); };
+
+/** Intervalo de horas a desenhar: cobre 6h-22h, mas se estica se algum evento cair fora disso. */
+function computeGridHours(dayGroups) {
+  let startH = GRID_DEFAULT_START_H;
+  let endH = GRID_DEFAULT_END_H;
+  for (const evs of dayGroups) {
+    for (const ev of evs) {
+      if (ev.isAllDay || !ev.startDate) continue;
+      const startMin = minutesOfDay(ev.startDate);
+      const endMin = ev.endDate ? minutesOfDay(ev.endDate) : startMin + GRID_MIN_BLOCK_MIN;
+      startH = Math.min(startH, Math.floor(startMin / 60));
+      endH = Math.max(endH, Math.ceil(endMin / 60));
+    }
+  }
+  return { startH, endH };
+}
+
+/**
+ * Agrupa eventos que se sobrepõem em "clusters" e, dentro de cada um,
+ * atribui coluna (coloração gulosa de grafo de intervalo) — pra tarefas no
+ * mesmo horário ficarem lado a lado em vez de uma em cima da outra.
+ */
+function layoutOverlaps(dayEvents) {
+  const items = dayEvents
+    .filter(ev => !ev.isAllDay && ev.startDate)
+    .map(ev => {
+      const startMin = minutesOfDay(ev.startDate);
+      const endMin = ev.endDate ? Math.max(minutesOfDay(ev.endDate), startMin + 15) : startMin + GRID_MIN_BLOCK_MIN;
+      return { ev, startMin, endMin, col: 0, cols: 1 };
+    })
+    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+
+  let clusterStart = 0;
+  for (let i = 0; i < items.length; i++) {
+    const clusterSoFar = items.slice(clusterStart, i + 1);
+    const clusterEnd = Math.max(...clusterSoFar.map(x => x.endMin));
+    const isLast = i === items.length - 1;
+    if (isLast || items[i + 1].startMin >= clusterEnd) {
+      const colEnds = [];
+      for (const item of clusterSoFar) {
+        let col = colEnds.findIndex(end => item.startMin >= end);
+        if (col === -1) { col = colEnds.length; colEnds.push(item.endMin); }
+        else colEnds[col] = item.endMin;
+        item.col = col;
+      }
+      for (const item of clusterSoFar) item.cols = colEnds.length;
+      clusterStart = i + 1;
+    }
+  }
+  return items;
+}
+
+// Linha vermelha marcando "agora" — só no dia de hoje, só dentro do range visível.
+function NowLine({ startH, endH }) {
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceTick(n => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const now = new Date();
+  const min = now.getHours() * 60 + now.getMinutes();
+  if (min < startH * 60 || min > endH * 60) return null;
+  const top = (min - startH * 60) * GRID_MIN_PX;
   return (
-    <div className="grid grid-cols-7 flex-1 min-h-0 gap-2 overflow-y-auto">
-      {days.map((day, i) => {
-        const key = toKey(day);
-        const dayEvents = eventsByDay.get(key) || [];
-        const isToday = isSameDay(day, today);
+    <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center" style={{ top }}>
+      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 -ml-[3px]" />
+      <div className="flex-1 h-px bg-rose-500/70" />
+    </div>
+  );
+}
+
+function GridEventBlock({ item, onClick, onCompleteTask, dimmed, showOwner, startH }) {
+  const { ev, startMin, endMin, col, cols } = item;
+  const isGoogle = ev.source === 'google';
+  const isCrm = ev.source === 'crm';
+  const Icon = iconFor(ev);
+  const top = (startMin - startH * 60) * GRID_MIN_PX;
+  const height = Math.max(20, (endMin - startMin) * GRID_MIN_PX - 2);
+  const short = height < 34;
+  const GAP = 2;
+  const widthPct = 100 / cols;
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onClick?.(ev); }}
+      title={`${fmtRange(ev.startDate, ev.endDate)} · ${ev.title}${ev.leadName ? ` — ${ev.leadName}` : ''}${isGoogle ? ' (Google Agenda)' : ''}`}
+      className={`group/blk absolute text-left rounded-md px-1.5 overflow-hidden transition-colors
+        ${short ? 'py-0.5 flex items-center gap-1' : 'py-1'}
+        ${dimmed ? 'opacity-30 hover:opacity-100' : ''}
+        ${isGoogle
+          ? 'border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-800/50 hover:border-slate-400'
+          : 'border-l-2 bg-white/95 dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm'}`}
+      style={{
+        top, height,
+        left: `calc(${col * widthPct}% + ${GAP}px)`,
+        width: `calc(${widthPct}% - ${GAP * 2}px)`,
+        borderLeftColor: isGoogle ? undefined : ev.color,
+        zIndex: 10,
+      }}
+    >
+      {short ? (
+        <>
+          {ev.completed
+            ? <Check size={10} className="shrink-0" style={{ color: ev.color }} />
+            : <Icon size={10} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
+          <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtTime(ev.startDate)}</span>
+          <span className={`flex-1 min-w-0 truncate text-[10px] ${ev.completed ? 'line-through text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
+            {ev.title}
+          </span>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-1">
+            {ev.completed
+              ? <Check size={11} className="shrink-0" style={{ color: ev.color }} />
+              : <Icon size={11} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
+            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtRange(ev.startDate, ev.endDate)}</span>
+            {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={12} />}
+          </div>
+          <div className={`text-[11px] leading-tight truncate ${ev.completed ? 'line-through text-slate-400 dark:text-slate-500' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-800 dark:text-slate-100 font-medium'}`}>
+            {ev.title}
+          </div>
+          {ev.leadName && !isGoogle && height > 50 && (
+            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{ev.leadName}</div>
+          )}
+        </>
+      )}
+      {isCrm && !ev.completed && (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onCompleteTask?.(ev); } }}
+          title="Marcar como concluída"
+          className="hidden group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-emerald-500 transition-colors cursor-pointer"
+        >
+          <CheckCircle2 size={12} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+// Faixa de eventos "dia inteiro" acima da grade (não têm horário pra plotar).
+function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, selectedLeadKey, showOwner }) {
+  const anyAllDay = days.some(day => (eventsByDay.get(toKey(day)) || []).some(ev => ev.isAllDay));
+  if (!anyAllDay) return null;
+  return (
+    <div className={`grid gap-px bg-slate-200/60 dark:bg-white/5 border-b border-slate-200/70 dark:border-white/10`} style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
+      <div className="bg-white/60 dark:bg-slate-900/40 text-[10px] text-slate-400 dark:text-slate-500 flex items-center justify-end pr-1.5 py-1">dia</div>
+      {days.map((day) => {
+        const dayEvents = (eventsByDay.get(toKey(day)) || []).filter(ev => ev.isAllDay);
         return (
-          <div key={i} onClick={() => onSelectSlot?.(day)}
-            className="flex flex-col rounded-xl border border-slate-200/70 dark:border-white/10 bg-white/40 dark:bg-slate-900/30 overflow-hidden cursor-pointer hover:border-fyness-primary/30">
-            <div className={`px-2 py-1.5 text-center border-b border-slate-200/70 dark:border-white/10 ${isToday ? 'bg-fyness-primary/10' : 'bg-slate-50/60 dark:bg-slate-800/40'}`}>
-              <div className="text-[10px] uppercase text-slate-400 dark:text-slate-500">{DOW[day.getDay()]}</div>
-              <div className={`text-sm font-semibold ${isToday ? 'text-fyness-primary' : 'text-slate-700 dark:text-slate-200'}`}>{day.getDate()}</div>
-            </div>
-            <div className="flex-1 p-1 space-y-0.5 min-h-[120px]">
-              {dayEvents.length === 0 && <div className="text-[10px] text-slate-300 dark:text-slate-600 text-center pt-3">—</div>}
-              {dayEvents.map(ev => (
-                <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
-                  dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
-              ))}
-            </div>
+          <div key={toKey(day)} className="bg-white/60 dark:bg-slate-900/40 p-0.5 space-y-0.5">
+            {dayEvents.map(ev => (
+              <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
+                dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
+            ))}
           </div>
         );
       })}
@@ -220,66 +371,97 @@ function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onComplet
   );
 }
 
-function DayView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
-  const key = toKey(current);
-  const dayEvents = eventsByDay.get(key) || [];
+/**
+ * Grade de horário compartilhada por Semana (7 dias) e Dia (1 dia). Eixo de
+ * horas na esquerda + colunas por dia com blocos posicionados/dimensionados
+ * por horário real. onSelectSlot recebe a data JÁ com a hora clicada (em vez
+ * de sempre cair em 9h como no clique de célula do Mês).
+ */
+function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
+  const today = new Date();
+  const dayGroups = useMemo(() => days.map(d => eventsByDay.get(toKey(d)) || []), [days, eventsByDay]);
+  const { startH, endH } = useMemo(() => computeGridHours(dayGroups), [dayGroups]);
+  const totalHeight = (endH - startH) * GRID_HOUR_PX;
+  const hours = useMemo(() => Array.from({ length: endH - startH + 1 }, (_, i) => startH + i), [startH, endH]);
+
+  const handleColumnClick = (e, day) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = Math.max(0, e.clientY - rect.top);
+    const minutesFromStart = offsetY / GRID_MIN_PX;
+    const snapped = Math.round(minutesFromStart / 15) * 15; // encaixa em blocos de 15min
+    const totalMin = startH * 60 + snapped;
+    const d = new Date(day);
+    d.setHours(Math.floor(totalMin / 60), totalMin % 60, 0, 0);
+    onSelectSlot?.(d, true);
+  };
+
   return (
-    // onSelectSlot no container (não só em Mês/Semana) — clicar em área vazia
-    // do Dia também abre "nova tarefa" já em 09h daquele dia. Itens dentro
-    // (evento, concluir) fazem stopPropagation pra não abrir o form junto.
-    <div
-      onClick={() => onSelectSlot?.(current)}
-      className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-slate-200/70 dark:border-white/10 bg-white/40 dark:bg-slate-900/30 p-3 cursor-pointer"
-    >
-      {dayEvents.length === 0 ? (
-        <div className="text-center text-sm text-slate-400 dark:text-slate-500 py-12">Nenhuma atividade neste dia.</div>
-      ) : (
-        <div className="space-y-1.5 max-w-2xl mx-auto">
-          {dayEvents.map(ev => {
-            const isCrm = ev.source === 'crm';
+    <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-200/70 dark:border-white/10 overflow-hidden">
+      <AllDayStrip days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />
+      {/* Cabeçalho dos dias (Semana) — Dia usa 1 coluna só, cabeçalho fica no título do topo do calendário */}
+      {days.length > 1 && (
+        <div className="grid bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/70 dark:border-white/10" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
+          <div />
+          {days.map(day => {
+            const isToday = isSameDay(day, today);
             return (
-            <div key={ev.id} className="group/day flex items-stretch gap-3">
-              <div className="w-16 shrink-0 text-right pt-2 tabular-nums">
-                {ev.isAllDay || !ev.startDate ? (
-                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">dia</span>
-                ) : (
-                  <>
-                    <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300">{fmtTime(ev.startDate)}</div>
-                    {ev.endDate && fmtTime(ev.endDate) !== fmtTime(ev.startDate) && (
-                      <div className="text-[10px] text-slate-400 dark:text-slate-500">–{fmtTime(ev.endDate)}</div>
-                    )}
-                  </>
-                )}
+              <div key={toKey(day)} className={`px-2 py-1.5 text-center ${isToday ? 'bg-fyness-primary/10' : ''}`}>
+                <div className="text-[10px] uppercase text-slate-400 dark:text-slate-500">{DOW[day.getDay()]}</div>
+                <div className={`text-sm font-semibold ${isToday ? 'text-fyness-primary' : 'text-slate-700 dark:text-slate-200'}`}>{day.getDate()}</div>
               </div>
-              <div className="w-1 rounded-full shrink-0" style={{ backgroundColor: ev.color }} />
-              <button
-                onClick={(e) => { e.stopPropagation(); onSelectEvent?.(ev); }}
-                className={`flex-1 text-left rounded-lg px-3 py-2 border border-slate-200/70 dark:border-white/10 hover:border-fyness-primary/40 hover:bg-fyness-primary/5 transition-colors
-                  ${!!selectedLeadKey && ev.leadKey !== selectedLeadKey ? 'opacity-40' : ''}`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm font-medium ${ev.completed ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
-                    {ev.title}
-                  </span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${ev.color}22`, color: ev.color }}>{ev.typeLabel}</span>
-                  {ev.source === 'google' && <span className="text-[10px] text-slate-400 dark:text-slate-500">Google</span>}
-                  {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={16} />}
-                </div>
-                {ev.leadName && ev.source === 'crm' && <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{ev.leadName}</div>}
-              </button>
-              {isCrm && (
-                <button type="button" onClick={(e) => { e.stopPropagation(); if (!ev.completed) onCompleteTask?.(ev); }}
-                  title={ev.completed ? 'Concluída' : 'Marcar como concluída'}
-                  className={`shrink-0 self-center cursor-pointer transition-colors ${ev.completed ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500 hover:text-emerald-500'}`}>
-                  <CheckCircle2 size={18} />
-                </button>
-              )}
-            </div>
-          );})}
+            );
+          })}
         </div>
       )}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="grid" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
+          {/* Eixo de horas */}
+          <div className="relative" style={{ height: totalHeight }}>
+            {hours.map(h => (
+              <div key={h} className="absolute right-1.5 -translate-y-1/2 text-[10px] text-slate-400 dark:text-slate-500 tabular-nums" style={{ top: (h - startH) * GRID_HOUR_PX }}>
+                {String(h).padStart(2, '0')}:00
+              </div>
+            ))}
+          </div>
+          {/* Colunas por dia */}
+          {days.map((day, i) => {
+            const isToday = isSameDay(day, today);
+            const laidOut = layoutOverlaps(dayGroups[i]);
+            return (
+              <div
+                key={toKey(day)}
+                onClick={(e) => handleColumnClick(e, day)}
+                className={`relative border-l border-slate-200/60 dark:border-white/5 cursor-pointer ${isToday ? 'bg-fyness-primary/[0.03]' : ''}`}
+                style={{ height: totalHeight }}
+              >
+                {/* Linhas de hora (grade de fundo) */}
+                {hours.map(h => (
+                  <div key={h} className="absolute left-0 right-0 border-t border-slate-100 dark:border-white/[0.04]" style={{ top: (h - startH) * GRID_HOUR_PX }} />
+                ))}
+                {isToday && <NowLine startH={startH} endH={endH} />}
+                {laidOut.map(item => (
+                  <GridEventBlock key={item.ev.id} item={item} onClick={onSelectEvent} onCompleteTask={onCompleteTask}
+                    dimmed={!!selectedLeadKey && item.ev.leadKey !== selectedLeadKey} showOwner={showOwner} startH={startH} />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
+}
+
+function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
+  const days = useMemo(() => weekDays(current), [current]);
+  return <TimeGrid days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot}
+    onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />;
+}
+
+function DayView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, selectedLeadKey, showOwner }) {
+  const days = useMemo(() => [startOfDay(current)], [current]);
+  return <TimeGrid days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot}
+    onCompleteTask={onCompleteTask} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />;
 }
 
 // ==================== AGENDA (LISTA) ====================
