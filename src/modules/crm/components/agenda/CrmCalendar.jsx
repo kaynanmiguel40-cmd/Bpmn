@@ -200,7 +200,7 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
 
 const GRID_HOUR_PX = 56; // altura de 1h na grade
 const GRID_MIN_PX = GRID_HOUR_PX / 60;
-const GRID_DEFAULT_START_H = 6;
+const GRID_DEFAULT_START_H = 8; // topo da grade — só sobe pra mais cedo se tiver evento antes das 8h
 const GRID_DEFAULT_END_H = 22;
 const GRID_MIN_BLOCK_MIN = 28; // altura mínima (em "minutos equivalentes") pra tarefa curta/pontual não virar um traço
 
