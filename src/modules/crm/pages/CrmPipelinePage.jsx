@@ -330,7 +330,7 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
       onClose={() => setConfirmCancelCadence(false)}
       onConfirm={() => { cancelCadenceMutation.mutate(deal.id); setConfirmCancelCadence(false); }}
       title="Cancelar cadência"
-      message={`Isso remove ${deal.cadence.total - deal.cadence.done} follow-up(s) ainda pendente(s) desse negócio. Os que já foram concluídos ficam no histórico. Não pode ser desfeito.`}
+      message={`Isso remove ${(deal.cadence?.total ?? 0) - (deal.cadence?.done ?? 0)} follow-up(s) ainda pendente(s) desse negócio. Os que já foram concluídos ficam no histórico. Não pode ser desfeito.`}
       confirmLabel="Cancelar cadência"
       variant="danger"
       loading={cancelCadenceMutation.isPending}
