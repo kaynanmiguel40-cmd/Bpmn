@@ -417,8 +417,10 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTa
         <div className="grid" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
           {/* Eixo de horas */}
           <div className="relative" style={{ height: totalHeight }}>
+            {/* Nudge pra baixo (sem centralizar na linha) — centralizar cortava a
+                primeira hora (metade do texto ficava acima do topo da grade). */}
             {hours.map(h => (
-              <div key={h} className="absolute right-1.5 -translate-y-1/2 text-[10px] text-slate-400 dark:text-slate-500 tabular-nums" style={{ top: (h - startH) * GRID_HOUR_PX }}>
+              <div key={h} className="absolute right-1.5 text-[10px] text-slate-400 dark:text-slate-500 tabular-nums" style={{ top: (h - startH) * GRID_HOUR_PX + 2 }}>
                 {String(h).padStart(2, '0')}:00
               </div>
             ))}
