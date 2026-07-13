@@ -705,11 +705,18 @@ async function handleMessagesUpsert(
       continue
     }
 
-    // Espelha midia inbound no Supabase Storage pra renderizar no browser.
+    // Espelha midia no Supabase Storage pra renderizar no browser.
     //  - WAHA: serve via /api/files/* protegido por X-Api-Key; baixa e re-hospeda.
     //  - Evolution: URL vem criptografada (.enc); baixa o base64 via
     //    getBase64FromMediaMessage e re-hospeda.
-    if (direction === 'inbound' && mediaType && mediaUrl) {
+    // Vale pros 2 sentidos: mensagens que o vendedor manda DIRETO pelo WhatsApp
+    // do celular (sem passar pelo composer do CRM) chegam aqui como "outbound"
+    // novo (nao tem `existing` acima, que so pega o que o proprio evolution-send
+    // ja inseriu com mediaUrl no nosso Storage) e a mediaUrl ainda e a URL
+    // criptografada (.enc) da Evolution — sem espelhar, o audio/imagem/video
+    // nunca toca no navegador (era so pro inbound antes; por isso a maioria dos
+    // audios/midias enviados pelo celular ficava com URL crua e nao tocava).
+    if (mediaType && mediaUrl) {
       let localized: string | null = mediaUrl
       if (PROVIDER === 'waha') {
         if (mediaUrl.startsWith('/') || mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1')) {
