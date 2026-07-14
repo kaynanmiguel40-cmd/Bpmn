@@ -30,6 +30,17 @@ export const EVENT_TYPES = [
 ];
 export const typeMeta = (id) => EVENT_TYPES.find(t => t.id === id) || EVENT_TYPES[0];
 
+// Chave de dedupe CRM<->espelho/Google: título normalizado + minuto de início.
+// Toda atividade do CRM vira um agenda_event espelho (mesmo título/horário) que
+// ainda é empurrado pro Google. Sem deduplicar, a mesma atividade apareceria 2x
+// (chip 'Comercial' + chip 'Reuniões') e 3x com Google conectado. Mesma chave
+// usada pela CrmAgendaPage.
+const dedupeKey = (title, startDate) => {
+  const t = (title || '').trim().toLowerCase();
+  const ms = startDate ? Math.floor(new Date(startDate).getTime() / 60000) : 0;
+  return `${t}|${ms}`;
+};
+
 // Fontes que a agenda mistura — cada uma pode ser ligada/desligada (some o ruído).
 export const DEFAULT_SOURCES = { os: true, crm: true, local: true, google: true };
 export const SOURCE_META = [
@@ -69,6 +80,18 @@ export function useAgendaData() {
     staleTime: 60_000,
   });
 
+  // Chaves das atividades comerciais — pra remover o espelho (source 'local') e o
+  // eco do Google das outras fontes. A fonte 'crm' é a canônica (traz lead, dono,
+  // concluído). Sem isso, cada atividade duplica no calendário e o espelho sem
+  // dono ainda vaza pra qualquer pessoa no filtro da /agenda.
+  const crmKeySet = useMemo(() => {
+    const s = new Set();
+    for (const a of crmActivitiesRaw || []) {
+      if (a.startDate) s.add(dedupeKey(a.title, a.startDate));
+    }
+    return s;
+  }, [crmActivitiesRaw]);
+
   // Membros + perfil logado — DEDUPADOS por nome. O cadastro às vezes repete a
   // mesma pessoa (ex.: "3 Lorena"), e isso quebra o filtro: você seleciona uma
   // e os eventos estão atribuídos à outra. Uma entrada por nome conserta.
@@ -88,11 +111,21 @@ export function useAgendaData() {
     return [...byName.values()];
   }, [teamMembers, profile]);
 
+  // Deriva do allMembers JÁ DEDUPADO (mesma regra que os eventos usam pra
+  // resolver o dono). Antes vinha de teamMembers cru + namesMatch (1ª ocorrência)
+  // — com nome duplicado ("3 Lorena"), o id do "eu" divergia do id que os
+  // eventos comerciais recebiam e a própria agenda comercial sumia do filtro.
   const myMemberId = useMemo(() => {
-    if (!profile.name) return null;
-    const m = teamMembers.find(mm => namesMatch(mm.name, profile.name));
-    return m ? m.id : 'profile_self';
-  }, [teamMembers, profile]);
+    if (profile.id) {
+      const byAuth = allMembers.find(m => m.authUserId === profile.id);
+      if (byAuth) return byAuth.id;
+    }
+    if (profile.name) {
+      const byName = allMembers.find(m => namesMatch(m.name, profile.name));
+      if (byName) return byName.id;
+    }
+    return profile.name ? 'profile_self' : null;
+  }, [allMembers, profile]);
 
   const memberByName = useCallback((name) => {
     if (!name) return null;
@@ -111,18 +144,22 @@ export function useAgendaData() {
     // Mesma janela do Google/CRM (gMin/gMax = -1/+2) pra as 4 fontes aparecerem e
     // sumirem juntas — senão local/O.S. mostrariam meses onde Google/CRM somem.
     const expanded = expandRecurrences(localEventsRaw, gMin, gMax);
-    return expanded.map(e => {
-      const meta = typeMeta(e.type);
-      return {
-        id: e.id, _localId: e._parentId || e.id, _local: true,
-        title: e.title, startDate: e.startDate, endDate: e.endDate || e.startDate,
-        color: e.color || meta.color, source: 'local',
-        typeKey: e.type === 'meeting' ? 'meeting' : 'task', typeLabel: meta.label,
-        assignee: e.assignee || null,
-        _raw: e,
-      };
-    });
-  }, [localEventsRaw, gMin, gMax]);
+    return expanded
+      // Remove o espelho de atividade comercial (mesmo título+minuto) — ele já
+      // aparece como fonte 'crm'. Sem isso duplicaria e vazaria (dono nulo).
+      .filter(e => !crmKeySet.has(dedupeKey(e.title, e.startDate)))
+      .map(e => {
+        const meta = typeMeta(e.type);
+        return {
+          id: e.id, _localId: e._parentId || e.id, _local: true,
+          title: e.title, startDate: e.startDate, endDate: e.endDate || e.startDate,
+          color: e.color || meta.color, source: 'local',
+          typeKey: e.type === 'meeting' ? 'meeting' : 'task', typeLabel: meta.label,
+          assignee: e.assignee || null,
+          _raw: e,
+        };
+      });
+  }, [localEventsRaw, gMin, gMax, crmKeySet]);
 
   // 2) Atividades comerciais do CRM
   const crmEvents = useMemo(() => {
@@ -172,7 +209,12 @@ export function useAgendaData() {
     }).filter(Boolean);
   }, [teamGcalRaw, memberByAuth, myMemberId]);
 
-  const googleEvents = useMemo(() => [...myGoogleEvents, ...teamGoogleEvents], [myGoogleEvents, teamGoogleEvents]);
+  // Remove o eco das atividades comerciais que o CRM já empurrou pro Google
+  // (mesmo título+minuto) — senão voltam como 3ª cópia da mesma atividade.
+  const googleEvents = useMemo(
+    () => [...myGoogleEvents, ...teamGoogleEvents].filter(g => !crmKeySet.has(dedupeKey(g.title, g.startDate))),
+    [myGoogleEvents, teamGoogleEvents, crmKeySet]
+  );
 
   return {
     today,

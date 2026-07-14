@@ -338,6 +338,14 @@ export function useCreateCadence() {
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      // Os 5 toques também aparecem na agenda (comercial e de rotina), no
+      // histórico do lead e na aba Atividades do negócio — sem invalidar essas
+      // chaves específicas eles só surgiam depois do staleTime (simétrico com
+      // useCancelCadence, que já invalida tudo isso).
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
     },
   });
 }
@@ -767,6 +775,9 @@ export function useCreateCrmActivity() {
       qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['agendaEvents'] });
+      // A /agenda de rotina puxa a camada comercial por query própria — só o
+      // create esquecia de invalidar; update/delete/complete já invalidam.
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
       toast('Atividade criada com sucesso', 'success');
     },
   });
@@ -785,6 +796,9 @@ export function useUpdateCrmActivity() {
       // A Agenda (/agenda) puxa as atividades do CRM por uma query propria
       // (['agendaCrmActivities', ...]) — sem isso o chip fica desatualizado.
       qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      // O dashboard conta reuniões/ligações agendadas por data — mover a data de
+      // uma atividade tem que refletir nos contadores (simétrico com create/delete).
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
     },
   });
 }
@@ -884,6 +898,12 @@ export function useDeleteCrmCall() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.calls });
       qc.invalidateQueries({ queryKey: ['crm', 'recentCalls'] });
+      // Excluir a ligação também remove o espelho dela — precisa sumir da
+      // timeline do lead, da aba Atividades do negócio e da agenda.
+      qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
       toast('Ligacao excluida', 'success');
     },
   });

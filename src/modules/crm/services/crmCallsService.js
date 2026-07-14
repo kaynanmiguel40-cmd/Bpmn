@@ -702,13 +702,38 @@ export async function createCrmCall(input) {
 }
 
 export async function softDeleteCrmCall(id) {
+  const now = new Date().toISOString();
+
+  // createCrmCall gera uma atividade-espelho (crm_activities type='call') e, se
+  // houver retorno agendado, uma atividade de follow-up. Precisamos soft-deletar
+  // as duas junto: sem isto o espelho fica órfão e vivo, e como a dedup da
+  // timeline (mirroredActivityIds) só olha as ligações VIVAS, ele volta a
+  // aparecer no histórico do lead como atividade concluída — parece que a
+  // exclusão da ligação falhou.
+  const { data: call } = await supabase
+    .from('crm_calls')
+    .select('activity_id, follow_up_activity_id')
+    .eq('id', id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('crm_calls')
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: now })
     .eq('id', id);
   if (error) {
     toast(`Erro ao excluir chamada: ${error.message}`, 'error');
     return false;
   }
+
+  const mirrorIds = [call?.activity_id, call?.follow_up_activity_id].filter(Boolean);
+  if (mirrorIds.length) {
+    const { error: mirrorErr } = await supabase
+      .from('crm_activities')
+      .update({ deleted_at: now })
+      .in('id', mirrorIds)
+      .is('deleted_at', null);
+    if (mirrorErr) console.warn('[crmCallsService] Falha ao remover espelho da chamada:', mirrorErr.message);
+  }
+
   return true;
 }

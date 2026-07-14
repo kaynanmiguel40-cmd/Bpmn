@@ -177,17 +177,23 @@ export function ActivityFormModal({
 
   // Em tarefa NOVA, responsável já vem preenchido: o vendedor cuja agenda
   // está sendo vista (defaultAssignedTo), ou você mesmo na ausência disso.
+  // Roda UMA vez por abertura (ref). Antes tinha `assignedTo` nas deps e a
+  // guarda `!assignedTo`, então re-disparava sempre que o campo ficava vazio —
+  // escolher "— Selecionar responsável —" revertia sozinho pro default (clique
+  // morto). Com o ref, limpar o campo agora fica limpo.
+  const assigneeInitRef = useRef(false);
   useEffect(() => {
-    if (open && !isEdit && owners.length && !assignedTo) {
-      if (defaultAssignedTo) {
-        setValue('assignedTo', defaultAssignedTo);
-        setValue('assignedToName', defaultAssignedToName || owners.find(o => o.authUserId === defaultAssignedTo)?.name || null);
-        return;
-      }
-      const me = owners.find(o => o.isMe) || owners[0];
-      if (me) { setValue('assignedTo', me.authUserId); setValue('assignedToName', me.name); }
+    if (!open) { assigneeInitRef.current = false; return; }
+    if (isEdit || !owners.length || assigneeInitRef.current) return;
+    assigneeInitRef.current = true;
+    if (defaultAssignedTo) {
+      setValue('assignedTo', defaultAssignedTo);
+      setValue('assignedToName', defaultAssignedToName || owners.find(o => o.authUserId === defaultAssignedTo)?.name || null);
+      return;
     }
-  }, [open, isEdit, owners, assignedTo, setValue, defaultAssignedTo, defaultAssignedToName]);
+    const me = owners.find(o => o.isMe) || owners[0];
+    if (me) { setValue('assignedTo', me.authUserId); setValue('assignedToName', me.name); }
+  }, [open, isEdit, owners, setValue, defaultAssignedTo, defaultAssignedToName]);
 
   useEffect(() => {
     if (open && activity) {

@@ -201,6 +201,17 @@ export const CADENCE_TEMPLATE = [
 export async function createCadenceForDeal({ dealId, contactId = null }) {
   if (!dealId) return 0;
 
+  // Os follow-ups são do DONO do negócio, não de quem clicou "iniciar cadência".
+  // Sem isto o assigned_to ficava null e os toques só apareciam na agenda de
+  // quem iniciou (via created_by) — um gestor iniciando a cadência de um lead
+  // do vendedor deixava o vendedor sem ver nenhum dos toques que deve trabalhar.
+  const { data: deal } = await supabase
+    .from('crm_deals')
+    .select('owner_id')
+    .eq('id', dealId)
+    .maybeSingle();
+  const ownerId = deal?.owner_id || null;
+
   let created = 0;
   for (const step of CADENCE_TEMPLATE) {
     const d = new Date();
@@ -214,6 +225,8 @@ export async function createCadenceForDeal({ dealId, contactId = null }) {
       contactId,
       startDate: d.toISOString(),
       completed: false,
+      // Sem dono no deal cai no fallback antigo (created_by de quem iniciou).
+      assignedTo: ownerId,
     });
     if (activity?.id) created++;
   }
@@ -319,8 +332,11 @@ export async function softDeleteCrmActivity(id) {
       const { deleteAgendaEvent } = await import('../../../lib/agendaService');
       const { pushEventToGCal } = await import('../../../lib/googleCalendarService');
 
-      // GCal precisa ser informado ANTES de deletar na agenda (senao perde o eventId remoto)
-      pushEventToGCal(current.agenda_event_id, 'delete').catch(err =>
+      // O push de delete lê o google_event_id DA LINHA do agenda_events — então
+      // precisa TERMINAR antes de apagarmos a linha. Antes rodava sem await e
+      // perdia a corrida pro deleteAgendaEvent: a linha sumia, o push lia null e
+      // o evento (com Meet/convites) ficava órfão pra sempre no Google.
+      await pushEventToGCal(current.agenda_event_id, 'delete').catch(err =>
         console.warn('[GCal Sync] Falha ao excluir atividade CRM do Google Calendar:', err?.message || err));
       await deleteAgendaEvent(current.agenda_event_id);
     } catch {

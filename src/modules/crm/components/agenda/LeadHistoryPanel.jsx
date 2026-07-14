@@ -152,8 +152,13 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
   const items = data?.items || [];
 
   const { upcoming, past } = useMemo(() => {
-    const up = items.filter(i => i.future).sort((a, b) => new Date(a.date) - new Date(b.date));
-    const pa = items.filter(i => !i.future); // ja vem desc do servico
+    // Tarefa pendente (atividade não concluída) é sempre "A fazer", mesmo que o
+    // horário já tenha passado. Antes o split olhava só `future` (date > now), e
+    // uma tarefa atrasada caía no Histórico — renderizado sem os botões de
+    // concluir/excluir, escondendo a ação mais comum do painel.
+    const isTodo = (i) => i.future || (i.kind === 'activity' && !i.done);
+    const up = items.filter(isTodo).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const pa = items.filter(i => !isTodo(i)); // ja vem desc do servico
     return { upcoming: up, past: pa };
   }, [items]);
 

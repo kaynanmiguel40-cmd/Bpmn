@@ -51,6 +51,18 @@ const fmtRange = (startIso, endIso) => {
   return end === start ? start : `${start}–${end}`;
 };
 
+// Eventos de dia inteiro do Google chegam como "YYYY-MM-DD" (sem hora).
+// new Date("2026-07-14") interpreta como meia-noite UTC e, no Brasil (UTC-3),
+// joga o evento pro dia anterior. Pra all-day date-only, parseamos como LOCAL.
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const parseLocalDate = (str) => { const [y, m, d] = str.split('-').map(Number); return new Date(y, m - 1, d); };
+const parseEventStart = (ev) =>
+  (ev.isAllDay && typeof ev.startDate === 'string' && DATE_ONLY.test(ev.startDate))
+    ? parseLocalDate(ev.startDate) : new Date(ev.startDate);
+const parseEventEnd = (ev) =>
+  (ev.isAllDay && typeof ev.endDate === 'string' && DATE_ONLY.test(ev.endDate))
+    ? parseLocalDate(ev.endDate) : new Date(ev.endDate);
+
 function monthMatrix(date) {
   const first = new Date(date.getFullYear(), date.getMonth(), 1);
   const start = addDays(first, -first.getDay()); // volta pro domingo
@@ -628,15 +640,34 @@ export default function CrmCalendar({
   // Indexa eventos por dia (uma vez). Eventos sem data sao ignorados.
   const eventsByDay = useMemo(() => {
     const map = new Map();
+    const push = (k, ev) => { if (!map.has(k)) map.set(k, []); map.get(k).push(ev); };
+
     for (const ev of events) {
       if (!ev.startDate) continue;
-      const k = toKey(new Date(ev.startDate));
-      if (!map.has(k)) map.set(k, []);
-      map.get(k).push(ev);
+      const start = parseEventStart(ev);
+      const firstDay = startOfDay(start);
+      // Expande o evento por TODOS os dias que ele ocupa — antes indexava só o
+      // dia de início, então evento multi-dia (all-day do Google 14→18) ou que
+      // cruza a meia-noite sumia dos dias seguintes.
+      let lastDay = firstDay;
+      if (ev.endDate) {
+        lastDay = startOfDay(parseEventEnd(ev));
+        // all-day do Google tem end.date EXCLUSIVO (evento só no dia 14 vem
+        // start=14/end=15) — desconta 1 dia pra não pintar um dia a mais.
+        if (ev.isAllDay) lastDay = addDays(lastDay, -1);
+        if (lastDay < firstDay) lastDay = firstDay;
+      }
+      let cursor = firstDay;
+      let guard = 0;
+      while (cursor <= lastDay && guard < 90) {
+        push(toKey(cursor), ev);
+        cursor = addDays(cursor, 1);
+        guard++;
+      }
     }
-    // Ordena cada dia por horario
+    // Ordena cada dia por horario (parse local pra all-day não desalinhar)
     for (const list of map.values()) {
-      list.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+      list.sort((a, b) => parseEventStart(a) - parseEventStart(b));
     }
     return map;
   }, [events]);

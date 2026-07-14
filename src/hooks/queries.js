@@ -163,9 +163,11 @@ export function useUpdateAgendaEvent() {
 export function useDeleteAgendaEvent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id) => {
-      // Guardar o ID antes de deletar para poder fazer push
-      pushEventToGCal(id, 'delete').catch(err => logGCalSyncError('deletar evento do GCal', err));
+    mutationFn: async (id) => {
+      // O push de delete lê o google_event_id da linha do agenda_events — precisa
+      // TERMINAR antes de deletá-la, senão perde a corrida e o evento fica órfão
+      // (com Meet/convites) pra sempre no Google.
+      await pushEventToGCal(id, 'delete').catch(err => logGCalSyncError('deletar evento do GCal', err));
       return deleteAgendaEvent(id);
     },
     onSuccess: () => {

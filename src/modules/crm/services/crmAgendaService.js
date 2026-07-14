@@ -200,8 +200,9 @@ export async function getLeadTimeline({ dealId = null, contactId = null } = {}) 
 
   const { lead, resolvedContactId, orFilter } = await resolveLeadAndFilter({ dealId, contactId });
 
-  // Buscar as 4 fontes em paralelo. crm_messages NAO tem deleted_at,
-  // entao nao filtramos por isso ali.
+  // Buscar as 4 fontes em paralelo. crm_messages TEM deleted_at (soft-delete),
+  // então filtramos aqui igual às outras fontes — senão uma mensagem escondida
+  // do Inbox ressurgiria na timeline.
   const [actsRes, callsRes, msgsRes, stageHistory] = await Promise.all([
     orFilter
       ? supabase.from('crm_activities')
@@ -216,7 +217,7 @@ export async function getLeadTimeline({ dealId = null, contactId = null } = {}) 
     orFilter
       ? supabase.from('crm_messages')
           .select('*')
-          .or(orFilter).order('sent_at', { ascending: false }).limit(60)
+          .or(orFilter).is('deleted_at', null).order('sent_at', { ascending: false }).limit(60)
       : Promise.resolve({ data: [] }),
     // getDealStageHistory ja resolve o nome do estagio com fallback embutido
     dealId ? getDealStageHistory(dealId) : Promise.resolve([]),
@@ -408,7 +409,7 @@ export async function getLeadActivityHistory({ dealId = null, contactId = null }
     supabase.from('crm_calls')
       .select('*, crm_contacts(id, name, phone, avatar_color), crm_deals(id, title, value)')
       .or(orFilter).is('deleted_at', null),
-    supabase.from('crm_messages').select('*').or(orFilter).order('sent_at', { ascending: true }).limit(200),
+    supabase.from('crm_messages').select('*').or(orFilter).is('deleted_at', null).order('sent_at', { ascending: true }).limit(200),
     dealId ? getDealStageHistory(dealId) : Promise.resolve([]),
   ]);
 

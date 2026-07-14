@@ -21,6 +21,7 @@ import { connectGCalServer } from '../../lib/googleCalendarService';
 import CrmCalendar from '../../modules/crm/components/agenda/CrmCalendar';
 import { CompleteActivityModal } from '../../modules/crm/components/CompleteActivityModal';
 import { useCompleteCrmActivity } from '../../modules/crm/hooks/useCrmQueries';
+import { useCrmAccess } from '../../modules/crm/hooks/useCrmAccess';
 import { useAgendaData, EVENT_TYPES, typeMeta, SOURCE_META, DEFAULT_SOURCES } from '../../hooks/useAgendaData';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -143,6 +144,7 @@ export default function AgendaPage() {
     gcalConnected,
   } = useAgendaData();
 
+  const { isAdmin } = useCrmAccess();
   const createEvent = useCreateAgendaEvent();
   const updateEvent = useUpdateAgendaEvent();
   const deleteEvent = useDeleteAgendaEvent();
@@ -186,15 +188,22 @@ export default function AgendaPage() {
     return all.filter(e => {
       // Fonte desligada (chip) -> some.
       if (sources[e.source] === false) return false;
-      // Comercial: sempre travado no dono, mesmo no "ver todos" e no load inicial.
-      if (e.source === 'crm') return !!e.assignee && filters.includes(e.assignee);
+      // Comercial: dados privados do vendedor. Sem dono resolvido não aparece
+      // pra ninguém. Quem NÃO é admin só vê a PRÓPRIA cadência, independente do
+      // filtro de pessoa — só admin pode ver a agenda comercial de outro (igual
+      // /crm/agenda). Antes qualquer um marcava outra pessoa e via a cadência dela.
+      if (e.source === 'crm') {
+        if (!e.assignee) return false;
+        if (!isAdmin) return e.assignee === myMemberId;
+        return filters.includes(e.assignee);
+      }
       if (isAll) return true;
       if (e.assignee) return filters.includes(e.assignee);
       if (e.source === 'os') return false;
       if (e.source === 'google') return !!myMemberId && filters.includes(myMemberId);
       return true; // evento local sem responsavel
     });
-  }, [localEvents, crmEvents, osTaskEvents, googleEvents, filters, allMembers, myMemberId, sources]);
+  }, [localEvents, crmEvents, osTaskEvents, googleEvents, filters, allMembers, myMemberId, sources, isAdmin]);
 
   // ===== Navegacao / acoes =====
   const handleNavigate = useCallback((dir) => {
