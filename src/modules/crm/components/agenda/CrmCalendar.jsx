@@ -6,7 +6,7 @@
  * Clicar num evento chama onSelectEvent; clicar num dia vazio, onSelectSlot.
  */
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Check, Circle, CheckCircle2, Pencil,
   Phone, Mail, MessageCircle, Users, MapPin, CheckSquare, Coffee, ArrowRight, CalendarClock,
@@ -41,6 +41,8 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 const isSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 const toKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+// "minutos do dia" -> "HH:MM" (rótulo do fantasma/indicador de arrasto)
+const fmtMinutes = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 // Início–fim legível. endDate é opcional pra tipos pontuais (ligação/mensagem)
 // — sem fim real, mostra só o início em vez de repetir o mesmo horário 2x.
 const fmtRange = (startIso, endIso) => {
@@ -95,21 +97,26 @@ function OwnerBadge({ name, color, size = 15 }) {
 
 // ==================== CHIP DE EVENTO ====================
 
-function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner }) {
+function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner, dnd }) {
   const isGoogle = ev.source === 'google';
   const isCrm = ev.source === 'crm';
   const Icon = iconFor(ev);
   const label = ev.leadName && isCrm ? ev.leadName : ev.title;
+  const draggable = dnd ? dnd.canDrag(ev) : false;
+  const beingDragged = !!ev._dragging;
 
   // Tudo é bloco. Itens do CRM podem ser concluídos (botão sempre visível).
   return (
     <div
+      onPointerDown={draggable ? (e) => dnd.onPointerDown(ev, e) : undefined}
+      style={{ ...(isGoogle ? {} : { borderLeftColor: ev.color }), ...(draggable ? { touchAction: 'none' } : {}), ...(beingDragged ? { pointerEvents: 'none' } : {}) }}
       className={`group/chip w-full flex items-center gap-1 rounded-md pl-1 pr-1 py-1 transition-colors duration-150
+        ${draggable && !beingDragged ? 'cursor-grab active:cursor-grabbing' : ''}
+        ${beingDragged ? 'ring-2 ring-fyness-primary shadow-lg relative z-20' : ''}
         ${dimmed ? 'opacity-30 hover:opacity-100' : ''}
         ${isGoogle
           ? 'border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-slate-800/30 hover:border-slate-400'
           : 'border-l-2 bg-white/80 dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-      style={isGoogle ? undefined : { borderLeftColor: ev.color }}
     >
       <button
         type="button"
@@ -154,7 +161,7 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
 
 // ==================== VIEWS ====================
 
-function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDay, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
+function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDay, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner, dnd }) {
   const today = new Date();
   const cells = useMemo(() => monthMatrix(current), [current]);
   const month = current.getMonth();
@@ -171,15 +178,20 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
         const dayEvents = eventsByDay.get(key) || [];
         const inMonth = day.getMonth() === month;
         const isToday = isSameDay(day, today);
-        const shown = dayEvents.slice(0, 4);
-        const extra = dayEvents.length - shown.length;
+        // Durante o arrasto, o chip que caiu aqui vem pra frente pra não sumir no "+N".
+        const ordered = dayEvents.some(e => e._dragging)
+          ? [...dayEvents].sort((a, b) => (b._dragging ? 1 : 0) - (a._dragging ? 1 : 0))
+          : dayEvents;
+        const shown = ordered.slice(0, 4);
+        const extra = ordered.length - shown.length;
         return (
           <div
             key={i}
+            data-cal-daykey={key}
             onClick={() => onSelectSlot?.(day)}
             className={`min-h-[92px] p-1 border-b border-r border-slate-200/60 dark:border-white/5 last:border-r-0 cursor-pointer transition-colors
               ${inMonth ? 'bg-white/40 dark:bg-transparent' : 'bg-slate-50/60 dark:bg-slate-900/40'}
-              hover:bg-fyness-primary/5 dark:hover:bg-white/5 ${(i + 1) % 7 === 0 ? 'border-r-0' : ''}`}
+              ${dnd?.drop?.dayKey === key ? 'ring-2 ring-inset ring-fyness-primary/60 bg-fyness-primary/10 dark:bg-fyness-primary/10' : 'hover:bg-fyness-primary/5 dark:hover:bg-white/5'} ${(i + 1) % 7 === 0 ? 'border-r-0' : ''}`}
           >
             <div className="flex items-center justify-between px-1">
               <span className={`text-[11px] font-medium w-5 h-5 flex items-center justify-center rounded-full
@@ -190,7 +202,7 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
             <div className="mt-0.5 space-y-0.5">
               {shown.map(ev => (
                 <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
-                  dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
+                  dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} dnd={dnd} />
               ))}
               {extra > 0 && (
                 // Handler próprio + stopPropagation: sem isso o clique cai no
@@ -255,9 +267,36 @@ function layoutOverlaps(dayEvents) {
     .map(ev => {
       const startMin = minutesOfDay(ev.startDate);
       const endMin = ev.endDate ? Math.max(minutesOfDay(ev.endDate), startMin + 15) : startMin + GRID_MIN_BLOCK_MIN;
-      return { ev, startMin, endMin, col: 0, cols: 1 };
+      return { ev, startMin, endMin, col: 0, cols: 1, colspan: 1 };
     })
-    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+    // Ordem ESTÁVEL (início, depois fim, depois id): sem o id de desempate,
+    // eventos no mesmo horário trocavam de coluna a cada render/arrasto.
+    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin || String(a.ev.id).localeCompare(String(b.ev.id)));
+
+  // Fecha um cluster de eventos que se cruzam: atribui coluna (guloso) e depois
+  // EXPANDE cada evento pra direita enquanto as colunas seguintes estiverem
+  // livres no intervalo dele — assim ele usa a largura sobrando em vez de ficar
+  // sempre em 1/N (antes 2 eventos que mal se tocavam já viravam 2 tiras finas).
+  const finalize = (cluster) => {
+    const colEnds = [];
+    for (const item of cluster) {
+      let c = colEnds.findIndex(end => item.startMin >= end);
+      if (c === -1) { c = colEnds.length; colEnds.push(item.endMin); }
+      else colEnds[c] = item.endMin;
+      item.col = c;
+    }
+    const totalCols = colEnds.length;
+    for (const item of cluster) {
+      item.cols = totalCols;
+      let span = 1;
+      for (let c = item.col + 1; c < totalCols; c++) {
+        const blocked = cluster.some(o => o !== item && o.col === c && o.startMin < item.endMin && o.endMin > item.startMin);
+        if (blocked) break;
+        span++;
+      }
+      item.colspan = span;
+    }
+  };
 
   let clusterStart = 0;
   for (let i = 0; i < items.length; i++) {
@@ -265,14 +304,7 @@ function layoutOverlaps(dayEvents) {
     const clusterEnd = Math.max(...clusterSoFar.map(x => x.endMin));
     const isLast = i === items.length - 1;
     if (isLast || items[i + 1].startMin >= clusterEnd) {
-      const colEnds = [];
-      for (const item of clusterSoFar) {
-        let col = colEnds.findIndex(end => item.startMin >= end);
-        if (col === -1) { col = colEnds.length; colEnds.push(item.endMin); }
-        else colEnds[col] = item.endMin;
-        item.col = col;
-      }
-      for (const item of clusterSoFar) item.cols = colEnds.length;
+      finalize(clusterSoFar);
       clusterStart = i + 1;
     }
   }
@@ -298,8 +330,8 @@ function NowLine({ startH, endH }) {
   );
 }
 
-function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner, startH }) {
-  const { ev, startMin, endMin, col, cols } = item;
+function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner, startH, dnd }) {
+  const { ev, startMin, endMin, col, cols, colspan = 1 } = item;
   const isGoogle = ev.source === 'google';
   const isCrm = ev.source === 'crm';
   const Icon = iconFor(ev);
@@ -307,25 +339,34 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
   const height = Math.max(20, (endMin - startMin) * GRID_MIN_PX - 2);
   const short = height < 34;
   const GAP = 2;
-  const widthPct = 100 / cols;
+  const unit = 100 / cols;
+  const leftPct = col * unit;
+  const widthPct = colspan * unit;
+  const draggable = dnd ? dnd.canDrag(ev) : false;
+  const beingDragged = !!ev._dragging;
 
   return (
     <button
       type="button"
+      onPointerDown={draggable ? (e) => dnd.onPointerDown(ev, e) : undefined}
       onClick={(e) => { e.stopPropagation(); onClick?.(ev); }}
       title={`${fmtRange(ev.startDate, ev.endDate)} · ${ev.title}${ev.leadName ? ` — ${ev.leadName}` : ''}${isGoogle ? ' (Google Agenda)' : ''}`}
-      className={`group/blk absolute text-left rounded-md px-1.5 overflow-hidden transition-colors
+      className={`group/blk absolute text-left rounded-md px-1.5 overflow-hidden transition-[top,height,left,width] duration-75
         ${short ? 'py-0.5 flex items-center gap-1' : 'py-1'}
+        ${draggable && !beingDragged ? 'cursor-grab active:cursor-grabbing' : ''}
+        ${beingDragged ? 'ring-2 ring-fyness-primary shadow-2xl opacity-95' : ''}
         ${dimmed ? 'opacity-30 hover:opacity-100' : ''}
         ${isGoogle
           ? 'border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-800/50 hover:border-slate-400'
           : 'border-l-2 bg-white/95 dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm'}`}
       style={{
         top, height,
-        left: `calc(${col * widthPct}% + ${GAP}px)`,
+        left: `calc(${leftPct}% + ${GAP}px)`,
         width: `calc(${widthPct}% - ${GAP * 2}px)`,
         borderLeftColor: isGoogle ? undefined : ev.color,
-        zIndex: 10,
+        zIndex: beingDragged ? 40 : 10,
+        pointerEvents: beingDragged ? 'none' : undefined,
+        ...(draggable ? { touchAction: 'none' } : {}),
       }}
     >
       {short ? (
@@ -411,7 +452,7 @@ function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditD
  * por horário real. onSelectSlot recebe a data JÁ com a hora clicada (em vez
  * de sempre cair em 9h como no clique de célula do Mês).
  */
-function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
+function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner, dnd }) {
   const today = new Date();
   const dayGroups = useMemo(() => days.map(d => eventsByDay.get(toKey(d)) || []), [days, eventsByDay]);
   const { startH, endH } = useMemo(() => computeGridHours(dayGroups), [dayGroups]);
@@ -466,6 +507,9 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTa
             return (
               <div
                 key={toKey(day)}
+                data-cal-daykey={toKey(day)}
+                data-cal-grid=""
+                data-cal-starth={startH}
                 onClick={(e) => handleColumnClick(e, day)}
                 className={`relative border-l border-slate-200/60 dark:border-white/5 cursor-pointer ${isToday ? 'bg-fyness-primary/[0.03]' : ''}`}
                 style={{ height: totalHeight }}
@@ -477,7 +521,7 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTa
                 {isToday && <NowLine startH={startH} endH={endH} />}
                 {laidOut.map(item => (
                   <GridEventBlock key={item.ev.id} item={item} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
-                    dimmed={!!selectedLeadKey && item.ev.leadKey !== selectedLeadKey} showOwner={showOwner} startH={startH} />
+                    dimmed={!!selectedLeadKey && item.ev.leadKey !== selectedLeadKey} showOwner={showOwner} startH={startH} dnd={dnd} />
                 ))}
               </div>
             );
@@ -488,16 +532,16 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTa
   );
 }
 
-function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
+function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner, dnd }) {
   const days = useMemo(() => weekDays(current), [current]);
   return <TimeGrid days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot}
-    onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />;
+    onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />;
 }
 
-function DayView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
+function DayView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner, dnd }) {
   const days = useMemo(() => [startOfDay(current)], [current]);
   return <TimeGrid days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot}
-    onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />;
+    onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />;
 }
 
 // ==================== AGENDA (LISTA) ====================
@@ -636,13 +680,191 @@ export default function CrmCalendar({
   showOwner,
   isLoading,
   isError,
+  onEventDrop,
 }) {
+  // ===== Arrasto por pointer pra reagendar (suave, tipo Google Agenda) =====
+  // Um "fantasma" flutuante segue o cursor; no grid encaixa em 15min. Só conta
+  // como arrasto depois de passar de um limiar (senão é clique = abrir). O drop
+  // chama onEventDrop(ev, {start,end}); um override otimista mantém o item no
+  // novo lugar até o refetch chegar. Só CRM pendente e evento local não-recorrente
+  // arrastam (Google/O.S. são read-only aqui).
+  const DRAG_THRESHOLD = 5;
+  const stateRef = useRef(null);              // { ev, startX, startY, started }
+  const [drop, setDrop] = useState(null);     // { dayKey, minutes|null } | null — alvo (highlight do Mês)
+  const [previewMove, setPreviewMove] = useState(null); // { id, startDate, endDate } — o PRÓPRIO bloco renderizado no destino durante o arrasto
+  const [pendingMoves, setPendingMoves] = useState(() => new Map());
+  // Reconciliação: mantém o override otimista até os dados FRESCOS refletirem o
+  // novo horário (start igual) ou o evento sair do recorte. Antes limpava a cada
+  // troca de referência de `events` — e como o mutate re-renderiza o pai
+  // (recriando `events`), o override era apagado na hora e o item só andava
+  // depois do refetch: era isso que dava o "delay ao soltar".
+  useEffect(() => {
+    setPendingMoves(prev => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Map();
+      for (const [id, mv] of prev) {
+        const ev = events.find(e => e.id === id);
+        if (!ev) { changed = true; continue; }                       // sumiu do recorte
+        if (new Date(ev.startDate).getTime() === new Date(mv.startDate).getTime()) { changed = true; continue; } // servidor confirmou
+        next.set(id, mv);
+      }
+      return changed ? next : prev;
+    });
+  }, [events]);
+
+  const canDrag = useCallback((ev) => {
+    if (!onEventDrop || !ev.startDate) return false;
+    if (ev.source === 'crm') return !ev.completed;
+    if (ev.source === 'local') return !ev._raw?.recurrenceType || ev._raw.recurrenceType === 'none';
+    return false;
+  }, [onEventDrop]);
+
+  // Zona de drop sob o cursor: célula do Mês (data-cal-daykey) ou coluna do Grid
+  // (+ data-cal-grid + data-cal-starth pra converter Y em minutos, snap 15min).
+  const hitTest = useCallback((x, y) => {
+    const el = document.elementFromPoint(x, y);
+    const zone = el?.closest?.('[data-cal-daykey]');
+    if (!zone) return null;
+    const dayKey = zone.getAttribute('data-cal-daykey');
+    if (!zone.hasAttribute('data-cal-grid')) return { dayKey, minutes: null };
+    const rect = zone.getBoundingClientRect();
+    const startH = Number(zone.getAttribute('data-cal-starth')) || 0;
+    const offsetY = Math.max(0, Math.min(y - rect.top, rect.height));
+    const minutes = startH * 60 + Math.round((offsetY / GRID_MIN_PX) / 15) * 15;
+    return { dayKey, minutes };
+  }, []);
+
+  // Onde o evento ficaria pra um alvo (puro). Mês: mantém a hora, muda o dia.
+  // Grid: hora vem do Y. Mantém a duração. sameAsOrig = soltar aqui não muda nada.
+  const resolveMove = useCallback((ev, target) => {
+    const origStart = new Date(ev.startDate);
+    const [ky, km, kd] = target.dayKey.split('-').map(Number);
+    const ns = target.minutes == null
+      ? new Date(ky, km - 1, kd, origStart.getHours(), origStart.getMinutes(), 0, 0)
+      : new Date(ky, km - 1, kd, Math.floor(target.minutes / 60), target.minutes % 60, 0, 0);
+    const durMs = ev.endDate ? Math.max(0, new Date(ev.endDate).getTime() - origStart.getTime()) : 0;
+    const ne = ev.endDate ? new Date(ns.getTime() + durMs) : null;
+    const sameAsOrig = target.minutes == null
+      ? isSameDay(ns, origStart)
+      : Math.abs(ns.getTime() - origStart.getTime()) < 60000;
+    return { startDate: ns.toISOString(), endDate: ne ? ne.toISOString() : null, sameAsOrig };
+  }, []);
+
+  const commit = useCallback((ev, mv) => {
+    setPendingMoves(prev => new Map(prev).set(ev.id, { startDate: mv.startDate, endDate: mv.endDate }));
+    onEventDrop?.(ev, { start: mv.startDate, end: mv.endDate });
+    // Rede de segurança: se o servidor não confirmar, o override some depois de 8s
+    // e o bloco volta pro estado real (em vez de ficar preso no lugar errado).
+    window.setTimeout(() => {
+      setPendingMoves(prev => {
+        if (!prev.has(ev.id)) return prev;
+        const n = new Map(prev); n.delete(ev.id); return n;
+      });
+    }, 8000);
+  }, [onEventDrop]);
+
+  // Listeners globais (uma vez): leem stateRef, setado no pointerdown do item.
+  useEffect(() => {
+    const clearBody = () => { document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+    const onMove = (e) => {
+      const st = stateRef.current;
+      if (!st) return;
+      if (!st.started) {
+        if (Math.hypot(e.clientX - st.startX, e.clientY - st.startY) < DRAG_THRESHOLD) return;
+        st.started = true;
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+      }
+      const t = hitTest(e.clientX, e.clientY);
+      setDrop(prev => {
+        const same = (!prev && !t) || (prev && t && prev.dayKey === t.dayKey && prev.minutes === t.minutes);
+        return same ? prev : t;
+      });
+      // Preview: renderiza o PRÓPRIO bloco no destino (tamanho real). Fora de
+      // qualquer zona, mostra no lugar original (soltar aí não muda nada).
+      const mv = t ? resolveMove(st.ev, t) : { startDate: st.ev.startDate, endDate: st.ev.endDate || null };
+      setPreviewMove(prev => (prev && prev.id === st.ev.id && prev.startDate === mv.startDate && prev.endDate === mv.endDate)
+        ? prev : { id: st.ev.id, startDate: mv.startDate, endDate: mv.endDate });
+    };
+    const onUp = (e) => {
+      const st = stateRef.current;
+      if (!st) return;
+      const started = st.started;
+      stateRef.current = null;
+      if (started) {
+        const t = hitTest(e.clientX, e.clientY);
+        if (t) {
+          const mv = resolveMove(st.ev, t);
+          if (!mv.sameAsOrig) commit(st.ev, mv);
+        }
+        // Suprime o "click" que o navegador dispara logo após o arrasto (senão
+        // soltar em cima de um item abriria o histórico dele).
+        const suppress = (ce) => { ce.stopPropagation(); ce.preventDefault(); };
+        window.addEventListener('click', suppress, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', suppress, true), 0);
+      }
+      setPreviewMove(null);
+      setDrop(null);
+      clearBody();
+    };
+    // Cancela sem reagendar (Esc, troca de aba/janela) — rede de segurança
+    // contra estado de arrasto preso.
+    const cancel = () => {
+      if (!stateRef.current) return;
+      stateRef.current = null;
+      setPreviewMove(null);
+      setDrop(null);
+      clearBody();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') cancel(); };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('blur', cancel);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('blur', cancel);
+      window.removeEventListener('keydown', onKey);
+      clearBody();
+    };
+  }, [hitTest, resolveMove, commit]);
+
+  const dnd = onEventDrop ? {
+    canDrag,
+    drop,
+    onPointerDown: (ev, e) => {
+      if (e.button != null && e.button !== 0) return; // só botão primário
+      // Captura o ponteiro: garante que o pointerup chegue mesmo se soltar fora
+      // da janela — sem isso um arrasto podia "ficar preso" e travar a página.
+      try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+      stateRef.current = { ev, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, started: false };
+    },
+  } : null;
+
+  // Override otimista (drop confirmado) + PREVIEW ao vivo: o bloco sendo
+  // arrastado é renderizado JÁ no destino (marcado com _dragging pra estilizar
+  // como "levantado") — você vê em tamanho real como ele vai ficar lá.
+  const effectiveEvents = useMemo(() => {
+    if (pendingMoves.size === 0 && !previewMove) return events;
+    return events.map(ev => {
+      if (previewMove && ev.id === previewMove.id) {
+        return { ...ev, startDate: previewMove.startDate, endDate: previewMove.endDate, _dragging: true };
+      }
+      const p = pendingMoves.get(ev.id);
+      return p ? { ...ev, startDate: p.startDate, endDate: p.endDate } : ev;
+    });
+  }, [events, pendingMoves, previewMove]);
+
   // Indexa eventos por dia (uma vez). Eventos sem data sao ignorados.
   const eventsByDay = useMemo(() => {
     const map = new Map();
     const push = (k, ev) => { if (!map.has(k)) map.set(k, []); map.get(k).push(ev); };
 
-    for (const ev of events) {
+    for (const ev of effectiveEvents) {
       if (!ev.startDate) continue;
       const start = parseEventStart(ev);
       const firstDay = startOfDay(start);
@@ -670,7 +892,7 @@ export default function CrmCalendar({
       list.sort((a, b) => parseEventStart(a) - parseEventStart(b));
     }
     return map;
-  }, [events]);
+  }, [effectiveEvents]);
 
   const title = useMemo(() => {
     if (view === 'agenda') return `A partir de ${currentDate.getDate()} de ${MONTHS[currentDate.getMonth()]}`;
@@ -734,9 +956,9 @@ export default function CrmCalendar({
       ) : (
         <>
           {view === 'agenda' && <AgendaListView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
-          {view === 'month' && <MonthView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onShowDay={onShowDay} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
-          {view === 'week' && <WeekView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
-          {view === 'day' && <DayView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
+          {view === 'month' && <MonthView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onShowDay={onShowDay} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />}
+          {view === 'week' && <WeekView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />}
+          {view === 'day' && <DayView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />}
         </>
       )}
 

@@ -354,6 +354,12 @@ function MyDayCalendar() {
               if (!ev.activityId) return;
               setCompletingTask({ id: ev.activityId, title: ev.title, type: ev.typeKey, completed: true, deliveryInput: ev.deliveryInput, deliveryReport: ev.deliveryReport });
             }}
+            onEventDrop={(ev, { start, end }) => {
+              // Arrastar reagenda a tarefa (start/end). Só atividade do CRM tem
+              // activityId; o updateCrmActivity já propaga pro Google Calendar.
+              if (!ev.activityId) return;
+              updateActivityMutation.mutate({ id: ev.activityId, updates: { startDate: start, endDate: end } });
+            }}
             selectedLeadKey={selectedLeadKey}
             extraActions={calendarActions}
             showOwner={showOwner}

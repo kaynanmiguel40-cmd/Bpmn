@@ -20,7 +20,7 @@ import {
 import { connectGCalServer } from '../../lib/googleCalendarService';
 import CrmCalendar from '../../modules/crm/components/agenda/CrmCalendar';
 import { CompleteActivityModal } from '../../modules/crm/components/CompleteActivityModal';
-import { useCompleteCrmActivity } from '../../modules/crm/hooks/useCrmQueries';
+import { useCompleteCrmActivity, useUpdateCrmActivity } from '../../modules/crm/hooks/useCrmQueries';
 import { useCrmAccess } from '../../modules/crm/hooks/useCrmAccess';
 import { useAgendaData, EVENT_TYPES, typeMeta, SOURCE_META, DEFAULT_SOURCES } from '../../hooks/useAgendaData';
 
@@ -149,6 +149,7 @@ export default function AgendaPage() {
   const updateEvent = useUpdateAgendaEvent();
   const deleteEvent = useDeleteAgendaEvent();
   const completeCrm = useCompleteCrmActivity();
+  const updateCrmActivity = useUpdateCrmActivity();
   const [completingTask, setCompletingTask] = useState(null); // { id, title } — abre o modal de conclusão (input/output)
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -327,6 +328,15 @@ export default function AgendaPage() {
           onSelectEvent={handleSelectEvent}
           onSelectSlot={handleSelectSlot}
           onCompleteTask={(ev) => { if (ev._crmActivityId) setCompletingTask({ id: ev._crmActivityId, title: ev.title, type: ev.typeKey }); }}
+          onEventDrop={(ev, { start, end }) => {
+            // Arrastar reagenda: tarefa comercial (CRM) ou reunião/evento local.
+            // O.S. e Google não são arrastáveis (o CrmCalendar já barra na origem).
+            if (ev.source === 'crm') {
+              if (ev._crmActivityId) updateCrmActivity.mutate({ id: ev._crmActivityId, updates: { startDate: start, endDate: end } });
+            } else if (ev.source === 'local') {
+              updateEvent.mutate({ id: ev._localId, updates: { startDate: start, endDate: end } });
+            }
+          }}
         />
       </div>
 

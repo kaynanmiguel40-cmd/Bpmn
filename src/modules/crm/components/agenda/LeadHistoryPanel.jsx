@@ -208,15 +208,18 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
           </button>
         )}
 
+      </div>
+
+      {/* Conteúdo: notas + timeline (a fazer + histórico) — TUDO rola junto.
+          As notas ficam AQUI, não no header fixo: um lead com anotação longa
+          (ex.: histórico inteiro colado) empurrava a timeline pra fora da tela
+          e nada rolava — parecia um "print travado". */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {lead?.notes && (
-          <div className="mt-3 text-xs text-slate-600 dark:text-slate-300 bg-amber-50/70 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-800/30 rounded-lg p-2 whitespace-pre-wrap break-words">
+          <div className="mb-4 text-xs text-slate-600 dark:text-slate-300 bg-amber-50/70 dark:bg-amber-900/10 border border-amber-200/60 dark:border-amber-800/30 rounded-lg p-2 whitespace-pre-wrap break-words">
             {lead.notes}
           </div>
         )}
-      </div>
-
-      {/* Conteúdo: timeline (a fazer + histórico) */}
-      <div className="flex-1 overflow-y-auto p-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-10">
             <div className="w-6 h-6 border-2 border-fyness-primary border-t-transparent rounded-full animate-spin" />
