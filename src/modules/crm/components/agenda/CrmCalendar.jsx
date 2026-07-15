@@ -138,6 +138,7 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
       {isCrm && !ev.completed && (
         <button
           type="button"
+          data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
           title="Marcar como concluída"
           className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-emerald-500 transition-colors"
@@ -148,6 +149,7 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
       {isCrm && ev.completed && onEditDelivery && (
         <button
           type="button"
+          data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
           title="Editar o que foi feito/respondido"
           className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-fyness-primary transition-colors md:opacity-0 md:group-hover/chip:opacity-100"
@@ -400,6 +402,7 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
         <span
           role="button"
           tabIndex={0}
+          data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onCompleteTask?.(ev); } }}
           title="Marcar como concluída"
@@ -412,6 +415,7 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
         <span
           role="button"
           tabIndex={0}
+          data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEditDelivery(ev); } }}
           title="Editar o que foi feito/respondido"
@@ -838,6 +842,10 @@ export default function CrmCalendar({
     drop,
     onPointerDown: (ev, e) => {
       if (e.button != null && e.button !== 0) return; // só botão primário
+      // NÃO sequestrar cliques nos controles do card (concluir ✓ / editar): sem
+      // isso, um clique com leve movimento no ✓ virava arrasto e REAGENDAVA a
+      // tarefa em vez de concluí-la — parecia "não dá pra confirmar a tarefa".
+      if (e.target?.closest?.('[data-cal-nodrag]')) return;
       // Captura o ponteiro: garante que o pointerup chegue mesmo se soltar fora
       // da janela — sem isso um arrasto podia "ficar preso" e travar a página.
       try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
