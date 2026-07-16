@@ -105,11 +105,13 @@ export async function getCommercialPlanReal() {
       ? {
           lead: f.lead || 0,
           qualif: f.qualified || 0,
-          reun: f.meeting || 0,
+          agendadas: f.meeting || 0,        // reunião AGENDADA (estágio do pipeline)
+          acontecidas: f.meetingHeld || 0,  // reunião REALIZADA (estágio do pipeline)
           fech: f.closing || 0,
           qualRate: pct(f.qualified || 0, f.lead || 0),       // lead -> qualif
-          agendRate: pct(f.meeting || 0, f.qualified || 0),   // qualif -> reuniao
-          fechRate: pct(f.closing || 0, f.meeting || 0),      // reuniao -> fechamento
+          agendRate: pct(f.meeting || 0, f.qualified || 0),   // qualif -> agendada
+          compRate: pct(f.meetingHeld || 0, f.meeting || 0),  // agendada -> acontecida
+          fechRate: pct(f.closing || 0, f.meetingHeld || 0),  // acontecida -> fechamento
         }
       : null;
 

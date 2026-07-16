@@ -4,10 +4,10 @@ import { toast } from '../../../contexts/ToastContext';
 // Services
 import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany, softDeleteCrmCompany } from '../services/crmCompaniesService';
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
-import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, ensureGeneralPipeline, consolidateSalesPipelinesIntoGeneral, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
+import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, ensureGeneralPipeline, consolidateSalesPipelinesIntoGeneral, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, markDealAsChurned, reactivateChurnedDeal, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
 import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal } from '../services/crmActivitiesService';
-import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel } from '../services/crmDashboardService';
+import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel, getFunnelStageDeals } from '../services/crmDashboardService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, getCrmProspectById, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
 import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
@@ -304,6 +304,18 @@ export function useCreateCrmPipeline() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       toast('Pipeline criado com sucesso', 'success');
+    },
+  });
+}
+
+export function useUpdateCrmPipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }) => updateCrmPipeline(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
     },
   });
 }
@@ -1002,6 +1014,17 @@ export function useBonificacaoProgress(startDate, endDate) {
     queryKey: crmQueryKeys.bonificacao(startDate, endDate),
     queryFn: () => getBonificacaoProgress(startDate, endDate),
     staleTime: 60_000,
+  });
+}
+
+// Drill-down do funil: os deals da coorte que alcançaram uma etapa (clicar na
+// etapa do funil do Comparativo pra ver os leads). Só dispara com `step` setado.
+export function useFunnelStageDeals(range, scope, step) {
+  return useQuery({
+    queryKey: ['crm', 'funnelStageDeals', range?.start || null, range?.end || null, scope || 'sales', step || null],
+    queryFn: () => getFunnelStageDeals(range, scope, step),
+    enabled: !!step && !!(range?.start),
+    staleTime: 30_000,
   });
 }
 

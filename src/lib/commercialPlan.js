@@ -40,15 +40,21 @@ export const PLAN_MONTHS = [
   { m: 12, preco: 130, novos: 172, ativos: 829, mrr: 96286, leads: 737, reat: 100, qualif: 358, reun: 287, fech: 172 },
 ];
 
+// Comparecimento: das reunioes AGENDADAS, quantas ACONTECEM (o resto e no-show).
+// O plano so traz 1 numero de reuniao (reun = agendadas); acontecidas =
+// agendadas × esta taxa.
+export const COMPARECIMENTO_RATE = 0.8;
+
 /**
  * Premissas de conversao do plano (a validar nos 90 dias).
  * Churn (5%) fica FORA por decisao — nao entra no Previsto vs Real.
  */
 export const PREMISSAS = [
-  { key: 'qualif',      label: 'Qualificacao',  sub: 'lead → qualificado',     pct: 35 },
-  { key: 'agendamento', label: 'Agendamento',   sub: 'qualificado → reuniao',  pct: 80 },
-  { key: 'fechamento',  label: 'Fechamento',    sub: 'reuniao → cliente',      pct: 60 },
-  { key: 'reativacao',  label: 'Reativacao',    sub: 'sobre o pool',           pct: 20 },
+  { key: 'qualif',        label: 'Qualificacao',   sub: 'lead → qualificado',       pct: 35 },
+  { key: 'agendamento',   label: 'Agendamento',    sub: 'qualificado → agendada',   pct: 80 },
+  { key: 'comparecimento', label: 'Comparecimento', sub: 'agendada → acontecida',   pct: Math.round(COMPARECIMENTO_RATE * 100) },
+  { key: 'fechamento',    label: 'Fechamento',     sub: 'acontecida → cliente',     pct: 60 },
+  { key: 'reativacao',    label: 'Reativacao',     sub: 'sobre o pool',             pct: 20 },
 ];
 
 const MONTH_ABBR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];

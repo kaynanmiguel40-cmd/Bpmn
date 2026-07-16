@@ -5,10 +5,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, GripVertical, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight, ChevronUp, ChevronDown, Pencil } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useCancelCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useCancelCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral } from '../hooks/useCrmQueries';
 import { getDealLeadInfo } from '../services/crmDealsService';
 import { useTeamMembers } from '../../../hooks/queries';
 import { useUrlState } from '../../../hooks/useUrlState';
@@ -663,20 +663,31 @@ const DEFAULT_STAGES = [
   { name: 'Fechamento',  color: '#10b981', isWinStage: true  },
 ];
 
-function CreatePipelineModal({ open, onClose, onCreated }) {
+function CreatePipelineModal({ open, onClose, onCreated, pipeline = null }) {
+  const isEdit = !!pipeline?.id;
   const [name, setName]     = useState('');
   const [stages, setStages] = useState(() => DEFAULT_STAGES.map(s => ({ ...s })));
   const [isDefault, setIsDefault] = useState(false);
   const createMutation = useCreateCrmPipeline();
+  const updateMutation = useUpdateCrmPipeline();
+  const pending = createMutation.isPending || updateMutation.isPending;
 
-  // Reset ao abrir
+  // Reset ao abrir. Editar pré-preenche do pipeline PRESERVANDO os ids dos
+  // estágios (o service reconcilia por id: mesmo id = update, sem id = novo,
+  // sumiu = remove com reatribuição dos negócios).
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (isEdit) {
+      setName(pipeline.name || '');
+      const ordered = [...(pipeline.stages || [])].sort((a, b) => (a.position || 0) - (b.position || 0));
+      setStages(ordered.map(s => ({ id: s.id, name: s.name, color: s.color || '#6366f1', isWinStage: !!s.isWinStage })));
+      setIsDefault(!!pipeline.isDefault);
+    } else {
       setName('');
       setStages(DEFAULT_STAGES.map(s => ({ ...s })));
       setIsDefault(false);
     }
-  }, [open]);
+  }, [open, isEdit, pipeline]);
 
   const addStage = () =>
     setStages(s => [...s, { name: '', color: '#6366f1', isWinStage: false }]);
@@ -687,6 +698,16 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
   const updateStage = (i, field, value) =>
     setStages(s => s.map((st, idx) => idx === i ? { ...st, [field]: value } : st));
 
+  // Reordenar (a posição importa pro funil) — troca com o vizinho.
+  const moveStage = (i, dir) =>
+    setStages(s => {
+      const j = i + dir;
+      if (j < 0 || j >= s.length) return s;
+      const next = s.slice();
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+
   // Apenas uma etapa pode ser "ganho"
   const setWin = (i) =>
     setStages(s => s.map((st, idx) => ({ ...st, isWinStage: idx === i })));
@@ -694,18 +715,22 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim() || stages.length === 0) return;
-    const pipeline = await createMutation.mutateAsync({
-      name: name.trim(),
-      isDefault,
-      stages: stages.map((s, i) => ({
-        name:       s.name.trim() || `Etapa ${i + 1}`,
-        color:      s.color,
-        position:   i + 1,
-        isWinStage: s.isWinStage,
-      })),
-    });
-    onClose();
-    if (pipeline?.id) onCreated(pipeline.id);
+    const payloadStages = stages.map((s, i) => ({
+      id:         s.id,                               // undefined = etapa nova (INSERT)
+      name:       s.name.trim() || `Etapa ${i + 1}`,
+      color:      s.color,
+      position:   i + 1,
+      isWinStage: s.isWinStage,
+    }));
+    if (isEdit) {
+      await updateMutation.mutateAsync({ id: pipeline.id, data: { name: name.trim(), isDefault, stages: payloadStages } });
+      onClose();
+      onCreated?.(pipeline.id);
+    } else {
+      const created = await createMutation.mutateAsync({ name: name.trim(), isDefault, stages: payloadStages });
+      onClose();
+      if (created?.id) onCreated?.(created.id);
+    }
   };
 
   const inputCls = 'px-2.5 py-1.5 text-sm bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-white/60 dark:border-white/10 rounded-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40';
@@ -714,7 +739,7 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
     <CrmModal
       open={open}
       onClose={onClose}
-      title="Nova Pipeline"
+      title={isEdit ? 'Editar Pipeline' : 'Nova Pipeline'}
       size="md"
       footer={
         <>
@@ -724,11 +749,11 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
           <button
             type="submit"
             form="create-pipeline-form"
-            disabled={!name.trim() || stages.length === 0 || createMutation.isPending}
+            disabled={!name.trim() || stages.length === 0 || pending}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
           >
-            <Plus size={14} />
-            {createMutation.isPending ? 'Criando...' : 'Criar Pipeline'}
+            {isEdit ? <Pencil size={14} /> : <Plus size={14} />}
+            {pending ? 'Salvando...' : (isEdit ? 'Salvar' : 'Criar Pipeline')}
           </button>
         </>
       }
@@ -764,8 +789,17 @@ function CreatePipelineModal({ open, onClose, onCreated }) {
           <div className="space-y-2">
             {stages.map((stage, i) => (
               <div key={i} className="flex items-center gap-2">
-                {/* Handle / ordem visual */}
-                <GripVertical size={14} className="text-slate-300 dark:text-slate-600 shrink-0" />
+                {/* Reordenar — a posição das etapas alimenta o funil */}
+                <div className="flex flex-col shrink-0 -my-1">
+                  <button type="button" onClick={() => moveStage(i, -1)} disabled={i === 0}
+                    title="Subir" className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 disabled:opacity-20 transition-colors">
+                    <ChevronUp size={13} />
+                  </button>
+                  <button type="button" onClick={() => moveStage(i, 1)} disabled={i === stages.length - 1}
+                    title="Descer" className="p-0.5 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 disabled:opacity-20 transition-colors">
+                    <ChevronDown size={13} />
+                  </button>
+                </div>
 
                 {/* Cor */}
                 <div className="relative shrink-0">
@@ -1085,6 +1119,7 @@ export function CrmPipelinePage() {
   const [defaultStageId, setDefaultStageId] = useState(null);
   const [dragOverStageId, setDragOverStageId] = useState(null);
   const [createPipelineOpen, setCreatePipelineOpen] = useState(false);
+  const [editPipelineOpen, setEditPipelineOpen] = useState(false);
   const [deletePipelineConfirm, setDeletePipelineConfirm] = useState(false);
   const [consolidateConfirm, setConsolidateConfirm] = useState(false);
   const [lostModalDealId, setLostModalDealId] = useState(null);
@@ -1261,6 +1296,17 @@ export function CrmPipelinePage() {
               <option value="__geral__">+ Pipeline Geral (recomendada)</option>
               <option value="__new__">+ Nova Pipeline</option>
             </select>
+
+            {/* Editar etapas desta pipeline (renomear/add/remover/reordenar) */}
+            {activePipelineId && pipelineData && (
+              <button
+                onClick={() => setEditPipelineOpen(true)}
+                title="Editar etapas desta pipeline"
+                className="flex items-center gap-1.5 text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors"
+              >
+                <Pencil size={14} /> Editar
+              </button>
+            )}
 
             {/* Consolidar leads das pipelines antigas na Geral */}
             {pipelines && pipelines.length > 1 && (
@@ -1485,6 +1531,14 @@ export function CrmPipelinePage() {
         open={createPipelineOpen}
         onClose={() => setCreatePipelineOpen(false)}
         onCreated={(id) => setSelectedPipelineId(id)}
+      />
+
+      {/* Mesmo modal em modo EDIÇÃO da pipeline atual (etapas do funil) */}
+      <CreatePipelineModal
+        open={editPipelineOpen}
+        pipeline={pipelineData}
+        onClose={() => setEditPipelineOpen(false)}
+        onCreated={() => setEditPipelineOpen(false)}
       />
 
       <CrmConfirmDialog

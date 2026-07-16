@@ -727,6 +727,9 @@ export async function getBonificacaoProgress(startDate, endDate) {
 const QUAL_STAGE_EXPLICIT_RE = /qualific/i;
 const QUAL_STAGE_FALLBACK_RE = /respond|engaj|conect|icp/i;
 const MEETING_STAGE_RE = /reuni|demo|apresenta/i;
+// Reunião REALIZADA / que aconteceu (o lead compareceu) — estágio separado da
+// agendada. Sem esse estágio no pipeline, "acontecidas" não é rastreada.
+const MEETING_HELD_RE = /realiz|acontec|comparec|feita|ocorr/i;
 
 /**
  * Detecta, por pipeline, a posição mínima de estágio que conta como
@@ -739,13 +742,17 @@ const MEETING_STAGE_RE = /reuni|demo|apresenta/i;
 export function detectFunnelStagePositions(stagesByPipeline) {
   const qualPosByPipeline = {};
   const meetingPosByPipeline = {};
+  const meetingHeldPosByPipeline = {};
   for (const [pid, list] of Object.entries(stagesByPipeline)) {
     const ordered = list.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
     const n = ordered.length;
     const qualMatch =
       ordered.find(s => QUAL_STAGE_EXPLICIT_RE.test(s.name || '')) ||
       ordered.find(s => QUAL_STAGE_FALLBACK_RE.test(s.name || ''));
-    const meetMatch = ordered.find(s => MEETING_STAGE_RE.test(s.name || ''));
+    // Agendada: estágio de reunião/demo que NÃO seja o "realizada".
+    const meetMatch = ordered.find(s => MEETING_STAGE_RE.test(s.name || '') && !MEETING_HELD_RE.test(s.name || ''));
+    // Realizada: estágio explícito de reunião realizada/aconteceu (opcional).
+    const heldMatch = ordered.find(s => MEETING_HELD_RE.test(s.name || ''));
     const winIdx = ordered.findIndex(s => s.is_win_stage);
 
     const qualPos = qualMatch
@@ -759,8 +766,13 @@ export function detectFunnelStagePositions(stagesByPipeline) {
     qualPosByPipeline[pid] = qualPos;
     // Reunião nunca antes de qualificado (garante funil monotônico).
     meetingPosByPipeline[pid] = Math.max(meetPosRaw, qualPos);
+    // Realizada nunca antes de agendada. null = pipeline sem estágio de realizada
+    // (aí "acontecidas" cai pros ganhos, até criarem o estágio).
+    meetingHeldPosByPipeline[pid] = heldMatch
+      ? Math.max(heldMatch.position ?? 0, meetingPosByPipeline[pid])
+      : null;
   }
-  return { qualPosByPipeline, meetingPosByPipeline };
+  return { qualPosByPipeline, meetingPosByPipeline, meetingHeldPosByPipeline };
 }
 
 /**
@@ -781,18 +793,22 @@ export function buildSalesFunnel({
   reachedPosByDeal = {},
   qualPosByPipeline = {},
   meetingPosByPipeline = {},
+  meetingHeldPosByPipeline = {},
 } = {}) {
-  let lead = 0, qualified = 0, meeting = 0, closing = 0, revenue = 0;
+  let lead = 0, qualified = 0, meeting = 0, meetingHeld = 0, closing = 0, revenue = 0;
   for (const d of leadDeals) {
     lead++;
     const won = d.status === 'won';
     const pos = reachedPosByDeal[d.id];
     const qp = qualPosByPipeline[d.pipeline_id];
     const mp = meetingPosByPipeline[d.pipeline_id];
+    const hp = meetingHeldPosByPipeline[d.pipeline_id];
     const reachedQual    = typeof pos === 'number' && typeof qp === 'number' && pos >= qp;
     const reachedMeeting = typeof pos === 'number' && typeof mp === 'number' && pos >= mp;
+    const reachedHeld    = typeof pos === 'number' && typeof hp === 'number' && pos >= hp;
     if (won || reachedQual)    qualified++;
     if (won || reachedMeeting) meeting++;
+    if (won || reachedHeld)    meetingHeld++;   // reunião realizada (estágio do pipeline)
     if (won) { closing++; revenue += d.value || 0; }
   }
 
@@ -818,7 +834,7 @@ export function buildSalesFunnel({
     winRate: pct(closing, lead),           // win rate geral (lead → cliente)
   };
 
-  return { steps, ratios, revenue, lead, qualified, meeting, closing };
+  return { steps, ratios, revenue, lead, qualified, meeting, meetingHeld, closing };
 }
 
 /**
@@ -872,7 +888,7 @@ export async function getSalesFunnel(range = {}, scope = 'sales', ownerId = null
       stagePosById[s.id] = s.position ?? 0;
       (stagesByPipeline[s.pipeline_id] = stagesByPipeline[s.pipeline_id] || []).push(s);
     }
-    const { qualPosByPipeline, meetingPosByPipeline } = detectFunnelStagePositions(stagesByPipeline);
+    const { qualPosByPipeline, meetingPosByPipeline, meetingHeldPosByPipeline } = detectFunnelStagePositions(stagesByPipeline);
 
     // Jornada real: maior posição que cada negócio JÁ alcançou. Começa pelo
     // estágio atual e sobe com o histórico de transições — assim um lead que
@@ -895,11 +911,97 @@ export async function getSalesFunnel(range = {}, scope = 'sales', ownerId = null
       }
     }
 
-    return buildSalesFunnel({ leadDeals, reachedPosByDeal, qualPosByPipeline, meetingPosByPipeline });
+    return buildSalesFunnel({ leadDeals, reachedPosByDeal, qualPosByPipeline, meetingPosByPipeline, meetingHeldPosByPipeline });
   } catch (err) {
     console.error('[CRM Funil] Erro ao calcular funil:', err);
     toast('Erro ao carregar funil de conversão', 'error');
     return buildSalesFunnel({});
+  }
+}
+
+/**
+ * DRILL-DOWN do funil: os negócios (coorte do período) que ALCANÇARAM uma etapa
+ * — pra clicar numa etapa do funil do Comparativo e ver os leads por trás do
+ * número. Mesma lógica de contagem do getSalesFunnel (jornada real por deal),
+ * mas devolve a LISTA em vez do total. Assim a lista sempre casa com o número.
+ *
+ * @param {{start?:string,end?:string}} range - período ISO (default = mês atual).
+ * @param {'sales'|'partners'|'all'} scope
+ * @param {'lead'|'qualified'|'meetingScheduled'|'meetingHeld'|'closing'} step
+ */
+export async function getFunnelStageDeals(range = {}, scope = 'sales', step = 'lead') {
+  try {
+    const now = new Date();
+    const periodStart = range.start || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const periodEnd = range.end || now.toISOString();
+
+    const { data: allPipelines = [] } = await supabase.from('crm_pipelines').select('id, name, is_default');
+    const isNurturing  = p => /nurturing|nutri/i.test(p.name || '');
+    const isPartnerAcq = p => /^\s*parceiros\s*$/i.test(p.name || '');
+    const partnerIds       = (allPipelines || []).filter(isPartnerAcq).map(p => p.id);
+    const salesPipelineIds = (allPipelines || []).filter(p => !isNurturing(p) && !isPartnerAcq(p)).map(p => p.id);
+    let targetIds;
+    if (scope === 'all') targetIds = (allPipelines || []).map(p => p.id);
+    else if (scope === 'partners') targetIds = partnerIds;
+    else targetIds = salesPipelineIds;
+    const scopedIds = targetIds.length ? targetIds : ['00000000-0000-0000-0000-000000000000'];
+
+    const [stagesRes, dealsRes] = await Promise.all([
+      supabase.from('crm_pipeline_stages').select('id, pipeline_id, name, position, is_win_stage').in('pipeline_id', scopedIds),
+      supabase.from('crm_deals')
+        .select('id, title, value, status, stage_id, pipeline_id, created_at, crm_contacts(name), crm_companies(name), crm_pipeline_stages(name, color)')
+        .in('pipeline_id', scopedIds).is('deleted_at', null)
+        .gte('created_at', periodStart).lte('created_at', periodEnd),
+    ]);
+
+    const stages = stagesRes.data || [];
+    const leadDeals = dealsRes.data || [];
+    const stagePosById = {};
+    const stagesByPipeline = {};
+    for (const s of stages) {
+      stagePosById[s.id] = s.position ?? 0;
+      (stagesByPipeline[s.pipeline_id] = stagesByPipeline[s.pipeline_id] || []).push(s);
+    }
+    const { qualPosByPipeline, meetingPosByPipeline, meetingHeldPosByPipeline } = detectFunnelStagePositions(stagesByPipeline);
+
+    const reachedPosByDeal = {};
+    for (const d of leadDeals) reachedPosByDeal[d.id] = stagePosById[d.stage_id] ?? 0;
+    const dealIds = leadDeals.map(d => d.id);
+    if (dealIds.length) {
+      const { data: history } = await supabase.from('crm_deal_stage_history').select('deal_id, to_stage_id').in('deal_id', dealIds);
+      for (const h of (history || [])) {
+        const pos = stagePosById[h.to_stage_id];
+        if (typeof pos === 'number' && pos > (reachedPosByDeal[h.deal_id] ?? -1)) reachedPosByDeal[h.deal_id] = pos;
+      }
+    }
+
+    const inStep = (d) => {
+      const won = d.status === 'won';
+      const pos = reachedPosByDeal[d.id];
+      const geq = (p) => typeof pos === 'number' && typeof p === 'number' && pos >= p;
+      switch (step) {
+        case 'qualified':        return won || geq(qualPosByPipeline[d.pipeline_id]);
+        case 'meetingScheduled': return won || geq(meetingPosByPipeline[d.pipeline_id]);
+        case 'meetingHeld':      return won || geq(meetingHeldPosByPipeline[d.pipeline_id]);
+        case 'closing':          return won;
+        case 'lead':
+        default:                 return true;
+      }
+    };
+
+    return leadDeals.filter(inStep).map(d => ({
+      id: d.id,
+      title: d.title,
+      value: d.value || 0,
+      status: d.status,
+      contactName: d.crm_contacts?.name || null,
+      companyName: d.crm_companies?.name || null,
+      stageName: d.crm_pipeline_stages?.name || null,
+      stageColor: d.crm_pipeline_stages?.color || null,
+    })).sort((a, b) => (b.value || 0) - (a.value || 0));
+  } catch (err) {
+    console.error('[CRM Funil] Erro no drill-down do funil:', err);
+    return [];
   }
 }
 

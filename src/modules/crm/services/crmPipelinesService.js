@@ -254,6 +254,85 @@ export async function createCrmPipeline(data) {
   return dbToPipeline(fullPipeline || pipeline);
 }
 
+/**
+ * Edita uma pipeline existente: nome, padrão e ESTÁGIOS (renomear, recolorir,
+ * reordenar, marcar ganho, adicionar e remover). Reconciliação por id:
+ *  - estágio existente (com id) -> UPDATE nome/cor/posição/is_win_stage
+ *  - estágio novo (sem id)      -> INSERT
+ *  - estágio removido           -> REATRIBUI os negócios dele pra um estágio de
+ *    fallback ANTES de apagar (nunca deixa negócio órfão nem depende do
+ *    comportamento da FK), limpa o histórico que aponta pra ele, e então apaga.
+ *
+ * @param {string} pipelineId
+ * @param {{ name?: string, isDefault?: boolean, stages: Array<{id?:string,name:string,color:string,position:number,isWinStage?:boolean}> }} data
+ */
+export async function updateCrmPipeline(pipelineId, data) {
+  if (!pipelineId) return null;
+  const stages = Array.isArray(data.stages) ? data.stages : [];
+  if (stages.length === 0) { toast('A pipeline precisa de ao menos 1 etapa', 'error'); return null; }
+
+  const { data: currentStages = [] } = await supabase
+    .from('crm_pipeline_stages')
+    .select('id, name')
+    .eq('pipeline_id', pipelineId);
+
+  const keptIds = new Set(stages.filter(s => s.id).map(s => s.id));
+  const removed = (currentStages || []).filter(s => !keptIds.has(s.id));
+
+  // Fallback pros negócios dos estágios removidos: 1º estágio que PERMANECE
+  // (por posição). Nunca um que também será removido.
+  const survivors = stages.filter(s => s.id && keptIds.has(s.id))
+    .slice().sort((a, b) => (a.position || 0) - (b.position || 0));
+  const fallbackId = survivors[0]?.id || null;
+
+  // 1) Remoções — SEMPRE move os negócios antes de apagar o estágio.
+  for (const rem of removed) {
+    if (fallbackId) {
+      await supabase.from('crm_deals').update({ stage_id: fallbackId }).eq('stage_id', rem.id);
+    }
+    // Histórico que referencia o estágio removido (só trilha de auditoria) —
+    // limpa pra não travar o delete por FK nem deixar referência pendurada.
+    await supabase.from('crm_deal_stage_history').delete().eq('to_stage_id', rem.id);
+    await supabase.from('crm_deal_stage_history').delete().eq('from_stage_id', rem.id);
+    const { error: delErr } = await supabase.from('crm_pipeline_stages').delete().eq('id', rem.id);
+    if (delErr) console.warn('[updateCrmPipeline] falha ao remover etapa', rem.name, delErr.message);
+  }
+
+  // 2) Atualiza os que ficaram + insere os novos.
+  for (const s of stages) {
+    const row = {
+      name: (s.name || '').trim() || 'Etapa',
+      color: s.color || '#6366f1',
+      position: s.position,
+      is_win_stage: !!s.isWinStage,
+    };
+    if (s.id && keptIds.has(s.id)) {
+      await supabase.from('crm_pipeline_stages').update(row).eq('id', s.id);
+    } else {
+      await supabase.from('crm_pipeline_stages').insert([{ ...row, pipeline_id: pipelineId }]);
+    }
+  }
+
+  // 3) Nome / padrão da pipeline.
+  const pipeUpdate = {};
+  if (typeof data.name === 'string' && data.name.trim()) pipeUpdate.name = data.name.trim();
+  if (typeof data.isDefault === 'boolean') {
+    if (data.isDefault) await supabase.from('crm_pipelines').update({ is_default: false }).eq('is_default', true);
+    pipeUpdate.is_default = data.isDefault;
+  }
+  if (Object.keys(pipeUpdate).length) {
+    await supabase.from('crm_pipelines').update(pipeUpdate).eq('id', pipelineId);
+  }
+
+  const { data: full } = await supabase
+    .from('crm_pipelines')
+    .select('*, crm_pipeline_stages(*)')
+    .eq('id', pipelineId)
+    .maybeSingle();
+  toast('Pipeline atualizada', 'success');
+  return dbToPipeline(full);
+}
+
 export async function deleteCrmPipeline(id) {
   // CASCADE deleta os stages automaticamente
   const { error } = await supabase

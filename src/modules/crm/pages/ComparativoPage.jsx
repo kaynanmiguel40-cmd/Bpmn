@@ -11,11 +11,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
 } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 import {
-  Target, TrendingUp, TrendingDown, Gauge, CalendarDays, Flame,
+  Target, TrendingUp, TrendingDown, Gauge, CalendarDays, Flame, X,
 } from 'lucide-react';
 import {
-  PLAN_MONTHS, PREMISSAS, PLAN_GOAL_MRR, PLAN_POSITION,
+  PLAN_MONTHS, PREMISSAS, PLAN_GOAL_MRR, PLAN_POSITION, COMPARECIMENTO_RATE,
   planMonthLabel, planMonthLong, reajustarTrajetoriaMrr,
 } from '../../../lib/commercialPlan';
 import { getCommercialPlanReal } from '../../../lib/commercialPlanReal';
@@ -24,6 +25,7 @@ import {
 } from '../../../lib/commercialPlanActions';
 import { useProfile } from '../../../hooks/useProfile';
 import { FunnelPrevistoReal } from '../components/FunnelPrevistoReal';
+import { useFunnelStageDeals } from '../hooks/useCrmQueries';
 import { toast } from '../../../contexts/ToastContext';
 
 const fmtBRL = (v) => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
@@ -66,11 +68,15 @@ function MetaMensalPanel({ planRow, currentReal }) {
   // o "faltam". Antes o card mostrava so o "faltam" (43 ativos − ganhos), que
   // encolhia a cada venda e parecia a meta mudando. Agora a meta e o alvo fixo
   // e o "faltam" e claramente progresso, nao meta.
+  // Alvo ACUMULADO do mês (fixo) e onde o Real está hoje.
   const metaAlvo = isMrr ? (planRow.mrr || 0) : (planRow.ativos || 0);
   const realHoje = isMrr ? (currentReal?.mrrAccum ?? 0) : (currentReal?.clientesAccum ?? 0);
-  const faltam = Math.max(0, metaAlvo - realHoje);
+  // NÚMERO ACIONÁVEL: quanto falta fechar ESTE mês pra bater o alvo — a "meta do
+  // mês" prática (some a cada venda). O alvo cumulativo (ex.: 43) fica de contexto.
+  const necessario = Math.max(0, metaAlvo - realHoje);
   const fmt = (v) => (isMrr ? fmtBRL(v) : `${Math.round(v || 0)}`);
-  const unit = isMrr ? 'de MRR' : (Math.round(metaAlvo) === 1 ? 'cliente ativo' : 'clientes ativos');
+  const unitNec = isMrr ? 'de MRR este mês' : (Math.round(necessario) === 1 ? 'venda este mês' : 'vendas este mês');
+  const alvoUnit = isMrr ? 'de MRR' : 'clientes ativos';
   const pct = metaAlvo > 0 ? Math.min(100, Math.round((realHoje / metaAlvo) * 100)) : 0;
 
   return (
@@ -94,10 +100,10 @@ function MetaMensalPanel({ planRow, currentReal }) {
       </div>
 
       <MetaMiniCard
-        label={isMrr ? 'Meta de MRR (acumulado no mes)' : 'Meta de clientes ativos'}
-        hint={`${fmt(realHoje)} hoje · faltam ${fmt(faltam)} pra bater`}>
-        <span className="text-2xl font-bold text-slate-900 dark:text-white">{fmt(metaAlvo)}</span>
-        <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">{unit}</span>
+        label={isMrr ? 'MRR a fechar este mês' : 'Vendas necessárias este mês'}
+        hint={`alvo: ${fmt(metaAlvo)} ${alvoUnit} · ${fmt(realHoje)} hoje`}>
+        <span className="text-2xl font-bold text-slate-900 dark:text-white">{fmt(necessario)}</span>
+        <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">{unitNec}</span>
         {/* Barra de progresso real rumo ao alvo fixo */}
         <div className="mt-2.5 h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
           <div className="h-full rounded-full bg-fyness-primary transition-all" style={{ width: `${pct}%` }} />
@@ -209,24 +215,108 @@ function MonthlyTable({ real }) {
 }
 
 // ---------- Funil + premissas do mes atual ----------
-function FunnelCompare({ real, planRow }) {
+/**
+ * Drill-down: os leads por trás do número de uma etapa do funil. Mostra a MESMA
+ * coorte que o funil conta (negócios criados no mês que ALCANÇARAM a etapa) —
+ * por isso a lista sempre casa com o número exibido.
+ */
+function FunnelDrillDrawer({ step, range, onClose }) {
+  const navigate = useNavigate();
+  const { data: deals = [], isLoading } = useFunnelStageDeals(range, 'sales', step?.key);
+  if (!step) return null;
+  const total = deals.reduce((s, d) => s + (d.value || 0), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
+      <aside className="relative w-full sm:max-w-[420px] h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col">
+        <div className="flex items-start justify-between gap-2 p-4 border-b border-slate-200 dark:border-slate-700">
+          <div className="min-w-0">
+            <h3 className="text-base font-bold text-slate-800 dark:text-white truncate">{step.label}</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              {deals.length} {deals.length === 1 ? 'lead' : 'leads'}{total > 0 ? ` · ${fmtBRL(total)}` : ''}
+            </p>
+          </div>
+          <button onClick={onClose} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-3">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="w-6 h-6 border-2 border-fyness-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : deals.length === 0 ? (
+            <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-10">Nenhum lead nesta etapa neste mes.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {deals.map(d => (
+                <button
+                  key={d.id}
+                  onClick={() => navigate(`/crm/deals/${d.id}`)}
+                  className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-700 hover:border-fyness-primary/40 hover:bg-slate-50 dark:hover:bg-slate-800/60 p-3 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{d.title}</span>
+                    {d.value > 0 && (
+                      <span className="shrink-0 text-xs font-semibold text-slate-600 dark:text-slate-300 tabular-nums">{fmtBRL(d.value)}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                    {d.companyName && <span className="truncate">{d.companyName}</span>}
+                    {d.stageName && (
+                      <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded-full font-medium"
+                        style={{ backgroundColor: `${d.stageColor || '#94a3b8'}22`, color: d.stageColor || '#64748b' }}>
+                        {d.stageName}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function FunnelCompare({ real, planRow, range }) {
+  const [drillStep, setDrillStep] = useState(null); // { key, label } — etapa clicada
   const f = real?.funnel;
   const premReal = {
     qualif: f?.qualRate,
-    agendamento: f?.agendRate,
-    fechamento: f?.fechRate,
+    agendamento: f?.agendRate,     // qualificado -> reunião agendada
+    comparecimento: f?.compRate,   // agendada -> acontecida
+    fechamento: f?.fechRate,       // acontecida -> cliente
     reativacao: null, // nao rastreado direto
   };
 
   return (
+    <>
     <div className="grid md:grid-cols-2 gap-4">
       {/* Funil Previsto × Real — o Previsto vem CRAVADO do plano comercial
           (planRow), fixo. Nao reescala com o real: meta e linha de base, so
-          o lado Real anda. */}
+          o lado Real anda. Reunião vira 2 etapas: AGENDADAS (plano = reun) e
+          ACONTECIDAS (previsto = reun × comparecimento; real = concluídas). */}
       <FunnelPrevistoReal
-        previsto={{ lead: planRow.leads, qualified: planRow.qualif, meeting: planRow.reun, closing: planRow.fech }}
-        real={{ lead: f?.lead, qualified: f?.qualif, meeting: f?.reun, closing: f?.fech }}
+        previsto={{
+          lead: planRow.leads,
+          qualified: planRow.qualif,
+          meetingScheduled: planRow.reun,
+          meetingHeld: Math.round(planRow.reun * COMPARECIMENTO_RATE),
+          closing: planRow.fech,
+        }}
+        real={{
+          lead: f?.lead,
+          qualified: f?.qualif,
+          meetingScheduled: f?.agendadas,
+          meetingHeld: f?.acontecidas,
+          closing: f?.fech,
+        }}
         monthLabel={planMonthLong(planRow.m)}
+        onStepClick={range ? (key, label) => setDrillStep({ key, label }) : undefined}
       />
 
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
@@ -269,6 +359,10 @@ function FunnelCompare({ real, planRow }) {
         <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-3">Reativacao nao e rastreada direto no funil. Churn fora do escopo.</p>
       </div>
     </div>
+
+    {/* Leads por tras do numero da etapa clicada */}
+    <FunnelDrillDrawer step={drillStep} range={range} onClose={() => setDrillStep(null)} />
+    </>
   );
 }
 
@@ -455,7 +549,7 @@ export default function ComparativoPage() {
       {/* Funil do mês — vira o topo da página (substitui o hero de mês atual):
           já mostra previsto x real por etapa, reescalado pra bater a meta de
           Clientes Ativos, com o motivo do desvio explicado. */}
-      <FunnelCompare real={currentReal} planRow={planRow} />
+      <FunnelCompare real={currentReal} planRow={planRow} range={real.currentMonthRange} />
       <MetaMensalPanel planRow={planRow} currentReal={currentReal} />
       <MrrChart real={real} />
       <MonthlyTable real={real} />
