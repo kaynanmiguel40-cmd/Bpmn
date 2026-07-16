@@ -18,7 +18,7 @@ import {
 import {
   PLAN_MONTHS, PREMISSAS, PLAN_GOAL_MRR, PLAN_POSITION, COMPARECIMENTO_RATE,
   planMonthLabel, planMonthLong, reajustarTrajetoriaMrr,
-  isBusinessDay, dailyLeadTarget,
+  isBusinessDay, dailyLeadTarget, proratedPlanForPeriod,
 } from '../../../lib/commercialPlan';
 import { getCommercialPlanReal } from '../../../lib/commercialPlanReal';
 import {
@@ -26,7 +26,7 @@ import {
 } from '../../../lib/commercialPlanActions';
 import { useProfile } from '../../../hooks/useProfile';
 import { FunnelPrevistoReal } from '../components/FunnelPrevistoReal';
-import { useFunnelStageDeals } from '../hooks/useCrmQueries';
+import { useFunnelStageDeals, useSalesFunnel } from '../hooks/useCrmQueries';
 import { toast } from '../../../contexts/ToastContext';
 
 const fmtBRL = (v) => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
@@ -297,41 +297,51 @@ function FunnelDrillDrawer({ step, range, onClose }) {
   );
 }
 
-function FunnelCompare({ real, planRow, range }) {
+function FunnelCompare({ period }) {
   const [drillStep, setDrillStep] = useState(null); // { key, label } — etapa clicada
-  const f = real?.funnel;
+
+  // REAL do periodo escolhido (nao do mes do plano) — mesma engine do funil.
+  const { data: f } = useSalesFunnel(period?.range, 'sales');
+  // PREVISTO prorrateado pelos dias uteis do periodo (soma a fatia de cada mes).
+  const prev = useMemo(
+    () => proratedPlanForPeriod(period?.start, period?.end),
+    [period?.start, period?.end],
+  );
+
+  const pctOf = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
   const premReal = {
-    qualif: f?.qualRate,
-    agendamento: f?.agendRate,     // qualificado -> reunião agendada
-    comparecimento: f?.compRate,   // agendada -> acontecida
-    fechamento: f?.fechRate,       // acontecida -> cliente
+    qualif: pctOf(f?.qualified || 0, f?.lead || 0),
+    agendamento: pctOf(f?.meeting || 0, f?.qualified || 0),      // qualificado -> agendada
+    comparecimento: pctOf(f?.meetingHeld || 0, f?.meeting || 0),  // agendada -> acontecida
+    fechamento: pctOf(f?.closing || 0, f?.meetingHeld || 0),      // acontecida -> cliente
     reativacao: null, // nao rastreado direto
   };
 
   return (
     <>
     <div className="grid md:grid-cols-2 gap-4">
-      {/* Funil Previsto × Real — o Previsto vem CRAVADO do plano comercial
-          (planRow), fixo. Nao reescala com o real: meta e linha de base, so
-          o lado Real anda. Reunião vira 2 etapas: AGENDADAS (plano = reun) e
-          ACONTECIDAS (previsto = reun × comparecimento; real = concluídas). */}
+      {/* Funil Previsto × Real do PERIODO. O Previsto vem do plano comercial
+          prorrateado pelos dias uteis do recorte (nao reescala com o real: meta
+          e linha de base, so o lado Real anda). Reunião vira 2 etapas: AGENDADAS
+          (plano = reun) e ACONTECIDAS (previsto = reun × comparecimento). */}
       <FunnelPrevistoReal
         previsto={{
-          lead: planRow.leads,
-          qualified: planRow.qualif,
-          meetingScheduled: planRow.reun,
-          meetingHeld: Math.round(planRow.reun * COMPARECIMENTO_RATE),
-          closing: planRow.fech,
+          lead: Math.round(prev.leads),
+          qualified: Math.round(prev.qualif),
+          meetingScheduled: Math.round(prev.reun),
+          meetingHeld: Math.round(prev.reun * COMPARECIMENTO_RATE),
+          closing: Math.round(prev.fech),
         }}
         real={{
           lead: f?.lead,
-          qualified: f?.qualif,
-          meetingScheduled: f?.agendadas,
-          meetingHeld: f?.acontecidas,
-          closing: f?.fech,
+          qualified: f?.qualified,
+          meetingScheduled: f?.meeting,
+          meetingHeld: f?.meetingHeld,
+          closing: f?.closing,
         }}
-        monthLabel={planMonthLong(planRow.m)}
-        onStepClick={range ? (key, label) => setDrillStep({ key, label }) : undefined}
+        monthLabel={period?.label}
+        subtitle={period ? `${prev.businessDays} ${prev.businessDays === 1 ? 'dia util' : 'dias uteis'} · meta do plano prorrateada` : null}
+        onStepClick={period ? (key, label) => setDrillStep({ key, label }) : undefined}
       />
 
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
@@ -375,8 +385,8 @@ function FunnelCompare({ real, planRow, range }) {
       </div>
     </div>
 
-    {/* Leads por tras do numero da etapa clicada */}
-    <FunnelDrillDrawer step={drillStep} range={range} onClose={() => setDrillStep(null)} />
+    {/* Leads por tras do numero da etapa clicada (mesmo recorte do funil) */}
+    <FunnelDrillDrawer step={drillStep} range={period?.range} onClose={() => setDrillStep(null)} />
     </>
   );
 }
@@ -401,23 +411,9 @@ const DOW_ABBR = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
  * Busca os leads do periodo UMA vez (mesma fonte do funil, step 'lead') e agrupa
  * por dia no cliente; clicar num dia so filtra a lista ja carregada.
  */
-function DailyLeadsPace() {
-  const today = new Date();
-  const [start, setStart] = useState(() => toDateKey(new Date(today.getFullYear(), today.getMonth(), 1)));
-  const [end, setEnd] = useState(() => toDateKey(today));
+function DailyLeadsPace({ period }) {
   const [drillDay, setDrillDay] = useState(null); // { key, label }
-
-  const range = useMemo(() => {
-    const s = parseDateKey(start);
-    const e = parseDateKey(end);
-    if (!s || !e || e < s) return null;
-    return {
-      start: new Date(s.getFullYear(), s.getMonth(), s.getDate(), 0, 0, 0, 0).toISOString(),
-      end: new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999).toISOString(),
-    };
-  }, [start, end]);
-
-  const { data: leads = [], isLoading } = useFunnelStageDeals(range, 'sales', 'lead');
+  const { data: leads = [], isLoading } = useFunnelStageDeals(period?.range, 'sales', 'lead');
 
   // Leads reais agrupados pelo DIA de criacao (data local).
   const realByDay = useMemo(() => {
@@ -431,8 +427,8 @@ function DailyLeadsPace() {
   }, [leads]);
 
   const rows = useMemo(() => {
-    const s = parseDateKey(start);
-    const e = parseDateKey(end);
+    const s = period?.start;
+    const e = period?.end;
     if (!s || !e || e < s) return [];
     const out = [];
     const cur = new Date(s.getFullYear(), s.getMonth(), s.getDate());
@@ -451,7 +447,7 @@ function DailyLeadsPace() {
       guard++;
     }
     return out.reverse(); // mais recente primeiro
-  }, [start, end, realByDay]);
+  }, [period?.start, period?.end, realByDay]);
 
   const totalMeta = rows.reduce((s, r) => s + r.meta, 0);
   const totalReal = rows.reduce((s, r) => s + r.real, 0);
@@ -461,31 +457,16 @@ function DailyLeadsPace() {
     drillDay ? leads.filter(l => l.createdAt && toDateKey(new Date(l.createdAt)) === drillDay.key) : []
   ), [drillDay, leads]);
 
-  const inputCls = 'px-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary';
-
   return (
     <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <CalendarDays className="w-4 h-4 text-fyness-primary" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Ritmo diario de leads</h3>
-          </div>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Meta do mes diluida nos <strong>dias uteis</strong> · fim de semana nao tem meta
-          </p>
+      <div className="mb-3">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-fyness-primary" />
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Ritmo diario de leads</h3>
         </div>
-        {/* Filtro do periodo de analise */}
-        <div className="flex items-end gap-2">
-          <label className="flex flex-col gap-0.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Inicio</span>
-            <input type="date" value={start} onChange={e => setStart(e.target.value)} className={inputCls} />
-          </label>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Fim</span>
-            <input type="date" value={end} onChange={e => setEnd(e.target.value)} className={inputCls} />
-          </label>
-        </div>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          Meta do mes diluida nos <strong>dias uteis</strong> · fim de semana nao tem meta
+        </p>
       </div>
 
       {/* Resumo do periodo */}
@@ -709,6 +690,29 @@ export default function ComparativoPage() {
     staleTime: 60_000,
   });
 
+  // Periodo de analise — controla o FUNIL e o RITMO DIARIO. Default: 1o do mes
+  // corrente ate hoje. (Meta/MRR/tabela seguem o mes do plano: sao a curva.)
+  const [periodStart, setPeriodStart] = useState(() => {
+    const t = new Date();
+    return toDateKey(new Date(t.getFullYear(), t.getMonth(), 1));
+  });
+  const [periodEnd, setPeriodEnd] = useState(() => toDateKey(new Date()));
+
+  const period = useMemo(() => {
+    const s = parseDateKey(periodStart);
+    const e = parseDateKey(periodEnd);
+    if (!s || !e || e < s) return null;
+    return {
+      start: s,
+      end: e,
+      range: {
+        start: new Date(s.getFullYear(), s.getMonth(), s.getDate(), 0, 0, 0, 0).toISOString(),
+        end: new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999).toISOString(),
+      },
+      label: `${pad2(s.getDate())}/${pad2(s.getMonth() + 1)} – ${pad2(e.getDate())}/${pad2(e.getMonth() + 1)}`,
+    };
+  }, [periodStart, periodEnd]);
+
   if (isLoading || !real) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -748,8 +752,31 @@ export default function ComparativoPage() {
       {/* Funil do mês — vira o topo da página (substitui o hero de mês atual):
           já mostra previsto x real por etapa, reescalado pra bater a meta de
           Clientes Ativos, com o motivo do desvio explicado. */}
-      <FunnelCompare real={currentReal} planRow={planRow} range={real.currentMonthRange} />
-      <DailyLeadsPace />
+      {/* Periodo de analise — vale pro funil e pro ritmo diario */}
+      <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 px-4 py-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Periodo de analise</div>
+          <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {period ? period.label : 'periodo invalido — o fim precisa ser depois do inicio'}
+          </div>
+          <div className="text-[10px] text-slate-400 dark:text-slate-500">vale pro funil e pro ritmo diario</div>
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Inicio</span>
+            <input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)}
+              className="px-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary" />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Fim</span>
+            <input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)}
+              className="px-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary" />
+          </label>
+        </div>
+      </div>
+
+      <FunnelCompare period={period} />
+      <DailyLeadsPace period={period} />
       <MetaMensalPanel planRow={planRow} currentReal={currentReal} />
       <MrrChart real={real} />
       <MonthlyTable real={real} />

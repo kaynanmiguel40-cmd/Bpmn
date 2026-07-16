@@ -5,14 +5,17 @@
  * plano (mes a mes), pra comparar com o Previsto.
  *
  * MRR real = soma do campo `mrr` dos deals GANHOS no CRM, acumulado (sem churn,
- * por decisao). Clientes = deals ganhos. Funil = reusa o motor do CRM
- * (getSalesFunnel: Lead -> Qualificado -> Reuniao -> Fechamento).
+ * por decisao). Clientes = deals ganhos.
+ *
+ * O FUNIL nao vem daqui: ele segue o "periodo de analise" escolhido na tela e e
+ * buscado direto pelo useSalesFunnel(periodo). Antes calculavamos um funil por
+ * mes aqui (1 getSalesFunnel por mes decorrido) que ninguem mais consumia — era
+ * so peso morto no load.
  *
  * NAO modifica nada do modulo CRM — so consome dado/funcao exportada.
  */
 
 import { supabase } from './supabase';
-import { getSalesFunnel } from '../modules/crm/services/crmDashboardService';
 import { PLAN_START, PLAN_MONTHS } from './commercialPlan';
 
 function planMonthRange(m) {
@@ -25,13 +28,9 @@ function planMonthRange(m) {
   };
 }
 
-function pct(a, b) {
-  return b > 0 ? Math.round((a / b) * 100) : 0;
-}
-
 /**
  * Retorna { byMonth, currentM, monthElapsedPct, hasData }.
- * byMonth[m] = { elapsed, partial, mrrAccum, novos, clientesAccum, funnel }.
+ * byMonth[m] = { elapsed, partial, mrrAccum, novos, clientesAccum }.
  * Meses futuros nao entram no mapa (sem real ainda).
  */
 export async function getCommercialPlanReal() {
@@ -70,24 +69,7 @@ export async function getCommercialPlanReal() {
     .map(p => p.m)
     .filter(m => planMonthRange(m).start <= now);
 
-  // 3) Funil real por mes decorrido (reusa o motor do CRM). Paraleliza.
-  const funnelEntries = await Promise.all(
-    elapsedMonths.map(async (m) => {
-      const { start, end } = planMonthRange(m);
-      try {
-        const f = await getSalesFunnel(
-          { start: start.toISOString(), end: end.toISOString() },
-          'sales'
-        );
-        return [m, f];
-      } catch {
-        return [m, null];
-      }
-    })
-  );
-  const funnelByMonth = Object.fromEntries(funnelEntries);
-
-  // 4) Monta o mapa do real.
+  // 3) Monta o mapa do real.
   const byMonth = {};
   for (const m of elapsedMonths) {
     const { start, end } = planMonthRange(m);
@@ -100,26 +82,11 @@ export async function getCommercialPlanReal() {
     // Novos DO MES = so os que fecharam dentro do mes (a base nao e "nova").
     const novos = won.filter(d => d.closed && d.closed >= start && d.closed <= endClamped).length;
 
-    const f = funnelByMonth[m];
-    const funnel = f
-      ? {
-          lead: f.lead || 0,
-          qualif: f.qualified || 0,
-          agendadas: f.meeting || 0,        // reunião AGENDADA (estágio do pipeline)
-          acontecidas: f.meetingHeld || 0,  // reunião REALIZADA (estágio do pipeline)
-          fech: f.closing || 0,
-          qualRate: pct(f.qualified || 0, f.lead || 0),       // lead -> qualif
-          agendRate: pct(f.meeting || 0, f.qualified || 0),   // qualif -> agendada
-          compRate: pct(f.meetingHeld || 0, f.meeting || 0),  // agendada -> acontecida
-          fechRate: pct(f.closing || 0, f.meetingHeld || 0),  // acontecida -> fechamento
-        }
-      : null;
-
     const partial = end >= now; // mes ainda nao fechou
-    byMonth[m] = { elapsed: true, partial, mrrAccum, novos, clientesAccum, funnel };
+    byMonth[m] = { elapsed: true, partial, mrrAccum, novos, clientesAccum };
   }
 
-  // 5) Mes atual do plano + % decorrido.
+  // 4) Mes atual do plano + % decorrido.
   let currentM = null;
   let monthElapsedPct = 0;
   for (const m of elapsedMonths) {

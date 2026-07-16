@@ -148,7 +148,7 @@ function ComparativoRow({ stepKey, previstoCount, realCount, goal, pTopW, pBotW,
   );
 }
 
-export function FunnelPrevistoReal({ previsto, real, monthLabel, onStepClick }) {
+export function FunnelPrevistoReal({ previsto, real, monthLabel, subtitle, onStepClick }) {
   const previstoCounts = ORDER.map(k => Number(previsto?.[k]) || 0);
   const realCounts = ORDER.map(k => Number(real?.[k]) || 0);
 
@@ -174,9 +174,11 @@ export function FunnelPrevistoReal({ previsto, real, monthLabel, onStepClick }) 
     <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
       <div className="flex items-start justify-between gap-2 mb-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Funil do mês · {showPrevisto ? 'Previsto × Real' : 'Real'}</h3>
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+            Funil · {monthLabel || 'este mês'} {showPrevisto ? '· Previsto × Real' : '· Real'}
+          </h3>
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Meta de {monthLabel || 'este mês'} · plano comercial (fixo)
+            {subtitle || 'plano comercial (fixo)'}
           </p>
         </div>
         {/* Ocultar/mostrar a coluna do Previsto — deixa só o Real quando desligado */}

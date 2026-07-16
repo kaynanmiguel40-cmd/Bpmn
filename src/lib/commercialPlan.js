@@ -135,6 +135,51 @@ export function dailyLeadTarget(date) {
 }
 
 /**
+ * Meta do FUNIL prorrateada pra um periodo qualquer: soma, mes a mes, a meta do
+ * mes x a fracao de DIAS UTEIS daquele mes que cai dentro do periodo. Assim um
+ * recorte de 7 dias uteis num mes de 23 vale ~30% da meta do mes, e um periodo
+ * que cruza meses soma a fatia de cada um. Fim de semana nao conta (a meta se
+ * concentra nos dias uteis).
+ *
+ * @param {Date} start
+ * @param {Date} end
+ * @returns {{leads:number, qualif:number, reun:number, fech:number, novos:number, businessDays:number}}
+ */
+export function proratedPlanForPeriod(start, end) {
+  const acc = { leads: 0, qualif: 0, reun: 0, fech: 0, novos: 0, businessDays: 0 };
+  if (!start || !end || end < start) return acc;
+
+  // Dias uteis do periodo, contados por mes do plano.
+  const daysByPlanMonth = new Map();
+  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  let guard = 0;
+  while (cur <= end && guard < 800) {
+    if (isBusinessDay(cur)) {
+      acc.businessDays++;
+      const m = planMonthForDate(cur);
+      if (m) daysByPlanMonth.set(m, (daysByPlanMonth.get(m) || 0) + 1);
+    }
+    cur.setDate(cur.getDate() + 1);
+    guard++;
+  }
+
+  for (const [m, days] of daysByPlanMonth) {
+    const row = PLAN_MONTHS.find(p => p.m === m);
+    if (!row) continue;
+    const abs = planMonthAbsolute(m);
+    const totalBd = businessDaysInMonth(Math.floor(abs / 12), abs % 12);
+    if (!totalBd) continue;
+    const frac = days / totalBd;
+    acc.leads  += (row.leads  || 0) * frac;
+    acc.qualif += (row.qualif || 0) * frac;
+    acc.reun   += (row.reun   || 0) * frac;
+    acc.fech   += (row.fech   || 0) * frac;
+    acc.novos  += (row.novos  || 0) * frac;
+  }
+  return acc;
+}
+
+/**
  * Reajusta a trajetoria de MRR PREVISTA a partir de agora — como se o plano
  * reiniciasse do zero na posicao REAL atual, preservando o "formato" (ritmo
  * relativo mes a mes) da trajetoria original ate a MESMA meta final. Meses
