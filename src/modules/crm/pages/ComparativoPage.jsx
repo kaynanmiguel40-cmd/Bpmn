@@ -6,7 +6,7 @@
  * a curva de MRR rumo a R$100k, funil, conversoes e marketing.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
@@ -18,6 +18,7 @@ import {
 import {
   PLAN_MONTHS, PREMISSAS, PLAN_GOAL_MRR, PLAN_POSITION, COMPARECIMENTO_RATE,
   planMonthLabel, planMonthLong, reajustarTrajetoriaMrr,
+  isBusinessDay, dailyLeadTarget,
 } from '../../../lib/commercialPlan';
 import { getCommercialPlanReal } from '../../../lib/commercialPlanReal';
 import {
@@ -216,26 +217,20 @@ function MonthlyTable({ real }) {
 
 // ---------- Funil + premissas do mes atual ----------
 /**
- * Drill-down: os leads por trás do número de uma etapa do funil. Mostra a MESMA
- * coorte que o funil conta (negócios criados no mês que ALCANÇARAM a etapa) —
- * por isso a lista sempre casa com o número exibido.
+ * Painel lateral com uma lista de negócios. Usado tanto pelo drill-down do funil
+ * quanto pelo ritmo diário (leads de um dia). Só apresentação — quem busca os
+ * dados é quem chama.
  */
-function FunnelDrillDrawer({ step, range, onClose }) {
+function DealsDrawer({ title, subtitle, deals = [], isLoading, onClose }) {
   const navigate = useNavigate();
-  const { data: deals = [], isLoading } = useFunnelStageDeals(range, 'sales', step?.key);
-  if (!step) return null;
-  const total = deals.reduce((s, d) => s + (d.value || 0), 0);
-
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
       <aside className="relative w-full sm:max-w-[420px] h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col">
         <div className="flex items-start justify-between gap-2 p-4 border-b border-slate-200 dark:border-slate-700">
           <div className="min-w-0">
-            <h3 className="text-base font-bold text-slate-800 dark:text-white truncate">{step.label}</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500">
-              {deals.length} {deals.length === 1 ? 'lead' : 'leads'}{total > 0 ? ` · ${fmtBRL(total)}` : ''}
-            </p>
+            <h3 className="text-base font-bold text-slate-800 dark:text-white truncate">{title}</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{subtitle}</p>
           </div>
           <button onClick={onClose} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
             <X size={18} />
@@ -248,7 +243,7 @@ function FunnelDrillDrawer({ step, range, onClose }) {
               <div className="w-6 h-6 border-2 border-fyness-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : deals.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-10">Nenhum lead nesta etapa neste mes.</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-10">Nenhum lead aqui.</p>
           ) : (
             <div className="space-y-1.5">
               {deals.map(d => (
@@ -279,6 +274,26 @@ function FunnelDrillDrawer({ step, range, onClose }) {
         </div>
       </aside>
     </div>
+  );
+}
+
+/**
+ * Drill-down do funil: os leads por trás do número de uma etapa. Mostra a MESMA
+ * coorte que o funil conta (negócios criados no mês que ALCANÇARAM a etapa) —
+ * por isso a lista sempre casa com o número exibido.
+ */
+function FunnelDrillDrawer({ step, range, onClose }) {
+  const { data: deals = [], isLoading } = useFunnelStageDeals(range, 'sales', step?.key);
+  if (!step) return null;
+  const total = deals.reduce((s, d) => s + (d.value || 0), 0);
+  return (
+    <DealsDrawer
+      title={step.label}
+      subtitle={`${deals.length} ${deals.length === 1 ? 'lead' : 'leads'}${total > 0 ? ` · ${fmtBRL(total)}` : ''}`}
+      deals={deals}
+      isLoading={isLoading}
+      onClose={onClose}
+    />
   );
 }
 
@@ -363,6 +378,190 @@ function FunnelCompare({ real, planRow, range }) {
     {/* Leads por tras do numero da etapa clicada */}
     <FunnelDrillDrawer step={drillStep} range={range} onClose={() => setDrillStep(null)} />
     </>
+  );
+}
+
+// ---------- Ritmo diario de leads (dias uteis) ----------
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const toDateKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const parseDateKey = (s) => {
+  if (!s) return null;
+  const [y, m, d] = s.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+};
+const DOW_ABBR = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+
+/**
+ * Ritmo diario: quantos leads novos era pra gerar em cada DIA UTIL (meta do mes
+ * do plano diluida nos dias uteis) vs quantos entraram de fato. Fim de semana
+ * nao tem meta — ela se concentra nos dias uteis.
+ *
+ * Busca os leads do periodo UMA vez (mesma fonte do funil, step 'lead') e agrupa
+ * por dia no cliente; clicar num dia so filtra a lista ja carregada.
+ */
+function DailyLeadsPace() {
+  const today = new Date();
+  const [start, setStart] = useState(() => toDateKey(new Date(today.getFullYear(), today.getMonth(), 1)));
+  const [end, setEnd] = useState(() => toDateKey(today));
+  const [drillDay, setDrillDay] = useState(null); // { key, label }
+
+  const range = useMemo(() => {
+    const s = parseDateKey(start);
+    const e = parseDateKey(end);
+    if (!s || !e || e < s) return null;
+    return {
+      start: new Date(s.getFullYear(), s.getMonth(), s.getDate(), 0, 0, 0, 0).toISOString(),
+      end: new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999).toISOString(),
+    };
+  }, [start, end]);
+
+  const { data: leads = [], isLoading } = useFunnelStageDeals(range, 'sales', 'lead');
+
+  // Leads reais agrupados pelo DIA de criacao (data local).
+  const realByDay = useMemo(() => {
+    const m = new Map();
+    for (const l of leads) {
+      if (!l.createdAt) continue;
+      const k = toDateKey(new Date(l.createdAt));
+      m.set(k, (m.get(k) || 0) + 1);
+    }
+    return m;
+  }, [leads]);
+
+  const rows = useMemo(() => {
+    const s = parseDateKey(start);
+    const e = parseDateKey(end);
+    if (!s || !e || e < s) return [];
+    const out = [];
+    const cur = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+    let guard = 0;
+    while (cur <= e && guard < 400) {
+      const d = new Date(cur);
+      const key = toDateKey(d);
+      out.push({
+        key,
+        date: d,
+        util: isBusinessDay(d),
+        meta: dailyLeadTarget(d),
+        real: realByDay.get(key) || 0,
+      });
+      cur.setDate(cur.getDate() + 1);
+      guard++;
+    }
+    return out.reverse(); // mais recente primeiro
+  }, [start, end, realByDay]);
+
+  const totalMeta = rows.reduce((s, r) => s + r.meta, 0);
+  const totalReal = rows.reduce((s, r) => s + r.real, 0);
+  const uteis = rows.filter(r => r.util).length;
+
+  const dayDeals = useMemo(() => (
+    drillDay ? leads.filter(l => l.createdAt && toDateKey(new Date(l.createdAt)) === drillDay.key) : []
+  ), [drillDay, leads]);
+
+  const inputCls = 'px-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary';
+
+  return (
+    <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-fyness-primary" />
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Ritmo diario de leads</h3>
+          </div>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Meta do mes diluida nos <strong>dias uteis</strong> · fim de semana nao tem meta
+          </p>
+        </div>
+        {/* Filtro do periodo de analise */}
+        <div className="flex items-end gap-2">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Inicio</span>
+            <input type="date" value={start} onChange={e => setStart(e.target.value)} className={inputCls} />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Fim</span>
+            <input type="date" value={end} onChange={e => setEnd(e.target.value)} className={inputCls} />
+          </label>
+        </div>
+      </div>
+
+      {/* Resumo do periodo */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Dias uteis</div>
+          <div className="text-lg font-bold text-slate-800 dark:text-slate-100 tabular-nums">{uteis}</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Previsto</div>
+          <div className="text-lg font-bold text-slate-500 dark:text-slate-400 tabular-nums">{Math.round(totalMeta)}</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500">Real</div>
+          <div className={`text-lg font-bold tabular-nums ${gapTone(totalReal, totalMeta)}`}>{totalReal}</div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="w-5 h-5 border-2 border-fyness-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-6">Periodo invalido — o fim precisa ser depois do inicio.</p>
+      ) : (
+        <div className="max-h-[280px] overflow-y-auto -mx-1 px-1">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-white dark:bg-slate-800">
+              <tr className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-700/60">
+                <th className="py-1.5 text-left">Dia</th>
+                <th className="py-1.5 text-right">Meta</th>
+                <th className="py-1.5 text-right">Real</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => {
+                const clickable = r.real > 0;
+                const Icon = r.util ? gapIcon(r.real, r.meta) : null;
+                return (
+                  <tr
+                    key={r.key}
+                    onClick={clickable ? () => setDrillDay({ key: r.key, label: `Leads de ${pad2(r.date.getDate())}/${pad2(r.date.getMonth() + 1)}` }) : undefined}
+                    className={`border-b border-slate-50 dark:border-slate-700/40 ${r.util ? '' : 'opacity-40'} ${clickable ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30' : ''}`}
+                    title={clickable ? 'Ver os leads deste dia' : undefined}
+                  >
+                    <td className="py-1.5 text-left text-slate-600 dark:text-slate-300">
+                      <span className="capitalize">{DOW_ABBR[r.date.getDay()]}</span>{' '}
+                      <span className="tabular-nums">{pad2(r.date.getDate())}/{pad2(r.date.getMonth() + 1)}</span>
+                      {!r.util && <span className="ml-1 text-[10px] text-slate-400">fim de semana</span>}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums text-slate-500 dark:text-slate-400">
+                      {r.util ? r.meta.toFixed(1) : '—'}
+                    </td>
+                    <td className={`py-1.5 text-right tabular-nums font-semibold ${r.util ? gapTone(r.real, r.meta) : 'text-slate-400 dark:text-slate-500'}`}>
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        {Icon && r.real > 0 && <Icon className="w-3 h-3" />}
+                        {r.real}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {drillDay && (
+        <DealsDrawer
+          title={drillDay.label}
+          subtitle={`${dayDeals.length} ${dayDeals.length === 1 ? 'lead novo' : 'leads novos'}`}
+          deals={dayDeals}
+          onClose={() => setDrillDay(null)}
+        />
+      )}
+    </section>
   );
 }
 
@@ -550,6 +749,7 @@ export default function ComparativoPage() {
           já mostra previsto x real por etapa, reescalado pra bater a meta de
           Clientes Ativos, com o motivo do desvio explicado. */}
       <FunnelCompare real={currentReal} planRow={planRow} range={real.currentMonthRange} />
+      <DailyLeadsPace />
       <MetaMensalPanel planRow={planRow} currentReal={currentReal} />
       <MrrChart real={real} />
       <MonthlyTable real={real} />

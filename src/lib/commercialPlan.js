@@ -96,6 +96,44 @@ export function planMonthForDate(date) {
   return m >= 1 && m <= 12 ? m : null;
 }
 
+// ==================== RITMO DIARIO (dias uteis) ====================
+
+/**
+ * Dia util = segunda a sexta. Feriado NAO e tratado (nao temos calendario de
+ * feriados) — feriado conta como dia util.
+ */
+export function isBusinessDay(date) {
+  const d = date.getDay();
+  return d !== 0 && d !== 6;
+}
+
+/** Quantos dias uteis tem o mes (month 0-indexed). */
+export function businessDaysInMonth(year, month) {
+  const last = new Date(year, month + 1, 0).getDate();
+  let n = 0;
+  for (let day = 1; day <= last; day++) {
+    if (isBusinessDay(new Date(year, month, day))) n++;
+  }
+  return n;
+}
+
+/**
+ * Meta de leads NOVOS pra um dia: a meta de leads do mes do plano diluida nos
+ * DIAS UTEIS daquele mes. Fim de semana = 0 (a meta se concentra nos uteis).
+ *
+ * @param {Date} date
+ * @returns {number} leads/dia (0 se nao for dia util ou estiver fora do plano)
+ */
+export function dailyLeadTarget(date) {
+  if (!isBusinessDay(date)) return 0;
+  const m = planMonthForDate(date);
+  if (!m) return 0;
+  const row = PLAN_MONTHS.find(p => p.m === m);
+  if (!row) return 0;
+  const bd = businessDaysInMonth(date.getFullYear(), date.getMonth());
+  return bd > 0 ? (row.leads || 0) / bd : 0;
+}
+
 /**
  * Reajusta a trajetoria de MRR PREVISTA a partir de agora — como se o plano
  * reiniciasse do zero na posicao REAL atual, preservando o "formato" (ritmo

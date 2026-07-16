@@ -994,6 +994,7 @@ export async function getFunnelStageDeals(range = {}, scope = 'sales', step = 'l
       title: d.title,
       value: d.value || 0,
       status: d.status,
+      createdAt: d.created_at,   // usado pra agrupar por dia no ritmo diário
       contactName: d.crm_contacts?.name || null,
       companyName: d.crm_companies?.name || null,
       stageName: d.crm_pipeline_stages?.name || null,
