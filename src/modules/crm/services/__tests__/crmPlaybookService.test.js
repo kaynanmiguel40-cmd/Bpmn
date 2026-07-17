@@ -42,7 +42,7 @@ beforeEach(() => { state.steps = []; state.progress = []; state.calls = []; });
 describe('dbToStep', () => {
   it('normaliza script nulo pra string vazia', () => {
     expect(dbToStep({ id: 'a', stage_id: 's', position: 2, title: 'X', script: null }))
-      .toEqual({ id: 'a', stageId: 's', position: 2, title: 'X', script: '', sourceTag: null });
+      .toEqual({ id: 'a', stageId: 's', position: 2, title: 'X', script: '', sourceTag: null, scenarios: [] });
   });
 });
 

@@ -10,7 +10,7 @@
  */
 
 import { useState } from 'react';
-import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter } from 'lucide-react';
+import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter, CornerDownRight } from 'lucide-react';
 import { useStagePlaybook, useDealProgress, useToggleDealStep } from '../hooks/useCrmQueries';
 import { filterStepsForDeal } from '../services/crmPlaybookService';
 
@@ -45,20 +45,39 @@ function StepRow({ step, done, onToggle, disabled }) {
           {step.title}
         </span>
 
-        {step.script && (
+        {(step.script || step.scenarios?.length > 0) && (
           <button
             onClick={() => setOpen(o => !o)}
             className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-fyness-primary hover:bg-fyness-primary/10 px-2 py-1 rounded-md"
           >
-            {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Script
+            {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Ver
           </button>
         )}
       </div>
 
-      {open && step.script && (
-        <p className="px-3 pb-3 ml-7 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap border-l-2 border-slate-200 dark:border-slate-600 pl-3">
-          {step.script}
-        </p>
+      {open && (
+        <div className="px-3 pb-3 ml-7 space-y-2">
+          {step.script && (
+            <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap border-l-2 border-slate-200 dark:border-slate-600 pl-3">
+              {step.script}
+            </p>
+          )}
+          {step.scenarios?.length > 0 && (
+            <div className="space-y-1.5">
+              {step.scenarios.map((sc, i) => (
+                <div key={i} className="rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 px-2.5 py-2">
+                  <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                    Se: {sc.when}
+                  </div>
+                  <div className="text-[13px] text-slate-700 dark:text-slate-200 mt-0.5 flex gap-1.5">
+                    <CornerDownRight size={13} className="shrink-0 mt-0.5 text-fyness-primary" />
+                    <span>{sc.then}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

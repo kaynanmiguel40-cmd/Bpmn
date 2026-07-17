@@ -27,6 +27,8 @@ export function dbToStep(row) {
     // Origem a que o passo se aplica (ex: 'trafego', 'contador'). null =
     // universal (aparece pra todo lead). Ver filterStepsForDeal.
     sourceTag: row.source_tag || null,
+    // Cenarios: o que o cliente responde + como reagir. [{ when, then }].
+    scenarios: Array.isArray(row.scenarios) ? row.scenarios : [],
   };
 }
 
@@ -133,11 +135,18 @@ export async function saveStageSteps(stageId, steps) {
 
   for (let i = 0; i < list.length; i++) {
     const s = list[i];
+    // Cenarios: mantem so os que tem "quando" preenchido (linha vazia = lixo).
+    const scenarios = Array.isArray(s.scenarios)
+      ? s.scenarios
+          .map(sc => ({ when: (sc.when || '').trim(), then: (sc.then || '').trim() }))
+          .filter(sc => sc.when || sc.then)
+      : [];
     const payload = {
       stage_id: stageId,
       position: i,
       title: (s.title || '').trim() || 'Passo',
       script: (s.script || '').trim() || null,
+      scenarios,
     };
     const { error } = s.id
       ? await supabase.from('crm_stage_steps').update(payload).eq('id', s.id)

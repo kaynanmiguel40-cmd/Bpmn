@@ -47,6 +47,45 @@ function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
         rows={3}
         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 resize-y"
       />
+
+      {/* Cenarios: o que o cliente responde + como reagir. */}
+      <div className="pl-3 border-l-2 border-slate-200 dark:border-slate-600 space-y-1.5">
+        {(step.scenarios || []).map((sc, si) => (
+          <div key={si} className="flex gap-1.5 items-center">
+            <input
+              value={sc.when || ''}
+              onChange={(e) => {
+                const next = [...(step.scenarios || [])];
+                next[si] = { ...next[si], when: e.target.value };
+                onChange({ ...step, scenarios: next });
+              }}
+              placeholder="Se o cliente diz…"
+              className="flex-1 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[13px]"
+            />
+            <span className="text-slate-400 text-xs shrink-0">→</span>
+            <input
+              value={sc.then || ''}
+              onChange={(e) => {
+                const next = [...(step.scenarios || [])];
+                next[si] = { ...next[si], then: e.target.value };
+                onChange({ ...step, scenarios: next });
+              }}
+              placeholder="você faz/responde…"
+              className="flex-1 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[13px]"
+            />
+            <button type="button"
+              onClick={() => onChange({ ...step, scenarios: (step.scenarios || []).filter((_, k) => k !== si) })}
+              className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 shrink-0" title="Remover cenário">
+              <X size={13} />
+            </button>
+          </div>
+        ))}
+        <button type="button"
+          onClick={() => onChange({ ...step, scenarios: [...(step.scenarios || []), { when: '', then: '' }] })}
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-fyness-primary hover:bg-fyness-primary/10 px-2 py-1 rounded-md">
+          <Plus size={12} /> Cenário (se o cliente responde…)
+        </button>
+      </div>
     </div>
   );
 }
@@ -66,7 +105,10 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
   useEffect(() => {
     if (!open) return;
     setEditing(false);
-    setDraft(steps.map(s => ({ id: s.id, title: s.title, script: s.script })));
+    setDraft(steps.map(s => ({
+      id: s.id, title: s.title, script: s.script,
+      scenarios: Array.isArray(s.scenarios) ? s.scenarios.map(sc => ({ ...sc })) : [],
+    })));
     setObjetivo(stage?.objetivo || '');
     setExitCriteria(stage?.exitCriteria || '');
   }, [open, stage?.id, stage?.objetivo, stage?.exitCriteria, steps]);
@@ -212,6 +254,16 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
                       <p className="mt-2 ml-8 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap border-l-2 border-slate-200 dark:border-slate-600 pl-3">
                         {s.script}
                       </p>
+                    )}
+                    {s.scenarios?.length > 0 && (
+                      <div className="mt-2 ml-8 space-y-1.5">
+                        {s.scenarios.map((sc, k) => (
+                          <div key={k} className="rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 px-2.5 py-1.5">
+                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Se: {sc.when}</span>
+                            <div className="text-[13px] text-slate-700 dark:text-slate-200">→ {sc.then}</div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ))}
