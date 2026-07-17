@@ -457,9 +457,12 @@ const COL_GAP = 12; // gap-3
 // dois lugares — cor diferente faria parecer coisas diferentes.
 const PHASE_ACCENT = {
   'Leads':        '#3b82f6',
-  'Qualificados': '#6366f1',
+  'Qualificação': '#6366f1',
   'Reunião':      '#f59e0b',
-  'Fechamento':   '#d97706',
+  // Follow up nao e passo do funil (Proposta/Negociacao nao entram la), entao
+  // nao ha cor do Dashboard pra respeitar — violeta so pra nao virar o mesmo
+  // ambar da Reuniao, que fica logo do lado.
+  'Follow up':    '#8b5cf6',
   'Ganho':        '#10b981',
 };
 
@@ -485,9 +488,11 @@ function buildPhaseBands(stages) {
   const phaseOf = (pos) => {
     if (pos >= winPos) return 'Ganho';
     if (pos < qualPos) return 'Leads';
-    if (pos < meetPos) return 'Qualificados';
+    if (pos < meetPos) return 'Qualificação';
     if (pos <= heldPos) return 'Reunião';
-    return 'Fechamento';
+    // Entre a reuniao acontecida e o ganho: e onde o lead volta pra fila de
+    // temperatura (Quente/Morno/Frio de novo) ate fechar ou morrer.
+    return 'Follow up';
   };
 
   const bands = [];
@@ -503,7 +508,7 @@ function buildPhaseBands(stages) {
 // Fases que aparecem hoje. As outras seguem calculadas e viram espacador
 // invisivel (mantem o alinhamento com as colunas) — pra mostrar mais alguma,
 // e so acrescentar a label aqui.
-const VISIBLE_PHASES = new Set(['Leads', 'Qualificados']);
+const VISIBLE_PHASES = new Set(['Leads', 'Qualificação', 'Reunião', 'Follow up']);
 
 function PhaseBands({ stages }) {
   const bands = useMemo(() => buildPhaseBands(stages), [stages]);

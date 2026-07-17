@@ -752,15 +752,23 @@ export function detectFunnelStagePositions(stagesByPipeline) {
   for (const [pid, list] of Object.entries(stagesByPipeline)) {
     const ordered = list.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
     const n = ordered.length;
+    // Agendada: estágio de reunião/demo que NÃO seja o "realizada".
+    const meetMatch = ordered.find(s => MEETING_STAGE_RE.test(s.name || '') && !MEETING_HELD_RE.test(s.name || ''));
+    // Temperatura so conta como qualificacao ANTES da reuniao: a pipeline
+    // repete Quente/Morno/Frio no follow-up (depois da reuniao acontecida).
+    // Sem esse corte, uma pipeline com o follow-up ja criado mas a
+    // qualificacao ainda nao renomeada faria qualPos pular pro fim, e o funil
+    // so contaria como qualificado quem ja teve reuniao.
+    const tempMatch = ordered.find(s =>
+      QUAL_STAGE_TEMPERATURE_RE.test(s.name || '') &&
+      (!meetMatch || (s.position ?? 0) < (meetMatch.position ?? 0)));
     // Temperatura vem antes do fallback "Respondeu/engajou": quando a pipeline
     // tem Quente/Morno/Frio, elas SAO a qualificacao — "Respondeu" sozinho so
     // sinaliza que o lead reagiu.
     const qualMatch =
       ordered.find(s => QUAL_STAGE_EXPLICIT_RE.test(s.name || '')) ||
-      ordered.find(s => QUAL_STAGE_TEMPERATURE_RE.test(s.name || '')) ||
+      tempMatch ||
       ordered.find(s => QUAL_STAGE_FALLBACK_RE.test(s.name || ''));
-    // Agendada: estágio de reunião/demo que NÃO seja o "realizada".
-    const meetMatch = ordered.find(s => MEETING_STAGE_RE.test(s.name || '') && !MEETING_HELD_RE.test(s.name || ''));
     // Realizada: estágio explícito de reunião realizada/aconteceu (opcional).
     const heldMatch = ordered.find(s => MEETING_HELD_RE.test(s.name || ''));
     const winIdx = ordered.findIndex(s => s.is_win_stage);
