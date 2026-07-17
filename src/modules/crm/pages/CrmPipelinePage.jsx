@@ -452,12 +452,15 @@ function QuickAddInline({ onCreate, onCancel, isPending }) {
 const COL_W = 288; // w-72
 const COL_GAP = 12; // gap-3
 
-const PHASE_STYLE = {
-  'Leads':            'bg-slate-200/70 text-slate-600 dark:bg-slate-700/60 dark:text-slate-300',
-  'Qualificação':     'bg-indigo-200/70 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
-  'Reunião':          'bg-amber-200/70 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  'Fechamento':       'bg-orange-200/70 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
-  'Ganho':            'bg-emerald-200/70 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+// Cor de cada fase = a MESMA do passo correspondente no funil do Dashboard
+// (FunnelPrevistoReal.STEP_META). A faixa e o funil sao a mesma etapa vista de
+// dois lugares — cor diferente faria parecer coisas diferentes.
+const PHASE_ACCENT = {
+  'Leads':        '#3b82f6',
+  'Qualificados': '#6366f1',
+  'Reunião':      '#f59e0b',
+  'Fechamento':   '#d97706',
+  'Ganho':        '#10b981',
 };
 
 /**
@@ -482,7 +485,7 @@ function buildPhaseBands(stages) {
   const phaseOf = (pos) => {
     if (pos >= winPos) return 'Ganho';
     if (pos < qualPos) return 'Leads';
-    if (pos < meetPos) return 'Qualificação';
+    if (pos < meetPos) return 'Qualificados';
     if (pos <= heldPos) return 'Reunião';
     return 'Fechamento';
   };
@@ -500,13 +503,13 @@ function buildPhaseBands(stages) {
 // Fases que aparecem hoje. As outras seguem calculadas e viram espacador
 // invisivel (mantem o alinhamento com as colunas) — pra mostrar mais alguma,
 // e so acrescentar a label aqui.
-const VISIBLE_PHASES = new Set(['Leads', 'Qualificação']);
+const VISIBLE_PHASES = new Set(['Leads', 'Qualificados']);
 
 function PhaseBands({ stages }) {
   const bands = useMemo(() => buildPhaseBands(stages), [stages]);
   if (bands.length === 0) return null;
   return (
-    <div className="flex gap-3 shrink-0 mb-2">
+    <div className="flex gap-3 shrink-0 mb-2.5">
       {bands.map((b, i) => {
         const show = VISIBLE_PHASES.has(b.label);
         return (
@@ -514,11 +517,15 @@ function PhaseBands({ stages }) {
             key={`${b.label}-${i}`}
             style={{ width: b.span * COL_W + (b.span - 1) * COL_GAP }}
             aria-hidden={!show}
-            className={`shrink-0 rounded-lg py-1 text-center text-[11px] font-bold uppercase tracking-wider ${
-              show ? (PHASE_STYLE[b.label] || PHASE_STYLE['Leads']) : 'invisible'
-            }`}
+            className={`shrink-0 ${show ? '' : 'invisible'}`}
           >
-            {b.label}
+            <div className="mb-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+              {b.label}
+            </div>
+            <div
+              className="h-0.5 rounded-full"
+              style={{ backgroundColor: PHASE_ACCENT[b.label] || '#94a3b8', opacity: 0.45 }}
+            />
           </div>
         );
       })}
