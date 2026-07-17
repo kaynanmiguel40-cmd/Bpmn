@@ -467,31 +467,40 @@ const PHASE_ACCENT = {
 };
 
 /**
- * Agrupa as etapas em FASES e devolve as faixas ({ label, span }) pra desenhar
- * por cima do kanban — cada faixa "abraça" as colunas da sua fase.
+ * Agrupa as etapas em FASES DO PROCESSO e devolve as faixas ({ label, span })
+ * pra desenhar por cima do kanban — cada faixa "abraça" as colunas da sua fase:
  *
- * As posições de corte vêm da MESMA detecção que o funil do Dashboard usa
- * (detectFunnelStagePositions), pra faixa e Comparativo contarem a mesma
- * história em vez de dois agrupamentos paralelos que divergem com o tempo.
+ *   Leads | processo de qualificação | processo de reunião | follow pós-reunião
+ *
+ * A faixa é um RÓTULO DE AGRUPAMENTO, não um contador: ela diz "estas colunas
+ * são a qualificação", não "N leads qualificados". Por isso não conflita com o
+ * funil do Dashboard, que conta a coorte (quem CHEGOU a qualificado) — são
+ * afirmações diferentes sobre a mesma pipeline, ambas verdadeiras.
+ *
+ * Os cortes de reunião/ganho ainda vêm da detecção do funil
+ * (detectFunnelStagePositions) pra não inventar um segundo entendimento de
+ * "onde começa a reunião" que divergiria do Comparativo com o tempo.
  */
 function buildPhaseBands(stages) {
   if (!stages?.length) return [];
   const ordered = [...stages].sort((a, b) => (a.position || 0) - (b.position || 0));
   const asDb = ordered.map(s => ({ position: s.position, name: s.name, is_win_stage: s.isWinStage }));
-  const { qualPosByPipeline, meetingPosByPipeline, meetingHeldPosByPipeline } =
+  const { meetingPosByPipeline, meetingHeldPosByPipeline } =
     detectFunnelStagePositions({ p: asDb });
-  const qualPos = qualPosByPipeline.p;
   const meetPos = meetingPosByPipeline.p;
   const heldPos = meetingHeldPosByPipeline.p ?? meetPos;
   const winPos = ordered.find(s => s.isWinStage)?.position ?? Infinity;
+  const firstPos = ordered[0]?.position ?? 0;
 
+  // De proposito NAO usa o qualPos do funil. qualPos e onde o lead CHEGA a
+  // qualificado (a coorte que o Dashboard conta); aqui a faixa marca o PROCESSO
+  // de qualificar, que comeca no 1o toque. Usar qualPos faria "Leads" abraçar
+  // todas as colunas ate o "Qualificado", quando Leads e so a lista crua.
   const phaseOf = (pos) => {
     if (pos >= winPos) return 'Ganho';
-    if (pos < qualPos) return 'Leads';
+    if (pos <= firstPos) return 'Leads';
     if (pos < meetPos) return 'Qualificação';
     if (pos <= heldPos) return 'Reunião';
-    // Entre a reuniao acontecida e o ganho: e onde o lead volta pra fila de
-    // temperatura (Quente/Morno/Frio de novo) ate fechar ou morrer.
     return 'Follow up';
   };
 
@@ -527,9 +536,11 @@ function PhaseBands({ stages }) {
             <div className="mb-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
               {b.label}
             </div>
+            {/* Bracket: borda em cima + nas laterais (sem embaixo) = fio com
+                bracinho pra baixo nas pontas, fechando o range das colunas. */}
             <div
-              className="h-0.5 rounded-full"
-              style={{ backgroundColor: PHASE_ACCENT[b.label] || '#94a3b8', opacity: 0.45 }}
+              className="h-1.5 rounded-t-sm border-t-2 border-l-2 border-r-2"
+              style={{ borderColor: PHASE_ACCENT[b.label] || '#94a3b8', opacity: 0.5 }}
             />
           </div>
         );
