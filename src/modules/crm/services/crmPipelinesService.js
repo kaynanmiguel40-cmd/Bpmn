@@ -177,7 +177,16 @@ export async function getCrmPipelineWithDeals(pipelineId) {
     };
 
     if (d.status === 'lost') {
-      lostDeals.push({ ...card, lostReason: d.lost_reason || null, lostStage: stageById[d.stage_id] || null });
+      // Perdido com etapa valida na pipeline: renderiza NA COLUNA da etapa
+      // (card arrastavel, estilo perdido). Arrastar pra frente reativa —
+      // moveDealToStage reabre lost -> open. So vai pra coluna "Perdido"
+      // separada quem perdeu a referencia da etapa (orfao), como fallback.
+      if (stageById[d.stage_id]) {
+        if (!dealsByStage[d.stage_id]) dealsByStage[d.stage_id] = [];
+        dealsByStage[d.stage_id].push({ ...card, lostReason: d.lost_reason || null });
+      } else {
+        lostDeals.push({ ...card, lostReason: d.lost_reason || null, lostStage: null });
+      }
       return;
     }
 
@@ -190,7 +199,9 @@ export async function getCrmPipelineWithDeals(pipelineId) {
     return {
       ...stage,
       deals: stageDeals,
-      totalValue: stageDeals.reduce((sum, d) => sum + (d.value || 0), 0),
+      // Valor da etapa ignora perdidos: eles estao na coluna so pra triagem/
+      // reativacao, nao sao pipeline em aberto.
+      totalValue: stageDeals.reduce((sum, d) => sum + (d.status === 'lost' ? 0 : (d.value || 0)), 0),
     };
   });
 

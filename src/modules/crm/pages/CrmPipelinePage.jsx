@@ -5,7 +5,7 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, BookOpen } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
 import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useCancelCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral, useStagePlaybook } from '../hooks/useCrmQueries';
@@ -464,14 +464,63 @@ const PHASE_ACCENT = {
   // nao ha cor do Dashboard pra respeitar — violeta so pra nao virar o mesmo
   // ambar da Reuniao, que fica logo do lado.
   'Follow up':    '#8b5cf6',
-  'Ganho':        '#10b981',
+  'Fechamentos':  '#10b981',
+  // Fases da pipeline de Nutrição (fluxo de reativacao, nao de venda).
+  'Triagem':      '#f43f5e',
+  'Reativação':   '#8b5cf6',
+  'Reativou':     '#10b981',
+  'Descarte':     '#64748b',
 };
+
+// Icone de cada fase = o MESMO do funil do Dashboard (FunnelPrevistoReal). Fica
+// ao lado do nome de cada etapa amarrando a coluna a etapa do funil que ela é.
+// Follow up nao tem passo no funil (e o loop pos-reuniao), entao usa Repeat.
+const PHASE_ICON = {
+  'Leads':        UserPlus,
+  'Qualificação': BadgeCheck,
+  'Reunião':      CalendarCheck,
+  'Follow up':    Repeat,
+  'Fechamentos':  Crown,
+  'Triagem':      Filter,
+  'Reativação':   Repeat,
+  'Reativou':     TrendingUp,
+  'Descarte':     Ban,
+};
+
+// Gradiente do badge da faixa = o MESMO do funil (STEP_META from/to). Follow up
+// nao existe la, entao um violeta que combina com o PHASE_ACCENT dele.
+const PHASE_GRADIENT = {
+  'Leads':        ['#60a5fa', '#3b82f6'],
+  'Qualificação': ['#818cf8', '#6366f1'],
+  'Reunião':      ['#fbbf24', '#f59e0b'],
+  'Follow up':    ['#a78bfa', '#8b5cf6'],
+  'Fechamentos':  ['#34d399', '#10b981'],
+  'Triagem':      ['#fb7185', '#f43f5e'],
+  'Reativação':   ['#a78bfa', '#8b5cf6'],
+  'Reativou':     ['#34d399', '#10b981'],
+  'Descarte':     ['#94a3b8', '#64748b'],
+};
+
+// Badge estilo funil: quadradinho com gradiente e o icone branco.
+function PhaseBadge({ phase, size = 12, box = 'w-5 h-5' }) {
+  const Icon = PHASE_ICON[phase];
+  const grad = PHASE_GRADIENT[phase];
+  if (!Icon || !grad) return null;
+  return (
+    <span
+      className={`${box} rounded-md flex items-center justify-center shrink-0 text-white`}
+      style={{ background: `linear-gradient(135deg, ${grad[0]}, ${grad[1]})` }}
+    >
+      <Icon size={size} />
+    </span>
+  );
+}
 
 /**
  * Agrupa as etapas em FASES DO PROCESSO e devolve as faixas ({ label, span })
  * pra desenhar por cima do kanban — cada faixa "abraça" as colunas da sua fase:
  *
- *   Leads | processo de qualificação | processo de reunião | follow pós-reunião
+ *   Leads | processo de qualificação | reunião (agendada → acontecida → follow-up)
  *
  * A faixa é um RÓTULO DE AGRUPAMENTO, não um contador: ela diz "estas colunas
  * são a qualificação", não "N leads qualificados". Por isso não conflita com o
@@ -482,12 +531,39 @@ const PHASE_ACCENT = {
  * (detectFunnelStagePositions) pra não inventar um segundo entendimento de
  * "onde começa a reunião" que divergiria do Comparativo com o tempo.
  */
-function buildPhaseBands(stages) {
-  if (!stages?.length) return [];
-  const ordered = [...stages].sort((a, b) => (a.position || 0) - (b.position || 0));
+// A qual FASE cada etapa pertence — usado tanto pelas faixas quanto pelo icone
+// no cabecalho da coluna, pra nunca divergirem. Devolve o mapa por id e a
+// funcao (pra montar as faixas em ordem).
+// Fluxo de reativacao (pipeline Nutrição) — reconhecido pelos nomes das etapas.
+// A ordem importa: "Reativou" (sucesso) casa /reativ/ e tem que ser testado
+// ANTES de "Reativação" (a cadencia D30/D60/D90).
+function isNurturingStages(stages) {
+  const blob = (stages || []).map(s => (s.name || '').toLowerCase()).join(' ');
+  return /triagem/.test(blob) && (/nutri/.test(blob) || /reativ/.test(blob));
+}
+function nurturingPhaseOf(name) {
+  const n = name || '';
+  if (/triagem/i.test(n)) return 'Triagem';
+  if (/reativou/i.test(n)) return 'Reativou';
+  if (/descarte|exclu/i.test(n)) return 'Descarte';
+  if (/nutri|reativ/i.test(n)) return 'Reativação';
+  return 'Reativação';
+}
+
+function computeStagePhases(stages) {
+  const ordered = [...(stages || [])].sort((a, b) => (a.position || 0) - (b.position || 0));
+
+  // Pipeline de Nutrição tem fluxo proprio (Triagem -> Reativação -> Reativou/
+  // Descarte), agrupado por NOME. Nao passa pela deteccao do funil de vendas,
+  // que produziria fases sem sentido aqui.
+  if (isNurturingStages(ordered)) {
+    const byId = {};
+    for (const s of ordered) byId[s.id] = nurturingPhaseOf(s.name);
+    return { ordered, phaseById: byId, subPhaseOf: () => null };
+  }
+
   const asDb = ordered.map(s => ({ position: s.position, name: s.name, is_win_stage: s.isWinStage }));
-  const { meetingPosByPipeline, meetingHeldPosByPipeline } =
-    detectFunnelStagePositions({ p: asDb });
+  const { meetingPosByPipeline, meetingHeldPosByPipeline } = detectFunnelStagePositions({ p: asDb });
   const meetPos = meetingPosByPipeline.p;
   const heldPos = meetingHeldPosByPipeline.p ?? meetPos;
   const winPos = ordered.find(s => s.isWinStage)?.position ?? Infinity;
@@ -497,20 +573,60 @@ function buildPhaseBands(stages) {
   // qualificado (a coorte que o Dashboard conta); aqui a faixa marca o PROCESSO
   // de qualificar, que comeca no 1o toque. Usar qualPos faria "Leads" abraçar
   // todas as colunas ate o "Qualificado", quando Leads e so a lista crua.
+  // Follow up mora DENTRO de Reunião: tudo da reuniao ate o ganho (agendada,
+  // acontecida e o follow-up pos-reuniao) e a mesma faixa. A separacao vira
+  // uma SUB-faixa (subPhaseOf), nao uma faixa propria.
   const phaseOf = (pos) => {
-    if (pos >= winPos) return 'Ganho';
+    if (pos >= winPos) return 'Fechamentos';
     if (pos <= firstPos) return 'Leads';
     if (pos < meetPos) return 'Qualificação';
-    if (pos <= heldPos) return 'Reunião';
-    return 'Follow up';
+    return 'Reunião';
   };
 
+  // Sub-fase DENTRO de Reunião (grafo dentro do grafo). heldPos separa marcada
+  // de acontecida; o follow-up pos-reuniao fica DENTRO de acontecida (o lead ja
+  // compareceu), entao acontecida abraça da reuniao realizada ate o ganho.
+  const subPhaseOf = (pos) => {
+    if (pos < heldPos) return 'Marcada';
+    return 'Acontecida';
+  };
+
+  const byId = {};
+  for (const s of ordered) byId[s.id] = phaseOf(s.position ?? 0);
+  return { ordered, phaseOf, subPhaseOf, phaseById: byId };
+}
+
+// Sub-faixas de Reunião. Cor puxa do funil (agendada -> acontecida) + violeta
+// do follow-up, coerente com o PHASE_ACCENT antigo dele.
+const SUBPHASE_ACCENT = {
+  'Marcada':    '#f59e0b',
+  'Acontecida': '#d97706',
+  'Follow up':  '#8b5cf6',
+};
+
+function buildPhaseBands(stages) {
+  if (!stages?.length) return [];
+  // phaseById (nao phaseOf-por-posicao): a Nutrição agrupa por NOME, entao o
+  // mapa por id e a fonte unica que serve os dois fluxos.
+  const { ordered, phaseById, subPhaseOf } = computeStagePhases(stages);
   const bands = [];
   for (const s of ordered) {
-    const label = phaseOf(s.position ?? 0);
+    const label = phaseById[s.id];
     const last = bands[bands.length - 1];
-    if (last && last.label === label) last.span++;
-    else bands.push({ label, span: 1 });
+    if (last && last.label === label) { last.span++; last.stages.push(s); }
+    else bands.push({ label, span: 1, stages: [s] });
+  }
+  // Sub-faixas: so Reunião tem, e so quando ha mais de uma coluna pra separar.
+  for (const b of bands) {
+    if (b.label !== 'Reunião' || b.stages.length < 2) continue;
+    const subs = [];
+    for (const s of b.stages) {
+      const sl = subPhaseOf(s.position ?? 0);
+      const last = subs[subs.length - 1];
+      if (last && last.label === sl) last.span++;
+      else subs.push({ label: sl, span: 1 });
+    }
+    b.subs = subs;
   }
   return bands;
 }
@@ -518,7 +634,10 @@ function buildPhaseBands(stages) {
 // Fases que aparecem hoje. As outras seguem calculadas e viram espacador
 // invisivel (mantem o alinhamento com as colunas) — pra mostrar mais alguma,
 // e so acrescentar a label aqui.
-const VISIBLE_PHASES = new Set(['Leads', 'Qualificação', 'Reunião', 'Follow up']);
+const VISIBLE_PHASES = new Set([
+  'Leads', 'Qualificação', 'Reunião', 'Fechamentos',
+  'Triagem', 'Reativação', 'Reativou', 'Descarte',
+]);
 
 function PhaseBands({ stages }) {
   const bands = useMemo(() => buildPhaseBands(stages), [stages]);
@@ -527,22 +646,95 @@ function PhaseBands({ stages }) {
     <div className="flex gap-3 shrink-0 mb-2.5">
       {bands.map((b, i) => {
         const show = VISIBLE_PHASES.has(b.label);
+        const bandW = b.span * COL_W + (b.span - 1) * COL_GAP;
+
+        // Geometria do conector em arvore (so pra faixa com sub-grupos): centro
+        // x de cada sub dentro da faixa, pra barra horizontal ramificar em cada.
+        let subGeo = null;
+        if (b.subs) {
+          let x = 0;
+          const centers = b.subs.map(sub => {
+            const w = sub.span * COL_W + (sub.span - 1) * COL_GAP;
+            const c = x + w / 2;
+            x += w + COL_GAP;
+            return c;
+          });
+          subGeo = { centers, first: centers[0], last: centers[centers.length - 1] };
+        }
+
+        const treeColor = PHASE_ACCENT[b.label] || '#94a3b8';
+
         return (
           <div
             key={`${b.label}-${i}`}
-            style={{ width: b.span * COL_W + (b.span - 1) * COL_GAP }}
+            style={{ width: bandW }}
             aria-hidden={!show}
             className={`shrink-0 ${show ? '' : 'invisible'}`}
           >
-            <div className="mb-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-              {b.label}
+            {/* Badge do funil na frente do rotulo da fase (mesmo do Dashboard). */}
+            <div className="mb-1 flex items-center justify-center gap-1.5">
+              <PhaseBadge phase={b.label} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                {b.label}
+              </span>
             </div>
             {/* Bracket: borda em cima + nas laterais (sem embaixo) = fio com
                 bracinho pra baixo nas pontas, fechando o range das colunas. */}
             <div
               className="h-1.5 rounded-t-sm border-t-2 border-l-2 border-r-2"
-              style={{ borderColor: PHASE_ACCENT[b.label] || '#94a3b8', opacity: 0.5 }}
+              style={{ borderColor: treeColor, opacity: 0.5 }}
             />
+
+            {/* Sub-grupos (grafo dentro do grafo): so Reunião tem. Um conector em
+                ARVORE liga a faixa mae aos sub-grupos — stub do centro desce ate
+                um barramento horizontal, que ramifica um stub pra cada sub. Cada
+                sub fica separado, no seu proprio bracket. */}
+            {b.subs && (
+              <>
+                <div className="relative" style={{ height: 14 }}>
+                  {/* Conector em cinza medio (mais claro no dark pra continuar
+                      visivel). Cor propria — nao usa treeColor pra nao tingir
+                      tambem o bracket da faixa, que compartilha aquela variavel. */}
+                  {/* stub vertical do centro da faixa mae ate o barramento */}
+                  <div
+                    className="absolute top-0 w-0.5 rounded-full bg-slate-400 dark:bg-slate-500"
+                    style={{ left: bandW / 2, height: 7, transform: 'translateX(-50%)' }}
+                  />
+                  {/* barramento horizontal ligando os centros dos sub-grupos */}
+                  <div
+                    className="absolute h-0.5 rounded-full bg-slate-400 dark:bg-slate-500"
+                    style={{ left: subGeo.first, width: subGeo.last - subGeo.first, top: 7 }}
+                  />
+                  {/* stub descendo do barramento pra cada sub-grupo */}
+                  {subGeo.centers.map((c, k) => (
+                    <div
+                      key={`stub-${k}`}
+                      className="absolute w-0.5 rounded-full bg-slate-400 dark:bg-slate-500"
+                      style={{ left: c, top: 7, height: 7, transform: 'translateX(-50%)' }}
+                    />
+                  ))}
+                </div>
+
+                {/* Rotulo + bracket de cada sub-grupo, separados */}
+                <div className="flex gap-3">
+                  {b.subs.map((sub, k) => (
+                    <div
+                      key={`sub-${sub.label}-${k}`}
+                      style={{ width: sub.span * COL_W + (sub.span - 1) * COL_GAP }}
+                      className="shrink-0"
+                    >
+                      <div className="text-center text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500 truncate">
+                        {sub.label}
+                      </div>
+                      <div
+                        className="h-1.5 rounded-t-sm border-t-2 border-l-2 border-r-2 mt-0.5"
+                        style={{ borderColor: SUBPHASE_ACCENT[sub.label] || '#94a3b8', opacity: 0.5 }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         );
       })}
@@ -550,8 +742,8 @@ function PhaseBands({ stages }) {
   );
 }
 
-function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete, allStages, onMoveStage, onOpenPlaybook, stepCount = 0 }) {
-  const hasPlaybook = stepCount > 0 || !!stage.objetivo;
+function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete, allStages, onMoveStage, onOpenPlaybook, stepCount = 0, phase }) {
+  const PhaseIcon = PHASE_ICON[phase] || null;
   const isDragOver = dragOverStageId === stage.id;
   const learnedStage = learned?.stages?.find(s => s.position === stage.position);
   const showConv = learnedStage && learnedStage.sampleSize >= 5;
@@ -579,6 +771,11 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
+          {/* Icone da etapa do funil a que essa coluna pertence (mesmo do
+              Dashboard). Cor da fase pra bater com a faixa la em cima. */}
+          {PhaseIcon && (
+            <PhaseIcon size={14} className="shrink-0" style={{ color: PHASE_ACCENT[phase] }} />
+          )}
           <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate">{stage.name}</span>
           {showConv && (
             <span className={`text-[10px] font-medium shrink-0 ${convColor}`} title={`Conversao: ${learnedStage.learnedProbability}%`}>
@@ -587,19 +784,6 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {/* Processo da etapa (080): objetivo + passos com script. Fica ao
-              lado do "+" porque e consulta de rotina do vendedor, nao config. */}
-          <button
-            onClick={() => onOpenPlaybook?.(stage)}
-            title={stage.objetivo ? `Processo: ${stage.objetivo}` : 'Processo da etapa'}
-            className={`p-1 rounded-md transition-colors ${
-              hasPlaybook
-                ? 'text-fyness-primary hover:bg-fyness-primary/10'
-                : 'text-slate-300 dark:text-slate-600 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'
-            }`}
-          >
-            <BookOpen size={15} />
-          </button>
           <button
             onClick={() => setQuickAddOpen(true)}
             title="Criar negocio rapido"
@@ -613,20 +797,14 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
         </div>
       </div>
 
-      {/* Objetivo da etapa: o vendedor precisa saber pra que a coluna serve sem
-          ter que abrir nada. Clicavel porque quem le o objetivo geralmente quer
-          o passo a passo em seguida. */}
-      {stage.objetivo && (
-        <button
-          onClick={() => onOpenPlaybook?.(stage)}
-          className="px-3 pb-2 -mt-0.5 text-left w-full group"
-          title="Ver o processo da etapa"
-        >
-          <span className="text-[11px] leading-snug text-slate-400 dark:text-slate-500 line-clamp-2 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
-            {stage.objetivo}
-          </span>
-        </button>
-      )}
+      {/* Botao "O que fazer": abre o processo da etapa (objetivo + passos com
+          script). Explicito no lugar do livrinho — qualquer um entende. */}
+      <button
+        onClick={() => onOpenPlaybook?.(stage)}
+        className="mx-3 mb-2 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-semibold uppercase tracking-wider bg-fyness-primary/10 text-fyness-primary hover:bg-fyness-primary/20 transition-colors"
+      >
+        <ListChecks size={13} /> O que fazer
+      </button>
 
       {/* Drop zone com scroll vertical */}
       <div
@@ -1229,6 +1407,12 @@ export function CrmPipelinePage() {
   // Playbook de todas as etapas de uma vez (uma query pra pipeline inteira, em
   // vez de uma por coluna).
   const { data: playbook } = useStagePlaybook(activePipelineId);
+  // Fase (etapa do funil) de cada coluna — pro icone no cabecalho. Mesmo calculo
+  // das faixas, entao coluna e faixa nunca discordam.
+  const phaseById = useMemo(
+    () => computeStagePhases(pipelineData?.stages).phaseById,
+    [pipelineData?.stages],
+  );
   const moveMutation = useMoveCrmDeal();
   const lostMutation = useMarkDealLost();
   const deleteDealMutation = useDeleteCrmDeal();
@@ -1628,6 +1812,7 @@ export function CrmPipelinePage() {
                   filteredDeals={filterDeals(stage.deals)}
                   onOpenPlaybook={setPlaybookStage}
                   stepCount={(playbook?.[stage.id] || []).length}
+                  phase={phaseById[stage.id]}
                   dragOverStageId={dragOverStageId}
                   onNewDeal={handleNewDeal}
                   onQuickAdd={handleQuickAdd}

@@ -511,11 +511,14 @@ export async function markDealAsLost(dealId: string, reason = ''): Promise<CrmDe
     if (nurturing) {
       const nurturingData = nurturing as { id: string; crm_pipeline_stages?: Array<{ id: string; name: string; position: number }> };
       const stages = (nurturingData.crm_pipeline_stages || []).slice().sort((a, b) => a.position - b.position);
-      const emNutricao = stages.find(s => s.name === 'Em Nutricao') || stages[0];
+      // Entrada = "Triagem" (1a etapa): o perdido cai la COMO PERDIDO e so vira
+      // ativo quando alguem o arrasta pra frente (moveDealToStage reabre). Antes
+      // caia direto em "Em Nutricao" (trabalho ativo), pulando a triagem.
+      const entrada = stages.find(s => s.name === 'Triagem') || stages[0];
       const descarte = stages.find(s => s.name === 'Descarte') || stages[stages.length - 1];
       pipelineConfig = {
         pipelineId: nurturingData.id,
-        entryStageId: emNutricao?.id || null,
+        entryStageId: entrada?.id || null,
         discardStageId: descarte?.id || null,
       };
     }
@@ -543,6 +546,11 @@ export async function markDealAsLost(dealId: string, reason = ''): Promise<CrmDe
       targetStageId = pipelineConfig.entryStageId;
       movedTo = 'nurturing';
     }
+
+    // Entrar na Nurturing mantem o lead PERDIDO (cai em "Triagem"). Ele so vira
+    // ativo quando alguem o arrasta pra frente na Nurturing — moveDealToStage
+    // reabre lost -> open ao mover pra etapa nao-ganho. Sem trabalho, fica na
+    // triagem como perdido.
 
     if (targetPipelineId !== cur.pipeline_id) {
       updatePayload.pipeline_id = targetPipelineId;

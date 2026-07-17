@@ -10,8 +10,9 @@
  */
 
 import { useState } from 'react';
-import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen } from 'lucide-react';
+import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter } from 'lucide-react';
 import { useStagePlaybook, useDealProgress, useToggleDealStep } from '../hooks/useCrmQueries';
+import { filterStepsForDeal } from '../services/crmPlaybookService';
 
 function StepRow({ step, done, onToggle, disabled }) {
   const [open, setOpen] = useState(false);
@@ -68,9 +69,17 @@ export function DealProcessChecklist({ deal, memberId = null }) {
   const { data: progress = [], isLoading: loadingProgress } = useDealProgress(deal?.id);
   const toggle = useToggleDealStep();
 
-  const steps = playbook?.[deal?.stageId] || [];
+  // Filtra os passos pela ORIGEM do lead: um lead veio de UM lugar, entao so o
+  // script daquela origem aparece (ex: veio de anuncio → so o toque de anuncio).
+  // Passos sem tag sao universais e sempre aparecem.
+  const allSteps = playbook?.[deal?.stageId] || [];
+  const steps = filterStepsForDeal(allSteps, deal?.source);
   const doneIds = new Set(progress.map(p => p.stepId));
   const doneCount = steps.filter(s => doneIds.has(s.id)).length;
+  // So avisa sobre origem quando ela REALMENTE muda o que aparece (etapa tem
+  // passos por origem) e o lead nao tem origem definida.
+  const hasSourceSteps = allSteps.some(s => s.sourceTag);
+  const showSourceHint = hasSourceSteps && !deal?.source;
 
   // A etapa vem do deal carregado; o objetivo/criterio moram nela.
   const objetivo = deal?.stage?.objetivo || '';
@@ -109,6 +118,13 @@ export function DealProcessChecklist({ deal, memberId = null }) {
             </div>
             <p className="text-sm text-slate-700 dark:text-slate-200">{objetivo}</p>
           </div>
+        </div>
+      )}
+
+      {showSourceHint && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-[12px] text-amber-700 dark:text-amber-300">
+          <Filter size={14} className="shrink-0" />
+          Defina a <strong>origem</strong> do lead pra ver so o script certo (mostrando todos por enquanto).
         </div>
       )}
 

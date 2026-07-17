@@ -24,7 +24,42 @@ export function dbToStep(row) {
     position: row.position ?? 0,
     title: row.title || '',
     script: row.script || '',
+    // Origem a que o passo se aplica (ex: 'trafego', 'contador'). null =
+    // universal (aparece pra todo lead). Ver filterStepsForDeal.
+    sourceTag: row.source_tag || null,
   };
+}
+
+/**
+ * Categoriza a origem (source) de um lead numa das tags de passo. Os sources sao
+ * texto livre e baguncado ("Indicacao de parceiro (Edson)", "Prospeccao ativa",
+ * "Trafego pago"), entao casa por PALAVRA-CHAVE, nao igualdade.
+ * Parceiro cobre tambem "contador" (a parceria do negocio e com contadores).
+ */
+export function dealSourceCategory(source) {
+  const s = (source || '').toLowerCase();
+  if (!s) return null;
+  if (/tr[aá]fego|an[uú]ncio|\bads?\b|pago/.test(s)) return 'trafego';
+  if (/parceiro|contador/.test(s)) return 'parceiro';
+  if (/insta|\bdm\b|direct|org[aâ]nic/.test(s)) return 'instagram';
+  if (/indica|cliente/.test(s)) return 'cliente';
+  return null;
+}
+
+/**
+ * Filtra os passos de uma etapa pro lead conforme a ORIGEM dele:
+ *  - passo sem tag (universal) sempre aparece;
+ *  - passo com tag so aparece se casar com a categoria da origem do lead.
+ * Se a etapa nao tem passo-por-origem, devolve tudo. Se tem, mas a origem do
+ * lead nao casa nenhuma (desconhecida/vazia), cai pro conjunto todo — melhor
+ * mostrar tudo do que deixar o vendedor sem roteiro.
+ */
+export function filterStepsForDeal(steps, dealSource) {
+  const list = steps || [];
+  if (!list.some(s => s.sourceTag)) return list;
+  const cat = dealSourceCategory(dealSource);
+  const matched = list.filter(s => !s.sourceTag || s.sourceTag === cat);
+  return matched.some(s => s.sourceTag) ? matched : list;
 }
 
 export function dbToProgress(row) {

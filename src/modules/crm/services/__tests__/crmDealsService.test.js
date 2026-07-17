@@ -153,9 +153,10 @@ describe('dbToCrmDeal', () => {
 describe('markDealAsLost', () => {
   const NURTURING_ID = 'pipe_nurt';
   const NURTURING_STAGES = [
-    { id: 'st_nutricao', name: 'Em Nutricao', position: 1 },
-    { id: 'st_react30',  name: 'Reativacao D30', position: 2 },
-    { id: 'st_descarte', name: 'Descarte', position: 6 },
+    { id: 'st_triagem',  name: 'Triagem', position: 1 },
+    { id: 'st_nutricao', name: 'Em Nutricao', position: 2 },
+    { id: 'st_react30',  name: 'Reativacao D30', position: 3 },
+    { id: 'st_descarte', name: 'Descarte', position: 7 },
   ];
 
   // Configura a sequencia de mocks por chamada que markDealAsLost faz:
@@ -182,37 +183,36 @@ describe('markDealAsLost', () => {
     return { dealSelect, discardSelect, nurturingSelect, dealUpdate, historyInsert };
   }
 
-  it('move deal de outra pipeline pra Nurturing > Em Nutricao', async () => {
+  it('move deal de outra pipeline pra Nurturing > Triagem (como perdido)', async () => {
     const mocks = setupMocks({
       current: { pipeline_id: 'pipe_vendedor', stage_id: 'st_negociacao' },
       nurturing: { id: NURTURING_ID, crm_pipeline_stages: NURTURING_STAGES },
       updated: {
         id: 'd1', title: 'Deal X', status: 'lost',
-        pipeline_id: NURTURING_ID, stage_id: 'st_nutricao',
+        pipeline_id: NURTURING_ID, stage_id: 'st_triagem',
         lost_reason: 'preco', closed_at: '2026-05-06T12:00:00Z',
       },
     });
 
     const result = await markDealAsLost('d1', 'preco');
 
-    // Update foi chamado com payload correto
+    // Entra na Triagem (1a etapa) COMO PERDIDO — so reativa se arrastado depois.
     const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
     expect(updatePayload.status).toBe('lost');
     expect(updatePayload.probability).toBe(0);
     expect(updatePayload.lost_reason).toBe('preco');
     expect(updatePayload.closed_at).toBeTruthy();
     expect(updatePayload.pipeline_id).toBe(NURTURING_ID);
-    expect(updatePayload.stage_id).toBe('st_nutricao');
+    expect(updatePayload.stage_id).toBe('st_triagem');
 
-    // History gravado com transicao
+    // History gravado com transicao pra Triagem
     expect(mocks.historyInsert.chain.insert).toHaveBeenCalled();
     const historyRow = mocks.historyInsert.captured.insertArgs[0];
     expect(historyRow.deal_id).toBe('d1');
     expect(historyRow.from_stage_id).toBe('st_negociacao');
-    expect(historyRow.to_stage_id).toBe('st_nutricao');
+    expect(historyRow.to_stage_id).toBe('st_triagem');
     expect(historyRow.pipeline_id).toBe(NURTURING_ID);
 
-    // Flag _movedTo no resultado
     expect(result._movedTo).toBe('nurturing');
     expect(result.status).toBe('lost');
   });
@@ -298,7 +298,7 @@ describe('markDealAsLost', () => {
     const mocks = setupMocks({
       current: { pipeline_id: 'pipe_v', stage_id: 's1' },
       nurturing: { id: NURTURING_ID, crm_pipeline_stages: NURTURING_STAGES },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_nutricao' },
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_triagem' },
     });
 
     await markDealAsLost('d1');
@@ -322,28 +322,28 @@ describe('markDealAsLost', () => {
     await expect(markDealAsLost('d1', 'x')).rejects.toThrow('permission denied');
   });
 
-  it('escolhe stage por NOME, nao por posicao (resiliencia a reordenacao)', async () => {
-    // Stages com posicoes embaralhadas — deve achar "Em Nutricao" pelo nome
+  it('escolhe stage por NOME (Triagem), nao por posicao (resiliencia a reordenacao)', async () => {
+    // Stages com posicoes embaralhadas — deve achar "Triagem" pelo nome
     const stagesEmbaralhadas = [
       { id: 'st_descarte', name: 'Descarte', position: 1 }, // ate na primeira posicao!
       { id: 'st_react90',  name: 'Reativacao D90', position: 2 },
-      { id: 'st_nutricao', name: 'Em Nutricao', position: 5 }, // posicao 5
+      { id: 'st_triagem',  name: 'Triagem', position: 5 }, // posicao 5
     ];
 
     const mocks = setupMocks({
       current: { pipeline_id: 'pipe_v', stage_id: 's1' },
       nurturing: { id: NURTURING_ID, crm_pipeline_stages: stagesEmbaralhadas },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_nutricao' },
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_triagem' },
     });
 
     await markDealAsLost('d1', 'preco');
 
     const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    // Mesmo que "Em Nutricao" esteja em position 5, achou pelo NOME
-    expect(updatePayload.stage_id).toBe('st_nutricao');
+    // Mesmo que "Triagem" esteja em position 5, achou pelo NOME
+    expect(updatePayload.stage_id).toBe('st_triagem');
   });
 
-  it('fallback para primeiro stage por posicao se "Em Nutricao" nao existir', async () => {
+  it('fallback para primeiro stage por posicao se "Triagem" nao existir', async () => {
     // Pipeline Nurturing nomeado mas com stages diferentes (ex: configuracao customizada)
     const stagesCustom = [
       { id: 'st_x', name: 'Stage Custom 1', position: 1 },
@@ -368,7 +368,7 @@ describe('markDealAsLost', () => {
     const mocks = setupMocks({
       current: { pipeline_id: 'pipe_origem', stage_id: 'st_origem' },
       nurturing: { id: NURTURING_ID, crm_pipeline_stages: NURTURING_STAGES },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_nutricao' },
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_triagem' },
     });
 
     await markDealAsLost('d1', 'x');
@@ -377,7 +377,7 @@ describe('markDealAsLost', () => {
     // pipeline_id no history deve ser o de DESTINO (Nurturing), nao o de origem
     expect(historyRow.pipeline_id).toBe(NURTURING_ID);
     expect(historyRow.from_stage_id).toBe('st_origem');
-    expect(historyRow.to_stage_id).toBe('st_nutricao');
+    expect(historyRow.to_stage_id).toBe('st_triagem');
   });
 
   // ─────────────────────────────────────────────────────────────────────────
