@@ -26,7 +26,7 @@ export interface CrmDeal {
   company: { id: string; name: string; segment?: string | null; phone?: string | null } | null;
   pipelineId: string | null;
   stageId: string | null;
-  stage: { id: string; name: string; color?: string | null } | null;
+  stage: { id: string; name: string; color?: string | null; objetivo?: string; exitCriteria?: string } | null;
   expectedCloseDate: string | null;
   closedAt: string | null;
   status: DealStatus;
@@ -59,7 +59,7 @@ export interface CrmDealRow {
   crm_companies?: { id: string; name: string; segment?: string | null; phone?: string | null } | null;
   pipeline_id?: string | null;
   stage_id?: string | null;
-  crm_pipeline_stages?: { id: string; name: string; color?: string | null } | null;
+  crm_pipeline_stages?: { id: string; name: string; color?: string | null; objetivo?: string | null; exit_criteria?: string | null } | null;
   expected_close_date?: string | null;
   closed_at?: string | null;
   status?: DealStatus | null;
@@ -124,6 +124,9 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
       id: row.crm_pipeline_stages.id,
       name: row.crm_pipeline_stages.name,
       color: row.crm_pipeline_stages.color,
+      // Playbook da etapa (080) — usado pela aba Processo do negocio.
+      objetivo: row.crm_pipeline_stages.objetivo || '',
+      exitCriteria: row.crm_pipeline_stages.exit_criteria || '',
     } : null,
     expectedCloseDate: row.expected_close_date || null,
     closedAt: row.closed_at || null,
@@ -206,7 +209,7 @@ export async function getCrmDeals(filters: CrmDealFilters = {}): Promise<{ data:
   let query = supabase
     .from('crm_deals')
     .select(
-      '*, crm_contacts(id, name, avatar_color), crm_companies(id, name, segment), crm_pipeline_stages(id, name, color), team_members(id, name, color)',
+      '*, crm_contacts(id, name, avatar_color), crm_companies(id, name, segment), crm_pipeline_stages(id, name, color, objetivo, exit_criteria), team_members(id, name, color)',
       { count: 'exact' },
     )
     .is('deleted_at', null);
@@ -241,7 +244,7 @@ export async function getCrmDeals(filters: CrmDealFilters = {}): Promise<{ data:
 export async function getCrmDealById(id: string): Promise<CrmDeal | null> {
   const { data, error } = await supabase
     .from('crm_deals')
-    .select('*, crm_contacts(id, name, avatar_color, email, phone, position), crm_companies(id, name, segment, phone), crm_pipeline_stages(id, name, color), team_members(id, name, color)')
+    .select('*, crm_contacts(id, name, avatar_color, email, phone, position), crm_companies(id, name, segment, phone), crm_pipeline_stages(id, name, color, objetivo, exit_criteria), team_members(id, name, color)')
     .eq('id', id)
     .is('deleted_at', null)
     .single();

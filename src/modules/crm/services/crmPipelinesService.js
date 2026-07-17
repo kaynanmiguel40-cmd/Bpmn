@@ -29,6 +29,10 @@ export function dbToStage(row) {
     position: row.position,
     color: row.color || '#6366f1',
     isWinStage: row.is_win_stage || false,
+    // Playbook da etapa (080): por que ela existe e quando mover o lead.
+    // Os passos com script vivem em crm_stage_steps (ver crmPlaybookService).
+    objetivo: row.objetivo || '',
+    exitCriteria: row.exit_criteria || '',
     createdAt: row.created_at,
   };
 }

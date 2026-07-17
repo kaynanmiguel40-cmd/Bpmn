@@ -31,7 +31,9 @@
       "Bash(ls .vscode)",
       "Bash(grep -c \"dist\" .gitignore)",
       "Bash(node --check src/modules/crm/components/DealFormModal.jsx)",
-      "Bash(awk '{print $2}')"
+      "Bash(awk '{print $2}')",
+      "Bash(node scripts/db.mjs:*)",
+      "Skill(update-config)"
     ]
   }
 }

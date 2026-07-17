@@ -8,6 +8,7 @@ import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmP
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, markDealAsChurned, reactivateChurnedDeal, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
 import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal } from '../services/crmActivitiesService';
 import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel, getFunnelStageDeals } from '../services/crmDashboardService';
+import { getPlaybookByPipeline, saveStageSteps, saveStageGoal, getDealProgress, toggleDealStep } from '../services/crmPlaybookService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, getCrmProspectById, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
 import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
@@ -32,6 +33,8 @@ export const crmQueryKeys = {
   contact: (id) => ['crm', 'contact', id],
   pipelines: ['crm', 'pipelines'],
   pipelineDeals: (id) => ['crm', 'pipelineDeals', id],
+  playbook: (pipelineId) => ['crm', 'playbook', pipelineId],
+  dealProgress: (dealId) => ['crm', 'dealProgress', dealId],
   deals: ['crm', 'deals'],
   deal: (id) => ['crm', 'deal', id],
   activities: ['crm', 'activities'],
@@ -316,6 +319,61 @@ export function useUpdateCrmPipeline() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+    },
+  });
+}
+
+// ==================== PLAYBOOK DA ETAPA ====================
+
+/** Passos de todas as etapas da pipeline, agrupados por stageId. */
+export function useStagePlaybook(pipelineId) {
+  return useQuery({
+    queryKey: crmQueryKeys.playbook(pipelineId),
+    queryFn: () => getPlaybookByPipeline(pipelineId),
+    enabled: !!pipelineId,
+  });
+}
+
+export function useSaveStageSteps(pipelineId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ stageId, steps }) => saveStageSteps(stageId, steps),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.playbook(pipelineId) });
+      // O progresso dos leads muda junto: passo removido leva o progresso pelo
+      // CASCADE, entao o checklist em tela ficaria marcando passo que sumiu.
+      qc.invalidateQueries({ queryKey: ['crm', 'dealProgress'] });
+    },
+  });
+}
+
+export function useSaveStageGoal(pipelineId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ stageId, objetivo, exitCriteria }) => saveStageGoal(stageId, { objetivo, exitCriteria }),
+    onSuccess: () => {
+      // O objetivo mora na etapa, entao quem invalida e a pipeline (nao o playbook).
+      qc.invalidateQueries({ queryKey: crmQueryKeys.pipelines });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+    },
+  });
+}
+
+/** Checklist de um negocio: quais passos ele ja cumpriu. */
+export function useDealProgress(dealId) {
+  return useQuery({
+    queryKey: crmQueryKeys.dealProgress(dealId),
+    queryFn: () => getDealProgress(dealId),
+    enabled: !!dealId,
+  });
+}
+
+export function useToggleDealStep() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dealId, stepId, done, memberId }) => toggleDealStep(dealId, stepId, done, memberId),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dealProgress(vars.dealId) });
     },
   });
 }

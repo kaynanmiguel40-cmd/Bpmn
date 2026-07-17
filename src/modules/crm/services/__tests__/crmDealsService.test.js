@@ -130,7 +130,9 @@ describe('dbToCrmDeal', () => {
     const result = dbToCrmDeal(row);
     expect(result.contact).toEqual({ id: 'c1', name: 'Joao', avatarColor: '#abc', email: 'j@x.com' });
     expect(result.company).toEqual({ id: 'co1', name: 'Acme', segment: 'Tech' });
-    expect(result.stage).toEqual({ id: 's1', name: 'Proposta', color: '#f00' });
+    // objetivo/exitCriteria: playbook da etapa (080). Sem as colunas no join,
+    // normalizam pra string vazia em vez de undefined.
+    expect(result.stage).toEqual({ id: 's1', name: 'Proposta', color: '#f00', objetivo: '', exitCriteria: '' });
     expect(result.owner).toEqual({ id: 'tm1', name: 'Carlos', color: '#0f0' });
   });
 

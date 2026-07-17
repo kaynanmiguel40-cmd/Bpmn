@@ -10,10 +10,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Pencil, XCircle, Plus, CheckCircle2, CalendarDays,
   Mail, Phone, Smartphone, MessageCircle, Building2, CalendarCheck, Target,
-  CheckSquare, Video, Coffee, MapPin, StickyNote,
+  CheckSquare, Video, Coffee, MapPin, StickyNote, BookOpen,
   Clock, DollarSign, TrendingUp, GitBranch, User,
 } from 'lucide-react';
 import { CrmBadge, CrmAvatar } from '../components/ui';
+import { DealProcessChecklist } from '../components/DealProcessChecklist';
 import {
   useCrmDeal, useUpdateCrmDeal, useMarkDealLost,
   useDealActivities, useDealStageHistory, useCompleteCrmActivity,
@@ -80,6 +81,8 @@ const ACTIVITY_LABELS = {
 
 const TABS = [
   { id: 'activities', label: 'Atividades', icon: CalendarCheck },
+  // Processo (080): o playbook da etapa ATUAL do negocio, com checklist.
+  { id: 'process', label: 'Processo', icon: BookOpen },
   { id: 'notes', label: 'Notas', icon: StickyNote },
 ];
 
@@ -602,6 +605,13 @@ export function CrmDealDetailPage() {
               </div>
             );
           })()}
+
+          {/* Tab: Processo — o que fazer na etapa atual deste lead */}
+          {activeTab === 'process' && (
+            <div className="crm-glass rounded-2xl p-4">
+              <DealProcessChecklist deal={deal} />
+            </div>
+          )}
 
           {/* Tab: Notas */}
           {activeTab === 'notes' && (

@@ -5,10 +5,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight, ChevronUp, ChevronDown, Pencil } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, BookOpen } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useCancelCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useCancelCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral, useStagePlaybook } from '../hooks/useCrmQueries';
 import { getDealLeadInfo } from '../services/crmDealsService';
 import { detectFunnelStagePositions } from '../services/crmDashboardService';
 import { useTeamMembers } from '../../../hooks/queries';
@@ -17,6 +17,7 @@ import { supabase } from '../../../lib/supabase';
 import { DealFormModal } from '../components/DealFormModal';
 import { LostReasonModal } from '../components/LostReasonModal';
 import { ImportLeadsModal } from '../components/ImportLeadsModal';
+import { StagePlaybookModal } from '../components/StagePlaybookModal';
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
@@ -549,7 +550,8 @@ function PhaseBands({ stages }) {
   );
 }
 
-function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete, allStages, onMoveStage }) {
+function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete, allStages, onMoveStage, onOpenPlaybook, stepCount = 0 }) {
+  const hasPlaybook = stepCount > 0 || !!stage.objetivo;
   const isDragOver = dragOverStageId === stage.id;
   const learnedStage = learned?.stages?.find(s => s.position === stage.position);
   const showConv = learnedStage && learnedStage.sampleSize >= 5;
@@ -585,6 +587,19 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {/* Processo da etapa (080): objetivo + passos com script. Fica ao
+              lado do "+" porque e consulta de rotina do vendedor, nao config. */}
+          <button
+            onClick={() => onOpenPlaybook?.(stage)}
+            title={stage.objetivo ? `Processo: ${stage.objetivo}` : 'Processo da etapa'}
+            className={`p-1 rounded-md transition-colors ${
+              hasPlaybook
+                ? 'text-fyness-primary hover:bg-fyness-primary/10'
+                : 'text-slate-300 dark:text-slate-600 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <BookOpen size={15} />
+          </button>
           <button
             onClick={() => setQuickAddOpen(true)}
             title="Criar negocio rapido"
@@ -597,6 +612,21 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           </span>
         </div>
       </div>
+
+      {/* Objetivo da etapa: o vendedor precisa saber pra que a coluna serve sem
+          ter que abrir nada. Clicavel porque quem le o objetivo geralmente quer
+          o passo a passo em seguida. */}
+      {stage.objetivo && (
+        <button
+          onClick={() => onOpenPlaybook?.(stage)}
+          className="px-3 pb-2 -mt-0.5 text-left w-full group"
+          title="Ver o processo da etapa"
+        >
+          <span className="text-[11px] leading-snug text-slate-400 dark:text-slate-500 line-clamp-2 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
+            {stage.objetivo}
+          </span>
+        </button>
+      )}
 
       {/* Drop zone com scroll vertical */}
       <div
@@ -1196,6 +1226,9 @@ export function CrmPipelinePage() {
 
   const { data: pipelineData, isLoading: loadingDeals } = useCrmPipelineWithDeals(activePipelineId);
   const { data: learned } = useLearnedProbabilities(activePipelineId);
+  // Playbook de todas as etapas de uma vez (uma query pra pipeline inteira, em
+  // vez de uma por coluna).
+  const { data: playbook } = useStagePlaybook(activePipelineId);
   const moveMutation = useMoveCrmDeal();
   const lostMutation = useMarkDealLost();
   const deleteDealMutation = useDeleteCrmDeal();
@@ -1228,8 +1261,18 @@ export function CrmPipelinePage() {
   const [lostModalDealId, setLostModalDealId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [deleteDealTarget, setDeleteDealTarget] = useState(null);
+  const [playbookStage, setPlaybookStage] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const draggingDealId = useRef(null);
+
+  // Referencia estavel: `playbook?.[id] || []` criaria um array novo a cada
+  // render numa etapa sem passos, e o useEffect do modal (que depende de steps)
+  // resetaria o rascunho a cada tecla — justo ao escrever o processo do zero.
+  // Precisa vir DEPOIS do useState do playbookStage (const nao hoista valor).
+  const playbookSteps = useMemo(
+    () => (playbookStage ? (playbook?.[playbookStage.id] || []) : []),
+    [playbookStage, playbook],
+  );
 
   // View mode (kanban ou lista) — persiste em URL e tambem em localStorage
   // pra retornar pra view preferida do usuario quando entra sem param.
@@ -1583,6 +1626,8 @@ export function CrmPipelinePage() {
                   stage={stage}
                   learned={learned}
                   filteredDeals={filterDeals(stage.deals)}
+                  onOpenPlaybook={setPlaybookStage}
+                  stepCount={(playbook?.[stage.id] || []).length}
                   dragOverStageId={dragOverStageId}
                   onNewDeal={handleNewDeal}
                   onQuickAdd={handleQuickAdd}
@@ -1633,6 +1678,14 @@ export function CrmPipelinePage() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         pipeline={pipelineData}
+      />
+
+      <StagePlaybookModal
+        open={!!playbookStage}
+        onClose={() => setPlaybookStage(null)}
+        stage={playbookStage}
+        pipelineId={activePipelineId}
+        steps={playbookSteps}
       />
 
       <ConfettiCelebration show={showConfetti} onDone={() => setShowConfetti(false)} />
