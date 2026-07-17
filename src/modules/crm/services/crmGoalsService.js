@@ -135,7 +135,7 @@ export async function getGoalsProgress(goals) {
 
   const { data, error } = await supabase
     .from('crm_deals')
-    .select('created_by, value, closed_at')
+    .select('owner_id, created_by, value, closed_at')
     .eq('status', 'won')
     .gte('closed_at', minStart)
     .lte('closed_at', maxEndBound)
@@ -152,8 +152,13 @@ export async function getGoalsProgress(goals) {
     const d = dateStr.split('T')[0];
     return d >= goal.periodStart && d <= goal.periodEnd;
   };
-  const ownerMatch = (row, goal) =>
-    goal.type === 'global' || row.created_by === goal.owner?.authUserId;
+  // owner_id e created_by sao ids diferentes: owner_id/goal.ownerId sao team_members.id,
+  // created_by/owner.authUserId sao auth uid. Deal sem dono cai no criador (base antiga).
+  const ownerMatch = (row, goal) => {
+    if (goal.type === 'global') return true;
+    if (row.owner_id) return row.owner_id === goal.ownerId;
+    return !!goal.owner?.authUserId && row.created_by === goal.owner.authUserId;
+  };
 
   const progressMap = {};
 

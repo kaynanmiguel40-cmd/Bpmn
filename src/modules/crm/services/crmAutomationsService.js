@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '../../../lib/supabase';
+import { toBrazilE164 } from './crmMessagesService';
 
 // ─── Transformers ─────────────────────────────────────────────────────────────
 
@@ -246,12 +247,12 @@ async function dispatchEmail({ to, subject, body }) {
 }
 
 /**
- * Normaliza telefone para o formato esperado pela Evolution API:
- * apenas dígitos (sem '+', espaços, parênteses).
+ * Normaliza telefone para o formato esperado pela Evolution API. Mesma regra do
+ * envio manual (toBrazilE164): sem o DDI 55 a edge function trata o numero como
+ * LID e a mensagem nao chega no lead.
  */
 function normalizePhone(raw) {
-  if (!raw) return '';
-  return String(raw).replace(/\D/g, '');
+  return toBrazilE164(raw);
 }
 
 /**

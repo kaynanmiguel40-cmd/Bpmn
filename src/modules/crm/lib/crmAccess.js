@@ -33,9 +33,10 @@ export const CRM_SECTIONS = [
   // essa secao pra ninguem, ficando implicitamente aberta pra quem soubesse a URL.
   { key: 'traffic',     label: 'Tráfego Pago',     group: 'Prospecção' },
   { key: 'cadastros',   label: 'Cadastros',        group: 'Cadastros' },
-  { key: 'comparativo', label: 'Comparativo',      group: 'Gestão' },
-  { key: 'goals',       label: 'Metas',            group: 'Gestão' },
-  { key: 'planejamento',label: 'Planejamento',     group: 'Gestão' },
+  // O Comparativo (previsto x real) e o "Dashboard" do CRM. Como o CRM abre na
+  // Pipeline, ele NAO e a landing — segue numa rota propria e bloqueavel.
+  { key: 'comparativo', label: 'Dashboard',        group: 'Gestão' },
+  // 'goals' (Metas) e 'planejamento' saíram: as seções foram removidas do CRM.
   { key: 'equipe',      label: 'Equipe',           group: 'Gestão' },
   { key: 'settings',    label: 'Configurações',    group: 'Gestão' },
 ];

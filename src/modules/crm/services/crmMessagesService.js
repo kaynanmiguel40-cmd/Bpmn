@@ -235,11 +235,35 @@ export async function getInboxConversations({ limit = 100, search = '' } = {}) {
 // ==================== ENVIO (Edge Function) ====================
 
 /**
+ * Normaliza telefone BR pro formato que a `evolution-send` espera: digitos com
+ * DDI 55. La, numero sem '55' (ou com mais de 13 digitos) e tratado como LID e
+ * endereçado pra `<numero>@lid` — que nao e o do lead. Contato gravado em
+ * formato nacional ("(35) 99228-5099") cai nisso se enviado cru.
+ */
+export function toBrazilE164(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  // jid/lid ja pronto (ex: '211398994968714@lid') vai intacto.
+  if (s.includes('@')) return s;
+
+  const digits = s.replace(/\D/g, '');
+  // DDI 55 + DDD (2) + 8 ou 9 digitos: ja esta em E.164.
+  if (digits.length >= 12 && digits.length <= 13 && digits.startsWith('55')) return digits;
+  // Nacional: DDD (2) + 8 ou 9 digitos. O '55' inicial aqui e o DDD do RS,
+  // nao o DDI — por isso o teste acima exige length >= 12.
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  // Nao reconhecido (LID opaco, numero de outro pais): repassa os digitos e
+  // deixa a edge function decidir o endereçamento.
+  return digits;
+}
+
+/**
  * Envia mensagem via Evolution API (Edge Function).
  *
  * @param {object} payload
  * @param {string} payload.instanceName - nome da instancia (default: VITE_EVOLUTION_INSTANCE_DEFAULT)
- * @param {string} payload.phone        - destinatario (E.164 sem '+')
+ * @param {string} payload.phone        - destinatario; aceita formato nacional
+ *   ("(35) 99228-5099") ou E.164 sem '+' — normalizado pra DDI 55 no envio.
  * @param {string} [payload.content]    - texto (obrigatorio se sem media)
  * @param {string} [payload.mediaUrl]   - url publica
  * @param {string} [payload.mediaType]  - 'image'|'audio'|'video'|'document'
@@ -255,7 +279,8 @@ export async function sendCrmMessage(payload) {
     || import.meta.env.VITE_EVOLUTION_INSTANCE_DEFAULT
     || 'fyness-principal';
 
-  if (!payload.phone) {
+  const phone = toBrazilE164(payload.phone);
+  if (!phone) {
     toast('Telefone destino e obrigatorio', 'error');
     return { ok: false, error: 'phone obrigatorio' };
   }
@@ -274,7 +299,7 @@ export async function sendCrmMessage(payload) {
   const { data, error } = await supabase.functions.invoke('evolution-send', {
     body: {
       instanceName,
-      phone:        payload.phone,
+      phone,
       content:      payload.content,
       mediaUrl:     payload.mediaUrl,
       mediaType:    payload.mediaType,

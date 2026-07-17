@@ -1177,10 +1177,14 @@ export function useUpdateCrmProspect() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, updates }) => updateCrmProspect(id, updates),
-    onSuccess: () => {
+    onSuccess: (updated) => {
+      // update() resolve null quando a validacao reprova (o service ja avisou);
+      // nada foi gravado, entao nao pode dizer que atualizou.
+      if (!updated) return;
       qc.invalidateQueries({ queryKey: crmQueryKeys.prospects });
       toast('Prospect atualizado', 'success');
     },
+    onError: (err) => toast(`Erro ao atualizar prospect: ${err?.message || err}`, 'error'),
   });
 }
 
@@ -1188,7 +1192,10 @@ export function useDeleteCrmProspect() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: softDeleteCrmProspect,
-    onSuccess: () => {
+    onSuccess: (ok) => {
+      // softDeleteCrmProspect devolve false (e ja mostrou o toast de erro) em vez
+      // de lancar — sem esse guard sairia um "excluido" verde junto com o erro.
+      if (!ok) return;
       qc.invalidateQueries({ queryKey: crmQueryKeys.prospects });
       toast('Prospect excluido', 'success');
     },

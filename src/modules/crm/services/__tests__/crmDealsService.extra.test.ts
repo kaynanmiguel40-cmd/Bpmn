@@ -340,6 +340,8 @@ describe('updateCrmDeal', () => {
   });
 
   it('status=won injeta closedAt + probability (nao some dos relatorios)', async () => {
+    const { chain } = makeChain({ data: { status: 'open', closed_at: null }, error: null });
+    mockedSupabase.from.mockReturnValue(chain);
     mockUpdate.mockResolvedValueOnce({ id: 'd1', status: 'won' });
 
     await updateCrmDeal('d1', { status: 'won' });
@@ -351,6 +353,8 @@ describe('updateCrmDeal', () => {
   });
 
   it('status=lost injeta closedAt + probability 0', async () => {
+    const { chain } = makeChain({ data: { status: 'open', closed_at: null }, error: null });
+    mockedSupabase.from.mockReturnValue(chain);
     mockUpdate.mockResolvedValueOnce({ id: 'd1', status: 'lost' });
 
     await updateCrmDeal('d1', { status: 'lost' });
@@ -358,6 +362,29 @@ describe('updateCrmDeal', () => {
     const passed = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
     expect(passed.closedAt).toEqual(expect.any(String));
     expect(passed.probability).toBe(0);
+  });
+
+  it('editar deal ja ganho preserva o closed_at original', async () => {
+    const { chain } = makeChain({ data: { status: 'won', closed_at: '2026-01-10T12:00:00Z' }, error: null });
+    mockedSupabase.from.mockReturnValue(chain);
+    mockUpdate.mockResolvedValueOnce({ id: 'd1', status: 'won' });
+
+    // o formulario reenvia status='won' e nunca manda closedAt
+    await updateCrmDeal('d1', { title: 'titulo corrigido', status: 'won' });
+
+    const passed = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(passed.closedAt).toBeUndefined();
+  });
+
+  it('deal fechado sem closed_at recebe backfill', async () => {
+    const { chain } = makeChain({ data: { status: 'won', closed_at: null }, error: null });
+    mockedSupabase.from.mockReturnValue(chain);
+    mockUpdate.mockResolvedValueOnce({ id: 'd1', status: 'won' });
+
+    await updateCrmDeal('d1', { status: 'won' });
+
+    const passed = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(passed.closedAt).toEqual(expect.any(String));
   });
 
   it('status=open (reabrir) limpa closedAt', async () => {

@@ -59,7 +59,9 @@ export function getGoalHealth(goal, currentProgress) {
   const end = new Date(goal.periodEnd + 'T00:00:00');
   if (now < start) return null;
 
-  const totalDays = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
+  // periodEnd e inclusivo (01/07 a 31/07 = 31 dias), por isso o +1: sem ele o
+  // tempo satura em 100% um dia antes do prazo e contradiz o "Xd restante".
+  const totalDays = Math.max(1, (end - start) / (1000 * 60 * 60 * 24) + 1);
   const elapsedDays = Math.min(totalDays, (now - start) / (1000 * 60 * 60 * 24));
   const timePercent = elapsedDays / totalDays;
   const expectedProgress = goal.targetValue * timePercent;

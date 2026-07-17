@@ -268,12 +268,24 @@ export async function updateCrmDeal(id: string, updates: Record<string, unknown>
   // won/lost pelo formulario fica sem closed_at e SOME dos relatorios que
   // filtram por closed_at — a divergencia classica entre arrastar e editar.
   const next = { ...updates };
-  if (next.status === 'won') {
-    if (next.closedAt === undefined) next.closedAt = new Date().toISOString();
-    if (next.probability === undefined) next.probability = 100;
-  } else if (next.status === 'lost') {
-    if (next.closedAt === undefined) next.closedAt = new Date().toISOString();
-    if (next.probability === undefined) next.probability = 0;
+  if (next.status === 'won' || next.status === 'lost') {
+    if (next.closedAt === undefined) {
+      // o formulario SEMPRE manda status e NUNCA manda closedAt, entao o
+      // payload nao distingue "fechando agora" de "editando deal ja fechado".
+      // Quem decide e o estado ATUAL: so carimba na transicao real (open ->
+      // fechado) ou pra preencher fechado sem data. Reescrever aqui remarcaria
+      // a venda de periodo nos relatorios a cada edicao.
+      const { data: current } = await supabase
+        .from('crm_deals')
+        .select('status, closed_at')
+        .eq('id', id)
+        .single();
+      const cur = current as { status?: DealStatus; closed_at?: string | null } | null;
+      if (!cur?.closed_at || cur.status === 'open') {
+        next.closedAt = new Date().toISOString();
+      }
+    }
+    if (next.probability === undefined) next.probability = next.status === 'won' ? 100 : 0;
   } else if (next.status === 'open') {
     next.closedAt = null; // reabrir limpa o fechamento
   }

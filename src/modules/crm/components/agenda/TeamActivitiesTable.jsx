@@ -5,7 +5,7 @@
  * util pra achar uma atividade especifica ou auditar o que ja foi feito.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CalendarCheck, Plus, Phone, Mail, Video, FileText, MapPin, Coffee, MessageCircle,
@@ -86,7 +86,14 @@ export function TeamActivitiesTable() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [completingTask, setCompletingTask] = useState(null);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, typeFilter, statusFilter]);
+  // Nao reseta no mount, senao apaga o atPage vindo da URL (link compartilhado).
+  const prevFilters = useRef({ debouncedSearch, typeFilter, statusFilter });
+  useEffect(() => {
+    const prev = prevFilters.current;
+    if (prev.debouncedSearch === debouncedSearch && prev.typeFilter === typeFilter && prev.statusFilter === statusFilter) return;
+    prevFilters.current = { debouncedSearch, typeFilter, statusFilter };
+    setPage(1);
+  }, [debouncedSearch, typeFilter, statusFilter]);
 
   const handleNew = () => { setEditActivity(null); setFormOpen(true); };
   const handleEdit = (activity) => { setEditActivity(activity); setFormOpen(true); };

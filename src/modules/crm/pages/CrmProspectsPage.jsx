@@ -33,8 +33,15 @@ import { useUrlState, useUrlInt } from '../../../hooks/useUrlState';
 import { enrichProspectWithGoogle } from '../../../lib/googlePlacesService';
 import { lookupCnpjByName } from '../services/crmProspectsService';
 import { getUsage, setCdBalance } from '../../../lib/usageTracker';
+import { toast } from '../../../contexts/ToastContext';
 
 // ==================== CONSTANTES ====================
+
+// A lista gerada so devolve ids sinteticos (api_/gpl_/crm_c_/crm_co_) — esses
+// leads nao sao linha de crm_prospects, entao editar/excluir vale so na lista.
+// Id uuid = prospect persistido, esse sim vai pro banco.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isPersistedProspectId = (id) => typeof id === 'string' && UUID_RE.test(id);
 
 const REVENUE_RANGES = [
   { key: 'ate100k', label: 'Ate R$ 100 mil/ano', min: 0, max: 100000 },
@@ -311,7 +318,7 @@ function SendToPipelineModal({ open, onClose, selectedCount, selectedProspects, 
 
 // ==================== MODAL EDITAR LEAD ====================
 
-function EditLeadModal({ open, onClose, prospect }) {
+function EditLeadModal({ open, onClose, prospect, onSaved }) {
   const updateMutation = useUpdateCrmProspect();
   const [form, setForm] = useState({});
 
@@ -339,7 +346,17 @@ function EditLeadModal({ open, onClose, prospect }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!prospect) return;
-    await updateMutation.mutateAsync({ id: prospect.id, updates: form });
+    if (isPersistedProspectId(prospect.id)) {
+      try {
+        const saved = await updateMutation.mutateAsync({ id: prospect.id, updates: form });
+        if (!saved) return;
+      } catch {
+        return; // service/hook ja mostraram o erro
+      }
+    } else {
+      toast('Lead atualizado na lista', 'success');
+    }
+    onSaved?.({ ...prospect, ...form });
     onClose();
   };
 
@@ -615,6 +632,9 @@ export function CrmProspectsPage() {
   // paginacao tradicional. Filtros (WhatsApp etc.) podem reduzir muito o
   // visivel, e a gente quer sempre ter 15+ leads na tela sem o usuario clicar.
   const [accumulated, setAccumulated] = useState([]);
+  // Ids que o usuario tirou da lista — o append tem que respeitar, senao a
+  // proxima page traz o lead excluido de volta.
+  const [removedIds, setRemovedIds] = useState(() => new Set());
   const [autoLoading, setAutoLoading] = useState(false);
   const MAX_AUTO_PAGES = 3;
   const TARGET_VISIBLE = 15;
@@ -622,20 +642,25 @@ export function CrmProspectsPage() {
   // Reset do acumulado quando filtros aplicados ou fonte mudam
   useEffect(() => {
     setAccumulated([]);
+    setRemovedIds(new Set());
     setAutoLoading(false);
     setGooglePageToken('');
   }, [appliedFilters, isPartners, searchSource]);
 
   // Append sempre que vier nova page. Dedup por CNPJ (CD) ou googlePlaceId (Google).
+  // accumulated.length nas deps: "Gerar Lista"/"Atualizar" com os mesmos filtros
+  // zera o acumulado sem trocar a referencia de `data` (cache hit) — sem isso a
+  // lista ficaria vazia ate o usuario mexer em algum filtro.
   useEffect(() => {
     if (!data?.data?.length) return;
     setAccumulated(prev => {
       const seenIds = new Set(prev.map(p => p.id).filter(Boolean));
-      const fresh = data.data.filter(p => p.id && !seenIds.has(p.id));
+      const fresh = data.data.filter(p => p.id && !seenIds.has(p.id) && !removedIds.has(p.id));
       return fresh.length > 0 ? [...prev, ...fresh] : prev;
     });
     setAutoLoading(false);
-  }, [data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, accumulated.length, removedIds]);
 
   const prospects = generated ? accumulated : [];
   const total = generated ? (data?.count || 0) : 0;
@@ -852,7 +877,19 @@ export function CrmProspectsPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await deleteMutation.mutateAsync(deleteTarget.id);
+    const { id } = deleteTarget;
+    if (isPersistedProspectId(id)) {
+      const ok = await deleteMutation.mutateAsync(id);
+      if (!ok) { setDeleteTarget(null); return; } // service ja mostrou o erro
+    }
+    setRemovedIds(prev => new Set(prev).add(id));
+    setAccumulated(prev => prev.filter(p => p.id !== id));
+    setSelectedIds(prev => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     setDeleteTarget(null);
   };
 
@@ -1660,6 +1697,7 @@ export function CrmProspectsPage() {
         open={!!editProspect}
         onClose={() => setEditProspect(null)}
         prospect={editProspect}
+        onSaved={(updated) => setAccumulated(prev => prev.map(p => (p.id === updated.id ? updated : p)))}
       />
 
       <SendToPipelineModal

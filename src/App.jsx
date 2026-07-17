@@ -23,7 +23,8 @@ const ArquivosPage = lazy(() => import('./pages/arquivos/ArquivosPage'))
 
 // CRM Module (lazy loaded — app dentro do app)
 const CrmLayout = lazy(() => import('./modules/crm/components/layout/CrmLayout'))
-const CrmDashboardPage = lazy(() => import('./modules/crm/pages/CrmDashboardPage'))
+// CrmDashboardPage: fora do ar — o Comparativo virou o dashboard (/crm).
+// Arquivo preservado; pra religar, aponte a rota index de volta pra ele.
 const CrmPipelinePage = lazy(() => import('./modules/crm/pages/CrmPipelinePage'))
 const CrmDealsPage = lazy(() => import('./modules/crm/pages/CrmDealsPage'))
 const CrmDealDetailPage = lazy(() => import('./modules/crm/pages/CrmDealDetailPage'))
@@ -32,8 +33,8 @@ const CrmContactDetailPage = lazy(() => import('./modules/crm/pages/CrmContactDe
 const CrmCompaniesPage = lazy(() => import('./modules/crm/pages/CrmCompaniesPage'))
 const CrmCompanyDetailPage = lazy(() => import('./modules/crm/pages/CrmCompanyDetailPage'))
 const CrmAgendaPage = lazy(() => import('./modules/crm/pages/CrmAgendaPage'))
-const CrmGoalsPage = lazy(() => import('./modules/crm/pages/CrmGoalsPage'))
-const CrmPlanningPage = lazy(() => import('./modules/crm/pages/CrmPlanningPage'))
+// CrmGoalsPage e CrmPlanningPage: fora do ar (Metas e Planejamento removidos do
+// CRM). Arquivos preservados; pra religar, reponha o lazy import e as rotas.
 const ComparativoPage = lazy(() => import('./modules/crm/pages/ComparativoPage'))
 const CrmTrafficPage = lazy(() => import('./modules/crm/pages/CrmTrafficPage'))
 const CrmProspectsPage = lazy(() => import('./modules/crm/pages/CrmProspectsPage'))
@@ -101,7 +102,10 @@ function App() {
                 vira "Algo deu errado" (com stack no console) em vez de tela branca total. */}
             <Route element={<ProtectedRoute />}>
               <Route path="/crm" element={<ErrorBoundary><CrmLayout /></ErrorBoundary>}>
-                <Route index element={<ErrorBoundary><CrmDashboardPage /></ErrorBoundary>} />
+                {/* O CRM sempre abre na Pipeline. Redireciona (em vez de
+                    renderizar aqui) pra rota /crm/pipeline passar pelo guard de
+                    acesso — renderizar direto no index burlaria o bloqueio. */}
+                <Route index element={<Navigate to="/crm/pipeline" replace />} />
                 {/* Daily virou a aba "Time" da Agenda — mantem o link antigo funcionando. */}
                 <Route path="daily" element={<Navigate to="/crm/agenda?visao=team" replace />} />
                 <Route path="pipeline" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
@@ -120,8 +124,10 @@ function App() {
                 <Route path="discador/historico" element={<ErrorBoundary><CrmCallHistoryPage /></ErrorBoundary>} />
                 <Route path="inbox" element={<ErrorBoundary><CrmInboxPage /></ErrorBoundary>} />
                 <Route path="whatsapp" element={<ErrorBoundary><CrmWhatsAppSetupPage /></ErrorBoundary>} />
-                <Route path="goals" element={<ErrorBoundary><CrmGoalsPage /></ErrorBoundary>} />
-                <Route path="planejamento" element={<ErrorBoundary><CrmPlanningPage /></ErrorBoundary>} />
+                {/* Metas e Planejamento removidos — links antigos caem na Pipeline. */}
+                <Route path="goals" element={<Navigate to="/crm/pipeline" replace />} />
+                <Route path="planejamento" element={<Navigate to="/crm/pipeline" replace />} />
+                {/* Comparativo = o "Dashboard" do CRM (substituiu o antigo). */}
                 <Route path="comparativo" element={<ErrorBoundary><ComparativoPage /></ErrorBoundary>} />
                 <Route path="traffic" element={<ErrorBoundary><CrmTrafficPage /></ErrorBoundary>} />
                 <Route path="prospects" element={<ErrorBoundary><CrmProspectsPage /></ErrorBoundary>} />

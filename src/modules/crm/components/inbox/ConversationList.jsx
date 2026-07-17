@@ -231,16 +231,11 @@ export function ConversationList({ activeKey, onSelect }) {
     }
     if (ownerFilter === 'mine' && myMemberId) list = list.filter((c) => c._owner?.id === myMemberId);
     if (onlyOverdue) list = list.filter((c) => c._overdueH != null);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter((c) =>
-        (c.otherName || '').toLowerCase().includes(q) ||
-        (c.otherPhone || '').includes(q) ||
-        (c.lastMessage || '').toLowerCase().includes(q)
-      );
-    }
+    // Sem filtro por termo aqui de proposito: quem busca e o server (inboxOpts),
+    // que casa em campos que a conversa nao carrega (ex: company_name do prospect).
+    // Refiltrar no client descartaria justamente esses matches.
     return list;
-  }, [enriched, search, showingAll, selectedPhone, ownerFilter, myMemberId, onlyOverdue]);
+  }, [enriched, showingAll, selectedPhone, ownerFilter, myMemberId, onlyOverdue]);
 
   return (
     <aside className="w-full max-w-sm flex flex-col bg-white dark:bg-[#111b21] border-r border-black/10 dark:border-white/5">

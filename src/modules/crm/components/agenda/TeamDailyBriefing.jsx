@@ -10,11 +10,10 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Phone, MessageCircle, Calendar, CheckCircle2,
   RefreshCw, DollarSign, Layers,
-  Target, AlertTriangle, ArrowRight, Sun,
+  AlertTriangle, Sun,
 } from 'lucide-react';
 import { CrmKpiCard } from '../ui';
 import { useDailyScoreboard, useDailyBriefing } from '../../hooks/useCrmQueries';
@@ -101,7 +100,6 @@ export function TeamDailyBriefing() {
 
   const agendaToday = briefing?.agenda?.today || [];
   const agendaOverdue = briefing?.agenda?.overdue || [];
-  const goal = briefing?.goal || { hasGoal: false, target: 0, current: 0, pct: 0 };
 
   const isYesterday = offset === -1;
   const cards = {
@@ -145,51 +143,10 @@ export function TeamDailyBriefing() {
         <CrmKpiCard title="Contratos fechados" rawValue={cards.contracts} icon={CheckCircle2} color="green" loading={isLoading} />
       </div>
 
-      {/* Meta x realizado do mes */}
-      <div className="crm-glass rounded-2xl p-5 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Target size={18} className="text-fyness-primary" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-              Meta do mês {goal.hasGoal && goal.title ? <span className="font-normal text-slate-400">· {goal.title}</span> : null}
-            </h3>
-          </div>
-          {goal.hasGoal && (
-            <span className="text-sm font-bold tnum text-slate-900 dark:text-white">{goal.pct}%</span>
-          )}
-        </div>
-
-        {briefingLoading && !isYesterday ? (
-          <div className="h-9 bg-slate-100 dark:bg-slate-800/60 rounded-lg animate-pulse" />
-        ) : goal.hasGoal ? (
-          <>
-            <div className="h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${goal.pct >= 100 ? 'bg-emerald-500' : 'bg-fyness-primary'}`}
-                style={{ width: `${goal.pct}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between mt-2 text-sm">
-              <span className="font-semibold text-slate-700 dark:text-slate-200">{formatCurrency(goal.current)}</span>
-              <span className="text-slate-400 dark:text-slate-500">
-                {goal.current >= goal.target
-                  ? 'meta batida 🎉'
-                  : `faltam ${formatCurrency(goal.target - goal.current)}`}
-                {' · meta '}{formatCurrency(goal.target)}
-              </span>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="text-slate-500 dark:text-slate-400">
-              Nenhuma meta global definida — já fechou <strong className="text-slate-700 dark:text-slate-200">{formatCurrency(goal.current)}</strong> no mês.
-            </span>
-            <Link to="/crm/goals" className="shrink-0 inline-flex items-center gap-1 text-fyness-primary font-semibold hover:underline">
-              Definir meta <ArrowRight size={14} />
-            </Link>
-          </div>
-        )}
-      </div>
+      {/* Meta do mes saiu junto com a secao Metas (crm_goals) — sem tela pra
+          criar/editar, o painel so mostraria "nenhuma meta definida" pra sempre.
+          A "Meta do mes" que sobrou e a do Dashboard/Comparativo, que vem do
+          plano comercial (nao do crm_goals). */}
 
       {/* Hoje o time precisa: agenda + atrasados (oculto na visao Ontem/apresentacao) */}
       {!isYesterday && (

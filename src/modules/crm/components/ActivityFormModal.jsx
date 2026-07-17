@@ -34,6 +34,7 @@ import {
   useDeleteCrmActivity,
   useReportOwners,
 } from '../hooks/useCrmQueries';
+import { getActivityAttendees } from '../services/crmActivitiesService';
 
 // Converte Date ou ISO string para formato aceito pelo <input type="datetime-local">:
 // "YYYY-MM-DDTHH:MM" (hora LOCAL do usuario, sem fuso).
@@ -175,26 +176,6 @@ export function ActivityFormModal({
   const assignedTo = watch('assignedTo');
   const { data: owners = [] } = useReportOwners();
 
-  // Em tarefa NOVA, responsável já vem preenchido: o vendedor cuja agenda
-  // está sendo vista (defaultAssignedTo), ou você mesmo na ausência disso.
-  // Roda UMA vez por abertura (ref). Antes tinha `assignedTo` nas deps e a
-  // guarda `!assignedTo`, então re-disparava sempre que o campo ficava vazio —
-  // escolher "— Selecionar responsável —" revertia sozinho pro default (clique
-  // morto). Com o ref, limpar o campo agora fica limpo.
-  const assigneeInitRef = useRef(false);
-  useEffect(() => {
-    if (!open) { assigneeInitRef.current = false; return; }
-    if (isEdit || !owners.length || assigneeInitRef.current) return;
-    assigneeInitRef.current = true;
-    if (defaultAssignedTo) {
-      setValue('assignedTo', defaultAssignedTo);
-      setValue('assignedToName', defaultAssignedToName || owners.find(o => o.authUserId === defaultAssignedTo)?.name || null);
-      return;
-    }
-    const me = owners.find(o => o.isMe) || owners[0];
-    if (me) { setValue('assignedTo', me.authUserId); setValue('assignedToName', me.name); }
-  }, [open, isEdit, owners, setValue, defaultAssignedTo, defaultAssignedToName]);
-
   useEffect(() => {
     if (open && activity) {
       reset({
@@ -229,6 +210,41 @@ export function ActivityFormModal({
       });
     }
   }, [open, activity, reset, defaultDealId, defaultContactId]);
+
+  // Em tarefa NOVA, responsável já vem preenchido: o vendedor cuja agenda
+  // está sendo vista (defaultAssignedTo), ou você mesmo na ausência disso.
+  // Roda UMA vez por abertura (ref). Antes tinha `assignedTo` nas deps e a
+  // guarda `!assignedTo`, então re-disparava sempre que o campo ficava vazio —
+  // escolher "— Selecionar responsável —" revertia sozinho pro default (clique
+  // morto). Com o ref, limpar o campo agora fica limpo.
+  // Precisa ficar DEPOIS do reset acima: os dois disparam no mesmo commit
+  // quando `open` vira true, e o reset zera assignedTo.
+  const assigneeInitRef = useRef(false);
+  useEffect(() => {
+    if (!open) { assigneeInitRef.current = false; return; }
+    if (isEdit || !owners.length || assigneeInitRef.current) return;
+    assigneeInitRef.current = true;
+    if (defaultAssignedTo) {
+      setValue('assignedTo', defaultAssignedTo);
+      setValue('assignedToName', defaultAssignedToName || owners.find(o => o.authUserId === defaultAssignedTo)?.name || null);
+      return;
+    }
+    const me = owners.find(o => o.isMe) || owners[0];
+    if (me) { setValue('assignedTo', me.authUserId); setValue('assignedToName', me.name); }
+  }, [open, isEdit, owners, setValue, defaultAssignedTo, defaultAssignedToName]);
+
+  // Convidados vivem em agenda_events, não em crm_activities — o objeto
+  // `activity` nunca os traz, então o form precisa buscá-los. Sem isso a edição
+  // salvava attendees:[] e apagava os convidados já gravados no evento.
+  // Também precisa ficar DEPOIS do reset (que zera attendees).
+  useEffect(() => {
+    if (!open || !activity?.agendaEventId) return;
+    let cancelled = false;
+    getActivityAttendees(activity.agendaEventId).then(emails => {
+      if (!cancelled && emails.length) setValue('attendees', emails);
+    });
+    return () => { cancelled = true; };
+  }, [open, activity?.agendaEventId, setValue]);
 
   const onSubmit = async (data) => {
     // <input type="datetime-local"> devolve "YYYY-MM-DDTHH:MM" sem timezone.

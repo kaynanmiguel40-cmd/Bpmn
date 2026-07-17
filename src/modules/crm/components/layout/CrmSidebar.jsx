@@ -17,13 +17,10 @@ import {
   CalendarDays,
   Settings,
   UserCog,
-  Target,
-  Trophy,
   Crosshair,
   Zap,
   PhoneCall,
   MessageCircle,
-  Filter,
 } from 'lucide-react';
 import logoFyness from '../../../../assets/logo-fyness.png';
 
@@ -54,10 +51,9 @@ const crmNavItems = [
   { section: 'Cadastros' },
   { to: '/crm/cadastros', icon: Users, label: 'Cadastros', sectionKey: 'cadastros' },
   { section: 'Gestao' },
-  { to: '/crm', icon: LayoutDashboard, label: 'Dashboard', exact: true }, // landing, sempre visível
-  { to: '/crm/comparativo', icon: Target, label: 'Comparativo', sectionKey: 'comparativo' },
-  { to: '/crm/goals', icon: Trophy, label: 'Metas', sectionKey: 'goals' },
-  { to: '/crm/planejamento', icon: Filter, label: 'Planejamento', sectionKey: 'planejamento' },
+  // O Comparativo (previsto x real) VIROU o dashboard. Continua numa rota
+  // propria (nao e a landing — o CRM abre na Pipeline), entao segue bloqueavel.
+  { to: '/crm/comparativo', icon: LayoutDashboard, label: 'Dashboard', sectionKey: 'comparativo' },
   { divider: true },
   { to: '/crm/equipe', icon: UserCog, label: 'Equipe', sectionKey: 'equipe' },
   { to: '/crm/settings', icon: Settings, label: 'Configuracoes', sectionKey: 'settings' },

@@ -309,11 +309,15 @@ function FunnelCompare({ period }) {
   );
 
   const pctOf = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
+  // Sem estagio de "reuniao realizada" na pipeline, acontecidas cai pros ganhos:
+  // as duas taxas que dependem dela virariam tautologia (fechamento = 100% fixo).
+  // Nesse caso ficam indisponiveis (null -> "—") em vez de mostrar numero falso.
+  const heldTracked = !!f?.meetingHeldTracked;
   const premReal = {
     qualif: pctOf(f?.qualified || 0, f?.lead || 0),
     agendamento: pctOf(f?.meeting || 0, f?.qualified || 0),      // qualificado -> agendada
-    comparecimento: pctOf(f?.meetingHeld || 0, f?.meeting || 0),  // agendada -> acontecida
-    fechamento: pctOf(f?.closing || 0, f?.meetingHeld || 0),      // acontecida -> cliente
+    comparecimento: heldTracked ? pctOf(f?.meetingHeld || 0, f?.meeting || 0) : null,  // agendada -> acontecida
+    fechamento: heldTracked ? pctOf(f?.closing || 0, f?.meetingHeld || 0) : null,      // acontecida -> cliente
     reativacao: null, // nao rastreado direto
   };
 

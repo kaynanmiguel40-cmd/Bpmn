@@ -97,6 +97,8 @@ export async function getCrmPipelineWithDeals(pipelineId) {
 
   // Cadencia: conta os toques de follow-up (call/email) por deal e descobre o
   // proximo toque pendente. Alimenta o selo "Tentativa X/Y · proximo toque" no card.
+  // So conta atividades do template de cadencia (prefixo do titulo) — mesmo criterio
+  // do cancelCadenceForDeal; sem isso uma ligacao avulsa do Discador vira cadencia.
   const cadenceMap = {};
   if (dealIds.length > 0) {
     const { data: activities } = await supabase
@@ -104,6 +106,7 @@ export async function getCrmPipelineWithDeals(pipelineId) {
       .select('deal_id, start_date, completed')
       .in('deal_id', dealIds)
       .in('type', ['call', 'email'])
+      .ilike('title', 'Cadência ·%')
       .is('deleted_at', null);
 
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -293,7 +296,9 @@ export async function updateCrmPipeline(pipelineId, data) {
     // Histórico que referencia o estágio removido (só trilha de auditoria) —
     // limpa pra não travar o delete por FK nem deixar referência pendurada.
     await supabase.from('crm_deal_stage_history').delete().eq('to_stage_id', rem.id);
-    await supabase.from('crm_deal_stage_history').delete().eq('from_stage_id', rem.id);
+    // A linha de SAIDA da etapa removida eh a CHEGADA numa etapa que fica —
+    // nulifica a origem em vez de apagar, senao o deal perde o "dias na etapa".
+    await supabase.from('crm_deal_stage_history').update({ from_stage_id: null }).eq('from_stage_id', rem.id);
     const { error: delErr } = await supabase.from('crm_pipeline_stages').delete().eq('id', rem.id);
     if (delErr) console.warn('[updateCrmPipeline] falha ao remover etapa', rem.name, delErr.message);
   }

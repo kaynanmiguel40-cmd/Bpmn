@@ -11,7 +11,7 @@ import { ConversationList } from '../components/inbox/ConversationList';
 import { MessageThread } from '../components/inbox/MessageThread';
 import { MessageComposer } from '../components/inbox/MessageComposer';
 import { WhatsAppStatusBanner } from '../components/inbox/WhatsAppStatusBanner';
-import { useCrmInboxConversations, useCrmWhatsAppInstances, useCrmContact, useCrmProspect } from '../hooks/useCrmQueries';
+import { useCrmInboxConversations, useCrmWhatsAppInstances, useCrmContact, useCrmProspect, useCrmConversation } from '../hooks/useCrmQueries';
 
 export function CrmInboxPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -29,6 +29,18 @@ export function CrmInboxPage() {
   const { data: stubContact }  = useCrmContact(stubContactId);
   const { data: stubProspect } = useCrmProspect(stubProspectId);
 
+  // A lista so agrupa a janela recente de mensagens, entao conversa antiga (achada
+  // pela busca ou aberta por deep-link) vira stub. Sem o instanceId da ultima
+  // mensagem dela, a resposta sairia pelo fallback (1a instancia conectada) = numero
+  // errado. Mesma queryKey/limit do MessageThread, entao compartilha cache.
+  const { data: stubMessages = [] } = useCrmConversation({
+    contactId:  stubContactId,
+    prospectId: stubProspectId,
+    limit:      200,
+  });
+  // Mensagens vem em ordem ASC — a ultima e a mais recente.
+  const stubInstanceId = stubMessages.length ? stubMessages[stubMessages.length - 1].instanceId : null;
+
   // Conversa ativa: busca na lista pelo param da URL
   const activeConversation = useMemo(() => {
     if (contactParam) {
@@ -38,6 +50,7 @@ export function CrmInboxPage() {
       // (acontece quando vem do detalhe do contato pra abrir conversa pela primeira vez)
       return {
         contactId: contactParam,
+        instanceId: stubInstanceId,
         otherName: stubContact?.name || '',
         otherPhone: stubContact?.phone || '',
         avatarColor: stubContact?.avatarColor || null,
@@ -49,13 +62,14 @@ export function CrmInboxPage() {
       if (p) return p;
       return {
         prospectId: prospectParam,
+        instanceId: stubInstanceId,
         otherName: stubProspect?.contactName || stubProspect?.companyName || '',
         otherPhone: stubProspect?.phone || '',
         avatarUrl: stubProspect?.avatarUrl || null,
       };
     }
     return null;
-  }, [conversations, contactParam, prospectParam, stubContact, stubProspect]);
+  }, [conversations, contactParam, prospectParam, stubContact, stubProspect, stubInstanceId]);
 
   const activeKey = activeConversation
     ? activeConversation.contactId

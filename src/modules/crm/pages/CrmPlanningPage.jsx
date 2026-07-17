@@ -154,10 +154,18 @@ export function CrmPlanningPage() {
     update({ ...form, stages });
   };
 
+  // Enquanto digita, so guarda o valor cru: um prefixo ("1" de "100") nao pode
+  // passar pelo reconcile, senao o cap de 100% apaga o campo no meio da digitacao.
   const updateCount = (i, value) => {
     const counts = [...form.counts];
     counts[i] = value;
-    const reconciled = reconcileFunnel(form.stages, counts, form.rates);
+    update({ ...form, counts });
+  };
+
+  // So no blur o valor e final — ai sim reconcilia (contagem de baixo manda).
+  const commitCounts = () => {
+    const reconciled = reconcileFunnel(form.stages, form.counts, form.rates);
+    if (reconciled.counts === form.counts && reconciled.rates === form.rates) return;
     update({ ...form, counts: reconciled.counts, rates: reconciled.rates });
   };
 
@@ -240,6 +248,7 @@ export function CrmPlanningPage() {
                     type="number" min="0" step="1"
                     value={rawCount}
                     onChange={(e) => updateCount(i, e.target.value)}
+                    onBlur={commitCounts}
                     placeholder={countPlaceholder}
                     title={`Nº de "${name || `etapa ${i + 1}`}"`}
                     className="w-20 shrink-0 px-2.5 py-2 text-sm rounded-lg border border-fyness-primary/40 bg-fyness-primary/5 dark:bg-fyness-primary/10 text-slate-800 dark:text-slate-200 placeholder-slate-400 text-center focus:outline-none focus:ring-2 focus:ring-fyness-primary"

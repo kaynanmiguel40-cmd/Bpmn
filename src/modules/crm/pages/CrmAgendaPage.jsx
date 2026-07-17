@@ -36,6 +36,17 @@ import { useCrmAccess } from '../hooks/useCrmAccess';
 
 const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+// Muda o mês com o dia fixado em 1 e depois recoloca o dia limitado ao último do
+// mês alvo: setMonth direto no dia 29-31 transborda (31/05 + 1 = 31/06 = 01/07)
+// e pula o mês inteiro.
+const addMonths = (d, n) => {
+  const day = d.getDate();
+  const x = new Date(d);
+  x.setDate(1);
+  x.setMonth(x.getMonth() + n);
+  x.setDate(Math.min(day, new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate()));
+  return x;
+};
 
 // Recorte de datas que o calendário precisa carregar, por visão.
 function computeRange(view, date) {
@@ -235,8 +246,8 @@ function MyDayCalendar() {
 
   // Navegação do calendário
   const handleNavigate = useCallback((dir) => {
-    const d = new Date(currentDate);
-    if (view === 'month') d.setMonth(d.getMonth() + dir);
+    let d = new Date(currentDate);
+    if (view === 'month') d = addMonths(d, dir);
     else if (view === 'week') d.setDate(d.getDate() + dir * 7);
     else if (view === 'agenda') d.setDate(d.getDate() + dir * 30);
     else d.setDate(d.getDate() + dir);

@@ -179,6 +179,29 @@ export async function createCrmActivity(data) {
   return activity;
 }
 
+/**
+ * Convidados de uma atividade. Vivem em agenda_events.attendees ([{email,name}]),
+ * nao em crm_activities — nenhum dos SELECTs de atividade traz o campo, entao a
+ * leitura precisa desta ida separada. Devolve so os e-mails, que eh a forma que
+ * o form usa.
+ */
+export async function getActivityAttendees(agendaEventId) {
+  if (!agendaEventId) return [];
+  const { data, error } = await supabase
+    .from('agenda_events')
+    .select('attendees')
+    .eq('id', agendaEventId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[getActivityAttendees]', error?.message || error);
+    return [];
+  }
+  return (data?.attendees || [])
+    .map(a => (typeof a === 'string' ? a : a?.email))
+    .filter(Boolean);
+}
+
 // ==================== CADENCIA DE OUTBOUND ====================
 
 /**

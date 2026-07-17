@@ -289,13 +289,15 @@ describe('createCRUDService', () => {
       expect(mockMarkPendingSync).toHaveBeenCalledWith('test_table', '1', 'upsert');
     });
 
-    it('retorna null quando item nao existe offline', async () => {
+    it('propaga o erro quando item nao existe offline', async () => {
+      // Sem copia local nao ha o que salvar: o erro TEM que subir, senao a
+      // mutation resolve e a UI tosta sucesso por uma escrita que nao aconteceu.
       queueResult({ data: null, error: { message: 'Error' } });
       mockGetOffline.mockResolvedValueOnce([]);
 
-      const result = await service.update('nonexistent', { status: 'done' });
-
-      expect(result).toBeNull();
+      await expect(service.update('nonexistent', { status: 'done' })).rejects.toMatchObject({
+        message: 'Error',
+      });
     });
 
     it('retorna null quando validacao parcial falha', async () => {

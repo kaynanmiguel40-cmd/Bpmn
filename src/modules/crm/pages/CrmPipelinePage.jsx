@@ -10,6 +10,7 @@ import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../com
 import { CrmModal } from '../components/ui/CrmModal';
 import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useCancelCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral } from '../hooks/useCrmQueries';
 import { getDealLeadInfo } from '../services/crmDealsService';
+import { detectFunnelStagePositions } from '../services/crmDashboardService';
 import { useTeamMembers } from '../../../hooks/queries';
 import { useUrlState } from '../../../hooks/useUrlState';
 import { supabase } from '../../../lib/supabase';
@@ -445,6 +446,85 @@ function QuickAddInline({ onCreate, onCancel, isPending }) {
 }
 
 // ==================== STAGE COLUMN ====================
+
+// ==================== FAIXA DE FASES (por cima das colunas) ====================
+
+const COL_W = 288; // w-72
+const COL_GAP = 12; // gap-3
+
+const PHASE_STYLE = {
+  'Leads':            'bg-slate-200/70 text-slate-600 dark:bg-slate-700/60 dark:text-slate-300',
+  'Qualificação':     'bg-indigo-200/70 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+  'Reunião':          'bg-amber-200/70 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  'Fechamento':       'bg-orange-200/70 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  'Ganho':            'bg-emerald-200/70 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+};
+
+/**
+ * Agrupa as etapas em FASES e devolve as faixas ({ label, span }) pra desenhar
+ * por cima do kanban — cada faixa "abraça" as colunas da sua fase.
+ *
+ * As posições de corte vêm da MESMA detecção que o funil do Dashboard usa
+ * (detectFunnelStagePositions), pra faixa e Comparativo contarem a mesma
+ * história em vez de dois agrupamentos paralelos que divergem com o tempo.
+ */
+function buildPhaseBands(stages) {
+  if (!stages?.length) return [];
+  const ordered = [...stages].sort((a, b) => (a.position || 0) - (b.position || 0));
+  const asDb = ordered.map(s => ({ position: s.position, name: s.name, is_win_stage: s.isWinStage }));
+  const { qualPosByPipeline, meetingPosByPipeline, meetingHeldPosByPipeline } =
+    detectFunnelStagePositions({ p: asDb });
+  const qualPos = qualPosByPipeline.p;
+  const meetPos = meetingPosByPipeline.p;
+  const heldPos = meetingHeldPosByPipeline.p ?? meetPos;
+  const winPos = ordered.find(s => s.isWinStage)?.position ?? Infinity;
+
+  const phaseOf = (pos) => {
+    if (pos >= winPos) return 'Ganho';
+    if (pos < qualPos) return 'Leads';
+    if (pos < meetPos) return 'Qualificação';
+    if (pos <= heldPos) return 'Reunião';
+    return 'Fechamento';
+  };
+
+  const bands = [];
+  for (const s of ordered) {
+    const label = phaseOf(s.position ?? 0);
+    const last = bands[bands.length - 1];
+    if (last && last.label === label) last.span++;
+    else bands.push({ label, span: 1 });
+  }
+  return bands;
+}
+
+// Fases que aparecem hoje. As outras seguem calculadas e viram espacador
+// invisivel (mantem o alinhamento com as colunas) — pra mostrar mais alguma,
+// e so acrescentar a label aqui.
+const VISIBLE_PHASES = new Set(['Leads', 'Qualificação']);
+
+function PhaseBands({ stages }) {
+  const bands = useMemo(() => buildPhaseBands(stages), [stages]);
+  if (bands.length === 0) return null;
+  return (
+    <div className="flex gap-3 shrink-0 mb-2">
+      {bands.map((b, i) => {
+        const show = VISIBLE_PHASES.has(b.label);
+        return (
+          <div
+            key={`${b.label}-${i}`}
+            style={{ width: b.span * COL_W + (b.span - 1) * COL_GAP }}
+            aria-hidden={!show}
+            className={`shrink-0 rounded-lg py-1 text-center text-[11px] font-bold uppercase tracking-wider ${
+              show ? (PHASE_STYLE[b.label] || PHASE_STYLE['Leads']) : 'invisible'
+            }`}
+          >
+            {b.label}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete, allStages, onMoveStage }) {
   const isDragOver = dragOverStageId === stage.id;
@@ -1468,35 +1548,42 @@ export function CrmPipelinePage() {
           creatingGeneral={ensureGeneralMutation.isPending}
         />
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-2 h-[calc(100vh-210px)] crm-stagger">
-          {(pipelineData?.stages || []).map(stage => (
-            <StageColumn
-              key={stage.id}
-              stage={stage}
-              learned={learned}
-              filteredDeals={filterDeals(stage.deals)}
-              dragOverStageId={dragOverStageId}
-              onNewDeal={handleNewDeal}
-              onQuickAdd={handleQuickAdd}
-              quickAddPending={quickCreateMutation.isPending}
-              onMarkLost={(dealId) => setLostModalDealId(dealId)}
-              onDelete={(deal) => setDeleteDealTarget(deal)}
-              onDragStart={(id) => { draggingDealId.current = id; }}
-              allStages={allPipelineStages}
-              onMoveStage={handleMoveStage}
-              onDrop={{
-                execute: handleDrop,
-                setDragOver: setDragOverStageId,
-              }}
-            />
-          ))}
-          {(pipelineData?.lostDeals?.length || 0) > 0 && (
-            <LostColumn
-              lostDeals={filterDeals(pipelineData.lostDeals)}
-              totalLost={pipelineData.lostDeals.length}
-              onDelete={(deal) => setDeleteDealTarget(deal)}
-            />
-          )}
+        // O scroll horizontal envolve a faixa E as colunas juntas — senao a
+        // faixa fica parada enquanto o kanban rola e desalinha das etapas.
+        <div className="overflow-x-auto pb-2 h-[calc(100vh-210px)]">
+          <div className="flex flex-col h-full min-w-max">
+            <PhaseBands stages={pipelineData?.stages || []} />
+            <div className="flex gap-3 flex-1 min-h-0 crm-stagger">
+              {(pipelineData?.stages || []).map(stage => (
+                <StageColumn
+                  key={stage.id}
+                  stage={stage}
+                  learned={learned}
+                  filteredDeals={filterDeals(stage.deals)}
+                  dragOverStageId={dragOverStageId}
+                  onNewDeal={handleNewDeal}
+                  onQuickAdd={handleQuickAdd}
+                  quickAddPending={quickCreateMutation.isPending}
+                  onMarkLost={(dealId) => setLostModalDealId(dealId)}
+                  onDelete={(deal) => setDeleteDealTarget(deal)}
+                  onDragStart={(id) => { draggingDealId.current = id; }}
+                  allStages={allPipelineStages}
+                  onMoveStage={handleMoveStage}
+                  onDrop={{
+                    execute: handleDrop,
+                    setDragOver: setDragOverStageId,
+                  }}
+                />
+              ))}
+              {(pipelineData?.lostDeals?.length || 0) > 0 && (
+                <LostColumn
+                  lostDeals={filterDeals(pipelineData.lostDeals)}
+                  totalLost={pipelineData.lostDeals.length}
+                  onDelete={(deal) => setDeleteDealTarget(deal)}
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
 

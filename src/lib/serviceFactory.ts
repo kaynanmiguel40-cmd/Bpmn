@@ -318,7 +318,10 @@ export function createCRUDService<TDomain = unknown, TRow extends OfflineRow = O
         await markPendingSync(table, id, 'upsert');
         return apply(updated);
       }
-      return null;
+      // Sem copia local nao ha fallback offline: precisa propagar. Resolvendo
+      // com null aqui o onSuccess das mutations disparava do mesmo jeito e o
+      // usuario via toast de sucesso com a edicao perdida.
+      throw error;
     }
 
     if (data) await putOffline(table, data as TRow);

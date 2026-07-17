@@ -17,11 +17,12 @@ import { useTheme } from '../../../../contexts/ThemeContext';
 import { useCrmRealtime } from '../../hooks/useCrmRealtime';
 import { requestPermission } from '../../../../lib/pushNotifications';
 import { useCrmAccess } from '../../hooks/useCrmAccess';
-import { sectionKeyFromPath, GATED_KEYS } from '../../lib/crmAccess';
+import { sectionKeyFromPath, GATED_KEYS, CRM_SECTIONS } from '../../lib/crmAccess';
 
 // Mapa de titulos CRM
 const crmRouteTitles = {
-  '/crm': 'Dashboard',
+  '/crm': 'CRM', // so transitorio: /crm redireciona pra Pipeline
+  '/crm/comparativo': 'Dashboard', // o Comparativo virou o dashboard
   '/crm/pipeline': 'Pipeline',
   '/crm/deals': 'Negocios',
   '/crm/cadastros': 'Cadastros',
@@ -32,8 +33,6 @@ const crmRouteTitles = {
   '/crm/discador/historico': 'Historico',
   '/crm/inbox': 'Inbox WhatsApp',
   '/crm/whatsapp': 'WhatsApp Setup',
-  '/crm/goals': 'Metas',
-  '/crm/planejamento': 'Planejamento',
   '/crm/traffic': 'Trafego Pago',
   '/crm/prospects': 'Gerador de Lista',
   '/crm/settings': 'Configuracoes',
@@ -114,13 +113,18 @@ export function CrmLayout() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Guard de acesso: se a seção da URL está bloqueada pro usuário, manda pro
-  // Dashboard (evita bypass por link direto). Admin nunca cai aqui.
+  // Guard de acesso: se a seção da URL está bloqueada pro usuário, manda pra
+  // PRIMEIRA seção que ele pode ver (evita bypass por link direto). Admin nunca
+  // cai aqui.
+  // Não dá pra mandar pro /crm: ele redireciona pra Pipeline — se a Pipeline
+  // estiver bloqueada pra pessoa, /crm -> /crm/pipeline -> guard -> /crm viraria
+  // loop infinito de redirect. Sem nenhuma seção liberada, cai no /unauthorized.
   const { canAccess } = useCrmAccess();
   useEffect(() => {
     const key = sectionKeyFromPath(location.pathname);
     if (key && GATED_KEYS.has(key) && !canAccess(key)) {
-      navigate('/crm', { replace: true });
+      const fallback = CRM_SECTIONS.find(s => canAccess(s.key));
+      navigate(fallback ? `/crm/${fallback.key}` : '/unauthorized', { replace: true });
     }
   }, [location.pathname, canAccess, navigate]);
 

@@ -725,6 +725,12 @@ export async function getBonificacaoProgress(startDate, endDate) {
 //   Fechamento  = estágio de vitória (is_win_stage) ou status 'won'
 
 const QUAL_STAGE_EXPLICIT_RE = /qualific/i;
+// Pipeline que qualifica por TEMPERATURA: as colunas Quente/Morno/Frio SAO a
+// etapa de qualificacao (arrastar o lead pra uma delas e o vendedor
+// qualificando). A 1a delas marca o corte — senao, sem nenhum nome casando,
+// qualPos cairia no chute posicional de 33% e um lead Quente nao contaria como
+// qualificado enquanto um Frio contaria (invertido, e silencioso).
+const QUAL_STAGE_TEMPERATURE_RE = /quente|morno|frio/i;
 const QUAL_STAGE_FALLBACK_RE = /respond|engaj|conect|icp/i;
 const MEETING_STAGE_RE = /reuni|demo|apresenta/i;
 // Reunião REALIZADA / que aconteceu (o lead compareceu) — estágio separado da
@@ -746,8 +752,12 @@ export function detectFunnelStagePositions(stagesByPipeline) {
   for (const [pid, list] of Object.entries(stagesByPipeline)) {
     const ordered = list.slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
     const n = ordered.length;
+    // Temperatura vem antes do fallback "Respondeu/engajou": quando a pipeline
+    // tem Quente/Morno/Frio, elas SAO a qualificacao — "Respondeu" sozinho so
+    // sinaliza que o lead reagiu.
     const qualMatch =
       ordered.find(s => QUAL_STAGE_EXPLICIT_RE.test(s.name || '')) ||
+      ordered.find(s => QUAL_STAGE_TEMPERATURE_RE.test(s.name || '')) ||
       ordered.find(s => QUAL_STAGE_FALLBACK_RE.test(s.name || ''));
     // Agendada: estágio de reunião/demo que NÃO seja o "realizada".
     const meetMatch = ordered.find(s => MEETING_STAGE_RE.test(s.name || '') && !MEETING_HELD_RE.test(s.name || ''));
@@ -796,6 +806,10 @@ export function buildSalesFunnel({
   meetingHeldPosByPipeline = {},
 } = {}) {
   let lead = 0, qualified = 0, meeting = 0, meetingHeld = 0, closing = 0, revenue = 0;
+  // "Acontecidas" só é uma métrica de verdade se TODA pipeline da coorte tiver
+  // estágio de reunião realizada. Sem ele, meetingHeld cai pros ganhos e vira
+  // cópia de closing — quem consome as taxas precisa saber pra não exibir número.
+  let meetingHeldTracked = leadDeals.length > 0;
   for (const d of leadDeals) {
     lead++;
     const won = d.status === 'won';
@@ -806,6 +820,7 @@ export function buildSalesFunnel({
     const reachedQual    = typeof pos === 'number' && typeof qp === 'number' && pos >= qp;
     const reachedMeeting = typeof pos === 'number' && typeof mp === 'number' && pos >= mp;
     const reachedHeld    = typeof pos === 'number' && typeof hp === 'number' && pos >= hp;
+    if (typeof hp !== 'number') meetingHeldTracked = false;
     if (won || reachedQual)    qualified++;
     if (won || reachedMeeting) meeting++;
     if (won || reachedHeld)    meetingHeld++;   // reunião realizada (estágio do pipeline)
@@ -834,7 +849,7 @@ export function buildSalesFunnel({
     winRate: pct(closing, lead),           // win rate geral (lead → cliente)
   };
 
-  return { steps, ratios, revenue, lead, qualified, meeting, meetingHeld, closing };
+  return { steps, ratios, revenue, lead, qualified, meeting, meetingHeld, meetingHeldTracked, closing };
 }
 
 /**
