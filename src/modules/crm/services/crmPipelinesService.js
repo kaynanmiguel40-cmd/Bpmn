@@ -2,6 +2,7 @@ import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { validateAndSanitize } from '../../../lib/validation';
 import { crmPipelineSchema } from '../schemas/crmValidation';
+import { filterStepsForDeal } from './crmPlaybookService';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -146,6 +147,41 @@ export async function getCrmPipelineWithDeals(pipelineId) {
   const stageById = {};
   result.stages.forEach(s => { stageById[s.id] = { id: s.id, name: s.name, color: s.color }; });
 
+  // PROGRESSO DO PROCESSO (playbook) por negocio: quantos passos da etapa atual
+  // o lead ja cumpriu. Alimenta o selo do card (antes era a cadencia).
+  // Respeita a origem: no Leads so contam os passos da origem daquele lead.
+  const stepsByStage = {};
+  const doneByDeal = {};
+  const stageIds = result.stages.map(s => s.id);
+  if (stageIds.length > 0) {
+    const { data: stepRows } = await supabase
+      .from('crm_stage_steps')
+      .select('id, stage_id, source_tag')
+      .in('stage_id', stageIds);
+    (stepRows || []).forEach(r => {
+      (stepsByStage[r.stage_id] = stepsByStage[r.stage_id] || [])
+        .push({ id: r.id, sourceTag: r.source_tag || null });
+    });
+
+    const dealIds = (deals || []).map(d => d.id);
+    if (dealIds.length > 0 && (stepRows || []).length > 0) {
+      const { data: progRows } = await supabase
+        .from('crm_deal_step_progress')
+        .select('deal_id, step_id')
+        .in('deal_id', dealIds);
+      (progRows || []).forEach(r => {
+        (doneByDeal[r.deal_id] = doneByDeal[r.deal_id] || new Set()).add(r.step_id);
+      });
+    }
+  }
+
+  const processFor = (deal) => {
+    const applicable = filterStepsForDeal(stepsByStage[deal.stage_id] || [], deal.source);
+    if (applicable.length === 0) return null;
+    const done = doneByDeal[deal.id] || new Set();
+    return { done: applicable.filter(s => done.has(s.id)).length, total: applicable.length };
+  };
+
   // Agrupar deals por stage. Negocios PERDIDOS saem das colunas e vao pra uma
   // lista separada (coluna "Perdido"), guardando a etapa onde se perderam — o
   // stage_id de um deal perdido continua sendo onde ele estava ao ser marcado.
@@ -174,6 +210,7 @@ export async function getCrmPipelineWithDeals(pipelineId) {
       createdAt: d.created_at,
       lastStageChangedAt,
       cadence: cadenceMap[d.id] || null,
+      process: processFor(d),
     };
 
     if (d.status === 'lost') {

@@ -9,10 +9,17 @@
  * gravado (referencia o passo dela), so sai de vista.
  */
 
-import { useState } from 'react';
-import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter, CornerDownRight } from 'lucide-react';
-import { useStagePlaybook, useDealProgress, useToggleDealStep } from '../hooks/useCrmQueries';
+import { useState, useMemo } from 'react';
+import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter, CornerDownRight, History, CheckCircle2 } from 'lucide-react';
+import { useStagePlaybook, useDealProgress, useToggleDealStep, useDealActivities } from '../hooks/useCrmQueries';
 import { filterStepsForDeal } from '../services/crmPlaybookService';
+
+const fmtWhen = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+};
 
 function StepRow({ step, done, onToggle, disabled }) {
   const [open, setOpen] = useState(false);
@@ -86,7 +93,40 @@ function StepRow({ step, done, onToggle, disabled }) {
 export function DealProcessChecklist({ deal, memberId = null }) {
   const { data: playbook, isLoading: loadingPlaybook } = useStagePlaybook(deal?.pipelineId);
   const { data: progress = [], isLoading: loadingProgress } = useDealProgress(deal?.id);
+  const { data: activities = [] } = useDealActivities(deal?.id);
   const toggle = useToggleDealStep();
+
+  // Titulo de QUALQUER passo do playbook (todas as etapas) — o historico mostra
+  // tambem o que o lead cumpriu em etapas anteriores.
+  const stepById = useMemo(() => {
+    const map = {};
+    Object.values(playbook || {}).forEach(list => (list || []).forEach(s => { map[s.id] = s; }));
+    return map;
+  }, [playbook]);
+
+  // HISTORICO: tudo que ja foi feito com esse lead — passos do processo E
+  // tarefas criadas a mao — numa linha do tempo unica, mais recente primeiro.
+  const history = useMemo(() => {
+    const items = [];
+    for (const p of progress) {
+      items.push({
+        id: `step-${p.id}`,
+        kind: 'processo',
+        title: stepById[p.stepId]?.title || 'Tarefa do processo',
+        at: p.doneAt,
+      });
+    }
+    for (const a of activities) {
+      if (!a.completed) continue;
+      items.push({
+        id: `act-${a.id}`,
+        kind: 'manual',
+        title: a.title,
+        at: a.completedAt || a.createdAt,
+      });
+    }
+    return items.sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
+  }, [progress, activities, stepById]);
 
   // Filtra os passos pela ORIGEM do lead: um lead veio de UM lugar, entao so o
   // script daquela origem aparece (ex: veio de anuncio → so o toque de anuncio).
@@ -112,7 +152,9 @@ export function DealProcessChecklist({ deal, memberId = null }) {
     );
   }
 
-  if (steps.length === 0 && !objetivo && !exitCriteria) {
+  // So mostra o vazio se nao ha NEM processo NEM historico — um lead numa etapa
+  // sem playbook ainda pode ter tarefas feitas pra mostrar.
+  if (steps.length === 0 && !objetivo && !exitCriteria && history.length === 0) {
     return (
       <div className="py-10 text-center">
         <BookOpen size={28} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
@@ -120,7 +162,7 @@ export function DealProcessChecklist({ deal, memberId = null }) {
           A etapa <strong>{deal?.stage?.name || 'atual'}</strong> ainda não tem processo.
         </p>
         <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-          Defina em Pipeline → ícone de livro na coluna.
+          Defina em Pipeline → botão "O que fazer" na coluna.
         </p>
       </div>
     );
@@ -179,6 +221,36 @@ export function DealProcessChecklist({ deal, memberId = null }) {
               Quando mover
             </div>
             <p className="text-sm text-slate-700 dark:text-slate-200">{exitCriteria}</p>
+          </div>
+        </div>
+      )}
+
+      {/* HISTORICO: tudo que ja foi feito com esse lead — tarefas do processo e
+          as criadas a mao — na mesma linha do tempo. */}
+      {history.length > 0 && (
+        <div className="pt-1 border-t border-slate-200/70 dark:border-slate-700">
+          <div className="flex items-center gap-1.5 mt-3 mb-2">
+            <History size={13} className="text-slate-400" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Histórico
+            </span>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 tnum">({history.length})</span>
+          </div>
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            {history.map(h => (
+              <div key={h.id} className="flex items-start gap-2">
+                <CheckCircle2 size={13} className="text-emerald-500 shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <span className="text-[13px] text-slate-700 dark:text-slate-200">{h.title}</span>
+                  {h.kind === 'manual' && (
+                    <span className="ml-1.5 text-[9px] font-semibold uppercase px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                      manual
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 shrink-0 tnum">{fmtWhen(h.at)}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}

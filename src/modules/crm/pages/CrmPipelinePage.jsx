@@ -5,10 +5,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useCreateCadence, useCancelCadence, useEnsureGeneralPipeline, useConsolidateIntoGeneral, useStagePlaybook } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useEnsureGeneralPipeline, useConsolidateIntoGeneral, useStagePlaybook } from '../hooks/useCrmQueries';
 import { getDealLeadInfo } from '../services/crmDealsService';
 import { detectFunnelStagePositions } from '../services/crmDashboardService';
 import { useTeamMembers } from '../../../hooks/queries';
@@ -38,27 +38,6 @@ function getStageHealth(deal) {
   return { days, label: `${days}d`, color: 'rose' };
 }
 
-// Monta o selo de cadencia do card a partir de deal.cadence (calculado no service).
-// Retorna { text, color } ou null se nao ha cadencia.
-function getCadenceBadge(cadence) {
-  if (!cadence || !cadence.total) return null;
-  if (cadence.finished) {
-    return { text: '✓ cadência concluída', color: 'slate' };
-  }
-  const todayStr = new Date().toISOString().slice(0, 10);
-  let when = '';
-  let color = 'cyan';
-  if (cadence.nextDate) {
-    if (cadence.nextDate < todayStr) { when = 'atrasado'; color = 'rose'; }
-    else if (cadence.nextDate === todayStr) { when = 'hoje'; color = 'amber'; }
-    else {
-      const [y, m, d] = cadence.nextDate.split('-');
-      when = `${d}/${m}`;
-    }
-  }
-  const text = `Tentativa ${cadence.attempt}/${cadence.total}${when ? ` · ${when}` : ''}`;
-  return { text, color };
-}
 
 // Limpa telefone deixando so digitos (com codigo de pais Brasil 55 prefixado)
 function getWhatsappLink(phone) {
@@ -75,21 +54,6 @@ function getWhatsappLink(phone) {
 function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onMoveStage }) {
   const navigate = useNavigate();
   const isDragging = useRef(false);
-  const cadenceMutation = useCreateCadence();
-  const cancelCadenceMutation = useCancelCadence();
-  const [stagePickerOpen, setStagePickerOpen] = useState(false);
-  const [confirmCancelCadence, setConfirmCancelCadence] = useState(false);
-  const stagePickerRef = useRef(null);
-
-  useEffect(() => {
-    if (!stagePickerOpen) return;
-    const handleClick = (e) => { if (stagePickerRef.current && !stagePickerRef.current.contains(e.target)) setStagePickerOpen(false); };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [stagePickerOpen]);
-
-  // Etapas pra onde este deal pode ir (exclui a atual)
-  const otherStages = allStages.filter(s => s.id !== deal.stageId);
 
   // Contato/empresa vinculado sempre vence; contactPhone digitado e so fallback (getDealLeadInfo).
   const { phone } = getDealLeadInfo(deal);
@@ -103,29 +67,6 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
     rose:    'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400',
   };
 
-  const cadenceBadge = getCadenceBadge(deal.cadence);
-  const cadenceClasses = {
-    cyan:  'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400',
-    amber: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
-    rose:  'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400',
-    slate: 'bg-slate-100 dark:bg-slate-700/40 text-slate-500 dark:text-slate-400',
-  };
-  // So oferece "iniciar cadencia" em deal aberto que ainda nao tem follow-ups
-  const canStartCadence = deal.status === 'open' && (!deal.cadence || !deal.cadence.total);
-  // "Cancelar cadencia" so quando ha toque(s) pendente(s) — nao dava pra parar
-  // uma cadencia depois de iniciada, ela so ia acumulando follow-ups vencidos.
-  const canCancelCadence = deal.status === 'open' && deal.cadence?.total > 0 && deal.cadence.done < deal.cadence.total;
-
-  const handleStartCadence = (e) => {
-    e.stopPropagation();
-    if (cadenceMutation.isPending) return;
-    cadenceMutation.mutate({ dealId: deal.id, contactId: deal.contactId || deal.contact?.id || null });
-  };
-
-  const handleCancelCadence = (e) => {
-    e.stopPropagation();
-    setConfirmCancelCadence(true);
-  };
 
   return (
     <>
@@ -229,12 +170,20 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
         )}
       </div>
 
-      {/* Selo de cadencia: tentativa atual + proximo toque (alimentado por atividades) */}
-      {cadenceBadge && (
+      {/* Selo do PROCESSO: quantas tarefas da etapa esse lead ja cumpriu.
+          Substituiu o antigo selo de cadencia — a cadencia agora vive no
+          playbook da etapa. Verde quando conclui tudo. */}
+      {deal.process && (
         <div className="mt-1.5">
-          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${cadenceClasses[cadenceBadge.color]}`}>
-            <Repeat size={10} />
-            {cadenceBadge.text}
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+            deal.process.done >= deal.process.total
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+              : deal.process.done > 0
+                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                : 'bg-slate-100 text-slate-500 dark:bg-slate-700/60 dark:text-slate-400'
+          }`}>
+            <ListChecks size={10} />
+            {deal.process.done}/{deal.process.total}
           </span>
         </div>
       )}
@@ -252,26 +201,6 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
           >
             <MessageCircle size={11} />
           </a>
-        )}
-        {canStartCadence && (
-          <button
-            onClick={handleStartCadence}
-            disabled={cadenceMutation.isPending}
-            className="p-1 rounded bg-white dark:bg-slate-800 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 shadow-sm border border-slate-200 dark:border-slate-700 disabled:opacity-50"
-            title="Iniciar cadência (cria os 5 follow-ups: D0, D2, D5, D7, D10)"
-          >
-            <Repeat size={11} />
-          </button>
-        )}
-        {canCancelCadence && (
-          <button
-            onClick={handleCancelCadence}
-            disabled={cancelCadenceMutation.isPending}
-            className="p-1 rounded bg-white dark:bg-slate-800 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 shadow-sm border border-slate-200 dark:border-slate-700 disabled:opacity-50"
-            title="Cancelar cadência (remove os follow-ups ainda pendentes)"
-          >
-            <Ban size={11} />
-          </button>
         )}
         {deal.status === 'open' && (
           <>
@@ -295,48 +224,7 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
         </button>
       </div>
 
-      {/* Mover de etapa — sempre visivel (nao depende de hover), unica alternativa
-          ao drag and drop nativo em telas de toque, onde eventos HTML5 nao disparam */}
-      {otherStages.length > 0 && (
-        <div className="absolute right-1.5 bottom-1.5 z-10" ref={stagePickerRef}>
-          <button
-            onClick={(e) => { e.stopPropagation(); setStagePickerOpen(o => !o); }}
-            title="Mover de etapa"
-            className="p-1 rounded bg-white dark:bg-slate-800 text-slate-400 hover:text-fyness-primary hover:bg-fyness-primary/10 shadow-sm border border-slate-200 dark:border-slate-700"
-          >
-            <ArrowLeftRight size={11} />
-          </button>
-          {stagePickerOpen && (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="absolute right-0 bottom-full mb-1 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-48 overflow-y-auto"
-            >
-              {otherStages.map(s => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => { onMoveStage(deal.id, s.id); setStagePickerOpen(false); }}
-                  className="w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
-                >
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                  {s.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
-    <CrmConfirmDialog
-      open={confirmCancelCadence}
-      onClose={() => setConfirmCancelCadence(false)}
-      onConfirm={() => { cancelCadenceMutation.mutate(deal.id); setConfirmCancelCadence(false); }}
-      title="Cancelar cadência"
-      message={`Isso remove ${(deal.cadence?.total ?? 0) - (deal.cadence?.done ?? 0)} follow-up(s) ainda pendente(s) desse negócio. Os que já foram concluídos ficam no histórico. Não pode ser desfeito.`}
-      confirmLabel="Cancelar cadência"
-      variant="danger"
-      loading={cancelCadenceMutation.isPending}
-    />
     </>
   );
 }
