@@ -79,7 +79,7 @@ function CrmTopbar({ onToggleMobileMenu }) {
         </button>
 
         <div>
-          <nav className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+          <nav className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             <span>CRM</span>
             {breadcrumb.slice(1).map((item, index) => (
               <span key={item.path} className="flex items-center gap-1.5">

@@ -84,7 +84,7 @@ function HealthBadge({ health }) {
   if (!health) return null;
   const Icon = health.icon;
   return (
-    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${health.color} ${health.bgColor}`}
+    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium ${health.color} ${health.bgColor}`}
       title={health.tooltip}>
       <Icon size={12} />
       {health.label}
@@ -124,7 +124,7 @@ const MEDAL_COLORS = [
 function RankBadge({ rank }) {
   if (rank > 3) {
     return (
-      <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[11px] font-bold text-slate-500 dark:text-slate-400">
+      <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[12px] font-bold text-slate-500 dark:text-slate-400">
         {rank}
       </span>
     );
@@ -333,7 +333,7 @@ export function CrmGoalsPage() {
             >
               <Icon size={13} />
               {tab.label}
-              <span className="text-[10px] text-slate-400">({tab.count})</span>
+              <span className="text-[12px] text-slate-400">({tab.count})</span>
             </button>
           );
         })}
@@ -464,12 +464,12 @@ export function CrmGoalsPage() {
       {typeTab === 'individuais' && summary && statusTab === 'active' && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="crm-glass rounded-2xl p-4">
-            <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Soma das Metas</div>
+            <div className="text-[12px] font-medium text-slate-400 uppercase tracking-wider mb-1">Soma das Metas</div>
             <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(summary.totalTarget)}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400">{summary.count} meta{summary.count !== 1 ? 's' : ''}</div>
           </div>
           <div className="crm-glass rounded-2xl p-4">
-            <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Progresso Total</div>
+            <div className="text-[12px] font-medium text-slate-400 uppercase tracking-wider mb-1">Progresso Total</div>
             <div className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(summary.totalCurrent)}</div>
             <div className="flex items-center gap-2 mt-1">
               <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -480,7 +480,7 @@ export function CrmGoalsPage() {
             </div>
           </div>
           <div className="crm-glass rounded-2xl p-4">
-            <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">No Ritmo</div>
+            <div className="text-[12px] font-medium text-slate-400 uppercase tracking-wider mb-1">No Ritmo</div>
             <div className="flex items-baseline gap-2">
               <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{summary.onTrack + summary.achieved}</span>
               {summary.achieved > 0 && (
@@ -489,7 +489,7 @@ export function CrmGoalsPage() {
             </div>
           </div>
           <div className="crm-glass rounded-2xl p-4">
-            <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Atrasadas</div>
+            <div className="text-[12px] font-medium text-slate-400 uppercase tracking-wider mb-1">Atrasadas</div>
             <span className={`text-lg font-bold ${summary.behind > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>
               {summary.behind}
             </span>
@@ -504,7 +504,7 @@ export function CrmGoalsPage() {
           <div className="flex items-center gap-2">
             <User size={16} className="text-slate-500 dark:text-slate-400" />
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Metas Individuais</h3>
-            <span className="text-xs text-slate-400 dark:text-slate-500">({individualGoals.length})</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">({individualGoals.length})</span>
           </div>
 
           {individualGoals.length > 1 && (
@@ -565,7 +565,7 @@ export function CrmGoalsPage() {
                         <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
                           {goal.owner?.name || 'Sem responsavel'}
                         </div>
-                        <div className="text-xs text-slate-400 dark:text-slate-500 truncate">
+                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                           {goal.title}
                         </div>
                       </div>
@@ -588,7 +588,7 @@ export function CrmGoalsPage() {
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                       {formatCurrency(current)}
-                      <span className="text-xs font-normal text-slate-400 dark:text-slate-500 ml-1">
+                      <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-1">
                         / {formatCurrency(goal.targetValue)}
                       </span>
                     </span>
@@ -601,19 +601,19 @@ export function CrmGoalsPage() {
                   {statusTab === 'active' && (
                     <div className="flex items-center gap-3 mt-2.5 flex-wrap">
                       {daysLeft !== null && (
-                        <span className={`text-[11px] flex items-center gap-1 ${daysLeft <= 5 ? 'text-rose-500' : daysLeft <= 10 ? 'text-amber-500' : 'text-slate-400'}`}>
+                        <span className={`text-[12px] flex items-center gap-1 ${daysLeft <= 5 ? 'text-rose-500' : daysLeft <= 10 ? 'text-amber-500' : 'text-slate-400'}`}>
                           <Clock size={11} />
                           {daysLeft > 0 ? `${daysLeft}d` : 'Encerrado'}
                         </span>
                       )}
                       {dailyTarget !== null && dailyTarget > 0 && (
-                        <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                        <span className="text-[12px] text-slate-400 flex items-center gap-1">
                           <CalendarDays size={11} />
                           {formatCurrency(dailyTarget)}/dia
                         </span>
                       )}
                       {current >= goal.targetValue && (
-                        <span className="text-[11px] text-emerald-500 font-medium flex items-center gap-1">
+                        <span className="text-[12px] text-emerald-500 font-medium flex items-center gap-1">
                           <Trophy size={11} />
                           Atingida!
                         </span>
@@ -623,7 +623,7 @@ export function CrmGoalsPage() {
 
                   {/* Footer */}
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                    <span className="text-[12px] text-slate-500 dark:text-slate-400">
                       {formatPeriod(goal.periodStart, goal.periodEnd)}
                     </span>
                     <div className="flex items-center gap-2">

@@ -70,7 +70,7 @@ function LeadHeader({ lead }) {
     <div className="flex items-center gap-2 flex-wrap mb-2">
       <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{lead.name}</h3>
       {lead.stage && (
-        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+        <span className="text-[12px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1"
           style={{ backgroundColor: `${lead.stageColor || '#6366f1'}22`, color: lead.stageColor || '#6366f1' }}>
           <Flag size={10} /> {lead.stage}
         </span>
@@ -120,7 +120,7 @@ export function DailyReportBody({ data, onOpenLead }) {
                     const { Icon, color, label } = eventVisual(ev);
                     return (
                       <div key={ev.id} className="flex items-start gap-2 text-sm">
-                        <span className="w-11 shrink-0 text-[11px] text-slate-400 dark:text-slate-500 tabular-nums pt-1">{hm(ev.time)}</span>
+                        <span className="w-11 shrink-0 text-[12px] text-slate-500 dark:text-slate-400 tabular-nums pt-1">{hm(ev.time)}</span>
                         <span className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 mt-0.5" style={{ backgroundColor: `${color}1a`, color }}>
                           <Icon size={12} />
                         </span>
@@ -131,13 +131,13 @@ export function DailyReportBody({ data, onOpenLead }) {
                             <div className="mt-1.5 space-y-1">
                               {ev.input && (
                                 <div className="flex items-start gap-2 rounded-md border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2 py-1">
-                                  <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
+                                  <span className="text-[12px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
                                   <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{ev.input}</span>
                                 </div>
                               )}
                               {ev.output && (
                                 <div className="flex items-start gap-2 rounded-md border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2 py-1">
-                                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
+                                  <span className="text-[12px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
                                   <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{ev.output}</span>
                                 </div>
                               )}
@@ -152,7 +152,7 @@ export function DailyReportBody({ data, onOpenLead }) {
               {l.report ? (
                 <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words border-l-2 border-fyness-primary/30 pl-3 mt-2">{l.report}</p>
               ) : (
-                <p className="text-xs text-slate-400 dark:text-slate-500 italic mt-2">Sem relato escrito neste dia.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 italic mt-2">Sem relato escrito neste dia.</p>
               )}
             </LeadCard>
           ))}
@@ -196,7 +196,7 @@ export function PeriodReportBody({ data, onOpenLead, funnelRange, ownerId }) {
                 <div className="space-y-2 mt-1">
                   {l.taskReports.map(t => (
                     <div key={t.id} className="pl-3 border-l-2 border-emerald-300/60 dark:border-emerald-800/50">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      <div className="text-[12px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         {t.title}{t.date ? ` · ${new Date(t.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}` : ''}
                       </div>
                       {/* Input em cima (o que o vendedor fez), output embaixo (o que o lead respondeu) — cada tarefa com o seu par. */}
@@ -204,19 +204,19 @@ export function PeriodReportBody({ data, onOpenLead, funnelRange, ownerId }) {
                         <div className="mt-1.5 space-y-1">
                           {t.input && (
                             <div className="flex items-start gap-2 rounded-md border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2 py-1">
-                              <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
+                              <span className="text-[12px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
                               <span className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words">{t.input}</span>
                             </div>
                           )}
                           {t.output && (
                             <div className="flex items-start gap-2 rounded-md border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2 py-1">
-                              <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
+                              <span className="text-[12px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
                               <span className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words">{t.output}</span>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <p className="text-sm text-slate-400 dark:text-slate-500 italic">—</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 italic">—</p>
                       )}
                     </div>
                   ))}
@@ -225,13 +225,13 @@ export function PeriodReportBody({ data, onOpenLead, funnelRange, ownerId }) {
                 <div className="space-y-2 mt-1">
                   {l.reports.map((r, i) => (
                     <div key={i} className="pl-3 border-l-2 border-slate-200 dark:border-white/10">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 capitalize">{dayShort(r.date)}</div>
+                      <div className="text-[12px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 capitalize">{dayShort(r.date)}</div>
                       <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words">{r.content}</p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-slate-400 dark:text-slate-500 italic">Sem entrega registrada.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 italic">Sem entrega registrada.</p>
               )}
             </LeadCard>
           ))}
@@ -243,7 +243,7 @@ export function PeriodReportBody({ data, onOpenLead, funnelRange, ownerId }) {
 
 function EmptyReports() {
   return (
-    <div className="text-center py-16 text-slate-400 dark:text-slate-500">
+    <div className="text-center py-16 text-slate-500 dark:text-slate-400">
       <FileText size={32} className="mx-auto mb-3 opacity-50" />
       <p className="text-sm font-medium">Sem registros neste período.</p>
     </div>
@@ -263,7 +263,7 @@ function TasksSection({ tasks }) {
       </div>
       {open.length > 0 && (
         <div className="crm-glass rounded-2xl p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">Tarefas em aberto</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Tarefas em aberto</p>
           <div className="space-y-1.5">
             {open.map(t => {
               const meta = activityMeta(t.type);
@@ -273,8 +273,8 @@ function TasksSection({ tasks }) {
                   <Circle size={13} className="text-slate-300 dark:text-slate-600 shrink-0" />
                   <Icon size={12} className="shrink-0" style={{ color: meta.color }} />
                   <span className="text-slate-700 dark:text-slate-200 truncate">{t.title}</span>
-                  {t.leadName && <span className="text-slate-400 dark:text-slate-500 truncate">· {t.leadName}</span>}
-                  {t.dueAt && <span className="ml-auto text-[11px] text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">{new Date(t.dueAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} {hm(t.dueAt)}</span>}
+                  {t.leadName && <span className="text-slate-500 dark:text-slate-400 truncate">· {t.leadName}</span>}
+                  {t.dueAt && <span className="ml-auto text-[12px] text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{new Date(t.dueAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} {hm(t.dueAt)}</span>}
                 </div>
               );
             })}

@@ -110,7 +110,7 @@ function ConversationItem({ conv, active, onSelect, owner, overdueH, showInstanc
         {owner && (
           <span
             title={`Responsável: ${owner.name}`}
-            className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full ring-2 ring-white dark:ring-[#111b21] flex items-center justify-center text-[9px] font-bold text-white"
+            className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full ring-2 ring-white dark:ring-[#111b21] flex items-center justify-center text-[11px] font-bold text-white"
             style={{ backgroundColor: owner.color || '#64748b' }}
           >
             {initials(owner.name)}
@@ -123,7 +123,7 @@ function ConversationItem({ conv, active, onSelect, owner, overdueH, showInstanc
           <span className="text-[15px] font-medium text-slate-900 dark:text-slate-100 truncate">
             {conv.otherName || conv.otherPhone}
           </span>
-          <span className={`text-[11px] shrink-0 ${unread ? 'text-[#25d366] font-semibold' : 'text-slate-400'}`}>
+          <span className={`text-[12px] shrink-0 ${unread ? 'text-[#25d366] font-semibold' : 'text-slate-400'}`}>
             {formatRelativeTime(conv.lastAt)}
           </span>
         </div>
@@ -133,21 +133,21 @@ function ConversationItem({ conv, active, onSelect, owner, overdueH, showInstanc
             {showInstanceBadge && conv.instanceName && (
               <span
                 title={`Número: ${numberLabel(conv.instanceName)}`}
-                className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
               >
                 {numberLabel(conv.instanceName)}
               </span>
             )}
             {overdue && (
-              <span className="flex items-center gap-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-400">
+              <span className="flex items-center gap-0.5 text-[12px] font-bold text-rose-600 dark:text-rose-400">
                 <Clock size={11} /> {Math.round(overdueH)}h
               </span>
             )}
             {conv.prospectId && !conv.contactId && !unread && (
-              <span className="text-[9px] uppercase font-bold text-orange-500 tracking-wide">novo</span>
+              <span className="text-[11px] uppercase font-bold text-orange-500 tracking-wide">novo</span>
             )}
             {unread && (
-              <span className="text-[11px] font-bold text-white bg-[#25d366] rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
+              <span className="text-[12px] font-bold text-white bg-[#25d366] rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
                 {conv.unreadCount > 99 ? '99+' : conv.unreadCount}
               </span>
             )}
@@ -335,7 +335,7 @@ function FilterPill({ label, active, onClick, badge = 0 }) {
     >
       {label}
       {badge > 0 && (
-        <span className={`text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center ${active ? 'bg-white/25' : 'bg-[#25d366] text-white'}`}>
+        <span className={`text-[12px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center ${active ? 'bg-white/25' : 'bg-[#25d366] text-white'}`}>
           {badge > 99 ? '99+' : badge}
         </span>
       )}

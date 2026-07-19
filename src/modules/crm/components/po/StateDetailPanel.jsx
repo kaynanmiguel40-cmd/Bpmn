@@ -77,7 +77,7 @@ export default function StateDetailPanel({ selectedState, onClose, onCityClick }
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+        <div className="flex items-center gap-3 text-[12px] text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-1">
             <Building2 className="w-3 h-3" />
             {region?.name}
@@ -89,7 +89,7 @@ export default function StateDetailPanel({ selectedState, onClose, onCityClick }
         </div>
         {/* Status badge */}
         <div className="mt-2">
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${PROSPECT_STATUS[prospection.status]?.bg || ''} ${PROSPECT_STATUS[prospection.status]?.text || ''}`}>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium ${PROSPECT_STATUS[prospection.status]?.bg || ''} ${PROSPECT_STATUS[prospection.status]?.text || ''}`}>
             {PROSPECT_STATUS[prospection.status]?.label}
           </span>
         </div>
@@ -98,39 +98,39 @@ export default function StateDetailPanel({ selectedState, onClose, onCityClick }
       {/* Stats mini cards */}
       <div className="flex-shrink-0 grid grid-cols-2 gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-700/50">
         <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 p-2 text-center">
-          <div className="flex items-center justify-center gap-1 text-slate-400 dark:text-slate-500 mb-0.5">
+          <div className="flex items-center justify-center gap-1 text-slate-500 dark:text-slate-400 mb-0.5">
             <MapPin className="w-3 h-3" />
           </div>
           <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{cityStats.total}</p>
-          <p className="text-[10px] text-slate-500 dark:text-slate-400">Cidades</p>
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Cidades</p>
         </div>
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 p-2 text-center">
           <div className="flex items-center justify-center gap-1 text-amber-500 dark:text-amber-400 mb-0.5">
             <Users className="w-3 h-3" />
           </div>
           <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{cityStats.prospected}</p>
-          <p className="text-[10px] text-slate-500 dark:text-slate-400">Prospectando</p>
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Prospectando</p>
         </div>
         <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-2 text-center">
           <div className="flex items-center justify-center gap-1 text-blue-500 dark:text-blue-400 mb-0.5">
             <Calendar className="w-3 h-3" />
           </div>
           <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{cityStats.scheduled}</p>
-          <p className="text-[10px] text-slate-500 dark:text-slate-400">Visitas agend.</p>
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Visitas agend.</p>
         </div>
         <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 p-2 text-center">
           <div className="flex items-center justify-center gap-1 text-emerald-500 dark:text-emerald-400 mb-0.5">
             <CheckCircle className="w-3 h-3" />
           </div>
           <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{cityStats.closed}</p>
-          <p className="text-[10px] text-slate-500 dark:text-slate-400">Fechados</p>
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Fechados</p>
         </div>
       </div>
 
       {/* City search */}
       <div className="flex-shrink-0 px-4 py-2 border-b border-slate-100 dark:border-slate-700/50">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
           <input
             type="text"
             placeholder="Buscar cidade..."
@@ -155,7 +155,7 @@ export default function StateDetailPanel({ selectedState, onClose, onCityClick }
         ) : (
           <div className="text-center py-8">
             <MapPin className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-            <p className="text-sm text-slate-400 dark:text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               {citySearch ? 'Nenhuma cidade encontrada' : 'Nenhuma cidade cadastrada'}
             </p>
           </div>
@@ -165,7 +165,7 @@ export default function StateDetailPanel({ selectedState, onClose, onCityClick }
       {/* Footer info */}
       {prospection.lastActivity && (
         <div className="flex-shrink-0 px-4 py-2 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/50">
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400 text-center">
             Última atividade: {new Date(prospection.lastActivity).toLocaleDateString('pt-BR')}
           </p>
         </div>

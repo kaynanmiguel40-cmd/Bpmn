@@ -82,7 +82,7 @@ export function CrmDataTable({
                       <EmptyIcon size={40} className="text-slate-300 dark:text-slate-600" />
                     </div>
                   )}
-                  <p className="text-slate-400 dark:text-slate-500">
+                  <p className="text-slate-500 dark:text-slate-400">
                     {hasFilters ? 'Nenhum resultado para os filtros aplicados' : emptyMessage}
                   </p>
                   {hasFilters && onClearFilters && (

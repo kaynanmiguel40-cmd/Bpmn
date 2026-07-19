@@ -33,17 +33,17 @@ export default function CityProspectCard({ city, cityStatus, onClick }) {
       {/* Header: city name + status */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <MapPin className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 flex-shrink-0" />
+          <MapPin className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 flex-shrink-0" />
           <div className="min-w-0">
             <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
               {city.name}
             </h4>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="text-[12px] text-slate-500 dark:text-slate-400">
               {formatPopulation(city.pop)}
             </p>
           </div>
         </div>
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${config?.bg || 'bg-slate-200 dark:bg-slate-700'} ${config?.text || 'text-slate-500 dark:text-slate-400'}`}>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium flex-shrink-0 ${config?.bg || 'bg-slate-200 dark:bg-slate-700'} ${config?.text || 'text-slate-500 dark:text-slate-400'}`}>
           <StatusIcon className="w-3 h-3" />
           {config?.label || 'Sem prospecção'}
         </span>
@@ -54,24 +54,24 @@ export default function CityProspectCard({ city, cityStatus, onClick }) {
         <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-700/50">
           {cityStatus.responsible && (
             <div className="flex items-center gap-1.5">
-              <User className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-              <span className="text-[11px] text-slate-600 dark:text-slate-300">
+              <User className="w-3 h-3 text-slate-500 dark:text-slate-400" />
+              <span className="text-[12px] text-slate-600 dark:text-slate-300">
                 {cityStatus.responsible}
               </span>
             </div>
           )}
           {cityStatus.notes && (
             <div className="flex items-start gap-1.5">
-              <FileText className="w-3 h-3 text-slate-400 dark:text-slate-500 mt-0.5" />
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2">
+              <FileText className="w-3 h-3 text-slate-500 dark:text-slate-400 mt-0.5" />
+              <span className="text-[12px] text-slate-500 dark:text-slate-400 line-clamp-2">
                 {cityStatus.notes}
               </span>
             </div>
           )}
           {cityStatus.lastActivity && (
             <div className="flex items-center gap-1.5">
-              <Calendar className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              <Calendar className="w-3 h-3 text-slate-500 dark:text-slate-400" />
+              <span className="text-[12px] text-slate-500 dark:text-slate-400">
                 {new Date(cityStatus.lastActivity).toLocaleDateString('pt-BR')}
               </span>
             </div>

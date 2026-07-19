@@ -126,7 +126,7 @@ export function CrmCompanyDetailPage() {
           <a href={`tel:${company.phone}`} className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 transition-colors group">
             <Phone size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div>
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Telefone</div>
+              <div className="text-[12px] text-slate-400 uppercase tracking-wider">Telefone</div>
               <div className="text-sm text-slate-700 dark:text-slate-300">{company.phone}</div>
             </div>
           </a>
@@ -135,7 +135,7 @@ export function CrmCompanyDetailPage() {
           <a href={`mailto:${company.email}`} className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 transition-colors group">
             <Mail size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Email</div>
+              <div className="text-[12px] text-slate-400 uppercase tracking-wider">Email</div>
               <div className="text-sm text-slate-700 dark:text-slate-300 truncate">{company.email}</div>
             </div>
           </a>
@@ -144,7 +144,7 @@ export function CrmCompanyDetailPage() {
           <a href={company.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 transition-colors group">
             <Globe size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Website</div>
+              <div className="text-[12px] text-slate-400 uppercase tracking-wider">Website</div>
               <div className="text-sm text-blue-600 dark:text-blue-400 truncate">{company.website}</div>
             </div>
           </a>
@@ -153,7 +153,7 @@ export function CrmCompanyDetailPage() {
           <div className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl">
             <MapPin size={16} className="text-slate-400" />
             <div className="min-w-0">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Localizacao</div>
+              <div className="text-[12px] text-slate-400 uppercase tracking-wider">Localizacao</div>
               <div className="text-sm text-slate-700 dark:text-slate-300 truncate">
                 {[company.address, company.city, company.state].filter(Boolean).join(', ')}
               </div>
@@ -177,7 +177,7 @@ export function CrmCompanyDetailPage() {
         </div>
 
         {(company.contacts || []).length === 0 ? (
-          <p className="text-sm text-slate-400 dark:text-slate-500 py-4 text-center">Nenhum contato vinculado</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">Nenhum contato vinculado</p>
         ) : (
           <div className="space-y-1">
             {company.contacts.map(ct => {
@@ -219,7 +219,7 @@ export function CrmCompanyDetailPage() {
         </div>
 
         {(company.deals || []).length === 0 ? (
-          <p className="text-sm text-slate-400 dark:text-slate-500 py-4 text-center">Nenhum negocio vinculado</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">Nenhum negocio vinculado</p>
         ) : (
           <div className="space-y-1">
             {company.deals.map(deal => {

@@ -32,7 +32,7 @@ function PartnerLeadsModal({ partner, onClose }) {
           <div className="w-6 h-6 border-2 border-fyness-primary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : leads.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Nenhum lead encontrado pra esse parceiro.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">Nenhum lead encontrado pra esse parceiro.</p>
       ) : (
         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
           {leads.map((l) => {
@@ -43,7 +43,7 @@ function PartnerLeadsModal({ partner, onClose }) {
                   <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{l.title}</div>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     {l.stageName && (
-                      <span className="text-[11px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${l.stageColor || '#6366f1'}22`, color: l.stageColor || '#6366f1' }}>
+                      <span className="text-[12px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${l.stageColor || '#6366f1'}22`, color: l.stageColor || '#6366f1' }}>
                         {l.stageName}
                       </span>
                     )}

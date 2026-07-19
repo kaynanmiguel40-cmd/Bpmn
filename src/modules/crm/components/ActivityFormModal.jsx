@@ -289,7 +289,7 @@ export function ActivityFormModal({
             <>
               <button type="button" onClick={() => setConfirmDeleteOpen(true)} disabled={isPending || deleteMutation.isPending}
                 title="Excluir atividade"
-                className={`${onOpenLeadHistory && (activity?.dealId || activity?.contactId) ? '' : 'mr-auto'} p-2 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg disabled:opacity-50`}>
+                className={`${onOpenLeadHistory && (activity?.dealId || activity?.contactId) ? '' : 'mr-auto'} p-2 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg disabled:opacity-50`}>
                 <Trash2 size={16} />
               </button>
               <span className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5" aria-hidden="true" />
@@ -309,7 +309,7 @@ export function ActivityFormModal({
       <form id="activity-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {/* Tipo da atividade */}
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1.5">Tipo</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Tipo</p>
           <div className="flex flex-wrap gap-2">
             {ACTIVITY_TYPES.map(t => {
               const Icon = t.icon;
@@ -322,7 +322,7 @@ export function ActivityFormModal({
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
                     isActive
                       ? `${t.color} ring-1 ring-offset-1 dark:ring-offset-slate-900`
-                      : 'border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
                   }`}
                 >
                   <Icon size={12} />
@@ -407,7 +407,7 @@ export function ActivityFormModal({
                 <AttendeesInput value={field.value || []} onChange={field.onChange} />
               )} />
             {selectedType === 'meeting' && (
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-1">
+              <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
                 <Video size={11} /> Reunião gera link do Google Meet automaticamente.
               </p>
             )}
@@ -426,7 +426,7 @@ export function ActivityFormModal({
             concluída (em aberto a entrega vem depois, na conclusão). */}
         {isEdit && activity?.completed && (
           <div className="rounded-xl border border-emerald-200/70 dark:border-emerald-800/40 bg-emerald-50/40 dark:bg-emerald-900/10 p-3 space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+            <p className="text-[12px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
               <CheckCircle2 size={13} /> Entrega da tarefa concluída
             </p>
             <div>

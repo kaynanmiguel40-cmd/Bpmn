@@ -214,12 +214,12 @@ export function AutomationFormModal({ open, onClose, automation }) {
             })}
           </div>
           {form.channel === 'whatsapp' && (
-            <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+            <p className="mt-1 text-[12px] text-amber-600 dark:text-amber-400">
               Envio real via a instância WhatsApp conectada (Evolution API) — mensagens de teste chegam de verdade no lead.
             </p>
           )}
           {form.channel === 'email' && (
-            <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+            <p className="mt-1 text-[12px] text-emerald-600 dark:text-emerald-400">
               Envio ativo via Resend (Edge Function send-email).
             </p>
           )}
@@ -236,7 +236,7 @@ export function AutomationFormModal({ open, onClose, automation }) {
               placeholder="Ex.: {nome}, vamos avançar com a sua proposta?"
               className={inputCls}
             />
-            <p className="mt-1 text-[11px] text-slate-400">
+            <p className="mt-1 text-[12px] text-slate-400">
               Vazio → será usado o nome da automação como assunto.
             </p>
           </div>
@@ -274,7 +274,7 @@ export function AutomationFormModal({ open, onClose, automation }) {
               rows={4}
               className={`${inputCls} resize-none`}
             />
-            <p className="mt-1 text-[11px] text-slate-400">
+            <p className="mt-1 text-[12px] text-slate-400">
               Variáveis disponíveis:{' '}
               <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">{'{nome}'}</code>{' '}
               <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">{'{empresa}'}</code>{' '}
@@ -310,7 +310,7 @@ export function AutomationFormModal({ open, onClose, automation }) {
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
-            <p className="mt-1 text-[11px] text-slate-400">
+            <p className="mt-1 text-[12px] text-slate-400">
               Vazio = dispara para qualquer deal na etapa.
             </p>
           </div>

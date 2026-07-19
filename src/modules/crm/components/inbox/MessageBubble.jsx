@@ -72,7 +72,7 @@ function AudioPlayer({ url, isOut }) {
         </div>
         <div className="flex items-center gap-1 mt-1">
           <Mic size={12} className="text-slate-400" />
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+          <span className="text-[12px] text-slate-500 dark:text-slate-400 tabular-nums">
             {fmtClock(playing || cur ? cur : dur)}
           </span>
         </div>
@@ -178,14 +178,14 @@ export function MessageBubble({ message }) {
         )}
 
         <div className={`flex items-center justify-end gap-1 select-none ${timeMt} ${isSticker ? '' : 'pl-2'}`}>
-          <span className="text-[11px] text-slate-500 dark:text-slate-300/70 tabular-nums">
+          <span className="text-[12px] text-slate-500 dark:text-slate-300/70 tabular-nums">
             {formatTime(message.sentAt)}
           </span>
           {isOut && <StatusIcon status={message.status} />}
         </div>
 
         {message.status === 'failed' && (
-          <p className="text-[11px] text-red-500 mt-0.5 px-1">
+          <p className="text-[12px] text-red-500 mt-0.5 px-1">
             {message.errorMessage || 'Falha no envio'}
           </p>
         )}

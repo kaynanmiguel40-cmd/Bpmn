@@ -123,20 +123,20 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
           <div className="flex items-center gap-2">
             <h4 className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate">{member.name}</h4>
             {member.crmRole && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">
+              <span className="text-[12px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">
                 {ROLE_LABEL[member.crmRole] || member.crmRole}
               </span>
             )}
           </div>
-          {member.email && <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{member.email}</p>}
+          {member.email && <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{member.email}</p>}
         </div>
         {/* Selo de resumo */}
         <div className="text-right shrink-0">
           <div className="flex items-baseline gap-1 justify-end">
             <span className={`text-2xl font-bold tabular-nums ${allowedCount === total ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-100'}`}>{allowedCount}</span>
-            <span className="text-sm text-slate-400 dark:text-slate-500">/ {total}</span>
+            <span className="text-sm text-slate-500 dark:text-slate-400">/ {total}</span>
           </div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500">seções liberadas</div>
+          <div className="text-[12px] uppercase tracking-wider text-slate-500 dark:text-slate-400">seções liberadas</div>
         </div>
       </div>
 
@@ -153,7 +153,7 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
             type="button"
             onClick={allowAll}
             disabled={allowedCount === total}
-            className="text-[11px] font-medium px-2 py-1 rounded-md text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+            className="text-[12px] font-medium px-2 py-1 rounded-md text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
           >
             Liberar tudo
           </button>
@@ -162,7 +162,7 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
             type="button"
             onClick={blockAll}
             disabled={allowedCount === 0}
-            className="text-[11px] font-medium px-2 py-1 rounded-md text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+            className="text-[12px] font-medium px-2 py-1 rounded-md text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
           >
             Bloquear tudo
           </button>
@@ -182,7 +182,7 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
 
       {/* Dashboard — sempre disponível (não editável). Sem card/hover: é só uma
           nota informativa, não um toggle, então não pode parecer um. */}
-      <div className="flex items-center gap-2 px-1 mb-3 text-[11px] text-slate-400 dark:text-slate-500">
+      <div className="flex items-center gap-2 px-1 mb-3 text-[12px] text-slate-500 dark:text-slate-400">
         <Lock size={11} className="shrink-0" />
         <span>
           <span className="font-medium text-slate-500 dark:text-slate-400">Dashboard</span> — página inicial, sempre disponível para todos
@@ -196,7 +196,7 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
           if (!items.length) return null;
           return (
             <div key={group}>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5 px-1">
+              <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5 px-1">
                 {group}
               </div>
               <div className="rounded-xl border border-slate-100 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
@@ -218,7 +218,7 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
                       </span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{sec.label}</span>
-                        <span className={`block text-[11px] font-medium ${allowed ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <span className={`block text-[12px] font-medium ${allowed ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
                           {allowed ? 'Pode acessar' : 'Bloqueado'}
                         </span>
                       </span>
@@ -233,7 +233,7 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
       </div>
 
       {/* Rodapé informativo */}
-      <div className="flex items-start gap-2 mt-4 text-[11px] text-slate-400 dark:text-slate-500">
+      <div className="flex items-start gap-2 mt-4 text-[12px] text-slate-500 dark:text-slate-400">
         <ShieldCheck size={13} className="shrink-0 mt-0.5" />
         <span>
           Admins veem tudo, independente destes ajustes. As mudanças valem no menu e por link direto.

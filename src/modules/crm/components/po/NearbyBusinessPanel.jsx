@@ -27,13 +27,13 @@ function BusinessCard({ place, isSelected, onSelect }) {
         {place.rating && (
           <div className="flex items-center gap-1 flex-shrink-0">
             <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-            <span className="text-[11px] text-amber-400 font-medium">{place.rating.toFixed(1)}</span>
+            <span className="text-[12px] text-amber-400 font-medium">{place.rating.toFixed(1)}</span>
           </div>
         )}
       </div>
 
       {(place.formatted_address || place.vicinity) && (
-        <p className="text-[11px] text-slate-400 mt-1 flex items-start gap-1 line-clamp-2">
+        <p className="text-[12px] text-slate-400 mt-1 flex items-start gap-1 line-clamp-2">
           <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5 text-slate-500" />
           {place.formatted_address || place.vicinity}
         </p>
@@ -41,7 +41,7 @@ function BusinessCard({ place, isSelected, onSelect }) {
 
       <div className="mt-2">
         <span
-          className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold"
+          className="inline-block px-2 py-0.5 rounded-full text-[12px] font-semibold"
           style={{
             backgroundColor: (cat?.color || '#64748b') + '15',
             color: cat?.color || '#64748b',
@@ -79,7 +79,7 @@ export default function NearbyBusinessPanel({
             Parceiros Potenciais
           </h3>
           {municipalityName && (
-            <p className="text-[11px] text-slate-400 mt-0.5">{municipalityName}</p>
+            <p className="text-[12px] text-slate-400 mt-0.5">{municipalityName}</p>
           )}
         </div>
         <button
@@ -105,7 +105,7 @@ export default function NearbyBusinessPanel({
               <p className="text-lg font-bold" style={{ color: cat.color }}>
                 {stats.byCategory[key] || 0}
               </p>
-              <p className="text-[10px] text-slate-400">{cat.label}</p>
+              <p className="text-[12px] text-slate-400">{cat.label}</p>
             </div>
           ))}
         </div>
@@ -116,7 +116,7 @@ export default function NearbyBusinessPanel({
         <div className="flex gap-2 px-4 py-2.5 overflow-x-auto flex-shrink-0 border-b border-slate-700/50">
           <button
             onClick={() => onCategoryChange(null)}
-            className={`px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-colors ${
+            className={`px-3 py-1 rounded-full text-[12px] font-semibold whitespace-nowrap transition-colors ${
               activeCategory === null
                 ? 'bg-cyan-500 text-slate-900'
                 : 'bg-slate-800 text-slate-400 border border-slate-600 hover:text-slate-200'
@@ -131,7 +131,7 @@ export default function NearbyBusinessPanel({
               <button
                 key={key}
                 onClick={() => onCategoryChange(key)}
-                className={`px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-colors ${
+                className={`px-3 py-1 rounded-full text-[12px] font-semibold whitespace-nowrap transition-colors ${
                   activeCategory === key
                     ? 'text-slate-900'
                     : 'bg-slate-800 border border-slate-600 hover:text-slate-200'
@@ -151,7 +151,7 @@ export default function NearbyBusinessPanel({
           <div className="flex flex-col items-center justify-center h-full">
             <Loader2 className="w-6 h-6 text-cyan-400 animate-spin mb-3" />
             <p className="text-sm text-slate-400">Buscando parceiros...</p>
-            <p className="text-[10px] text-slate-500 mt-1">na região de {municipalityName}</p>
+            <p className="text-[12px] text-slate-500 mt-1">na região de {municipalityName}</p>
           </div>
         )}
 
@@ -166,7 +166,7 @@ export default function NearbyBusinessPanel({
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <SearchX className="w-8 h-8 text-slate-500 mb-3" />
             <p className="text-sm text-slate-400">Nenhum parceiro encontrado</p>
-            <p className="text-[10px] text-slate-500 mt-1">nesta região</p>
+            <p className="text-[12px] text-slate-500 mt-1">nesta região</p>
           </div>
         )}
 
@@ -183,10 +183,10 @@ export default function NearbyBusinessPanel({
       {/* Footer */}
       {!loading && stats.total > 0 && (
         <div className="flex items-center justify-between px-4 py-2 border-t border-slate-700/50 flex-shrink-0">
-          <span className="text-[10px] text-slate-500">
+          <span className="text-[12px] text-slate-500">
             {stats.total} parceiro(s) encontrado(s)
           </span>
-          <span className="text-[9px] text-slate-600">Powered by Google</span>
+          <span className="text-[11px] text-slate-600">Powered by Google</span>
         </div>
       )}
     </div>

@@ -539,7 +539,7 @@ function ActiveContactCard({ contact, position, total, isInCall, elapsed, env, o
             </div>
           )}
           {contact.sourceType === 'prospects' && (
-            <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+            <div className="mt-1 flex items-center gap-1 text-[12px] text-amber-700 dark:text-amber-400">
               <Info size={11} />
               Prospect ainda nao esta no CRM. Sera convertido em contato ao registrar a chamada.
             </div>
@@ -578,10 +578,10 @@ function ActiveContactCard({ contact, position, total, isInCall, elapsed, env, o
         <div className="flex items-center gap-3">
           <Clock size={18} className={isInCall ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'} />
           <div>
-            <div className={`font-mono text-2xl font-semibold ${isInCall ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
+            <div className={`font-mono text-2xl font-semibold ${isInCall ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
               {formatSeconds(elapsed)}
             </div>
-            <div className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-2">
+            <div className="text-[12px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
               <span>{isInCall ? 'Em chamada' : 'Pronto pra ligar'}</span>
               <span className="hidden sm:inline-flex items-center gap-1">
                 <Kbd>{isInCall ? 'E' : 'Espaco'}</Kbd>
@@ -643,7 +643,7 @@ function RecentCallsPanel({ calls }) {
         </span>
       </div>
       {calls.length === 0 ? (
-        <div className="px-4 py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+        <div className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
           Nenhuma ligacao anterior.
         </div>
       ) : (
@@ -714,7 +714,7 @@ function QueueList({ queue, currentIndex, onSelect, disabled }) {
                     {c.phone}{c.company?.name ? ` · ${c.company.name}` : ''}
                   </div>
                   {c.sourceContext && (
-                    <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                    <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                       {c.sourceContext}
                     </div>
                   )}
@@ -775,7 +775,7 @@ const SHORTCUTS = [
 
 function Kbd({ children }) {
   return (
-    <kbd className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded shadow-[inset_0_-1px_0_rgba(0,0,0,0.08)]">
+    <kbd className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 text-[12px] font-mono font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded shadow-[inset_0_-1px_0_rgba(0,0,0,0.08)]">
       {children}
     </kbd>
   );
@@ -821,7 +821,7 @@ function KeyboardCheatsheet({ open, onClose }) {
             </li>
           ))}
         </ul>
-        <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-700/50 text-[11px] text-slate-400">
+        <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-700/50 text-[12px] text-slate-400">
           Atalhos sao ignorados enquanto voce digita em campos de texto.
         </div>
       </div>

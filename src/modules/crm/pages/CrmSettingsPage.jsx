@@ -106,17 +106,17 @@ function EquipeTab() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{member.name}</span>
                     {isOwner && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-fyness-primary/10 text-fyness-primary shrink-0">
+                      <span className="inline-flex items-center gap-0.5 text-[12px] font-medium px-1.5 py-0.5 rounded-full bg-fyness-primary/10 text-fyness-primary shrink-0">
                         <ShieldCheck size={10} /> Admin
                       </span>
                     )}
                   </div>
-                  {member.role && <div className="text-xs text-slate-400 dark:text-slate-500 truncate">{member.role}</div>}
+                  {member.role && <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{member.role}</div>}
                 </div>
 
                 {/* Cargo CRM — badge compacto no celular (o segmentado exige espaço em linha) */}
                 {member.crmRole && (
-                  <span className={`sm:hidden shrink-0 px-2 py-0.5 text-[11px] font-medium rounded-full border ${
+                  <span className={`sm:hidden shrink-0 px-2 py-0.5 text-[12px] font-medium rounded-full border ${
                     CRM_ROLES.find(r => r.value === member.crmRole)?.color || 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
                   }`}>
                     {CRM_ROLES.find(r => r.value === member.crmRole)?.label || member.crmRole}
@@ -140,7 +140,7 @@ function EquipeTab() {
                         className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all disabled:opacity-50 ${
                           isActive
                             ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
-                            : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                         }`}
                       >
                         {r.label}
@@ -163,7 +163,7 @@ function EquipeTab() {
                     <SlidersHorizontal size={13} className="text-slate-400 group-hover:text-fyness-primary transition-colors" />
                   </button>
                 ) : isOwner ? (
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 shrink-0 hidden sm:inline">vê tudo</span>
+                  <span className="text-[12px] text-slate-500 dark:text-slate-400 shrink-0 hidden sm:inline">vê tudo</span>
                 ) : null}
 
                 {savingId === member.id && (

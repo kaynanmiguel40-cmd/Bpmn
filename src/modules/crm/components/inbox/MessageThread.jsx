@@ -16,7 +16,7 @@ class BubbleBoundary extends Component {
     if (this.state.failed) {
       return (
         <div className="flex justify-center my-1">
-          <span className="text-[11px] text-slate-400 dark:text-slate-500 italic px-2 py-0.5 rounded bg-black/5 dark:bg-white/5">
+          <span className="text-[12px] text-slate-500 dark:text-slate-400 italic px-2 py-0.5 rounded bg-black/5 dark:bg-white/5">
             mensagem não pôde ser exibida
           </span>
         </div>
@@ -102,7 +102,7 @@ function ThreadHeader({ conversation }) {
 function DateChip({ label }) {
   return (
     <div className="flex justify-center my-3">
-      <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-white/90 dark:bg-[#182229] px-3 py-1 rounded-md shadow-sm uppercase tracking-wide">
+      <span className="text-[12px] font-medium text-slate-600 dark:text-slate-300 bg-white/90 dark:bg-[#182229] px-3 py-1 rounded-md shadow-sm uppercase tracking-wide">
         {label}
       </span>
     </div>
@@ -116,10 +116,10 @@ function ThreadEmpty() {
         <MessageSquare size={36} className="text-[#00a884]" />
       </div>
       <h3 className="text-lg font-medium text-slate-600 dark:text-slate-200 mb-1">WhatsApp do CRM</h3>
-      <p className="text-sm text-slate-400 dark:text-slate-500 max-w-xs">
+      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs">
         Escolha uma conversa à esquerda pra acompanhar e responder seus leads.
       </p>
-      <p className="flex items-center gap-1 text-[11px] text-slate-400 mt-6">
+      <p className="flex items-center gap-1 text-[12px] text-slate-400 mt-6">
         <Lock size={11} /> Conversas sincronizadas via Evolution API
       </p>
     </div>

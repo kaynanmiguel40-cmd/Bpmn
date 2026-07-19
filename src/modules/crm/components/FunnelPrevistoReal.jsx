@@ -101,7 +101,7 @@ function ComparativoRow({ stepKey, previstoCount, realCount, goal, pTopW, pBotW,
     >
       {/* Rótulo — uma vez só por linha */}
       <div className="w-[84px] sm:w-28 flex items-center justify-end gap-1.5 pr-2.5 text-right shrink-0">
-        <span className="text-[11px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">{meta.label}</span>
+        <span className="text-[12px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">{meta.label}</span>
         <span className="w-6 h-6 rounded-md hidden sm:flex items-center justify-center shrink-0 text-white"
           style={{ background: `linear-gradient(135deg, ${meta.from}, ${meta.to})` }}>
           <Icon size={12} />
@@ -123,7 +123,7 @@ function ComparativoRow({ stepKey, previstoCount, realCount, goal, pTopW, pBotW,
       {showPrevisto && (
         <div className="w-[46px] sm:w-[54px] shrink-0 flex flex-col items-center justify-center gap-0.5">
           {goal ? (
-            <span className={`text-[10px] font-bold tabular-nums inline-flex items-center gap-0.5 ${tone.text}`}>
+            <span className={`text-[12px] font-bold tabular-nums inline-flex items-center gap-0.5 ${tone.text}`}>
               {StatusIcon && <StatusIcon size={10} />}
               {goal.percent}%
             </span>
@@ -177,7 +177,7 @@ export function FunnelPrevistoReal({ previsto, real, monthLabel, subtitle, onSte
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
             Funil · {monthLabel || 'este mês'} {showPrevisto ? '· Previsto × Real' : '· Real'}
           </h3>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">
             {subtitle || 'plano comercial (fixo)'}
           </p>
         </div>
@@ -186,7 +186,7 @@ export function FunnelPrevistoReal({ previsto, real, monthLabel, subtitle, onSte
           type="button"
           onClick={() => setShowPrevisto(v => !v)}
           title={showPrevisto ? 'Ocultar o previsto (ver só o real)' : 'Mostrar o previsto'}
-          className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+          className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[12px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
         >
           {showPrevisto ? <EyeOff size={13} /> : <Eye size={13} />}
           Previsto
@@ -196,9 +196,9 @@ export function FunnelPrevistoReal({ previsto, real, monthLabel, subtitle, onSte
       {/* Cabeçalho das colunas — aparece uma vez, não por linha */}
       <div className="flex items-stretch mb-1.5">
         <div className="w-[84px] sm:w-28 shrink-0" />
-        {showPrevisto && <div className="flex-1 text-center text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Previsto</div>}
+        {showPrevisto && <div className="flex-1 text-center text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Previsto</div>}
         {showPrevisto && <div className="w-[46px] sm:w-[54px] shrink-0" />}
-        <div className={`text-center text-[10px] font-semibold uppercase tracking-wider text-fyness-primary ${showPrevisto ? 'flex-1' : 'flex-1 max-w-[280px] mx-auto'}`}>Real</div>
+        <div className={`text-center text-[12px] font-semibold uppercase tracking-wider text-fyness-primary ${showPrevisto ? 'flex-1' : 'flex-1 max-w-[280px] mx-auto'}`}>Real</div>
       </div>
 
       <div>

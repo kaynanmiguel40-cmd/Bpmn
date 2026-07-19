@@ -150,7 +150,7 @@ export function CrmSidebar() {
               <img src={logoFyness} alt="Fyness" className="w-7 h-7 object-contain shrink-0" />
               <div className="truncate">
                 <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Fyness</span>
-                <span className="ml-1 text-[11px] font-medium text-fyness-primary">CRM</span>
+                <span className="ml-1 text-[12px] font-medium text-fyness-primary">CRM</span>
               </div>
             </div>
             <button
@@ -159,7 +159,7 @@ export function CrmSidebar() {
               className={`p-1 rounded-md transition-colors ${
                 isPinned
                   ? 'text-fyness-primary dark:text-blue-400 bg-fyness-primary/10 dark:bg-blue-900/30'
-                  : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <PinIcon pinned={isPinned} />
@@ -178,7 +178,7 @@ export function CrmSidebar() {
           ) : item.section ? (
             !isCollapsed && (
               <div key={`sec-${idx}`} className="pt-3 pb-1 px-2.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <span className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   {item.section}
                 </span>
               </div>

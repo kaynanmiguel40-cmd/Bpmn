@@ -136,7 +136,7 @@ export function CrmCallHistoryPage() {
             <CrmAvatar name={row.contact.name} color={row.contact.avatarColor} size="sm" />
             <div className="min-w-0">
               <div className="font-medium text-sm text-slate-800 dark:text-slate-200 truncate">{row.contact.name}</div>
-              <div className="text-[11px] text-slate-400 font-mono truncate">{row.phoneDialed}</div>
+              <div className="text-[12px] text-slate-400 font-mono truncate">{row.phoneDialed}</div>
             </div>
           </div>
         );

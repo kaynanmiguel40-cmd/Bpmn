@@ -4,6 +4,7 @@ import { toast } from '../../../contexts/ToastContext';
 import { crmDealSchema } from '../schemas/crmValidation';
 import { triggerAutomationsForDeal } from './crmAutomationsService';
 import { createCrmActivity } from './crmActivitiesService';
+import { scheduleStepsForDeal } from './crmPlaybookService';
 import { getCrmWorkspaceSettings } from '../lib/workspaceSettings';
 import { escapeIlike } from '../lib/searchFilters';
 
@@ -17,6 +18,8 @@ export interface CrmDeal {
   value: number;
   mrr: number;
   probability: number;
+  /** Prioridade do lead em estrelas (0-5). 0 = nao definida. */
+  priority: number;
   contactId: string | null;
   contactName: string | null;
   contactPhone: string | null;
@@ -50,6 +53,7 @@ export interface CrmDealRow {
   value?: number | null;
   mrr?: number | null;
   probability?: number | null;
+  priority?: number | null;
   contact_id?: string | null;
   contact_name?: string | null;
   contact_phone?: string | null;
@@ -100,6 +104,7 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
     value: row.value || 0,
     mrr: row.mrr || 0,
     probability: row.probability ?? 50,
+    priority: row.priority ?? 0,
     contactId: row.contact_id || null,
     contactName: row.contact_name || null,
     contactPhone: row.contact_phone || null,
@@ -181,6 +186,7 @@ const dealService = createCRUDService<CrmDeal, CrmDealRow>({
     value: 'value',
     mrr: 'mrr',
     probability: 'probability',
+    priority: 'priority',
     contactId: 'contact_id',
     contactName: 'contact_name',
     contactPhone: 'contact_phone',
@@ -369,6 +375,10 @@ export async function moveDealToStage(dealId: string, stageId: string): Promise<
 
   if (cur && cur.stage_id !== stageId && result) {
     triggerAutomationsForDeal(result, stageId).catch(console.warn);
+    // Agenda as tarefas do processo da etapa nova (9-18h, sem almoco, sem
+    // colidir). Idempotente. Nao pode derrubar o move: se falhar, o lead ja
+    // mudou de etapa e a agenda pode ser gerada depois.
+    scheduleStepsForDeal(dealId, stageId).catch(console.warn);
   }
 
   return result;
@@ -644,6 +654,7 @@ export async function getDealActivities(dealId: string): Promise<DealActivity[]>
     id: string; title: string; description: string | null; type: string;
     start_date: string; end_date: string | null; completed: boolean; completed_at: string | null;
     delivery_input: string | null; delivery_report: string | null;
+    stage_step_id?: string | null;
     crm_contacts?: { id: string; name: string; avatar_color?: string | null } | null;
     created_at: string;
   };
@@ -659,6 +670,8 @@ export async function getDealActivities(dealId: string): Promise<DealActivity[]>
     completedAt: row.completed_at,
     deliveryInput: row.delivery_input,
     deliveryReport: row.delivery_report,
+    // Passo do playbook que gerou esta atividade (quando veio do processo).
+    stageStepId: row.stage_step_id || null,
     contact: row.crm_contacts
       ? { id: row.crm_contacts.id, name: row.crm_contacts.name, avatarColor: row.crm_contacts.avatar_color }
       : null,

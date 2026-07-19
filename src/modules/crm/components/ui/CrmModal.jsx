@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 const sizeMap = {
@@ -77,19 +78,24 @@ export function CrmModal({ open, onClose, title, size = 'md', children, footer, 
 
   if (!open) return null;
 
-  return (
+  // PORTAL pro body de proposito: um ancestral com backdrop-filter (todo cartao
+  // .crm-glass tem) vira bloco de contencao de position:fixed. Sem o portal, o
+  // "inset-0" cobria so o cartao — dava uma faixa cinza parcial e o modal
+  // centralizava dentro do card em vez da tela.
+  return createPortal((
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === overlayRef.current) guardedClose(); }}
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-md" />
+      {/* Backdrop — cobre a tela inteira (ver o portal acima). */}
+      <div className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 backdrop-blur-sm" />
 
-      {/* Modal */}
-      <div className={`relative w-full ${sizeMap[size]} bg-white/90 dark:bg-slate-900/85 backdrop-blur-2xl rounded-2xl shadow-glass-lg border border-white/60 dark:border-white/10 flex flex-col max-h-[90vh] animate-scale-in`}>
+      {/* Modal — fundo SOLIDO de proposito: translucido (bg-white/90) por cima
+          do backdrop escuro deixava o painel encardido, com aspecto cinza. */}
+      <div className={`relative w-full ${sizeMap[size]} bg-white dark:bg-slate-900 rounded-2xl shadow-glass-lg border border-slate-200/80 dark:border-white/10 flex flex-col max-h-[90vh] animate-scale-in`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/60 dark:border-white/10 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200/80 dark:border-white/10 shrink-0">
           <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">{title}</h3>
           <button
             onClick={guardedClose}
@@ -107,13 +113,13 @@ export function CrmModal({ open, onClose, title, size = 'md', children, footer, 
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/60 dark:border-white/10 bg-white/30 dark:bg-white/[0.02] rounded-b-2xl shrink-0">
+          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-200/80 dark:border-white/10 rounded-b-2xl shrink-0">
             {footer}
           </div>
         )}
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 export default CrmModal;

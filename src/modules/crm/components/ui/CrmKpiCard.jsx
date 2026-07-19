@@ -63,7 +63,7 @@ export function CrmKpiCard({ title, value, rawValue, format, subtitle, trend, ic
 
       <div className="relative">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <span className="text-[12px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             {title}
           </span>
           {Icon && (
@@ -80,7 +80,7 @@ export function CrmKpiCard({ title, value, rawValue, format, subtitle, trend, ic
         <div className="flex items-center gap-2 mt-2.5">
           {trend && (
             <span
-              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[11px] font-semibold tnum ${
+              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[12px] font-semibold tnum ${
                 trend.up
                   ? 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400'
                   : 'bg-rose-500/12 text-rose-600 dark:text-rose-400'
@@ -91,7 +91,7 @@ export function CrmKpiCard({ title, value, rawValue, format, subtitle, trend, ic
             </span>
           )}
           {subtitle && (
-            <span className="text-xs text-slate-400 dark:text-slate-500 truncate">{subtitle}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{subtitle}</span>
           )}
         </div>
       </div>

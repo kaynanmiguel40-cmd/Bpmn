@@ -271,7 +271,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                 type="button"
                 onClick={handleSmartSuggest}
                 disabled={smartLoading}
-                className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded-md hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1 px-2 py-0.5 text-[12px] font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded-md hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors disabled:opacity-50"
               >
                 <Brain size={12} />
                 Sugerir Meta
@@ -287,7 +287,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
             <input type="number" min="0" step="0.01" value={form.currentValue}
               onChange={(e) => setField('currentValue', e.target.value)}
               placeholder="0" className={fieldClass('currentValue')} />
-            <p className="text-[11px] text-slate-400 mt-0.5">Valor extra somado ao progresso automatico</p>
+            <p className="text-[12px] text-slate-400 mt-0.5">Valor extra somado ao progresso automatico</p>
           </div>
         </div>
 
@@ -341,7 +341,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                     <span className="text-slate-500 dark:text-slate-400 w-32">Conversao real:</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">
                       {smartData.conversionRate.toFixed(1)}%
-                      <span className="text-[10px] text-slate-400 ml-1">({smartData.conversionSource === 'history' ? 'historico' : 'estimada'})</span>
+                      <span className="text-[12px] text-slate-400 ml-1">({smartData.conversionSource === 'history' ? 'historico' : 'estimada'})</span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
@@ -357,7 +357,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                 {/* Resultado */}
                 <div className="mt-3 pt-3 border-t border-violet-200 dark:border-violet-700/50 flex items-center justify-between">
                   <div>
-                    <div className="text-[10px] font-medium text-violet-500 uppercase">Meta Sugerida</div>
+                    <div className="text-[12px] font-medium text-violet-500 uppercase">Meta Sugerida</div>
                     <div className="text-lg font-bold text-violet-700 dark:text-violet-300">
                       {formatCurrency(smartData.suggestedTarget)}
                     </div>

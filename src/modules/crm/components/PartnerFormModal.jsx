@@ -68,7 +68,7 @@ export function PartnerFormModal({ open, onClose, partner = null }) {
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nome *</label>
           <input {...register('name')} placeholder="Ex.: Edson" className={fieldClass('name')} />
           {errors.name && <p className="text-xs text-rose-500 mt-0.5">{errors.name.message}</p>}
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">
             Precisa bater com o nome usado na origem do lead: "Indicação de parceiro (Nome)".
           </p>
         </div>

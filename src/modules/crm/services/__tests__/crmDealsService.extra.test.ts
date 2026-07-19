@@ -554,8 +554,9 @@ describe('moveDealToStage', () => {
 
     const result = await moveDealToStage('d1', 's_new');
 
-    // history insert tem que ter sido feito (4a chamada a from)
-    expect(mockedSupabase.from).toHaveBeenCalledTimes(4);
+    // history insert (4a chamada) + o agendamento das tarefas do processo da
+    // etapa nova (5a) — scheduleStepsForDeal roda solto apos a troca de etapa.
+    expect(mockedSupabase.from).toHaveBeenCalledTimes(5);
     expect(mockTriggerAutomations).toHaveBeenCalledWith(result, 's_new');
   });
 
@@ -666,6 +667,8 @@ describe('getDealActivities', () => {
       completedAt: '2026-05-10T11:30:00Z',
       contact: { id: 'c1', name: 'Joao', avatarColor: '#abc' },
       createdAt: '2026-05-09T00:00:00Z',
+      // Passo do playbook que gerou a atividade — null quando foi criada a mao.
+      stageStepId: null,
     });
     expect(captured.eqCalls).toContainEqual(['deal_id', 'd1']);
     expect(captured.isCalls).toContainEqual(['deleted_at', null]);

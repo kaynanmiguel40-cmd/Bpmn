@@ -154,8 +154,8 @@ function MiniStat({ label, value, sub, tone = 'slate' }) {
   return (
     <div className="min-w-0">
       <div className={`text-xl sm:text-2xl font-bold tnum leading-none ${STAT_TONE[tone] || STAT_TONE.slate}`}>{value}</div>
-      <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-1 truncate">{label}</div>
-      {sub && <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{sub}</div>}
+      <div className="text-[12px] text-slate-500 dark:text-slate-400 leading-tight mt-1 truncate">{label}</div>
+      {sub && <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate">{sub}</div>}
     </div>
   );
 }
@@ -272,7 +272,7 @@ export function CrmDashboardPage() {
           <button
             type="button"
             onClick={openMrrGoalEditor}
-            className="text-[11px] text-slate-400 dark:text-slate-500 hover:text-fyness-primary transition-colors"
+            className="text-[12px] text-slate-500 dark:text-slate-400 hover:text-fyness-primary transition-colors"
           >
             {mrrGoal > 0 ? `Meta: ${formatCurrency(mrrGoal)}/mês ✎` : 'Definir meta de MRR ✎'}
           </button>
@@ -284,7 +284,7 @@ export function CrmDashboardPage() {
               <span className="text-3xl font-bold text-slate-900 dark:text-white tnum leading-none">
                 {formatCurrency(kpis?.periodNewMrr)}
               </span>
-              <span className="text-sm font-medium text-slate-400 dark:text-slate-500">MRR novo</span>
+              <span className="text-sm font-medium text-slate-500 dark:text-slate-400">MRR novo</span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               {formatNumber(kpis?.periodWonDeals)} {(kpis?.periodWonDeals === 1 ? 'cliente novo' : 'clientes novos')} · {formatCurrency(kpis?.periodRevenue)} em contratos
@@ -299,7 +299,7 @@ export function CrmDashboardPage() {
               <div className="h-2.5 bg-slate-200/60 dark:bg-slate-800/80 rounded-full overflow-hidden">
                 <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${mrrPct}%` }} />
               </div>
-              <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 tnum">
+              <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-1 tnum">
                 {formatCurrency(kpis?.periodNewMrr)} / {formatCurrency(mrrGoal)}
               </div>
             </div>
@@ -386,7 +386,7 @@ export function CrmDashboardPage() {
           {/* crm_goals nao tem coluna de scope — metas sao sempre do time de
               Vendas, independente do filtro "Visao" la em cima. */}
           {scope !== 'sales' && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3">
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-3">
               Metas sempre mostram o time de Vendas, independente da Visao selecionada acima.
             </p>
           )}
@@ -408,7 +408,7 @@ export function CrmDashboardPage() {
                         {goal.title}
                       </span>
                       {goal.owner && (
-                        <span className="text-xs text-slate-400 dark:text-slate-500 truncate hidden sm:inline">
+                        <span className="text-xs text-slate-500 dark:text-slate-400 truncate hidden sm:inline">
                           — {goal.owner.name}
                         </span>
                       )}
@@ -417,7 +417,7 @@ export function CrmDashboardPage() {
                       {health && (
                         <div
                           title={health.tooltip}
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${health.color} ${health.bgColor}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium ${health.color} ${health.bgColor}`}
                         >
                           <health.icon size={11} />
                           {health.label}
@@ -464,7 +464,7 @@ export function CrmDashboardPage() {
           {(kpis?.dealsClosingSoonList || []).length === 0 ? (
             <div className="py-8 text-center">
               <Clock size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-              <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum deal vencendo esta semana</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum deal vencendo esta semana</p>
             </div>
           ) : (
             <div className="space-y-1">
@@ -481,7 +481,7 @@ export function CrmDashboardPage() {
                       <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                         {deal.title}
                       </div>
-                      <div className="text-xs text-slate-400 dark:text-slate-500 truncate">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                         {deal.contact?.name || deal.company || ''}
                       </div>
                     </div>

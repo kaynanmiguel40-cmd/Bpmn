@@ -183,7 +183,7 @@ export default function MunicipalityMapView({ activeMunicipality, activeStateUf 
           <p className="text-xs text-slate-400 mb-1">
             Adicione sua key no arquivo <code className="text-cyan-400">.env</code>:
           </p>
-          <code className="text-[11px] text-cyan-400 bg-slate-800/80 px-3 py-1.5 rounded-lg block mt-2">
+          <code className="text-[12px] text-cyan-400 bg-slate-800/80 px-3 py-1.5 rounded-lg block mt-2">
             VITE_GOOGLE_MAPS_API_KEY=AIza...
           </code>
         </div>
@@ -249,9 +249,9 @@ export default function MunicipalityMapView({ activeMunicipality, activeStateUf 
               className="absolute top-3 right-3 z-20 flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/90 backdrop-blur-sm border border-slate-700/50 text-slate-300 hover:text-white hover:border-cyan-500/40 transition-colors"
             >
               <Building2 className="w-4 h-4 text-cyan-400" />
-              <span className="text-[11px] font-semibold">Parceiros</span>
+              <span className="text-[12px] font-semibold">Parceiros</span>
               {stats.total > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-bold">
+                <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-[12px] font-bold">
                   {stats.total}
                 </span>
               )}

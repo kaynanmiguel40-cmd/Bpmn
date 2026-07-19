@@ -5,10 +5,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useEnsureGeneralPipeline, useConsolidateIntoGeneral, useStagePlaybook } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useUpdateCrmDeal, useEnsureGeneralPipeline, useConsolidateIntoGeneral, useStagePlaybook, useScheduleProcessForPipeline } from '../hooks/useCrmQueries';
 import { getDealLeadInfo } from '../services/crmDealsService';
 import { detectFunnelStagePositions } from '../services/crmDashboardService';
 import { useTeamMembers } from '../../../hooks/queries';
@@ -17,6 +17,7 @@ import { supabase } from '../../../lib/supabase';
 import { DealFormModal } from '../components/DealFormModal';
 import { LostReasonModal } from '../components/LostReasonModal';
 import { ImportLeadsModal } from '../components/ImportLeadsModal';
+import { PriorityStars } from '../components/ui/PriorityStars';
 import { StagePlaybookModal } from '../components/StagePlaybookModal';
 
 const formatCurrency = (val) =>
@@ -51,9 +52,24 @@ function getWhatsappLink(phone) {
 
 // ==================== DEAL CARD ====================
 
-function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onMoveStage }) {
+function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onMoveStage, onSetPriority }) {
   const navigate = useNavigate();
   const isDragging = useRef(false);
+  const [stagePickerOpen, setStagePickerOpen] = useState(false);
+  const stagePickerRef = useRef(null);
+
+  // Fecha o seletor de etapa ao clicar fora.
+  useEffect(() => {
+    if (!stagePickerOpen) return;
+    const onClickOut = (e) => {
+      if (stagePickerRef.current && !stagePickerRef.current.contains(e.target)) setStagePickerOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOut);
+    return () => document.removeEventListener('mousedown', onClickOut);
+  }, [stagePickerOpen]);
+
+  // Etapas pra onde este lead pode ir (exclui a atual).
+  const otherStages = (allStages || []).filter(s => s.id !== deal.stageId);
 
   // Contato/empresa vinculado sempre vence; contactPhone digitado e so fallback (getDealLeadInfo).
   const { phone } = getDealLeadInfo(deal);
@@ -96,12 +112,12 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
         <div className="flex items-center gap-1.5 min-w-0">
           <h4 className="text-sm font-medium text-slate-800 dark:text-slate-200 leading-snug line-clamp-2">{deal.title}</h4>
           {deal.status === 'lost' && (
-            <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-semibold uppercase rounded bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+            <span className="shrink-0 px-1.5 py-0.5 text-[11px] font-semibold uppercase rounded bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
               Perdido
             </span>
           )}
           {deal.status === 'won' && (
-            <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-semibold uppercase rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+            <span className="shrink-0 px-1.5 py-0.5 text-[11px] font-semibold uppercase rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
               Ganho
             </span>
           )}
@@ -123,46 +139,79 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
           )}
           {deal.contact && deal.company && <span className="text-slate-300 dark:text-slate-600">·</span>}
           {deal.company && (
-            <span className="text-xs text-slate-400 dark:text-slate-500 truncate">{deal.company.name}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{deal.company.name}</span>
           )}
         </div>
       )}
 
-      {(deal.segment || deal.source) && (
-        <div className="flex flex-wrap items-center gap-1 mb-1">
-          {deal.segment && (
-            <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
-              {deal.segment}
-            </span>
-          )}
-          {deal.source && (
-            <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
-              {deal.source}
-            </span>
-          )}
+      {/* Origem em NEUTRO: a cor do card fica reservada pra urgencia. Segmento
+          saiu do card (vive no detalhe) — 9 blocos competindo em 288px nao
+          davam pra escanear. */}
+      {deal.source && (
+        <div className="mb-1">
+          <span className="inline-block px-1.5 py-0.5 text-[12px] font-medium rounded bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 truncate max-w-full">
+            {deal.source}
+          </span>
         </div>
       )}
 
       {deal.owner && (
         <div className="flex items-center gap-1.5 mb-1">
           <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: deal.owner.color || '#6366f1' }} />
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{deal.owner.name}</span>
+          <span className="text-[12px] text-slate-500 dark:text-slate-400 truncate">{deal.owner.name}</span>
         </div>
       )}
 
-      {/* Linha final: probabilidade + saude (dias na etapa) */}
-      <div className="flex items-center gap-2">
-        {deal.probability != null && (
-          <>
-            <div className="flex-1 h-1.5 bg-slate-200/70 dark:bg-slate-700/70 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-blue-500 to-sky-400 rounded-full transition-all duration-500" style={{ width: `${deal.probability}%` }} />
-            </div>
-            <span className="text-[10px] text-slate-400">{deal.probability}%</span>
-          </>
+      {/* Prioridade em estrelas — clicavel direto no card (o vendedor prioriza
+          sem abrir o lead). Estrela ja marcada zera a prioridade. */}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <PriorityStars
+          value={deal.priority || 0}
+          size={13}
+          onChange={(n) => onSetPriority?.(deal.id, n)}
+        />
+
+        {/* Mover de etapa — SO no toque (md:hidden). O drag HTML5 nao dispara
+            em celular/tablet, entao sem isto o kanban vira somente-leitura no
+            telefone. No desktop nao aparece (arrastar resolve). */}
+        {otherStages.length > 0 && (
+          <div className="relative md:hidden" ref={stagePickerRef}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setStagePickerOpen(o => !o); }}
+              title="Mover de etapa"
+              className="p-1 rounded text-slate-500 hover:text-fyness-primary hover:bg-fyness-primary/10"
+            >
+              <ArrowLeftRight size={13} />
+            </button>
+            {stagePickerOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute right-0 bottom-full mb-1 w-44 z-20 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+              >
+                {otherStages.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => { onMoveStage(deal.id, s.id); setStagePickerOpen(false); }}
+                    className="w-full px-3 py-2 text-left text-[12px] hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200"
+                  >
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
+      </div>
+
+      {/* Linha final: urgencia (dias na etapa) + progresso do processo.
+          A barra de probabilidade saiu: era o 3o indicador numerico do mesmo
+          card e ninguem decide por ela — quem decide e prioridade e atraso. */}
+      <div className="flex items-center gap-2">
         {health?.label && (
           <span
-            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${healthClasses[health.color]}`}
+            className={`text-[12px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${healthClasses[health.color]}`}
             title={`Nesta etapa ha ${health.days} dia${health.days === 1 ? '' : 's'}`}
           >
             {health.label}
@@ -175,7 +224,7 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
           playbook da etapa. Verde quando conclui tudo. */}
       {deal.process && (
         <div className="mt-1.5">
-          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+          <span className={`inline-flex items-center gap-1 text-[12px] font-semibold px-1.5 py-0.5 rounded ${
             deal.process.done >= deal.process.total
               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
               : deal.process.done > 0
@@ -206,7 +255,7 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
           <>
             <button
               onClick={(e) => { e.stopPropagation(); onMarkLost(deal.id); }}
-              className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 shadow-sm border border-rose-200 dark:border-rose-800"
+              className="px-1.5 py-0.5 text-[12px] font-medium rounded bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 shadow-sm border border-rose-200 dark:border-rose-800"
               title="Marcar como perdido"
             >
               Perdido
@@ -320,12 +369,12 @@ function QuickAddInline({ onCreate, onCancel, isPending }) {
         className="w-full text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none disabled:opacity-50"
       />
       <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-700">
-        <span className="text-[10px] text-slate-400">Enter pra salvar · Esc cancela</span>
+        <span className="text-[12px] text-slate-400">Enter pra salvar · Esc cancela</span>
         <button
           type="button"
           onClick={submit}
           disabled={!title.trim() || isPending}
-          className="text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 disabled:opacity-50"
+          className="text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 disabled:opacity-50"
         >
           {isPending ? 'Salvando...' : 'Adicionar'}
         </button>
@@ -340,6 +389,15 @@ function QuickAddInline({ onCreate, onCancel, isPending }) {
 
 const COL_W = 288; // w-72
 const COL_GAP = 12; // gap-3
+// Etapa sem nenhum lead vira uma faixa fina: 4 das 8 colunas vazias comiam
+// metade da largura util mostrando nada e forcavam scroll horizontal.
+const COL_W_EMPTY = 64;
+
+const stageWidth = (stage) => ((stage?.deals?.length || 0) > 0 ? COL_W : COL_W_EMPTY);
+
+/** Largura real de um trecho de colunas (as vazias sao estreitas). */
+const spanWidth = (stages) =>
+  stages.reduce((sum, s) => sum + stageWidth(s), 0) + Math.max(0, stages.length - 1) * COL_GAP;
 
 // Cor de cada fase = a MESMA do passo correspondente no funil do Dashboard
 // (FunnelPrevistoReal.STEP_META). A faixa e o funil sao a mesma etapa vista de
@@ -447,13 +505,12 @@ function computeStagePhases(stages) {
   if (isNurturingStages(ordered)) {
     const byId = {};
     for (const s of ordered) byId[s.id] = nurturingPhaseOf(s.name);
-    return { ordered, phaseById: byId, subPhaseOf: () => null };
+    return { ordered, phaseById: byId };
   }
 
   const asDb = ordered.map(s => ({ position: s.position, name: s.name, is_win_stage: s.isWinStage }));
-  const { meetingPosByPipeline, meetingHeldPosByPipeline } = detectFunnelStagePositions({ p: asDb });
+  const { meetingPosByPipeline } = detectFunnelStagePositions({ p: asDb });
   const meetPos = meetingPosByPipeline.p;
-  const heldPos = meetingHeldPosByPipeline.p ?? meetPos;
   const winPos = ordered.find(s => s.isWinStage)?.position ?? Infinity;
   const firstPos = ordered[0]?.position ?? 0;
 
@@ -462,8 +519,7 @@ function computeStagePhases(stages) {
   // de qualificar, que comeca no 1o toque. Usar qualPos faria "Leads" abraçar
   // todas as colunas ate o "Qualificado", quando Leads e so a lista crua.
   // Follow up mora DENTRO de Reunião: tudo da reuniao ate o ganho (agendada,
-  // acontecida e o follow-up pos-reuniao) e a mesma faixa. A separacao vira
-  // uma SUB-faixa (subPhaseOf), nao uma faixa propria.
+  // acontecida e o follow-up pos-reuniao) e a mesma faixa.
   const phaseOf = (pos) => {
     if (pos >= winPos) return 'Fechamentos';
     if (pos <= firstPos) return 'Leads';
@@ -471,50 +527,22 @@ function computeStagePhases(stages) {
     return 'Reunião';
   };
 
-  // Sub-fase DENTRO de Reunião (grafo dentro do grafo). heldPos separa marcada
-  // de acontecida; o follow-up pos-reuniao fica DENTRO de acontecida (o lead ja
-  // compareceu), entao acontecida abraça da reuniao realizada ate o ganho.
-  const subPhaseOf = (pos) => {
-    if (pos < heldPos) return 'Marcada';
-    return 'Acontecida';
-  };
-
   const byId = {};
   for (const s of ordered) byId[s.id] = phaseOf(s.position ?? 0);
-  return { ordered, phaseOf, subPhaseOf, phaseById: byId };
+  return { ordered, phaseOf, phaseById: byId };
 }
-
-// Sub-faixas de Reunião. Cor puxa do funil (agendada -> acontecida) + violeta
-// do follow-up, coerente com o PHASE_ACCENT antigo dele.
-const SUBPHASE_ACCENT = {
-  'Marcada':    '#f59e0b',
-  'Acontecida': '#d97706',
-  'Follow up':  '#8b5cf6',
-};
 
 function buildPhaseBands(stages) {
   if (!stages?.length) return [];
   // phaseById (nao phaseOf-por-posicao): a Nutrição agrupa por NOME, entao o
   // mapa por id e a fonte unica que serve os dois fluxos.
-  const { ordered, phaseById, subPhaseOf } = computeStagePhases(stages);
+  const { ordered, phaseById } = computeStagePhases(stages);
   const bands = [];
   for (const s of ordered) {
     const label = phaseById[s.id];
     const last = bands[bands.length - 1];
     if (last && last.label === label) { last.span++; last.stages.push(s); }
     else bands.push({ label, span: 1, stages: [s] });
-  }
-  // Sub-faixas: so Reunião tem, e so quando ha mais de uma coluna pra separar.
-  for (const b of bands) {
-    if (b.label !== 'Reunião' || b.stages.length < 2) continue;
-    const subs = [];
-    for (const s of b.stages) {
-      const sl = subPhaseOf(s.position ?? 0);
-      const last = subs[subs.length - 1];
-      if (last && last.label === sl) last.span++;
-      else subs.push({ label: sl, span: 1 });
-    }
-    b.subs = subs;
   }
   return bands;
 }
@@ -534,23 +562,10 @@ function PhaseBands({ stages }) {
     <div className="flex gap-3 shrink-0 mb-2.5">
       {bands.map((b, i) => {
         const show = VISIBLE_PHASES.has(b.label);
-        const bandW = b.span * COL_W + (b.span - 1) * COL_GAP;
-
-        // Geometria do conector em arvore (so pra faixa com sub-grupos): centro
-        // x de cada sub dentro da faixa, pra barra horizontal ramificar em cada.
-        let subGeo = null;
-        if (b.subs) {
-          let x = 0;
-          const centers = b.subs.map(sub => {
-            const w = sub.span * COL_W + (sub.span - 1) * COL_GAP;
-            const c = x + w / 2;
-            x += w + COL_GAP;
-            return c;
-          });
-          subGeo = { centers, first: centers[0], last: centers[centers.length - 1] };
-        }
-
-        const treeColor = PHASE_ACCENT[b.label] || '#94a3b8';
+        // Largura REAL: coluna vazia e estreita, entao nao da pra multiplicar
+        // por COL_W — a faixa desalinharia das colunas.
+        const bandW = spanWidth(b.stages || []);
+        const collapsed = bandW < 120; // so etapas vazias: nao cabe rotulo
 
         return (
           <div
@@ -559,70 +574,22 @@ function PhaseBands({ stages }) {
             aria-hidden={!show}
             className={`shrink-0 ${show ? '' : 'invisible'}`}
           >
-            {/* Badge do funil na frente do rotulo da fase (mesmo do Dashboard). */}
-            <div className="mb-1 flex items-center justify-center gap-1.5">
+            {/* Badge do funil na frente do rotulo da fase (mesmo do Dashboard).
+                Faixa estreita (so etapas vazias) mostra so o badge. */}
+            <div className="mb-1 flex items-center justify-center gap-1.5 overflow-hidden">
               <PhaseBadge phase={b.label} />
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-                {b.label}
-              </span>
+              {!collapsed && (
+                <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400 truncate">
+                  {b.label}
+                </span>
+              )}
             </div>
-            {/* Bracket: borda em cima + nas laterais (sem embaixo) = fio com
-                bracinho pra baixo nas pontas, fechando o range das colunas. */}
+            {/* Bracket: borda em cima + nas laterais (sem embaixo), fechando o
+                range das colunas daquela fase. */}
             <div
               className="h-1.5 rounded-t-sm border-t-2 border-l-2 border-r-2"
-              style={{ borderColor: treeColor, opacity: 0.5 }}
+              style={{ borderColor: PHASE_ACCENT[b.label] || '#94a3b8', opacity: 0.5 }}
             />
-
-            {/* Sub-grupos (grafo dentro do grafo): so Reunião tem. Um conector em
-                ARVORE liga a faixa mae aos sub-grupos — stub do centro desce ate
-                um barramento horizontal, que ramifica um stub pra cada sub. Cada
-                sub fica separado, no seu proprio bracket. */}
-            {b.subs && (
-              <>
-                <div className="relative" style={{ height: 14 }}>
-                  {/* Conector em cinza medio (mais claro no dark pra continuar
-                      visivel). Cor propria — nao usa treeColor pra nao tingir
-                      tambem o bracket da faixa, que compartilha aquela variavel. */}
-                  {/* stub vertical do centro da faixa mae ate o barramento */}
-                  <div
-                    className="absolute top-0 w-0.5 rounded-full bg-slate-400 dark:bg-slate-500"
-                    style={{ left: bandW / 2, height: 7, transform: 'translateX(-50%)' }}
-                  />
-                  {/* barramento horizontal ligando os centros dos sub-grupos */}
-                  <div
-                    className="absolute h-0.5 rounded-full bg-slate-400 dark:bg-slate-500"
-                    style={{ left: subGeo.first, width: subGeo.last - subGeo.first, top: 7 }}
-                  />
-                  {/* stub descendo do barramento pra cada sub-grupo */}
-                  {subGeo.centers.map((c, k) => (
-                    <div
-                      key={`stub-${k}`}
-                      className="absolute w-0.5 rounded-full bg-slate-400 dark:bg-slate-500"
-                      style={{ left: c, top: 7, height: 7, transform: 'translateX(-50%)' }}
-                    />
-                  ))}
-                </div>
-
-                {/* Rotulo + bracket de cada sub-grupo, separados */}
-                <div className="flex gap-3">
-                  {b.subs.map((sub, k) => (
-                    <div
-                      key={`sub-${sub.label}-${k}`}
-                      style={{ width: sub.span * COL_W + (sub.span - 1) * COL_GAP }}
-                      className="shrink-0"
-                    >
-                      <div className="text-center text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500 truncate">
-                        {sub.label}
-                      </div>
-                      <div
-                        className="h-1.5 rounded-t-sm border-t-2 border-l-2 border-r-2 mt-0.5"
-                        style={{ borderColor: SUBPHASE_ACCENT[sub.label] || '#94a3b8', opacity: 0.5 }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
           </div>
         );
       })}
@@ -630,7 +597,7 @@ function PhaseBands({ stages }) {
   );
 }
 
-function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete, allStages, onMoveStage, onOpenPlaybook, stepCount = 0, phase }) {
+function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete, allStages, onMoveStage, onOpenPlaybook, stepCount = 0, phase, onSetPriority }) {
   const PhaseIcon = PHASE_ICON[phase] || null;
   const isDragOver = dragOverStageId === stage.id;
   const learnedStage = learned?.stages?.find(s => s.position === stage.position);
@@ -646,14 +613,49 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
+  // Etapa vazia vira faixa fina: 4 das 8 colunas vazias comiam metade da tela.
+  const isEmpty = allCount === 0;
+
+  if (isEmpty) {
+    return (
+      <div
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDrop.setDragOver(stage.id); }}
+        onDragLeave={() => onDrop.setDragOver(null)}
+        onDrop={(e) => {
+          e.preventDefault();
+          const dealId = e.dataTransfer.getData('text/plain');
+          if (dealId) onDrop.execute(dealId, stage.id);
+          onDrop.setDragOver(null);
+        }}
+        title={`${stage.name} — vazia. Arraste um lead pra cá.`}
+        style={{ width: COL_W_EMPTY }}
+        className={`shrink-0 flex flex-col items-center h-full crm-glass rounded-2xl overflow-hidden py-3 transition-colors ${
+          isDragOver ? 'bg-fyness-primary/10 ring-2 ring-inset ring-fyness-primary/30' : ''
+        }`}
+      >
+        <div className="w-2.5 h-2.5 rounded-full shrink-0 mb-2" style={{ backgroundColor: stage.color }} />
+        {/* Nome na vertical: cabe em 64px e ainda da pra ler a etapa. */}
+        <span
+          className="text-[12px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap"
+          style={{ writingMode: 'vertical-rl' }}
+        >
+          {stage.name}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="w-72 shrink-0 flex flex-col h-full crm-glass rounded-2xl overflow-hidden">
-      {/* Valor total da coluna (destacado em cima) */}
-      <div className="px-3 pt-3 pb-1.5 text-center">
-        <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">
-          {stage.totalValue > 0 ? formatCurrency(stage.totalValue) : 'R$ 0'}
+      {/* Valor total — so aparece quando ha valor. Antes um "R$ 0" gigante era
+          o elemento de maior peso visual da tela mostrando nada. */}
+      {stage.totalValue > 0 && (
+        <div className="px-3 pt-3 pb-1.5 text-center">
+          <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+            {formatCurrency(stage.totalValue)}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2">
@@ -666,7 +668,7 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           )}
           <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate">{stage.name}</span>
           {showConv && (
-            <span className={`text-[10px] font-medium shrink-0 ${convColor}`} title={`Conversao: ${learnedStage.learnedProbability}%`}>
+            <span className={`text-[12px] font-medium shrink-0 ${convColor}`} title={`Conversao: ${learnedStage.learnedProbability}%`}>
               {learnedStage.learnedProbability}%
             </span>
           )}
@@ -689,7 +691,7 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           script). Explicito no lugar do livrinho — qualquer um entende. */}
       <button
         onClick={() => onOpenPlaybook?.(stage)}
-        className="mx-3 mb-2 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-semibold uppercase tracking-wider bg-fyness-primary/10 text-fyness-primary hover:bg-fyness-primary/20 transition-colors"
+        className="mx-3 mb-2 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[12px] font-semibold uppercase tracking-wider bg-fyness-primary/10 text-fyness-primary hover:bg-fyness-primary/20 transition-colors"
       >
         <ListChecks size={13} /> O que fazer
       </button>
@@ -734,6 +736,7 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
             onMarkLost={onMarkLost}
             onDelete={onDelete}
             onMoveStage={onMoveStage}
+            onSetPriority={onSetPriority}
           />
         ))}
 
@@ -742,7 +745,7 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
             onClick={() => setQuickAddOpen(true)}
             className="w-full h-20 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg flex items-center justify-center hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors group/add"
           >
-            <span className="text-xs text-slate-400 dark:text-slate-500 group-hover/add:text-blue-500 transition-colors flex items-center gap-1">
+            <span className="text-xs text-slate-500 dark:text-slate-400 group-hover/add:text-blue-500 transition-colors flex items-center gap-1">
               <Plus size={12} /> Novo negocio
             </span>
           </button>
@@ -770,7 +773,7 @@ function LostDealCard({ deal, onDelete }) {
       <div className="flex items-start justify-between gap-2 mb-1">
         <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-snug line-clamp-2">{deal.title}</h4>
         {deal.value > 0 && (
-          <span className="text-xs font-medium text-slate-400 dark:text-slate-500 line-through shrink-0 mt-0.5">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 line-through shrink-0 mt-0.5">
             {formatCurrency(deal.value)}
           </span>
         )}
@@ -784,19 +787,19 @@ function LostDealCard({ deal, onDelete }) {
 
       {/* Em qual etapa se perdeu */}
       {deal.lostStage && (
-        <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400">
+        <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[12px] font-medium rounded bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400">
           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: deal.lostStage.color }} />
           Perdido em {deal.lostStage.name}
         </div>
       )}
 
       {deal.lostReason && (
-        <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500 italic line-clamp-2">“{deal.lostReason}”</div>
+        <div className="mt-1 text-[12px] text-slate-500 dark:text-slate-400 italic line-clamp-2">“{deal.lostReason}”</div>
       )}
 
       {deal.source && (
         <div className="mt-1">
-          <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+          <span className="inline-block px-1.5 py-0.5 text-[12px] font-medium rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
             {deal.source}
           </span>
         </div>
@@ -979,7 +982,7 @@ function CreatePipelineModal({ open, onClose, onCreated, pipeline = null }) {
             <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
               Etapas do Kanban
             </label>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[12px] text-slate-400">
               <Trophy size={10} className="inline mr-1 text-amber-500" />
               = etapa de ganho
             </span>
@@ -1070,7 +1073,7 @@ function CreatePipelineModal({ open, onClose, onCreated, pipeline = null }) {
           />
           <span className="text-xs text-slate-600 dark:text-slate-300">
             <span className="font-medium text-slate-700 dark:text-slate-200">Definir como pipeline padrão</span>
-            <span className="block text-slate-400 dark:text-slate-500 mt-0.5">Novos negócios passam a nascer nesta pipeline. Marcar aqui desmarca a anterior.</span>
+            <span className="block text-slate-500 dark:text-slate-400 mt-0.5">Novos negócios passam a nascer nesta pipeline. Marcar aqui desmarca a anterior.</span>
           </span>
         </label>
 
@@ -1141,7 +1144,7 @@ function PipelineListView({ pipelineData, filterDeals, onMarkLost, onDelete }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/[0.03]">
+            <tr className="text-[12px] uppercase tracking-wider text-slate-400 border-b border-white/60 dark:border-white/10 bg-white/40 dark:bg-white/[0.03]">
               <th className="text-left px-4 py-2.5">Negocio</th>
               <th className="text-left px-4 py-2.5">Etapa</th>
               <th className="text-right px-4 py-2.5">Valor</th>
@@ -1295,6 +1298,8 @@ export function CrmPipelinePage() {
   // Playbook de todas as etapas de uma vez (uma query pra pipeline inteira, em
   // vez de uma por coluna).
   const { data: playbook } = useStagePlaybook(activePipelineId);
+  const scheduleProcessMutation = useScheduleProcessForPipeline();
+  const updateDealMutation = useUpdateCrmDeal();
   // Fase (etapa do funil) de cada coluna — pro icone no cabecalho. Mesmo calculo
   // das faixas, entao coluna e faixa nunca discordam.
   const phaseById = useMemo(
@@ -1478,6 +1483,11 @@ export function CrmPipelinePage() {
     });
   };
 
+  // Prioridade em estrelas direto do card.
+  const handleSetPriority = (dealId, priority) => {
+    updateDealMutation.mutate({ id: dealId, updates: { priority } });
+  };
+
   const allPipelineStages = useMemo(
     () => (pipelineData?.stages || []).map(s => ({ id: s.id, name: s.name, color: s.color })),
     [pipelineData],
@@ -1523,6 +1533,21 @@ export function CrmPipelinePage() {
                 className="flex items-center gap-1.5 text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors"
               >
                 <Pencil size={14} /> Editar
+              </button>
+            )}
+
+            {/* Agenda o processo dos leads que JA estavam parados nas etapas —
+                o gatilho normal e a troca de etapa, entao quem ja estava la
+                nunca passou por ele. Idempotente: so cria o que falta. */}
+            {activePipelineId && pipelineData && (
+              <button
+                onClick={() => scheduleProcessMutation.mutate(activePipelineId)}
+                disabled={scheduleProcessMutation.isPending}
+                title="Gera as tarefas do processo (com data e hora) pros leads que ainda nao tem"
+                className="flex items-center gap-1.5 text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors disabled:opacity-60"
+              >
+                <CalendarCheck size={14} />
+                {scheduleProcessMutation.isPending ? 'Agendando…' : 'Agendar processos'}
               </button>
             )}
 
@@ -1710,6 +1735,7 @@ export function CrmPipelinePage() {
                   onDragStart={(id) => { draggingDealId.current = id; }}
                   allStages={allPipelineStages}
                   onMoveStage={handleMoveStage}
+                  onSetPriority={handleSetPriority}
                   onDrop={{
                     execute: handleDrop,
                     setDragOver: setDragOverStageId,

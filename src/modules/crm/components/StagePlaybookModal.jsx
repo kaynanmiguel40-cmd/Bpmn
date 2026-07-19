@@ -18,7 +18,7 @@ function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2 bg-white/60 dark:bg-slate-800/40">
       <div className="flex items-center gap-2">
-        <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-300 flex items-center justify-center shrink-0">
+        <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 text-[12px] font-bold text-slate-500 dark:text-slate-300 flex items-center justify-center shrink-0">
           {index + 1}
         </span>
         <input
@@ -82,7 +82,7 @@ function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
         ))}
         <button type="button"
           onClick={() => onChange({ ...step, scenarios: [...(step.scenarios || []), { when: '', then: '' }] })}
-          className="inline-flex items-center gap-1 text-[11px] font-medium text-fyness-primary hover:bg-fyness-primary/10 px-2 py-1 rounded-md">
+          className="inline-flex items-center gap-1 text-[12px] font-medium text-fyness-primary hover:bg-fyness-primary/10 px-2 py-1 rounded-md">
           <Plus size={12} /> Cenário (se o cliente responde…)
         </button>
       </div>
@@ -137,7 +137,7 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
     <CrmModal
       open={open}
       onClose={onClose}
-      title={`Processo — ${stage.name}`}
+      title={`O que fazer — ${stage.name}`}
       size="lg"
       footer={
         editing ? (
@@ -153,8 +153,8 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
           </div>
         ) : (
           <div className="flex justify-between items-center">
-            <span className="text-xs text-slate-400 dark:text-slate-500">
-              O checklist de cada lead fica na aba Processo do negócio.
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              O checklist de cada lead fica na aba Atividades dele.
             </span>
             <button onClick={() => setEditing(true)}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-fyness-primary text-white hover:bg-fyness-secondary">
@@ -220,7 +220,7 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
         <div className="py-10 text-center">
           <Target size={28} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
           <p className="text-sm text-slate-500 dark:text-slate-400">Essa etapa ainda não tem processo.</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Clique em Editar pra escrever o que o vendedor deve fazer aqui.
           </p>
         </div>
@@ -230,7 +230,7 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
             <div className="flex gap-2.5">
               <Target size={16} className="text-indigo-500 shrink-0 mt-0.5" />
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Objetivo</div>
+                <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Objetivo</div>
                 <p className="text-sm text-slate-700 dark:text-slate-200">{objetivo}</p>
               </div>
             </div>
@@ -238,14 +238,14 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
 
           {steps.length > 0 && (
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+              <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
                 O que fazer
               </div>
               <div className="space-y-2">
                 {steps.map((s, i) => (
                   <div key={s.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/60 dark:bg-slate-800/40">
                     <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-fyness-primary/10 text-[11px] font-bold text-fyness-primary flex items-center justify-center shrink-0">
+                      <span className="w-6 h-6 rounded-full bg-fyness-primary/10 text-[12px] font-bold text-fyness-primary flex items-center justify-center shrink-0">
                         {i + 1}
                       </span>
                       <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{s.title}</span>
@@ -259,7 +259,7 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
                       <div className="mt-2 ml-8 space-y-1.5">
                         {s.scenarios.map((sc, k) => (
                           <div key={k} className="rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 px-2.5 py-1.5">
-                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Se: {sc.when}</span>
+                            <span className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">Se: {sc.when}</span>
                             <div className="text-[13px] text-slate-700 dark:text-slate-200">→ {sc.then}</div>
                           </div>
                         ))}
@@ -275,7 +275,7 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
             <div className="flex gap-2.5">
               <Flag size={16} className="text-emerald-500 shrink-0 mt-0.5" />
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Quando mover</div>
+                <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Quando mover</div>
                 <p className="text-sm text-slate-700 dark:text-slate-200">{exitCriteria}</p>
               </div>
             </div>

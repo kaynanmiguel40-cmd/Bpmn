@@ -283,7 +283,7 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
           )}
           <div className="flex-1 min-w-0">
             <p className="text-sm text-slate-800 dark:text-slate-100 truncate">{attachment.file.name}</p>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[12px] text-slate-400">
               {(attachment.file.size / 1024).toFixed(0)} KB · {attachment.mediaType}
             </p>
           </div>

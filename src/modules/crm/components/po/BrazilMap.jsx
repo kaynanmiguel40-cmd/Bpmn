@@ -569,18 +569,18 @@ const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, 
           <div className="bg-slate-800/95 backdrop-blur-sm rounded-lg border border-cyan-500/20 shadow-lg shadow-cyan-500/10 px-3 py-2 text-center min-w-[150px]">
             <p className="text-sm font-bold text-white">{tooltipData.title}</p>
             {tooltipData.subtitle && (
-              <p className="text-[11px] text-slate-400">{tooltipData.subtitle}</p>
+              <p className="text-[12px] text-slate-400">{tooltipData.subtitle}</p>
             )}
             {tooltipData.status && (
-              <p className="text-[11px] font-semibold mt-1" style={{ color: tooltipData.statusColor }}>
+              <p className="text-[12px] font-semibold mt-1" style={{ color: tooltipData.statusColor }}>
                 {tooltipData.status}
               </p>
             )}
             {tooltipData.detail && (
-              <p className="text-[10px] text-slate-500">{tooltipData.detail}</p>
+              <p className="text-[12px] text-slate-500">{tooltipData.detail}</p>
             )}
             {tooltipData.hint && (
-              <p className="text-[9px] text-cyan-500/70 mt-1 italic">{tooltipData.hint}</p>
+              <p className="text-[11px] text-cyan-500/70 mt-1 italic">{tooltipData.hint}</p>
             )}
           </div>
           <div className="flex justify-center">
@@ -592,7 +592,7 @@ const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, 
       {/* ── Legend (country + state views only — municipality has its own via Google Maps) ── */}
       {view !== 'municipality' && (
         <div className="absolute bottom-3 left-3 bg-slate-900/90 backdrop-blur-sm rounded-lg p-3 border border-slate-700/50">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+          <p className="text-[12px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
             {view === 'country'
               ? (colorMode === COLOR_MODES.REGION ? 'Regiões' : 'Status')
               : 'Status de Prospecção'
@@ -610,7 +610,7 @@ const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, 
                       boxShadow: `0 0 4px ${neon.stroke}60`,
                     }}
                   />
-                  <span className="text-[11px] text-slate-300">{REGIONS[key]?.name || key}</span>
+                  <span className="text-[12px] text-slate-300">{REGIONS[key]?.name || key}</span>
                 </div>
               ))}
             </div>
@@ -626,7 +626,7 @@ const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, 
                       boxShadow: `0 0 4px ${neon.stroke}60`,
                     }}
                   />
-                  <span className="text-[11px] text-slate-300">
+                  <span className="text-[12px] text-slate-300">
                     {PROSPECT_STATUS[key]?.label || key}
                   </span>
                 </div>
@@ -639,7 +639,7 @@ const BrazilMap = forwardRef(function BrazilMap({ selectedState, onSelectState, 
       {/* ── Info (state view only) ── */}
       {view === 'state' && municipalityFeatures.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-slate-900/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-slate-700/50">
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[12px] text-slate-400">
             <span className="text-cyan-400 font-bold">{municipalityFeatures.length}</span> municípios
           </p>
         </div>

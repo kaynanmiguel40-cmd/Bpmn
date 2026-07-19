@@ -330,7 +330,7 @@ function MyDayCalendar() {
           className={`p-1.5 rounded-lg border transition-colors ${
             showGoogle
               ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/40'
-              : 'text-slate-400 dark:text-slate-500 border-slate-200/70 dark:border-white/10 hover:text-slate-600 dark:hover:text-slate-300'
+              : 'text-slate-500 dark:text-slate-400 border-slate-200/70 dark:border-white/10 hover:text-slate-600 dark:hover:text-slate-300'
           }`}
         >
           {showGoogle ? <Eye size={14} /> : <EyeOff size={14} />}

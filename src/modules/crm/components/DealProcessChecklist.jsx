@@ -9,19 +9,34 @@
  * gravado (referencia o passo dela), so sai de vista.
  */
 
-import { useState, useMemo } from 'react';
-import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter, CornerDownRight, History, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter, CornerDownRight, Clock } from 'lucide-react';
 import { useStagePlaybook, useDealProgress, useToggleDealStep, useDealActivities } from '../hooks/useCrmQueries';
 import { filterStepsForDeal } from '../services/crmPlaybookService';
+import { CrmModal } from './ui/CrmModal';
 
-const fmtWhen = (iso) => {
-  if (!iso) return '';
+// Data agendada da tarefa. Marca atraso pra tarefa vencida e nao feita — e o
+// que faz o vendedor priorizar sem abrir a Agenda.
+function DueLabel({ iso, done }) {
+  if (!iso) return null;
   const d = new Date(iso);
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  const atrasada = !done && d < new Date();
+  const quando = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
     + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-};
+  return (
+    <span className={`shrink-0 inline-flex items-center gap-1 text-[12px] font-semibold px-1.5 py-0.5 rounded ${
+      done
+        ? 'text-slate-500 dark:text-slate-400'
+        : atrasada
+          ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400'
+          : 'bg-slate-100 dark:bg-slate-700/60 text-slate-500 dark:text-slate-400'
+    }`}>
+      <Clock size={10} /> {quando}
+    </span>
+  );
+}
 
-function StepRow({ step, done, onToggle, disabled }) {
+function StepRow({ step, done, onToggle, disabled, outcome, onEditOutcome, dueAt }) {
   const [open, setOpen] = useState(false);
   return (
     <div className={`rounded-xl border transition-colors ${
@@ -46,21 +61,46 @@ function StepRow({ step, done, onToggle, disabled }) {
 
         <span className={`flex-1 text-sm font-medium ${
           done
-            ? 'text-slate-400 dark:text-slate-500 line-through'
+            ? 'text-slate-500 dark:text-slate-400 line-through'
             : 'text-slate-800 dark:text-slate-100'
         }`}>
           {step.title}
         </span>
 
+        <DueLabel iso={dueAt} done={done} />
+
         {(step.script || step.scenarios?.length > 0) && (
           <button
             onClick={() => setOpen(o => !o)}
-            className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-fyness-primary hover:bg-fyness-primary/10 px-2 py-1 rounded-md"
+            className="shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-fyness-primary hover:bg-fyness-primary/10 px-2 py-1 rounded-md"
           >
             {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Ver
           </button>
         )}
       </div>
+
+      {/* O que o lead respondeu — fica atribuido na propria tarefa, nao so no
+          Historico. Clicar reabre pra corrigir. */}
+      {done && (
+        <button
+          type="button"
+          onClick={onEditOutcome}
+          className="w-full text-left px-3 pb-2.5 -mt-1 ml-7 pr-6 group/outcome"
+        >
+          <span className="flex gap-1.5 text-[13px]">
+            <CornerDownRight size={13} className="shrink-0 mt-0.5 text-emerald-500" />
+            {outcome ? (
+              <span className="text-slate-600 dark:text-slate-300">
+                <span className="text-slate-500 dark:text-slate-400">Lead:</span> {outcome}
+              </span>
+            ) : (
+              <span className="text-slate-500 dark:text-slate-400 italic group-hover/outcome:text-fyness-primary">
+                Sem resposta registrada — clique pra anotar
+              </span>
+            )}
+          </span>
+        </button>
+      )}
 
       {open && (
         <div className="px-3 pb-3 ml-7 space-y-2">
@@ -73,7 +113,7 @@ function StepRow({ step, done, onToggle, disabled }) {
             <div className="space-y-1.5">
               {step.scenarios.map((sc, i) => (
                 <div key={i} className="rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 px-2.5 py-2">
-                  <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  <div className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">
                     Se: {sc.when}
                   </div>
                   <div className="text-[13px] text-slate-700 dark:text-slate-200 mt-0.5 flex gap-1.5">
@@ -90,43 +130,82 @@ function StepRow({ step, done, onToggle, disabled }) {
   );
 }
 
+/**
+ * Ao concluir uma tarefa, pergunta O QUE O LEAD RESPONDEU. Os cenarios do passo
+ * ja sao as respostas provaveis — viram botao de 1 clique; o campo livre cobre
+ * o resto. Sem isso o historico so diria "feito", sem contar a conversa.
+ */
+function StepOutcomeModal({ open, step, onClose, onConfirm, saving, initial = '' }) {
+  const [text, setText] = useState('');
+
+  // Pre-preenche com o que ja foi registrado (edicao); vazio ao concluir agora.
+  useEffect(() => { if (open) setText(initial || ''); }, [open, step?.id, initial]);
+
+  if (!step) return null;
+  return (
+    <CrmModal
+      open={open}
+      onClose={onClose}
+      title={`Concluir: ${step.title}`}
+      size="md"
+      footer={
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+            Cancelar
+          </button>
+          <button onClick={() => onConfirm(text)} disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">
+            {saving ? 'Salvando…' : 'Concluir'}
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          O que o lead respondeu / como reagiu?
+        </div>
+
+        {step.scenarios?.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {step.scenarios.map((sc, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setText(sc.when)}
+                className={`px-2.5 py-1.5 rounded-lg text-[12px] border transition-colors ${
+                  text === sc.when
+                    ? 'bg-fyness-primary text-white border-fyness-primary'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-fyness-primary'
+                }`}
+              >
+                {sc.when}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          placeholder="Escreva o que ele respondeu (ou escolha acima)"
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 resize-y"
+        />
+        <p className="text-[12px] text-slate-500 dark:text-slate-400">
+          Pode deixar em branco se não houve resposta.
+        </p>
+      </div>
+    </CrmModal>
+  );
+}
+
 export function DealProcessChecklist({ deal, memberId = null }) {
   const { data: playbook, isLoading: loadingPlaybook } = useStagePlaybook(deal?.pipelineId);
   const { data: progress = [], isLoading: loadingProgress } = useDealProgress(deal?.id);
   const { data: activities = [] } = useDealActivities(deal?.id);
   const toggle = useToggleDealStep();
-
-  // Titulo de QUALQUER passo do playbook (todas as etapas) — o historico mostra
-  // tambem o que o lead cumpriu em etapas anteriores.
-  const stepById = useMemo(() => {
-    const map = {};
-    Object.values(playbook || {}).forEach(list => (list || []).forEach(s => { map[s.id] = s; }));
-    return map;
-  }, [playbook]);
-
-  // HISTORICO: tudo que ja foi feito com esse lead — passos do processo E
-  // tarefas criadas a mao — numa linha do tempo unica, mais recente primeiro.
-  const history = useMemo(() => {
-    const items = [];
-    for (const p of progress) {
-      items.push({
-        id: `step-${p.id}`,
-        kind: 'processo',
-        title: stepById[p.stepId]?.title || 'Tarefa do processo',
-        at: p.doneAt,
-      });
-    }
-    for (const a of activities) {
-      if (!a.completed) continue;
-      items.push({
-        id: `act-${a.id}`,
-        kind: 'manual',
-        title: a.title,
-        at: a.completedAt || a.createdAt,
-      });
-    }
-    return items.sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
-  }, [progress, activities, stepById]);
+  const [outcomeStep, setOutcomeStep] = useState(null);
 
   // Filtra os passos pela ORIGEM do lead: um lead veio de UM lugar, entao so o
   // script daquela origem aparece (ex: veio de anuncio → so o toque de anuncio).
@@ -134,6 +213,12 @@ export function DealProcessChecklist({ deal, memberId = null }) {
   const allSteps = playbook?.[deal?.stageId] || [];
   const steps = filterStepsForDeal(allSteps, deal?.source);
   const doneIds = new Set(progress.map(p => p.stepId));
+  // Resultado registrado por passo (o que o lead respondeu).
+  const outcomeByStep = {};
+  progress.forEach(p => { outcomeByStep[p.stepId] = p.outcome || ''; });
+  // Data/hora agendada de cada passo — vem da atividade gerada na Agenda.
+  const dueByStep = {};
+  activities.forEach(a => { if (a.stageStepId) dueByStep[a.stageStepId] = a.startDate; });
   const doneCount = steps.filter(s => doneIds.has(s.id)).length;
   // So avisa sobre origem quando ela REALMENTE muda o que aparece (etapa tem
   // passos por origem) e o lead nao tem origem definida.
@@ -143,6 +228,21 @@ export function DealProcessChecklist({ deal, memberId = null }) {
   // A etapa vem do deal carregado; o objetivo/criterio moram nela.
   const objetivo = deal?.stage?.objetivo || '';
   const exitCriteria = deal?.stage?.exitCriteria || '';
+
+  // Concluir SEMPRE passa pelo modal do resultado (o que o lead respondeu).
+  // Desmarcar e direto — nao ha resultado a registrar.
+  const handleToggle = (step, done) => {
+    if (done) { setOutcomeStep(step); return; }
+    toggle.mutate({ dealId: deal.id, stepId: step.id, done: false, memberId });
+  };
+
+  const confirmOutcome = (text) => {
+    if (!outcomeStep) return;
+    toggle.mutate(
+      { dealId: deal.id, stepId: outcomeStep.id, done: true, memberId, outcome: text },
+      { onSuccess: () => setOutcomeStep(null) },
+    );
+  };
 
   if (loadingPlaybook || loadingProgress) {
     return (
@@ -154,15 +254,15 @@ export function DealProcessChecklist({ deal, memberId = null }) {
 
   // So mostra o vazio se nao ha NEM processo NEM historico — um lead numa etapa
   // sem playbook ainda pode ter tarefas feitas pra mostrar.
-  if (steps.length === 0 && !objetivo && !exitCriteria && history.length === 0) {
+  if (steps.length === 0 && !objetivo && !exitCriteria) {
     return (
       <div className="py-10 text-center">
         <BookOpen size={28} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          A etapa <strong>{deal?.stage?.name || 'atual'}</strong> ainda não tem processo.
+          A etapa <strong>{deal?.stage?.name || 'atual'}</strong> ainda não tem o que fazer definido.
         </p>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-          Defina em Pipeline → botão "O que fazer" na coluna.
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          Defina na Pipeline, no botão "O que fazer" da coluna.
         </p>
       </div>
     );
@@ -174,7 +274,7 @@ export function DealProcessChecklist({ deal, memberId = null }) {
         <div className="flex gap-2.5">
           <Target size={16} className="text-indigo-500 shrink-0 mt-0.5" />
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Objetivo desta etapa
             </div>
             <p className="text-sm text-slate-700 dark:text-slate-200">{objetivo}</p>
@@ -192,10 +292,10 @@ export function DealProcessChecklist({ deal, memberId = null }) {
       {steps.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <span className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               O que fazer
             </span>
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 tnum">
+            <span className="text-[12px] font-semibold text-slate-500 dark:text-slate-400 tnum">
               {doneCount}/{steps.length}
             </span>
           </div>
@@ -206,7 +306,10 @@ export function DealProcessChecklist({ deal, memberId = null }) {
                 step={step}
                 done={doneIds.has(step.id)}
                 disabled={toggle.isPending}
-                onToggle={(done) => toggle.mutate({ dealId: deal.id, stepId: step.id, done, memberId })}
+                onToggle={(done) => handleToggle(step, done)}
+                outcome={outcomeByStep[step.id]}
+                dueAt={dueByStep[step.id]}
+                onEditOutcome={() => setOutcomeStep(step)}
               />
             ))}
           </div>
@@ -217,7 +320,7 @@ export function DealProcessChecklist({ deal, memberId = null }) {
         <div className="flex gap-2.5">
           <Flag size={16} className="text-emerald-500 shrink-0 mt-0.5" />
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Quando mover
             </div>
             <p className="text-sm text-slate-700 dark:text-slate-200">{exitCriteria}</p>
@@ -225,35 +328,14 @@ export function DealProcessChecklist({ deal, memberId = null }) {
         </div>
       )}
 
-      {/* HISTORICO: tudo que ja foi feito com esse lead — tarefas do processo e
-          as criadas a mao — na mesma linha do tempo. */}
-      {history.length > 0 && (
-        <div className="pt-1 border-t border-slate-200/70 dark:border-slate-700">
-          <div className="flex items-center gap-1.5 mt-3 mb-2">
-            <History size={13} className="text-slate-400" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Histórico
-            </span>
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 tnum">({history.length})</span>
-          </div>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {history.map(h => (
-              <div key={h.id} className="flex items-start gap-2">
-                <CheckCircle2 size={13} className="text-emerald-500 shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <span className="text-[13px] text-slate-700 dark:text-slate-200">{h.title}</span>
-                  {h.kind === 'manual' && (
-                    <span className="ml-1.5 text-[9px] font-semibold uppercase px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
-                      manual
-                    </span>
-                  )}
-                </div>
-                <span className="text-[11px] text-slate-400 dark:text-slate-500 shrink-0 tnum">{fmtWhen(h.at)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <StepOutcomeModal
+        open={!!outcomeStep}
+        step={outcomeStep}
+        initial={outcomeStep ? (outcomeByStep[outcomeStep.id] || '') : ''}
+        onClose={() => setOutcomeStep(null)}
+        onConfirm={confirmOutcome}
+        saving={toggle.isPending}
+      />
     </div>
   );
 }

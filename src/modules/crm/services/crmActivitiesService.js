@@ -402,6 +402,21 @@ export async function completeCrmActivity(id, { input = '', output = '' } = {}) 
     throw error;
   }
 
+  // PONTE COM O PLAYBOOK: se essa atividade veio de um passo do processo,
+  // concluir na Agenda ja marca o passo no checklist, levando junto o que o
+  // lead respondeu (o "output" e exatamente isso). Sem essa ponte o vendedor
+  // marcaria duas vezes e as duas telas nunca bateriam.
+  if (data?.stage_step_id && data?.deal_id) {
+    const { error: progErr } = await supabase
+      .from('crm_deal_step_progress')
+      .upsert(
+        { deal_id: data.deal_id, step_id: data.stage_step_id, outcome: output.trim() || null },
+        { onConflict: 'deal_id,step_id' },
+      );
+    // Nao derruba a conclusao: a atividade ja foi concluida com sucesso.
+    if (progErr) console.warn('[completeCrmActivity] sync com o processo', progErr.message);
+  }
+
   const result = dbToCrmActivity(data);
   return result;
 }

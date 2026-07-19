@@ -135,7 +135,7 @@ export function CrmContactDetailPage() {
           <a href={`mailto:${contact.email}`} className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 dark:hover:border-blue-700 transition-colors group">
             <Mail size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Email</div>
+              <div className="text-[12px] text-slate-400 uppercase tracking-wider">Email</div>
               <div className="text-sm text-slate-700 dark:text-slate-300 truncate">{contact.email}</div>
             </div>
           </a>
@@ -144,7 +144,7 @@ export function CrmContactDetailPage() {
           <a href={`tel:${contact.phone}`} className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl hover:border-blue-300 dark:hover:border-blue-700 transition-colors group">
             <Phone size={16} className="text-slate-400 group-hover:text-blue-500" />
             <div className="min-w-0">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Telefone</div>
+              <div className="text-[12px] text-slate-400 uppercase tracking-wider">Telefone</div>
               <div className="text-sm text-slate-700 dark:text-slate-300">{contact.phone}</div>
             </div>
           </a>
@@ -153,7 +153,7 @@ export function CrmContactDetailPage() {
           <div className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl">
             <MapPin size={16} className="text-slate-400" />
             <div className="min-w-0">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Localizacao</div>
+              <div className="text-[12px] text-slate-400 uppercase tracking-wider">Localizacao</div>
               <div className="text-sm text-slate-700 dark:text-slate-300 truncate">
                 {[contact.address, contact.city, contact.state].filter(Boolean).join(', ')}
               </div>
@@ -164,7 +164,7 @@ export function CrmContactDetailPage() {
           <div className="flex items-center gap-3 px-4 py-3 crm-glass rounded-2xl">
             <Tag size={16} className="text-slate-400" />
             <div className="min-w-0">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Tags</div>
+              <div className="text-[12px] text-slate-400 uppercase tracking-wider mb-1">Tags</div>
               <div className="flex flex-wrap gap-1">
                 {contact.tags.map(t => <CrmBadge key={t} variant="violet" size="sm">{t}</CrmBadge>)}
               </div>
@@ -202,7 +202,7 @@ export function CrmContactDetailPage() {
         {activeTab === 'activities' && (
           <div>
             {(contact.activities || []).length === 0 ? (
-              <div className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">Nenhuma atividade vinculada</div>
+              <div className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">Nenhuma atividade vinculada</div>
             ) : (
               <div className="relative pl-6">
                 <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700/50" />
@@ -236,7 +236,7 @@ export function CrmContactDetailPage() {
         {activeTab === 'deals' && (
           <div>
             {(contact.deals || []).length === 0 ? (
-              <div className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">Nenhum negocio vinculado</div>
+              <div className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">Nenhum negocio vinculado</div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {contact.deals.map(deal => {

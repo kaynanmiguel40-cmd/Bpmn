@@ -69,7 +69,7 @@ function InstanceCard({ instance }) {
             />
           </div>
           {instance.qrExpiresAt && (
-            <p className="text-[10px] text-center text-slate-400 mt-2">
+            <p className="text-[12px] text-center text-slate-400 mt-2">
               QR expira em ~60s. Recarrega automatico quando renovar.
             </p>
           )}
@@ -92,7 +92,7 @@ function InstanceCard({ instance }) {
       )}
 
       {instance.lastSeenAt && (
-        <p className="text-[10px] text-slate-400 mt-3">
+        <p className="text-[12px] text-slate-400 mt-3">
           Última atividade: {new Date(instance.lastSeenAt).toLocaleString('pt-BR')}
         </p>
       )}

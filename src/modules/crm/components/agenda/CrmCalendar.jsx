@@ -128,9 +128,9 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
           ? <Check size={11} className="shrink-0" style={{ color: ev.color }} />
           : <Icon size={11} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
         {ev.startDate && !ev.isAllDay && (
-          <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtTime(ev.startDate)}</span>
+          <span className="text-[12px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtTime(ev.startDate)}</span>
         )}
-        <span className={`flex-1 min-w-0 truncate text-[11px] ${ev.completed ? 'line-through text-slate-400 dark:text-slate-500' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
+        <span className={`flex-1 min-w-0 truncate text-[12px] ${ev.completed ? 'line-through text-slate-500 dark:text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
           {label}
         </span>
         {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={13} />}
@@ -141,7 +141,7 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
           data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
           title="Marcar como concluída"
-          className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-emerald-500 transition-colors"
+          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-emerald-500 transition-colors"
         >
           <CheckCircle2 size={12} />
         </button>
@@ -152,7 +152,7 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
           data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
           title="Editar o que foi feito/respondido"
-          className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-fyness-primary transition-colors md:opacity-0 md:group-hover/chip:opacity-100"
+          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-fyness-primary transition-colors md:opacity-0 md:group-hover/chip:opacity-100"
         >
           <Pencil size={11} />
         </button>
@@ -171,7 +171,7 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
   return (
     <div className="grid grid-cols-7 flex-1 min-h-0 rounded-xl overflow-hidden border border-slate-200/70 dark:border-white/10">
       {DOW.map(d => (
-        <div key={d} className="px-2 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/70 dark:border-white/10 text-center">
+        <div key={d} className="px-2 py-1.5 text-[12px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/70 dark:border-white/10 text-center">
           {d}
         </div>
       ))}
@@ -196,7 +196,7 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
               ${dnd?.drop?.dayKey === key ? 'ring-2 ring-inset ring-fyness-primary/60 bg-fyness-primary/10 dark:bg-fyness-primary/10' : 'hover:bg-fyness-primary/5 dark:hover:bg-white/5'} ${(i + 1) % 7 === 0 ? 'border-r-0' : ''}`}
           >
             <div className="flex items-center justify-between px-1">
-              <span className={`text-[11px] font-medium w-5 h-5 flex items-center justify-center rounded-full
+              <span className={`text-[12px] font-medium w-5 h-5 flex items-center justify-center rounded-full
                 ${isToday ? 'bg-fyness-primary text-white' : inMonth ? 'text-slate-600 dark:text-slate-300' : 'text-slate-400 dark:text-slate-600'}`}>
                 {day.getDate()}
               </span>
@@ -213,7 +213,7 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onShowDay?.(day); }}
-                  className="w-full text-left text-[10px] text-slate-400 dark:text-slate-500 hover:text-fyness-primary hover:underline pl-1 cursor-pointer"
+                  className="w-full text-left text-[12px] text-slate-500 dark:text-slate-400 hover:text-fyness-primary hover:underline pl-1 cursor-pointer"
                 >
                   +{extra} mais
                 </button>
@@ -376,8 +376,8 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
           {ev.completed
             ? <Check size={10} className="shrink-0" style={{ color: ev.color }} />
             : <Icon size={10} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
-          <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtTime(ev.startDate)}</span>
-          <span className={`flex-1 min-w-0 truncate text-[10px] ${ev.completed ? 'line-through text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
+          <span className="text-[12px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtTime(ev.startDate)}</span>
+          <span className={`flex-1 min-w-0 truncate text-[12px] ${ev.completed ? 'line-through text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
             {ev.title}
           </span>
         </>
@@ -387,14 +387,14 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
             {ev.completed
               ? <Check size={11} className="shrink-0" style={{ color: ev.color }} />
               : <Icon size={11} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
-            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtRange(ev.startDate, ev.endDate)}</span>
+            <span className="text-[12px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtRange(ev.startDate, ev.endDate)}</span>
             {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={12} />}
           </div>
-          <div className={`text-[11px] leading-tight truncate ${ev.completed ? 'line-through text-slate-400 dark:text-slate-500' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-800 dark:text-slate-100 font-medium'}`}>
+          <div className={`text-[12px] leading-tight truncate ${ev.completed ? 'line-through text-slate-500 dark:text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-800 dark:text-slate-100 font-medium'}`}>
             {ev.title}
           </div>
           {ev.leadName && !isGoogle && height > 50 && (
-            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{ev.leadName}</div>
+            <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate">{ev.leadName}</div>
           )}
         </>
       )}
@@ -434,7 +434,7 @@ function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditD
   if (!anyAllDay) return null;
   return (
     <div className={`grid gap-px bg-slate-200/60 dark:bg-white/5 border-b border-slate-200/70 dark:border-white/10`} style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
-      <div className="bg-white/60 dark:bg-slate-900/40 text-[10px] text-slate-400 dark:text-slate-500 flex items-center justify-end pr-1.5 py-1">dia</div>
+      <div className="bg-white/60 dark:bg-slate-900/40 text-[12px] text-slate-500 dark:text-slate-400 flex items-center justify-end pr-1.5 py-1">dia</div>
       {days.map((day) => {
         const dayEvents = (eventsByDay.get(toKey(day)) || []).filter(ev => ev.isAllDay);
         return (
@@ -485,7 +485,7 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTa
             const isToday = isSameDay(day, today);
             return (
               <div key={toKey(day)} className={`px-2 py-1.5 text-center ${isToday ? 'bg-fyness-primary/10' : ''}`}>
-                <div className="text-[10px] uppercase text-slate-400 dark:text-slate-500">{DOW[day.getDay()]}</div>
+                <div className="text-[12px] uppercase text-slate-500 dark:text-slate-400">{DOW[day.getDay()]}</div>
                 <div className={`text-sm font-semibold ${isToday ? 'text-fyness-primary' : 'text-slate-700 dark:text-slate-200'}`}>{day.getDate()}</div>
               </div>
             );
@@ -499,7 +499,7 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTa
             {/* Nudge pra baixo (sem centralizar na linha) — centralizar cortava a
                 primeira hora (metade do texto ficava acima do topo da grade). */}
             {hours.map(h => (
-              <div key={h} className="absolute right-1.5 text-[10px] text-slate-400 dark:text-slate-500 tabular-nums" style={{ top: (h - startH) * GRID_HOUR_PX + 2 }}>
+              <div key={h} className="absolute right-1.5 text-[12px] text-slate-500 dark:text-slate-400 tabular-nums" style={{ top: (h - startH) * GRID_HOUR_PX + 2 }}>
                 {String(h).padStart(2, '0')}:00
               </div>
             ))}
@@ -577,7 +577,7 @@ function AgendaRow({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
           <>
             <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{fmtTime(ev.startDate)}</div>
             {ev.endDate && fmtTime(ev.endDate) !== fmtTime(ev.startDate) && (
-              <div className="text-[10px] text-slate-400 dark:text-slate-500">–{fmtTime(ev.endDate)}</div>
+              <div className="text-[12px] text-slate-500 dark:text-slate-400">–{fmtTime(ev.endDate)}</div>
             )}
           </>
         )}
@@ -590,13 +590,13 @@ function AgendaRow({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
           : <Icon size={15} style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
       </span>
       <button type="button" onClick={() => onClick?.(ev)} className="flex-1 min-w-0 text-left cursor-pointer">
-        <div className={`text-sm truncate ${ev.completed ? 'line-through text-slate-400 dark:text-slate-500' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-800 dark:text-slate-100 font-medium'}`}>
+        <div className={`text-sm truncate ${ev.completed ? 'line-through text-slate-500 dark:text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-800 dark:text-slate-100 font-medium'}`}>
           {label}
         </div>
-        <div className="text-xs text-slate-400 dark:text-slate-500 truncate">{isGoogle ? 'Google Agenda' : sub}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{isGoogle ? 'Google Agenda' : sub}</div>
         {timing && (
-          <div className="flex items-center gap-1.5 mt-1 text-[11px] flex-wrap">
-            <span className="text-slate-400 dark:text-slate-500 tabular-nums">
+          <div className="flex items-center gap-1.5 mt-1 text-[12px] flex-wrap">
+            <span className="text-slate-500 dark:text-slate-400 tabular-nums">
               Previsto {fmtTime(ev.endDate || ev.startDate)} · feito {fmtTime(ev.completedAt)}
             </span>
             <span className={`px-1.5 py-px rounded-full font-medium ${TIMING_CLASS[timing.state]}`}>{timing.label}</span>
@@ -608,7 +608,7 @@ function AgendaRow({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
       {isCrm && !ev.completed && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
           title="Marcar como concluída"
-          className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-emerald-500 transition-colors">
+          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-emerald-500 transition-colors">
           <CheckCircle2 size={20} />
         </button>
       )}
@@ -616,7 +616,7 @@ function AgendaRow({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
       {isCrm && ev.completed && onEditDelivery && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
           title="Editar o que foi feito/respondido"
-          className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-fyness-primary transition-colors md:opacity-0 md:group-hover/row:opacity-100">
+          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-fyness-primary transition-colors md:opacity-0 md:group-hover/row:opacity-100">
           <Pencil size={18} />
         </button>
       )}
@@ -637,7 +637,7 @@ function AgendaListView({ current, eventsByDay, onSelectEvent, onCompleteTask, o
 
   if (days.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-center text-sm text-slate-400 dark:text-slate-500">
+      <div className="flex-1 flex items-center justify-center text-center text-sm text-slate-500 dark:text-slate-400">
         Nenhuma atividade nos próximos 30 dias.
       </div>
     );
@@ -650,7 +650,7 @@ function AgendaListView({ current, eventsByDay, onSelectEvent, onCompleteTask, o
           <section key={toKey(date)} className="mb-1">
             <div className="sticky top-0 z-10 bg-white/85 dark:bg-slate-900/80 backdrop-blur px-3 py-1.5 mb-0.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 capitalize">{dayHeading(date)}</span>
-              <span className="ml-2 text-[11px] text-slate-400 dark:text-slate-500">{events.length} {events.length === 1 ? 'item' : 'itens'}</span>
+              <span className="ml-2 text-[12px] text-slate-500 dark:text-slate-400">{events.length} {events.length === 1 ? 'item' : 'itens'}</span>
             </div>
             {events.map(ev => (
               <AgendaRow key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
@@ -976,13 +976,13 @@ export default function CrmCalendar({
           {legend.types.map(t => {
             const Icon = TYPE_ICON[t.key] || Circle;
             return (
-              <span key={t.key} className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <span key={t.key} className="inline-flex items-center gap-1.5 text-[12px] text-slate-500 dark:text-slate-400">
                 <Icon size={13} style={{ color: t.color }} /> {t.label}
               </span>
             );
           })}
           {legend.hasGoogle && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 sm:ml-auto">
+            <span className="inline-flex items-center gap-1.5 text-[12px] text-slate-500 dark:text-slate-400 sm:ml-auto">
               <span className="inline-block w-4 h-3 rounded border border-dashed border-slate-400 dark:border-slate-500 bg-slate-50/60 dark:bg-slate-800/30" />
               <CalendarClock size={13} className="text-slate-400" /> do Google Agenda
             </span>

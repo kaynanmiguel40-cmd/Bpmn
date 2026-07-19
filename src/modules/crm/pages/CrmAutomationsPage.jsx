@@ -75,7 +75,7 @@ function KpiCard({ label, value, sub, color = 'text-slate-800 dark:text-slate-10
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
       <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">{label}</div>
       <div className={`text-3xl font-bold ${color}`}>{value ?? 0}</div>
-      {sub && <div className="text-[11px] text-slate-400 mt-0.5">{sub}</div>}
+      {sub && <div className="text-[12px] text-slate-400 mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -205,7 +205,7 @@ function RulesTab({ onNew, onEdit }) {
                           {auto.name}
                         </span>
                         {!auto.active && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 rounded-full">
+                          <span className="text-[12px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 rounded-full">
                             Inativa
                           </span>
                         )}
@@ -215,7 +215,7 @@ function RulesTab({ onNew, onEdit }) {
                           <MtIcon size={11} /> {mt.label}
                         </span>
                         {auto.segmentFilter && (
-                          <span className="px-1.5 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 rounded-full text-[10px] font-medium">
+                          <span className="px-1.5 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 rounded-full text-[12px] font-medium">
                             {auto.segmentFilter}
                           </span>
                         )}
@@ -226,7 +226,7 @@ function RulesTab({ onNew, onEdit }) {
                         )}
                       </div>
                       {(auto.messageContent || auto.mediaUrl) && (
-                        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate max-w-xs">
+                        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-xs">
                           {auto.messageContent || auto.mediaUrl}
                         </p>
                       )}
@@ -348,7 +348,7 @@ function MonitorTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                <tr className="text-[12px] uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-700">
                   <th className="text-left px-4 py-2">Deal</th>
                   <th className="text-left px-4 py-2">Etapa</th>
                   <th className="text-left px-4 py-2">Canal</th>
@@ -448,7 +448,7 @@ function LogsTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+                <tr className="text-[12px] uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
                   <th className="text-left px-4 py-2">Deal</th>
                   <th className="text-left px-4 py-2">Etapa</th>
                   <th className="text-left px-4 py-2">Canal</th>

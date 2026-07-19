@@ -86,18 +86,18 @@ function TimelineRow({ item, onComplete, onDelete, onEditDelivery }) {
             {item.done && item.kind === 'activity' && <CheckCircle2 size={13} className="inline mr-1 text-emerald-500 -mt-0.5" />}
             {item.title}
           </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${item.color}22`, color: item.color }}>{item.typeLabel}</span>
+          <span className="text-[12px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${item.color}22`, color: item.color }}>{item.typeLabel}</span>
           {isPendingActivity && (onComplete || onDelete) && (
             <span className="ml-auto flex items-center gap-1 md:opacity-0 md:group-hover/tl:opacity-100 transition-opacity">
               {onComplete && (
                 <button type="button" onClick={() => onComplete(item)} title="Marcar como concluída"
-                  className="p-1 text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded">
+                  className="p-1 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded">
                   <CheckCircle2 size={14} />
                 </button>
               )}
               {onDelete && (
                 <button type="button" onClick={() => onDelete(item)} title="Excluir atividade"
-                  className="p-1 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded">
+                  className="p-1 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded">
                   <Trash2 size={14} />
                 </button>
               )}
@@ -106,7 +106,7 @@ function TimelineRow({ item, onComplete, onDelete, onEditDelivery }) {
           {isDoneActivity && onEditDelivery && (
             <button type="button" onClick={() => onEditDelivery(item)}
               title={item.deliveryInput || item.deliveryReport ? 'Editar o que foi feito/respondido' : 'Preencher o que foi feito/respondido'}
-              className="ml-auto p-1 text-slate-400 dark:text-slate-500 hover:text-fyness-primary hover:bg-fyness-primary/10 rounded md:opacity-0 md:group-hover/tl:opacity-100 transition-opacity">
+              className="ml-auto p-1 text-slate-500 dark:text-slate-400 hover:text-fyness-primary hover:bg-fyness-primary/10 rounded md:opacity-0 md:group-hover/tl:opacity-100 transition-opacity">
               <Pencil size={13} />
             </button>
           )}
@@ -116,13 +116,13 @@ function TimelineRow({ item, onComplete, onDelete, onEditDelivery }) {
           <div className="mt-1.5 space-y-1.5">
             {item.deliveryInput && (
               <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2.5 py-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
+                <span className="text-[12px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
                 <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{item.deliveryInput}</span>
               </div>
             )}
             {item.deliveryReport && (
               <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
+                <span className="text-[12px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
                 <span className="text-xs text-slate-700 dark:text-slate-200 break-words">{item.deliveryReport}</span>
               </div>
             )}
@@ -130,13 +130,13 @@ function TimelineRow({ item, onComplete, onDelete, onEditDelivery }) {
         ) : item.detail && (
           <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 break-words">{item.detail}</p>
         )}
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{relativeLabel(item.date)}</p>
+        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">{relativeLabel(item.date)}</p>
         {item.kind === 'activity' && item.done && item.completedAt && (() => {
           const t = scheduleTiming(item.endDate || item.date, item.completedAt);
           if (!t) return null;
           return (
-            <p className="flex items-center gap-1.5 mt-1 text-[11px] flex-wrap">
-              <span className="text-slate-400 dark:text-slate-500 tabular-nums">Previsto {hm(item.endDate || item.date)} · feito {hm(item.completedAt)}</span>
+            <p className="flex items-center gap-1.5 mt-1 text-[12px] flex-wrap">
+              <span className="text-slate-500 dark:text-slate-400 tabular-nums">Previsto {hm(item.endDate || item.date)} · feito {hm(item.completedAt)}</span>
               <span className={`px-1.5 py-px rounded-full font-medium ${TIMING_CLASS[t.state]}`}>{t.label}</span>
             </p>
           );
@@ -164,7 +164,7 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
 
   if (!selected) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center px-6 text-slate-400 dark:text-slate-500">
+      <div className="h-full flex flex-col items-center justify-center text-center px-6 text-slate-500 dark:text-slate-400">
         <CalendarCheck size={32} className="mb-3 opacity-50" />
         <p className="text-sm font-medium">Selecione uma atividade</p>
         <p className="text-xs mt-1">Clique num evento do calendário para ver o histórico completo do lead — o que foi feito, conversado, o estágio atual e o que está agendado.</p>
@@ -192,7 +192,7 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
 
         <div className="flex items-center gap-2 flex-wrap mt-3">
           {lead?.stage && (
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+            <span className="text-[12px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1"
               style={{ backgroundColor: `${lead.stage.color || '#6366f1'}22`, color: lead.stage.color || '#6366f1' }}>
               <Flag size={11} /> {lead.stage.name}
             </span>
@@ -228,7 +228,7 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
           <>
             {upcoming.length > 0 && (
               <section className="mb-5">
-                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 flex items-center gap-1.5">
+                <h4 className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1.5">
                   <Clock size={12} /> A fazer
                 </h4>
                 <div>{upcoming.map(i => <TimelineRow key={i.id} item={i} onComplete={onCompleteTask} onDelete={onDeleteTask} />)}</div>
@@ -236,9 +236,9 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
             )}
 
             <section>
-              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Histórico</h4>
+              <h4 className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Histórico</h4>
               {past.length === 0 ? (
-                <p className="text-xs text-slate-400 dark:text-slate-500 py-4">Nenhum registro ainda — ligações, mensagens, atividades e mudanças de estágio vão aparecer aqui.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 py-4">Nenhum registro ainda — ligações, mensagens, atividades e mudanças de estágio vão aparecer aqui.</p>
               ) : (
                 <div>{past.map(i => <TimelineRow key={i.id} item={i} onEditDelivery={onEditDelivery} />)}</div>
               )}

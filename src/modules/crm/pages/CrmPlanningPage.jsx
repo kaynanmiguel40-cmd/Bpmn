@@ -89,7 +89,7 @@ function FunnelRow({ name, count, index, total, isFirst, topW, botW, convPct }) 
           <div className="absolute inset-0" style={{ clipPath: clip, background: 'linear-gradient(to bottom, rgba(255,255,255,0.30), rgba(255,255,255,0) 55%)' }} />
         )}
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className={`text-base sm:text-lg font-bold tabular-nums ${known ? 'text-white drop-shadow-[0_1px_2px_rgba(15,23,42,0.4)]' : 'text-slate-400 dark:text-slate-500'}`}>
+          <span className={`text-base sm:text-lg font-bold tabular-nums ${known ? 'text-white drop-shadow-[0_1px_2px_rgba(15,23,42,0.4)]' : 'text-slate-500 dark:text-slate-400'}`}>
             {known ? fmtInt(count) : '—'}
           </span>
         </div>
@@ -98,14 +98,14 @@ function FunnelRow({ name, count, index, total, isFirst, topW, botW, convPct }) 
       {/* Conversão vinda da etapa de cima */}
       <div className="w-[64px] sm:w-24 flex flex-col justify-center pl-3 shrink-0">
         {isFirst ? (
-          <span className="text-[10px] uppercase tracking-wider text-slate-300 dark:text-slate-600 font-semibold">topo do funil</span>
+          <span className="text-[12px] uppercase tracking-wider text-slate-300 dark:text-slate-600 font-semibold">topo do funil</span>
         ) : convPct != null ? (
           <>
             <span className="flex items-center gap-1 text-sm font-bold text-slate-600 dark:text-slate-300 tabular-nums leading-none">
               <ArrowDown size={11} className="text-slate-400 shrink-0" />
               {Math.round(convPct)}%
             </span>
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-tight hidden sm:block">converteu da etapa de cima</span>
+            <span className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight hidden sm:block">converteu da etapa de cima</span>
           </>
         ) : (
           <span className="text-xs text-slate-300 dark:text-slate-600">— sem taxa</span>
@@ -221,7 +221,7 @@ export function CrmPlanningPage() {
 
       {/* Sandbox isolado de propósito: essa calculadora não escreve na meta
           oficial (Comparativo) — só no localStorage deste navegador. */}
-      <p className="text-xs text-slate-400 dark:text-slate-500 -mt-2">
+      <p className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
         Esta calculadora é só sua — não altera a meta oficial do Comparativo.
       </p>
 
@@ -283,7 +283,7 @@ export function CrmPlanningPage() {
                         placeholder="%"
                         className="w-16 px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary" />
                     )}
-                    <span className={`text-[11px] ${isCapped ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-slate-400'}`}>
+                    <span className={`text-[12px] ${isCapped ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-slate-400'}`}>
                       {isCapped ? 'contagens incompatíveis — máx. 100%' : isDerivedRate ? 'calculado das contagens' : 'de conversão'}
                     </span>
                   </div>
@@ -302,7 +302,7 @@ export function CrmPlanningPage() {
         <div className="crm-glass rounded-2xl p-5">
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-2">Seu funil calculado</h3>
           {!hasAnyData ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500 py-8 text-center">
+            <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">
               Preencha a contagem de pelo menos uma etapa (ou uma taxa entre elas) pra ver o funil.
             </p>
           ) : (

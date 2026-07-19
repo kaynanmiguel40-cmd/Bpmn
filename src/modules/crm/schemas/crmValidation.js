@@ -53,6 +53,8 @@ export const crmDealSchema = z.object({
   value: z.number().min(0).default(0),
   mrr: z.number().min(0).default(0),
   probability: z.number().min(0).max(100).default(50),
+  // Prioridade em estrelas (0-5). 0 = nao definida.
+  priority: z.number().int().min(0).max(5).default(0),
   segment: nullableStr,
   contactName: nullableStr,
   contactPhone: nullableStr,

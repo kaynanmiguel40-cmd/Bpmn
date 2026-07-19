@@ -195,6 +195,7 @@ export async function getCrmPipelineWithDeals(pipelineId) {
       title: d.title,
       value: d.value,
       probability: d.probability,
+      priority: d.priority ?? 0,
       status: d.status,
       source: d.source || null,
       expectedCloseDate: d.expected_close_date,

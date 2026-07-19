@@ -368,12 +368,32 @@ export function useDealProgress(dealId) {
   });
 }
 
+/** Agenda o processo dos leads que ja estavam parados nas etapas (backfill). */
+export function useScheduleProcessForPipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pipelineId) => scheduleProcessForPipeline(pipelineId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+    },
+  });
+}
+
 export function useToggleDealStep() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ dealId, stepId, done, memberId }) => toggleDealStep(dealId, stepId, done, memberId),
+    mutationFn: ({ dealId, stepId, done, memberId, outcome }) => toggleDealStep(dealId, stepId, done, memberId, outcome),
     onSuccess: (_r, vars) => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.dealProgress(vars.dealId) });
+      // Marcar no checklist conclui/reabre a atividade da Agenda (ponte em
+      // toggleDealStep) — as duas telas tem que refletir na hora.
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
     },
   });
 }
@@ -901,6 +921,10 @@ export function useCompleteCrmActivity() {
       qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      // A atividade pode vir de um passo do processo: o checklist e o selo do
+      // card mudam junto (ver a ponte em completeCrmActivity).
+      qc.invalidateQueries({ queryKey: ['crm', 'dealProgress'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       toast('Atividade concluida', 'success');
     },
     onError: (err) => {

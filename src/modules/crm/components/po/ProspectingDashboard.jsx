@@ -36,11 +36,11 @@ export default function ProspectingDashboard() {
 
         {/* Color mode toggle */}
         <div className="flex items-center gap-2">
-          <Globe className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+          <Globe className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
             <button
               onClick={() => setColorMode(COLOR_MODES.REGION)}
-              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all duration-200 ${
+              className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-all duration-200 ${
                 colorMode === COLOR_MODES.REGION
                   ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
@@ -50,7 +50,7 @@ export default function ProspectingDashboard() {
             </button>
             <button
               onClick={() => setColorMode(COLOR_MODES.STATUS)}
-              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all duration-200 ${
+              className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-all duration-200 ${
                 colorMode === COLOR_MODES.STATUS
                   ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
@@ -106,8 +106,8 @@ function KpiChip({ icon: Icon, value, suffix, label, color }) {
     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${colors[color]}`}>
       <Icon className="w-3.5 h-3.5" />
       <span className="text-sm font-bold">{value}</span>
-      {suffix && <span className="text-[10px] opacity-60 -ml-1">{suffix}</span>}
-      <span className="text-[10px] opacity-60">{label}</span>
+      {suffix && <span className="text-[12px] opacity-60 -ml-1">{suffix}</span>}
+      <span className="text-[12px] opacity-60">{label}</span>
     </div>
   );
 }

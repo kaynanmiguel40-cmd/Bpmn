@@ -173,7 +173,7 @@ export function ImportLeadsModal({ open, onClose, pipeline }) {
           >
             {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">
             Aplica a todas as linhas — exceto as que trouxerem um estágio próprio na 3ª coluna.
           </p>
         </div>
@@ -189,7 +189,7 @@ export function ImportLeadsModal({ open, onClose, pipeline }) {
             placeholder={'João Silva\nMaria Souza, (11) 98888-7777\nPedro Lima, 11977776666, Respondeu'}
             className={`${selectCls} font-mono text-xs leading-relaxed`}
           />
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">
             Formatos: <code>Nome</code> · <code>Nome, telefone</code> · <code>Nome, telefone, estágio</code>. Separador: vírgula, ponto-e-vírgula ou tab.
           </p>
         </div>

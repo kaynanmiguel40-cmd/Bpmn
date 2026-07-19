@@ -111,14 +111,14 @@ function ProgressRow({ icon: Icon, label, value, target }) {
           <Icon size={14} className={c.text} />
           <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
           {hit && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[12px] font-semibold rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
               <Sparkles size={10} /> Meta batida
             </span>
           )}
         </div>
         <span className={`text-xs font-semibold ${c.text}`}>
           <span className="font-mono">{value}</span>
-          <span className="text-slate-400 dark:text-slate-500"> / {target}</span>
+          <span className="text-slate-500 dark:text-slate-400"> / {target}</span>
           <span className="ml-1">({pct}%)</span>
         </span>
       </div>

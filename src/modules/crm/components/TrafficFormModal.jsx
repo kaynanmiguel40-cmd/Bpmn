@@ -257,19 +257,19 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
         {(parseFloat(form.amountSpent) > 0 || parseInt(form.clicks) > 0) && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
             <div className="text-center">
-              <div className="text-[10px] font-medium text-slate-400 uppercase">CPL</div>
+              <div className="text-[12px] font-medium text-slate-400 uppercase">CPL</div>
               <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(metrics.cpl)}</div>
             </div>
             <div className="text-center">
-              <div className="text-[10px] font-medium text-slate-400 uppercase">CPC</div>
+              <div className="text-[12px] font-medium text-slate-400 uppercase">CPC</div>
               <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(metrics.cpc)}</div>
             </div>
             <div className="text-center">
-              <div className="text-[10px] font-medium text-slate-400 uppercase">CTR</div>
+              <div className="text-[12px] font-medium text-slate-400 uppercase">CTR</div>
               <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{metrics.ctr.toFixed(2)}%</div>
             </div>
             <div className="text-center">
-              <div className="text-[10px] font-medium text-slate-400 uppercase">ROAS</div>
+              <div className="text-[12px] font-medium text-slate-400 uppercase">ROAS</div>
               <div className={`text-sm font-bold ${metrics.roas >= 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 {metrics.roas.toFixed(2)}x
               </div>

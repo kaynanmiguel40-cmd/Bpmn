@@ -284,7 +284,7 @@ function SendToPipelineModal({ open, onClose, selectedCount, selectedProspects, 
                 onChange={(e) => setDistributeRoundRobin(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-fyness-primary focus:ring-fyness-primary"
               />
-              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="text-[12px] text-slate-500 dark:text-slate-400">
                 Distribuir em rodízio entre {activeMembers.length} vendedores ativos
               </span>
             </label>
@@ -307,7 +307,7 @@ function SendToPipelineModal({ open, onClose, selectedCount, selectedProspects, 
               className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:outline-none"
             />
           </div>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">
             Aplica em todos os leads selecionados. Vendedor edita individualmente depois se quiser.
           </p>
         </div>
@@ -510,7 +510,7 @@ function CdBalanceModal({ open, onClose, currentValue, onSave }) {
         {!isValid && value.trim() !== '' && (
           <p className="text-xs text-rose-500">Informe um numero valido (0 ou mais)</p>
         )}
-        <p className="text-xs text-slate-400 dark:text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           Ajuste apos renovar o plano ou comprar creditos adicionais.
         </p>
       </div>
@@ -929,7 +929,7 @@ export function CrmProspectsPage() {
             <Filter size={16} className="text-white/90" />
             <span className="text-sm font-bold text-white">Filtros de Busca</span>
           </div>
-          <p className="text-[11px] text-blue-100/70 mt-0.5">Defina o perfil da prospeccao</p>
+          <p className="text-[12px] text-blue-100/70 mt-0.5">Defina o perfil da prospeccao</p>
         </div>
 
         {/* Toggle Leads / Parceiros */}
@@ -1066,7 +1066,7 @@ export function CrmProspectsPage() {
                   <button
                     type="button"
                     onClick={() => { setFilterMode('city'); setDdd(''); }}
-                    className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                    className={`px-2 py-0.5 text-[12px] font-semibold rounded transition-colors ${
                       filterMode === 'city'
                         ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
@@ -1077,7 +1077,7 @@ export function CrmProspectsPage() {
                   <button
                     type="button"
                     onClick={() => { setFilterMode('ddd'); setCity(''); }}
-                    className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                    className={`px-2 py-0.5 text-[12px] font-semibold rounded transition-colors ${
                       filterMode === 'ddd'
                         ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
@@ -1146,7 +1146,7 @@ export function CrmProspectsPage() {
                 }`} />
               </span>
             </button>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2 mt-1 leading-snug">
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 px-2 mt-1 leading-snug">
               Esconde leads que só têm fixo cadastrado. Os celulares aparecem normalmente — busca Google traz telefone do Meu Negócio direto.
             </p>
           </div>
@@ -1212,7 +1212,7 @@ export function CrmProspectsPage() {
         <>
         {/* Header da area de resultados */}
         {/* Barra de uso/custo de APIs (Google + Casa Dados) */}
-        <div className="flex items-center gap-3 px-5 py-1.5 text-[11px] border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 shrink-0">
+        <div className="flex items-center gap-3 px-5 py-1.5 text-[12px] border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 shrink-0">
           <span
             className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400"
             title={`Mês ${usage.month}\nText Search (New) Pro Tier — cota free ~${usage.google.freeQuota.toLocaleString('pt-BR')} chamadas/mês\nUsadas: ${usage.google.calls}\nApós cota: R$ 0,16/chamada (~$0.032 USD)`}
@@ -1272,17 +1272,17 @@ export function CrmProspectsPage() {
                     {whatsappOnly ? ' com WhatsApp' : ' baixado' + (visibleProspects.length !== 1 ? 's' : '')}
                   </span>
                   {hiddenByFilter > 0 && whatsappOnly && (
-                    <span className="text-[11px] font-normal text-amber-600 dark:text-amber-400" title="Esses leads tem so fixo cadastrado no Google Meu Negocio. Desmarque 'Apenas com WhatsApp' no sidebar pra ver.">
+                    <span className="text-[12px] font-normal text-amber-600 dark:text-amber-400" title="Esses leads tem so fixo cadastrado no Google Meu Negocio. Desmarque 'Apenas com WhatsApp' no sidebar pra ver.">
                       ({hiddenByFilter} fixo{hiddenByFilter > 1 ? 's' : ''} ocultos)
                     </span>
                   )}
                   {total > prospects.length && (
-                    <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">
+                    <span className="text-[12px] font-normal text-slate-500 dark:text-slate-400">
                       · {total.toLocaleString('pt-BR')} na base
                     </span>
                   )}
                   {data?.dedupedCount > 0 && (
-                    <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500" title="CNPJs que ja existem como empresa no CRM (provavelmente ja convertidos antes) foram ocultados desta busca.">
+                    <span className="text-[12px] font-normal text-slate-500 dark:text-slate-400" title="CNPJs que ja existem como empresa no CRM (provavelmente ja convertidos antes) foram ocultados desta busca.">
                       · {data.dedupedCount} ja no CRM (ocultos)
                     </span>
                   )}
@@ -1341,7 +1341,7 @@ export function CrmProspectsPage() {
               <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 mb-2">
                 Gerador de Lista
               </h3>
-              <p className="text-sm text-slate-400 dark:text-slate-500 leading-relaxed">
+              <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
                 Use os filtros ao lado para definir o perfil ideal de prospeccao. Selecione segmento, porte, regiao e clique em <strong className="text-slate-600 dark:text-slate-300">"Gerar Lista"</strong>.
               </p>
             </div>
@@ -1370,7 +1370,7 @@ export function CrmProspectsPage() {
                   ].map(col => (
                     <th
                       key={col.key}
-                      className={`px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider ${col.sortable ? 'cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200' : ''}`}
+                      className={`px-3 py-2.5 text-left text-[12px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider ${col.sortable ? 'cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200' : ''}`}
                       onClick={() => col.sortable && handleSort(col.key)}
                     >
                       <div className="flex items-center gap-1">
@@ -1398,12 +1398,12 @@ export function CrmProspectsPage() {
                       <Crosshair size={36} className="text-slate-200 dark:text-slate-700 mx-auto mb-3" />
                       {prospects.length === 0 ? (
                         <>
-                          <p className="text-sm text-slate-400 dark:text-slate-500">Nenhum {isPartners ? 'parceiro' : 'lead'} encontrado</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum {isPartners ? 'parceiro' : 'lead'} encontrado</p>
                           <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Ajuste os filtros ao lado e tente novamente</p>
                         </>
                       ) : (
                         <>
-                          <p className="text-sm text-slate-400 dark:text-slate-500">Todos os {prospects.length} resultados são fixo (sem WhatsApp)</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">Todos os {prospects.length} resultados são fixo (sem WhatsApp)</p>
                           <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Desmarque "Apenas com WhatsApp" no sidebar pra ver os fixos, ou ajuste filtros pra outra cidade/segmento.</p>
                         </>
                       )}
@@ -1447,7 +1447,7 @@ export function CrmProspectsPage() {
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="font-medium text-slate-800 dark:text-slate-200" title={p.companyName}>{p.companyName}</div>
-                          <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1 flex-wrap">
+                          <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1 flex-wrap">
                             {m.cnpj && <span className="font-mono select-all">{m.cnpj}</span>}
                             {m.dataAbertura && tempoDesdeAbertura(m.dataAbertura) && (
                               <>
@@ -1465,7 +1465,7 @@ export function CrmProspectsPage() {
                           ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                           {m.atividadesSecundarias?.length > 0 && (
                             <div
-                              className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
+                              className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 cursor-help"
                               title={m.atividadesSecundarias.map(a => `${a.code}${a.description ? ' — ' + a.description : ''}`).join('\n')}
                             >
                               +{m.atividadesSecundarias.length} CNAE{m.atividadesSecundarias.length > 1 ? 's' : ''}
@@ -1478,10 +1478,10 @@ export function CrmProspectsPage() {
                               <span className={m.contactName ? '' : 'text-slate-300 dark:text-slate-600'}>{m.contactName || '—'}</span>
                               {cdLoading && <Loader2 size={10} className="animate-spin text-amber-500 shrink-0" />}
                             </div>
-                            {m.position && <span className="text-[11px] text-slate-400">{m.position}</span>}
+                            {m.position && <span className="text-[12px] text-slate-400">{m.position}</span>}
                             {m.socios?.length > 1 && (
                               <div
-                                className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
+                                className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 cursor-help"
                                 title={m.socios.map(s => `${s.name}${s.role ? ' (' + s.role + ')' : ''}${s.capitalPercent != null ? ' — ' + s.capitalPercent + '%' : ''}`).join('\n')}
                               >
                                 +{m.socios.length - 1} sócio{m.socios.length - 1 > 1 ? 's' : ''}
@@ -1513,7 +1513,7 @@ export function CrmProspectsPage() {
                                 <div className="flex items-center gap-1.5">
                                   <span className="text-slate-300 dark:text-slate-600">—</span>
                                   {isLoading && <Loader2 size={11} className="animate-spin text-blue-500" />}
-                                  {isMiss && <span className="text-[9px] text-slate-400" title="Google nao encontrou esta empresa">no Google?</span>}
+                                  {isMiss && <span className="text-[11px] text-slate-400" title="Google nao encontrou esta empresa">no Google?</span>}
                                 </div>
                               );
                             }
@@ -1566,7 +1566,7 @@ export function CrmProspectsPage() {
                                 </div>
                                 {p.phones?.length > 1 && (
                                   <div
-                                    className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
+                                    className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 cursor-help"
                                     title={p.phones.map(t => {
                                       const tp = detectPhoneType(t);
                                       const tag = tp === 'mobile' ? 'cel' : tp === 'landline' ? 'fixo' : '?';
@@ -1583,7 +1583,7 @@ export function CrmProspectsPage() {
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     title={m.website}
-                                    className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline mt-0.5 truncate max-w-[140px]"
+                                    className="flex items-center gap-1 text-[12px] text-blue-600 dark:text-blue-400 hover:underline mt-0.5 truncate max-w-[140px]"
                                   >
                                     <ExternalLink size={9} className="shrink-0" />
                                     {m.website.replace(/^https?:\/\//, '').replace(/\/$/, '').slice(0, 24)}
@@ -1596,7 +1596,7 @@ export function CrmProspectsPage() {
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     title={m.instagram}
-                                    className="flex items-center gap-1 text-[10px] text-pink-600 dark:text-pink-400 hover:underline mt-0.5 truncate max-w-[140px]"
+                                    className="flex items-center gap-1 text-[12px] text-pink-600 dark:text-pink-400 hover:underline mt-0.5 truncate max-w-[140px]"
                                   >
                                     <Instagram size={9} className="shrink-0" />
                                     {m.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\//, '@').replace(/[/?].*$/, '').slice(0, 24)}
@@ -1615,7 +1615,7 @@ export function CrmProspectsPage() {
                               </a>
                               {p.emails?.length > 1 && (
                                 <div
-                                  className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 cursor-help"
+                                  className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 cursor-help"
                                   title={p.emails.join('\n')}
                                 >
                                   +{p.emails.length - 1}
@@ -1630,7 +1630,7 @@ export function CrmProspectsPage() {
                               <span className="text-xs text-slate-600 dark:text-slate-300">{SIZE_MAP[m.size]}</span>
                               {m.simplesNacional && (
                                 <span
-                                  className="inline-flex items-center text-[9px] font-bold px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                  className="inline-flex items-center text-[11px] font-bold px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                                   title="Optante do Simples Nacional"
                                 >
                                   SIMPLES
