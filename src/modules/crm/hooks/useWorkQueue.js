@@ -12,7 +12,7 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getOverdueQueue, getTodayQueue, getUpcomingCounts, getStalledLeads, snoozeActivity, getNextStageForDeal, planBatchPostpone, applyBatchPostpone, getNextActivityForLead,
+  getOverdueQueue, getTodayQueue, getUpcomingCounts, getStalledLeads, snoozeActivity, getNextStageForDeal, planBatchPostpone, applyBatchPostpone, getNextActivityForLead, getLeadNotes,
 } from '../services/crmQueueService';
 import { isCold, COLD_AFTER_DAYS } from '../utils/stepLabel';
 import { namesMatch } from '../../../lib/kpiUtils';
@@ -190,6 +190,16 @@ export function useNextActivityForLead({ dealId, contactId, after } = {}) {
  * Leads parados de quem esta sendo visto. `memberId` e o team_members.id (o
  * dono do NEGOCIO), nao o auth_user_id — sao ids diferentes pra mesma pessoa.
  */
+/** Registros do diario do lead — o que veio do campo de notas antigo. */
+export function useLeadNotes(dealId) {
+  return useQuery({
+    queryKey: ['crm', 'leadNotes', dealId],
+    queryFn: () => getLeadNotes(dealId),
+    enabled: !!dealId,
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useStalledLeads(memberId = null) {
   return useQuery({
     queryKey: [...workQueueKeys.stalled, memberId || 'todos'],

@@ -100,15 +100,16 @@ function StepItem({ item, compact }) {
 }
 
 /**
- * Anotacao livre do lead (crm_deals.notes).
+ * Trecho da anotacao livre do lead (crm_deals.notes).
  *
- * Ela aparece AQUI, na linha do tempo, e nao numa caixa separada em cima:
- * antes do sistema ter historico de verdade, o campo de notas virou o diario
- * do lead — 290 dos 299 negocios tem nota, quase um terco com texto longo. E
- * historico escrito no lugar errado, entao e no historico que ele se le.
+ * Antes do sistema ter historico de verdade, o campo de notas virou o diario do
+ * lead — 290 dos 299 negocios tem nota. E historico escrito no lugar errado,
+ * entao e no historico que ele se le.
  *
- * Nao tem data (o campo nunca teve), por isso cai no grupo mais antigo e fica
- * por ultimo: e o que veio ANTES de tudo que o sistema passou a registrar.
+ * Quando o trecho traz DATA no proprio texto (parseNoteEntries acha), ele cai
+ * no dia certo — e, com isso, dentro da etapa em que o lead estava naquele dia.
+ * O texto sem data (cabecalho "Dados Fulano", fecho) vira um item unico no
+ * grupo mais antigo: e o que veio ANTES de tudo que o sistema registrou.
  */
 function NoteItem({ item, compact }) {
   return (
@@ -118,11 +119,20 @@ function NoteItem({ item, compact }) {
       </div>
       <div className={`flex-1 min-w-0 rounded-2xl ${compact ? 'px-3 py-2' : 'crm-glass px-4 py-3'}`}>
         <div className="flex items-center justify-between gap-2 mb-1">
-          <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Anotações do lead</span>
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-200 min-w-0">
+            {item.title || 'Anotações do lead'}
+          </span>
           <CrmBadge variant="warning" size="sm">Nota</CrmBadge>
         </div>
         <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words">{item.text}</p>
-        <p className="text-[12px] text-slate-400 mt-1.5">Texto livre, sem data — anotado antes do histórico existir.</p>
+        {/* A procedencia fica explicita: e texto que alguem digitou no campo de
+            notas, nao um registro que o sistema criou. Sem isso, um trecho
+            datado se confunde com atividade de verdade. */}
+        <p className="text-[12px] text-slate-400 mt-1.5">
+          {item._date
+            ? `${formatDate(item._date)} · escrito no campo de notas`
+            : 'Sem data no texto — anotado antes do histórico existir.'}
+        </p>
       </div>
     </div>
   );

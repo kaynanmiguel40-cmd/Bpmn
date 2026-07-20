@@ -19,6 +19,7 @@ import {
 import { CrmBadge, CrmAvatar } from '../components/ui';
 import { DealProcessChecklist } from '../components/DealProcessChecklist';
 import { LeadHistoryTimeline } from '../components/LeadHistoryTimeline';
+import { useLeadNotes } from '../hooks/useWorkQueue';
 import {
   useCrmDeal, useUpdateCrmDeal, useMarkDealLost,
   useDealActivities, useDealStageHistory, useCompleteCrmActivity, useDealProgress, useStagePlaybook,
@@ -105,6 +106,7 @@ export function CrmDealDetailPage() {
   // as tarefas manuais. O titulo vem do playbook da pipeline (qualquer etapa,
   // pra mostrar tambem o que ele cumpriu antes de chegar na atual).
   const { data: dealProgress = [] } = useDealProgress(dealId);
+  const { data: leadNotes = [] } = useLeadNotes(dealId);
   const { data: pipelinePlaybook } = useStagePlaybook(deal?.pipelineId);
   const stepTitleById = useMemo(() => {
     const map = {};
@@ -571,13 +573,20 @@ export function CrmDealDetailPage() {
               new Date(b._date) - new Date(a._date)
             );
 
-            // A anotacao livre entra como o ULTIMO item. Ela e editada na aba
-            // Notas; aqui ela e LIDA, porque na pratica virou o diario do lead
-            // — foi o que existiu antes de o sistema ter historico. Sem data,
-            // cai no grupo mais antigo.
+            // O diario do lead virou TABELA (crm_lead_notes) na migration 104:
+            // o texto do campo `notes` foi quebrado em registros datados, que
+            // caem cada um na etapa em que o lead estava naquele dia.
+            leadNotes.forEach(n => timeline.push({
+              _type: 'note', _date: n.date, id: n.id, text: n.content, title: n.title,
+            }));
+            // O que sobrou no campo e nota de verdade — sem data, vai pro fim.
             if (deal.notes?.trim()) {
-              timeline.push({ _type: 'note', _date: null, text: deal.notes.trim() });
+              timeline.push({ _type: 'note', _date: null, id: 'nota-atual', text: deal.notes.trim() });
             }
+            // Reordena DEPOIS: as notas entram fora de ordem, e o agrupamento
+            // por etapa percorre o array em ordem — fora dela, a mesma etapa
+            // apareceria como varios grupos repetidos.
+            timeline.sort((a, b) => new Date(b._date || 0) - new Date(a._date || 0));
 
             return <LeadHistoryTimeline items={timeline} stageHistory={stageHistory} />;
           })()}

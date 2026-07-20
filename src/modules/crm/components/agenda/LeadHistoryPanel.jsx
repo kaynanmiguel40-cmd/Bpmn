@@ -25,6 +25,7 @@ import { scheduleTiming } from '../../services/crmAgendaService';
 import { CrmBadge } from '../ui';
 import { CrmModal } from '../ui/CrmModal';
 import { LeadHistoryTimeline } from '../LeadHistoryTimeline';
+import { useLeadNotes } from '../../hooks/useWorkQueue';
 
 const hm = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const TIMING_CLASS = {
@@ -72,6 +73,7 @@ function relativeLabel(iso) {
 export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onEditDelivery }) {
   const { data, isLoading } = useLeadTimeline(selected || {});
   const lead = data?.lead;
+  const { data: leadNotes = [] } = useLeadNotes(selected?.dealId || null);
   const items = data?.items || [];
 
   // So o que JA ACONTECEU. Tarefa pendente fica de fora — inclusive a atrasada
@@ -116,14 +118,23 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onEdit
         // "act_..." (ou undefined, se o campo nem vier) onde espera um uuid.
         activityId: i.activityId || null,
       }));
-    // A anotacao livre entra como o ULTIMO item: e o que foi escrito antes de
-    // o sistema ter historico, entao vem antes de tudo que ele registrou. Fica
-    // no grupo mais antigo porque nao tem data — o campo nunca teve.
+    // O diario do lead agora e TABELA (crm_lead_notes), nao texto parseado: a
+    // migration 104 + o backfill quebraram as notas em registros datados. Cada
+    // um cai no seu dia e, com isso, na etapa em que o lead estava.
+    leadNotes.forEach(n => registros.push({
+      _type: 'note', _date: n.date, id: n.id, text: n.content, title: n.title,
+    }));
+    // O que sobrou no campo `notes` e nota de verdade — sem data, entra inteira
+    // no grupo mais antigo.
     if (lead?.notes?.trim()) {
-      registros.push({ _type: 'note', _date: null, text: lead.notes.trim() });
+      registros.push({ _type: 'note', _date: null, id: 'nota-atual', text: lead.notes.trim() });
     }
+    // Reordena DEPOIS de juntar as notas: elas entram em ordem crescente no fim
+    // da lista, e o agrupamento por etapa percorre o array em ordem — fora de
+    // ordem, a mesma etapa apareceria como varios grupos repetidos.
+    registros.sort((a, b) => new Date(b._date || 0) - new Date(a._date || 0));
     return { historico: registros, stageHistory: stages };
-  }, [past, lead?.notes]);
+  }, [past, lead?.notes, leadNotes]);
 
   if (!selected) return null;
 

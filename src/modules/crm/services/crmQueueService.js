@@ -367,3 +367,33 @@ export async function getStalledLeads(now = new Date(), ownerId = null) {
     }))
     .sort((a, b) => b.dias - a.dias);
 }
+
+// ==================== NOTAS DO LEAD (diario migrado) ====================
+
+/**
+ * Registros do diario do lead (crm_lead_notes).
+ *
+ * Vieram do campo `notes`, que antes do sistema ter historico virou o diario da
+ * consultora — 59 negocios tinham log datado ali dentro, um deles com 3.375
+ * caracteres. A migration 104 criou a tabela e o backfill quebrou o texto em
+ * registros datados; ver scripts/migrate_notes_to_history.mjs.
+ */
+export async function getLeadNotes(dealId) {
+  if (!dealId) return [];
+  const { data, error } = await supabase
+    .from('crm_lead_notes')
+    .select('id, note_date, title, content, origin, created_at')
+    .eq('deal_id', dealId)
+    .is('deleted_at', null)
+    .order('note_date', { ascending: false, nullsFirst: false });
+  if (error) { console.warn('[getLeadNotes]', error.message); return []; }
+  return (data || []).map(r => ({
+    id: r.id,
+    // `note_date` e DATE (sem hora). Parseado como LOCAL pra nao voltar um dia
+    // no fuso do Brasil — "2026-05-27" viraria 26/05 se passasse por UTC.
+    date: r.note_date ? new Date(`${r.note_date}T12:00:00`) : null,
+    title: r.title || '',
+    content: r.content,
+    origin: r.origin,
+  }));
+}
