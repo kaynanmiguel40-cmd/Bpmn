@@ -20,6 +20,15 @@
 
 import { ListChecks, CornerDownRight, CalendarCheck, Phone, Mail, MessageCircle, Video, CheckSquare, Coffee, MapPin, Pencil, StickyNote } from 'lucide-react';
 import { CrmBadge } from './ui';
+import { scheduleTiming } from '../services/crmAgendaService';
+
+// Previsto x realizado: verde no horario, ambar atrasou, azul adiantou.
+const TIMING_CLASS = {
+  on_time: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/20',
+  late: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20',
+  early: 'text-sky-600 bg-sky-50 dark:text-sky-400 dark:bg-sky-900/20',
+};
+const hhmm = (d) => (d ? new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '');
 
 const ACTIVITY_ICONS = {
   call: Phone, email: Mail, message: MessageCircle, meeting: Video,
@@ -186,10 +195,29 @@ function ActivityItem({ item, compact, onEdit }) {
         ) : item.description && (
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{item.description}</p>
         )}
-        <div className="flex items-center gap-3 mt-2 text-[12px] text-slate-400">
+        <div className="flex items-center gap-3 mt-2 text-[12px] text-slate-400 flex-wrap">
           <span>{formatDateTime(item._date)}</span>
           {item.contactName && <><span>·</span><span className="truncate">{item.contactName}</span></>}
         </div>
+
+        {/* PREVISTO x REALIZADO. Só aparece quando há os dois horários e a
+            diferença passa de 5 minutos — abaixo disso é ruído, não desvio.
+            É o que mostra se a cadência está sendo cumprida no horário ou se
+            o dia inteiro anda arrastado. */}
+        {(() => {
+          const t = scheduleTiming(item.plannedAt, item.completedAt);
+          if (!t) return null;
+          return (
+            <div className="flex items-center gap-1.5 mt-1 text-[12px] flex-wrap">
+              <span className="text-slate-500 dark:text-slate-400 tnum">
+                Previsto {hhmm(item.plannedAt)} · feito {hhmm(item.completedAt)}
+              </span>
+              <span className={`px-1.5 py-0.5 rounded font-semibold ${TIMING_CLASS[t.state]}`}>
+                {t.label}
+              </span>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

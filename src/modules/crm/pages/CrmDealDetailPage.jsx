@@ -550,6 +550,10 @@ export function CrmDealDetailPage() {
               id: a.id, title: a.title, type: a.type, description: a.description,
               deliveryInput: a.deliveryInput, deliveryReport: a.deliveryReport,
               contactName: a.contact?.name || null,
+              // PREVISTO x REALIZADO: o fim da janela agendada (ou o inicio,
+              // quando a tarefa nao tem fim) contra a hora em que foi concluida.
+              plannedAt: a.endDate || a.startDate,
+              completedAt: a.completedAt,
             }));
             // Concluir uma tarefa do processo na Agenda grava DUAS coisas: a
             // atividade concluida e o progresso do passo. Se as duas entrassem

@@ -11,17 +11,10 @@ import {
   ChevronLeft, ChevronRight, Check, Circle, CheckCircle2, Pencil,
   Phone, Mail, MessageCircle, Users, MapPin, CheckSquare, Coffee, ArrowRight, CalendarClock, AlertTriangle,
 } from 'lucide-react';
-import { scheduleTiming } from '../../services/crmAgendaService';
 
 // Toda atividade (CRM ou Google) é desenhada como bloco. Itens do CRM podem ser
 // concluídos: o botão "concluir" aparece no hover; concluído fica riscado + cinza.
 
-// Chip "previsto vs realizado" — verde no horário, âmbar atrasou, azul adiantou
-const TIMING_CLASS = {
-  on_time: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/20',
-  late: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20',
-  early: 'text-sky-600 bg-sky-50 dark:text-sky-400 dark:bg-sky-900/20',
-};
 
 // Icone por tipo de atividade — comunica o tipo SEM depender so da cor
 // (acessibilidade). Eventos do Google usam um icone de calendario proprio.

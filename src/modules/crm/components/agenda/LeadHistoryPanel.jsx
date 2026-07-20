@@ -21,18 +21,12 @@ import {
   MapPin, ExternalLink, Building2, CheckCircle2, Clock, ArrowRight, Trash2, Pencil,
 } from 'lucide-react';
 import { useLeadTimeline } from '../../hooks/useCrmQueries';
-import { scheduleTiming } from '../../services/crmAgendaService';
 import { CrmBadge } from '../ui';
 import { CrmModal } from '../ui/CrmModal';
 import { LeadHistoryTimeline } from '../LeadHistoryTimeline';
 import { useLeadNotes } from '../../hooks/useWorkQueue';
 
 const hm = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-const TIMING_CLASS = {
-  on_time: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/20',
-  late: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20',
-  early: 'text-sky-600 bg-sky-50 dark:text-sky-400 dark:bg-sky-900/20',
-};
 
 const KIND_ICON = {
   call: Phone,
@@ -112,6 +106,11 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onEdit
         // sao registro do que aconteceu, nao ha entrega a preencher.
         _canEdit: i.kind === 'activity',
         activityType: i.activityType,
+        // PREVISTO x REALIZADO. O previsto e o FIM da janela agendada quando ha
+        // um (reuniao das 14h as 15h so atrasa depois das 15h); sem fim, o
+        // proprio inicio.
+        plannedAt: i.endDate || i.date,
+        completedAt: i.completedAt,
         // `activityId` e o id REAL da atividade no banco. `id` acima e o da
         // timeline, prefixado ("act_<uuid>", "call_<uuid>") pra nao colidir
         // entre as fontes — mandar ele pro update quebra: o Postgres recebe
