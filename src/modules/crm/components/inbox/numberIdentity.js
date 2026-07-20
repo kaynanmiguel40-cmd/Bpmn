@@ -43,7 +43,19 @@ export function numberLabel(instanceName) {
 export function numberIdentity(instances) {
   const byPhone = new Map();
   const order = [];
-  for (const i of instances || []) {
+  // Duas instancias podem dividir o MESMO chip — na base, '553584222295' esta
+  // cadastrado como 'default' (mais antigo) e como 'fyness-principal'. Como a
+  // lista chega por created_at e o dedup fica com o primeiro, a pastilha saia
+  // rotulada "Default": um nome que nao diz nada pra quem esta olhando.
+  //
+  // Entre instancias do mesmo telefone vence a que foi usada por ULTIMO — e a
+  // que a Evolution mantem viva, e por isso a que carrega o nome atual.
+  // A ordem GERAL nao muda: o sort e estavel e so reordena empates de telefone.
+  const lista = [...(instances || [])].sort((a, b) => {
+    if (a.phoneNumber !== b.phoneNumber) return 0;
+    return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+  });
+  for (const i of lista) {
     if (!i.phoneNumber || byPhone.has(i.phoneNumber)) continue;
     const entry = {
       phone: i.phoneNumber,

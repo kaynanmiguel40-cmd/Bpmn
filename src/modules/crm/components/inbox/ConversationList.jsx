@@ -49,9 +49,6 @@ function useDebounce(value, delay = 300) {
   return debounced;
 }
 
-// Sentinela pra aba "Todos" — distinto de qualquer telefone real e do `null`
-// que representa "nenhuma escolha ainda, usa o default (1o numero)".
-const ALL_INSTANCES = '__all__';
 
 const MEDIA_HINT = {
   image:    { Icon: ImageIcon, label: 'Foto' },
@@ -157,13 +154,25 @@ function ConversationItem({ conv, active, onSelect, overdueH, numberColor, numbe
 
 /**
  * Lista de conversas (lado esquerdo do Inbox), estilo WhatsApp.
- * Filtro por número (Todos / Fyness / Lorena) quando há +1 instância.
+ * Filtro por número (Fyness / Lorena) quando há +1 chip conectado. Sem "Todos":
+ * mostra um número por vez, e a escolha fica guardada entre visitas.
  * Props: activeKey ("c:<id>"|"p:<id>"), onSelect(conversation)
  */
 export function ConversationList({ activeKey, onSelect }) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
-  const [filterPhone, setFilterPhone] = useState(null); // null = ainda nao escolheu (usa default); ALL_INSTANCES = aba "Todos"
+  // Numero escolhido. Sem "Todos": o inbox mostra UM numero por vez.
+  //
+  // Guarda a escolha porque ela e estavel — quem trabalha no numero da Lorena
+  // trabalha nele o dia inteiro, e reabrir no outro todo dia seria um clique
+  // repetido pra desfazer a mesma coisa.
+  const [filterPhone, setFilterPhone] = useState(() => {
+    try { return localStorage.getItem('crm-inbox-numero') || null; } catch { return null; }
+  });
+  const escolherNumero = (phone) => {
+    setFilterPhone(phone);
+    try { localStorage.setItem('crm-inbox-numero', phone); } catch {}
+  };
   const [ownerFilter, setOwnerFilter] = useState('all'); // 'all' | 'mine'
   // Sem termo: {} — mesma query key que outros consumidores (ex: CrmInboxPage)
   // usam sem opts, entao continua compartilhando cache/network com eles.
@@ -190,10 +199,25 @@ export function ConversationList({ activeKey, onSelect }) {
   }), [conversations, membersById, membersByAuthId]);
 
   // Cor + rotulo de cada numero, compartilhado com o cabecalho da thread.
-  const numbers = useMemo(() => numberIdentity(instances), [instances]);
+  //
+  // Fora os numeros MORTOS. A base tem 4 instancias pra 2 chips: o mesmo numero
+  // cadastrado duas vezes (como 'default' e como 'fyness-principal') e um
+  // 'crmfyness' desconectado desde maio. Sem esse corte a barra desenha uma
+  // pastilha chamada "Default" e outra de um numero que ninguem usa — e o filtro
+  // que deveria organizar vira o motivo da confusao.
+  //
+  // O criterio e ESTAR CONECTADO, nao ter poucas mensagens: numero novo comeca
+  // com zero e precisa aparecer no primeiro dia.
+  const instanciasVivas = useMemo(() => {
+    const vivas = (instances || []).filter((i) => i.status === 'connected' && i.phoneNumber);
+    // Se nenhuma esta conectada, mostra todas: melhor barra imperfeita que
+    // uma tela sem nenhum jeito de trocar de numero.
+    return vivas.length > 0 ? vivas : (instances || []);
+  }, [instances]);
+  const numbers = useMemo(() => numberIdentity(instanciasVivas), [instanciasVivas]);
   const numberTabs = numbers.order;
 
-  // unread por telefone (badge na aba) + total (badge da aba "Todos")
+  // unread por telefone (badge na pastilha de cada numero)
   const unreadByPhone = useMemo(() => {
     const m = {};
     for (const c of enriched) {
@@ -201,23 +225,43 @@ export function ConversationList({ activeKey, onSelect }) {
     }
     return m;
   }, [enriched]);
-  const totalUnread = useMemo(() => enriched.reduce((sum, c) => sum + (c.unreadCount || 0), 0), [enriched]);
 
-  // Default = "Todos". Antes o default era o 1º numero da lista (Fyness), e o
-  // inbox abria FILTRADO sem parecer filtrado: as conversas da Lorena nao
-  // existiam na tela ate alguem descobrir a aba e clicar nela. Uma caixa de
-  // entrada que esconde metade das mensagens por padrao e indistinguivel de uma
-  // caixa que perdeu as mensagens — que e exatamente a queixa que investigamos.
-  const showingAll = (filterPhone ?? ALL_INSTANCES) === ALL_INSTANCES;
-  const selectedPhone = showingAll ? null : filterPhone;
+  /**
+   * Qual numero abrir quando ainda nao ha escolha guardada.
+   *
+   * O MAIS MOVIMENTADO, nao o primeiro da lista. Abrir no primeiro era o
+   * comportamento antigo e escondia o numero onde o trabalho acontece de fato —
+   * hoje 2381 das 2791 mensagens estao num chip so. Escolher pela ordem do
+   * cadastro e escolher por acaso.
+   *
+   * Isto NAO desfaz a queixa que criou o "Todos" (inbox abrindo filtrado sem
+   * parecer filtrado): a barra de numeros esta sempre visivel, com a pastilha
+   * ativa marcada e o contador de nao-lidas na outra, entao o que esta fora da
+   * tela se anuncia em vez de sumir calado.
+   */
+  const numeroPadrao = useMemo(() => {
+    if (!numberTabs.length) return null;
+    const peso = {};
+    for (const c of enriched) {
+      if (c.instancePhone) peso[c.instancePhone] = (peso[c.instancePhone] || 0) + 1;
+    }
+    const ordenado = [...numberTabs].sort((a, b) => (peso[b.phone] || 0) - (peso[a.phone] || 0));
+    return ordenado[0].phone;
+  }, [numberTabs, enriched]);
+
+  // A escolha guardada so vale se aquele numero ainda existe: chip removido
+  // deixaria o inbox preso num filtro que nao casa com nada, e a tela pareceria
+  // vazia sem explicacao.
+  const numeroValido = filterPhone && numberTabs.some((t) => t.phone === filterPhone);
+  const selectedPhone = numeroValido ? filterPhone : numeroPadrao;
 
   // Recorte por numero, antes dos demais filtros.
   const byNumber = useMemo(() => {
-    if (showingAll || !selectedPhone) return enriched;
+    if (!selectedPhone) return enriched;
     // Mantem conversas de instancias ainda sem phone_number sincronizado visiveis
     // em qualquer aba — senao elas somem sem nenhuma UI pra limpar o filtro.
     return enriched.filter((c) => !c.instancePhone || c.instancePhone === selectedPhone);
-  }, [enriched, showingAll, selectedPhone]);
+  }, [enriched, selectedPhone]);
 
   const filtered = useMemo(() => {
     let list = byNumber;
@@ -262,26 +306,16 @@ export function ConversationList({ activeKey, onSelect }) {
             sobre a lista, e juntas comiam mais altura que tres conversas. */}
         {(numberTabs.length > 1 || myMemberId) && (
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            {numberTabs.length > 1 && (
-              <>
-                <FilterPill
-                  label="Todos"
-                  badge={totalUnread}
-                  active={showingAll}
-                  onClick={() => setFilterPhone(ALL_INSTANCES)}
-                />
-                {numberTabs.map((t) => (
-                  <FilterPill
-                    key={t.phone}
-                    label={t.label}
-                    badge={unreadByPhone[t.phone] || 0}
-                    active={!showingAll && selectedPhone === t.phone}
-                    onClick={() => setFilterPhone(t.phone)}
-                    color={t.color}
-                  />
-                ))}
-              </>
-            )}
+            {numberTabs.length > 1 && numberTabs.map((t) => (
+              <FilterPill
+                key={t.phone}
+                label={t.label}
+                badge={unreadByPhone[t.phone] || 0}
+                active={selectedPhone === t.phone}
+                onClick={() => escolherNumero(t.phone)}
+                color={t.color}
+              />
+            ))}
             {/* "Minhas" e o que substitui o selo de responsavel que saiu de cada
                 linha: perguntar de quem e a conversa vira um clique, em vez de
                 trinta iniciais permanentes na tela. */}
@@ -329,7 +363,7 @@ export function ConversationList({ activeKey, onSelect }) {
           <div className="p-6 text-center">
             <MessageSquare className="mx-auto mb-2 text-slate-300 dark:text-slate-600" size={32} />
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {search ? 'Nenhuma conversa encontrada' : showingAll ? 'Nenhuma conversa ainda' : 'Nenhuma conversa nesse número ainda'}
+              {search ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa nesse número ainda'}
             </p>
           </div>
         ) : (
