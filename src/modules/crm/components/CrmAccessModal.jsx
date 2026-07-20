@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Kanban, PhoneCall, MessageCircle, CalendarDays, Crosshair, Zap, Users,
+  Kanban, MessageCircle, CalendarDays, Crosshair, Zap, Users,
   Target, Trophy, UserCog, Settings, Lock, ShieldCheck, Filter,
   AlertTriangle,
 } from 'lucide-react';
@@ -19,7 +19,6 @@ import { CRM_SECTIONS, CRM_SECTION_GROUPS, normalizeBlocked } from '../lib/crmAc
 // Ícone + tom de cor por seção (espelha a sidebar).
 const SECTION_UI = {
   pipeline:    { icon: Kanban,        tint: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/25' },
-  discador:    { icon: PhoneCall,     tint: 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/25' },
   inbox:       { icon: MessageCircle, tint: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/25' },
   agenda:      { icon: CalendarDays,  tint: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/25' },
   prospects:   { icon: Crosshair,     tint: 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/25' },
@@ -53,7 +52,7 @@ const ROLE_LABEL = { vendedor: 'Vendedor', pre_vendedor: 'Pré-vendedor', gestor
 
 // Seções que são o trabalho principal de vendedor/pré-vendedor (não-gestor).
 // Bloquear qualquer uma delas corta o dia a dia da pessoa — merece aviso.
-const CORE_WORK_KEYS = ['pipeline', 'discador', 'inbox', 'agenda'];
+const CORE_WORK_KEYS = ['agenda', 'pipeline', 'inbox'];
 
 export function CrmAccessModal({ open, member, onClose, onSave }) {
   const [blocked, setBlocked] = useState([]);

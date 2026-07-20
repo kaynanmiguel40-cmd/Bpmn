@@ -29,8 +29,6 @@ const crmRouteTitles = {
   '/crm/contacts': 'Contatos',
   '/crm/companies': 'Empresas',
   '/crm/agenda': 'Agenda',
-  '/crm/discador': 'Discador',
-  '/crm/discador/historico': 'Historico',
   '/crm/inbox': 'Inbox WhatsApp',
   '/crm/whatsapp': 'WhatsApp Setup',
   '/crm/traffic': 'Trafego Pago',

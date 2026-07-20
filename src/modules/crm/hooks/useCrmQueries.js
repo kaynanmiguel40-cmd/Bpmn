@@ -19,7 +19,7 @@ import { getCrmCalendarActivities, getLeadTimeline } from '../services/crmAgenda
 import { getStageWorkSummary } from '../services/crmQueueService';
 import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
-import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
+import { getCrmCalls, getRecentCallsForContact, createCrmCall, softDeleteCrmCall } from '../services/crmCallsService';
 import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead, markConversationAsRead } from '../services/crmMessagesService';
 import { listCrmWhatsAppInstances, getCrmWhatsAppInstanceByName, getDefaultCrmWhatsAppInstance, createCrmWhatsAppInstance } from '../services/crmWhatsAppInstanceService';
 import { getCrmPartners, getLeadsByPartner, createCrmPartner, updateCrmPartner, softDeleteCrmPartner } from '../services/crmPartnersService';
@@ -977,13 +977,6 @@ export function useCrmCalls(filters = {}, options = {}) {
   });
 }
 
-export function useDialerQueue(filters = {}) {
-  return useQuery({
-    queryKey: crmQueryKeys.dialerQueue(filters),
-    queryFn: () => getDialerQueue(filters),
-    staleTime: 15_000,
-  });
-}
 
 export function useRecentCallsForContact(contactId, limit = 5) {
   return useQuery({
@@ -994,13 +987,6 @@ export function useRecentCallsForContact(contactId, limit = 5) {
   });
 }
 
-export function useDialerKPIs() {
-  return useQuery({
-    queryKey: crmQueryKeys.dialerKPIs,
-    queryFn: getDialerKPIs,
-    staleTime: 30_000,
-  });
-}
 
 export function useCreateCrmCall() {
   const qc = useQueryClient();

@@ -32,26 +32,35 @@ describe('CrmSidebar — ordem do trabalho', () => {
     expect(r.indexOf('Agenda')).toBeLessThan(r.indexOf('Pipeline'));
   });
 
-  it('os quatro do dia a dia vêm juntos e nesta ordem', () => {
+  it('o bloco do dia é Agenda, Pipeline e Inbox, nesta ordem', () => {
     abrir();
     const r = rotulos();
-    const dia = r.filter(l => ['Agenda', 'Pipeline', 'Inbox WhatsApp', 'Discador'].includes(l));
-    expect(dia).toEqual(['Agenda', 'Pipeline', 'Inbox WhatsApp', 'Discador']);
+    const dia = r.filter(l => ['Agenda', 'Pipeline', 'Inbox WhatsApp'].includes(l));
+    expect(dia).toEqual(['Agenda', 'Pipeline', 'Inbox WhatsApp']);
   });
 
-  // Os canais fecham o bloco: primeiro decide-se o que fazer, depois por onde.
-  it('os canais (WhatsApp e Discador) vêm depois das duas telas de trabalho', () => {
+  // O canal fecha o bloco: primeiro decide-se o que fazer, depois por onde.
+  it('o Inbox vem depois das duas telas de trabalho', () => {
     abrir();
     const r = rotulos();
     expect(r.indexOf('Inbox WhatsApp')).toBeGreaterThan(r.indexOf('Pipeline'));
-    expect(r.indexOf('Discador')).toBeGreaterThan(r.indexOf('Inbox WhatsApp'));
+  });
+
+  /**
+   * O Discador foi REMOVIDO: ligar virou ação dentro da tarefa da Agenda, não
+   * uma tela com fila própria. Duas filas com ordens diferentes davam duas
+   * respostas pra mesma pergunta — "quem eu ligo agora".
+   */
+  it('não existe mais item de Discador', () => {
+    abrir();
+    expect(rotulos()).not.toContain('Discador');
   });
 
   it('o bloco do dia vem antes de prospecção e gestão', () => {
     abrir();
     const r = rotulos();
-    expect(r.indexOf('Discador')).toBeLessThan(r.indexOf('Gerador de Lista'));
-    expect(r.indexOf('Discador')).toBeLessThan(r.indexOf('Dashboard'));
+    expect(r.indexOf('Inbox WhatsApp')).toBeLessThan(r.indexOf('Gerador de Lista'));
+    expect(r.indexOf('Inbox WhatsApp')).toBeLessThan(r.indexOf('Dashboard'));
   });
 });
 
@@ -59,7 +68,7 @@ describe('CrmSidebar — acesso', () => {
   it('seção bloqueada some da navegação', async () => {
     vi.resetModules();
     vi.doMock('../../../hooks/useCrmAccess', () => ({
-      useCrmAccess: () => ({ canAccess: (k) => k !== 'discador' }),
+      useCrmAccess: () => ({ canAccess: (k) => k !== 'inbox' }),
     }));
     vi.doMock('../../../hooks/useCrmQueries', () => ({
       useCrmWhatsAppInstances: () => ({ data: [] }),
@@ -67,7 +76,7 @@ describe('CrmSidebar — acesso', () => {
     const { CrmSidebar: Restrita } = await import('../CrmSidebar');
     render(<MemoryRouter><Restrita /></MemoryRouter>);
     const r = screen.getAllByRole('link').map(a => a.getAttribute('aria-label'));
-    expect(r).not.toContain('Discador');
+    expect(r).not.toContain('Inbox WhatsApp');
     // O resto do bloco continua de pé — bloquear um item não derruba o grupo.
     expect(r).toContain('Agenda');
     expect(r).toContain('Pipeline');

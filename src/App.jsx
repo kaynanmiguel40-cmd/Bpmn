@@ -40,8 +40,6 @@ const CrmTrafficPage = lazy(() => import('./modules/crm/pages/CrmTrafficPage'))
 const CrmProspectsPage = lazy(() => import('./modules/crm/pages/CrmProspectsPage'))
 const CrmSettingsPage = lazy(() => import('./modules/crm/pages/CrmSettingsPage'))
 const CrmAutomationsPage = lazy(() => import('./modules/crm/pages/CrmAutomationsPage'))
-const CrmDialerPage = lazy(() => import('./modules/crm/pages/CrmDialerPage'))
-const CrmCallHistoryPage = lazy(() => import('./modules/crm/pages/CrmCallHistoryPage'))
 const CrmInboxPage = lazy(() => import('./modules/crm/pages/CrmInboxPage'))
 const CrmWhatsAppSetupPage = lazy(() => import('./modules/crm/pages/CrmWhatsAppSetupPage'))
 const CrmCadastrosPage = lazy(() => import('./modules/crm/pages/CrmCadastrosPage'))
@@ -120,8 +118,11 @@ function App() {
                 {/* Atividades virou a tabela da aba "Time" da Agenda — mantem o link antigo funcionando. */}
                 <Route path="activities" element={<Navigate to="/crm/agenda?visao=team" replace />} />
                 <Route path="agenda" element={<ErrorBoundary><CrmAgendaPage /></ErrorBoundary>} />
-                <Route path="discador" element={<ErrorBoundary><CrmDialerPage /></ErrorBoundary>} />
-                <Route path="discador/historico" element={<ErrorBoundary><CrmCallHistoryPage /></ErrorBoundary>} />
+                {/* O discador saiu: o operacional inteiro e a Agenda. Rotas
+                    antigas redirecionam pra la em vez de dar 404 — link salvo,
+                    favorito e atalho de celular continuam funcionando. */}
+                <Route path="discador" element={<Navigate to="/crm/agenda" replace />} />
+                <Route path="discador/historico" element={<Navigate to="/crm/agenda" replace />} />
                 <Route path="inbox" element={<ErrorBoundary><CrmInboxPage /></ErrorBoundary>} />
                 <Route path="whatsapp" element={<ErrorBoundary><CrmWhatsAppSetupPage /></ErrorBoundary>} />
                 {/* Metas e Planejamento removidos — links antigos caem na Pipeline. */}

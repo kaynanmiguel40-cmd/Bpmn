@@ -19,7 +19,6 @@ import {
   UserCog,
   Crosshair,
   Zap,
-  PhoneCall,
   MessageCircle,
 } from 'lucide-react';
 import logoFyness from '../../../../assets/logo-fyness.png';
@@ -36,8 +35,11 @@ const PinIcon = ({ pinned }) => (
 //
 // Agenda primeiro porque ela e o nivel de EXECUCAO — e a tela que responde "o
 // que eu faco agora". A Pipeline vem depois porque so ACOMPANHA: ela mostra
-// onde cada lead esta, nao o que fazer com ele. WhatsApp e Discador fecham,
-// como os dois canais por onde o toque sai.
+// onde cada lead esta, nao o que fazer com ele. O Inbox fecha o bloco.
+//
+// O Discador saiu daqui: ligar virou uma acao DENTRO da tarefa da Agenda, nao
+// uma tela separada com fila propria. Duas filas com ordens diferentes faziam
+// a mesma pessoa ter duas respostas pra "quem eu ligo agora".
 //
 // Antes a lista comecava na Pipeline e a Agenda ficava por ultimo — o inverso
 // exato de como o dia acontece.
@@ -50,7 +52,6 @@ const crmNavItems = [
   { to: '/crm/agenda', icon: CalendarDays, label: 'Agenda', sectionKey: 'agenda' },
   { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline', sectionKey: 'pipeline' },
   { to: '/crm/inbox', icon: MessageCircle, label: 'Inbox WhatsApp', sectionKey: 'inbox' },
-  { to: '/crm/discador', icon: PhoneCall, label: 'Discador', sectionKey: 'discador' },
   { section: 'Prospecao' },
   { to: '/crm/prospects', icon: Crosshair, label: 'Gerador de Lista', sectionKey: 'prospects' },
   // Tráfego Pago oculto por enquanto (a rota /crm/traffic e a página seguem ativas).

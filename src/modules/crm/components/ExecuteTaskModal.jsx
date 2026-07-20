@@ -27,6 +27,7 @@ import { stepChannel } from '../services/crmScheduling';
 import { formatWhen } from '../utils/stepLabel';
 import { preencherScript, dadosDoScript } from '../utils/preencherScript';
 import { useProfile } from '../../../hooks/useProfile';
+import { registrarTentativaDeLigacao, contarTentativas } from '../services/crmCallsService';
 
 function formatPhone(val) {
   if (!val) return '';
@@ -124,6 +125,16 @@ export function ExecuteTaskModal({
   // buraco no meio da frase so aparece depois de ja ter saido pela boca.
   const { profile } = useProfile();
   const dadosScript = dadosDoScript(activity, profile);
+
+  // Tentativas ja feitas nesta tarefa. Carrega ao abrir porque a pessoa pode ter
+  // ligado, saido pro celular e voltado — o contador nao pode zerar no caminho.
+  const [tentativas, setTentativas] = useState(0);
+  useEffect(() => {
+    if (!activity?.id) return;
+    let vivo = true;
+    contarTentativas(activity.id).then(n => { if (vivo) setTentativas(n); });
+    return () => { vivo = false; };
+  }, [activity?.id]);
   const scriptPronto = preencherScript(step?.script, dadosScript);
 
   // Confirmacao pos-conclusao: mostra o proximo toque pra nao perder o fio da
@@ -302,10 +313,32 @@ export function ExecuteTaskModal({
           {phone && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[13px] tnum text-slate-600 dark:text-slate-300">{formatPhone(phone)}</span>
+              {/* O toque conta como 1 tentativa. Nao conclui a tarefa: o passo
+                  manda ligar ate 3x, e quem fecha e o registro do que houve.
+                  A navegacao pro tel: acontece de qualquer jeito — registrar e
+                  fire-and-forget justamente pra nao atrasar o discar. */}
               <a href={`tel:${phone.replace(/\D/g, '')}`}
+                onClick={() => {
+                  setTentativas(t => t + 1);
+                  registrarTentativaDeLigacao({
+                    contactId: activity.contactId,
+                    dealId: activity.dealId,
+                    activityId: activity.id,
+                    phone,
+                  });
+                }}
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/40 dark:text-sky-300">
                 <Phone size={12} /> Ligar
               </a>
+              {tentativas > 0 && (
+                <span
+                  className="text-[12px] font-semibold text-slate-500 dark:text-slate-400"
+                  title="Contado pelo toque no botão, não pelo que você marcar depois"
+                >
+                  {tentativas} {tentativas === 1 ? 'tentativa' : 'tentativas'}
+                  {tentativas >= 3 && ' — já deu as 3, pode deixar recado'}
+                </span>
+              )}
               {wa && (
                 <a href={wa} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300">

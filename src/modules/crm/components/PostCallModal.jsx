@@ -1,5 +1,9 @@
 /**
- * PostCallModal - Modal pos-chamada do discador (V1).
+ * PostCallModal - Modal pos-chamada.
+ *
+ * Nasceu no discador (removido); hoje quem usa e o CompleteActivityModal, na
+ * Agenda. A ligacao continua saindo pelo tel: do aparelho — o que mudou e de
+ * onde ela parte.
  *
  * Vendedor ja discou via celular (link tel:). Este modal:
  *   - mostra duracao cronometrada (editavel),

@@ -23,7 +23,6 @@ export function isCrmAdmin(user, profile) {
  */
 export const CRM_SECTIONS = [
   { key: 'pipeline',    label: 'Pipeline',         group: 'Vendas' },
-  { key: 'discador',    label: 'Discador',         group: 'Vendas' },
   { key: 'inbox',       label: 'Inbox WhatsApp',   group: 'Vendas' },
   { key: 'agenda',      label: 'Agenda',           group: 'Vendas' },
   { key: 'prospects',   label: 'Gerador de Lista', group: 'Prospecção' },

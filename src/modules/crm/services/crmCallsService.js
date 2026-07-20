@@ -171,337 +171,19 @@ export async function getCrmCalls(filters = {}) {
   return { data: (data || []).map(dbToCrmCall), count: count || 0 };
 }
 
-/**
- * KPIs do discador pro vendedor logado (created_by = current user).
- * Janelas: "hoje" (00:00 hoje -> agora) e "7d" (ultimos 7 dias).
- */
-export async function getDialerKPIs() {
-  const session = await supabase.auth.getSession();
-  const userId = session.data?.session?.user?.id;
-  if (!userId) {
-    return {
-      callsToday: 0, callsLast7d: 0, answerRate7d: 0,
-      meetingsLast7d: 0, pendingFollowUps: 0,
-    };
-  }
-
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  const start7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const nowIso = now.toISOString();
-
-  // Roda em paralelo
-  const [callsTodayRes, calls7dRes, pendingFollowUpRes] = await Promise.all([
-    supabase
-      .from('crm_calls')
-      .select('outcome')
-      .eq('created_by', userId)
-      .is('deleted_at', null)
-      .gte('started_at', startOfToday),
-    supabase
-      .from('crm_calls')
-      .select('outcome', { count: 'exact' })
-      .eq('created_by', userId)
-      .is('deleted_at', null)
-      .gte('started_at', start7d),
-    supabase
-      .from('crm_calls')
-      .select('id', { count: 'exact', head: true })
-      .eq('created_by', userId)
-      .is('deleted_at', null)
-      .gte('follow_up_at', nowIso),
-  ]);
-
-  const callsTodayList = callsTodayRes.data || [];
-  const callsToday = callsTodayList.length;
-  const meetingsToday = callsTodayList.filter(c => c.outcome === 'meeting_scheduled').length;
-
-  const calls7d = (calls7dRes.data || []);
-  const callsLast7d = calls7dRes.count || calls7d.length;
-  const meetingsLast7d = calls7d.filter(c => c.outcome === 'meeting_scheduled').length;
-  const answered7d = calls7d.filter(c => ANSWERED_OUTCOMES.has(c.outcome)).length;
-  const answerRate7d = callsLast7d > 0 ? Math.round((answered7d / callsLast7d) * 100) : 0;
-  const pendingFollowUps = pendingFollowUpRes.count || 0;
-
-  return {
-    callsToday, meetingsToday,
-    callsLast7d, answerRate7d, meetingsLast7d,
-    pendingFollowUps,
-  };
-}
-
-// ============================================================
-// DIALER QUEUES — 4 fontes normalizadas
-// ============================================================
+// O MOTOR DA FILA DO DISCADOR SAIU DAQUI.
 //
-// Cada fonte retorna o mesmo shape pra que a UI nao precise saber a origem:
-//   {
-//     id, contactId, companyId, name, phone, email, position, status,
-//     avatarColor, company, tags,
-//     sourceType, sourceId, sourceContext, dealId, prospectId, activityId,
-//   }
-
-export const DIALER_SOURCES = {
-  contacts:         { label: 'Contatos',          description: 'Contatos do CRM com telefone' },
-  stuck_deals:      { label: 'Leads parados',     description: 'Negocios abertos sem mexer ha 7+ dias' },
-  scheduled_calls:  { label: 'Agendadas',         description: 'Atividades tipo ligacao pendentes/atrasadas' },
-  prospects:        { label: 'Prospects',         description: 'Prospects coletados ainda nao convertidos' },
-};
-
-const DEFAULT_STUCK_DAYS = 7;
-
-function pickAvatarColor(row) {
-  return row?.avatar_color || row?.crm_contacts?.avatar_color || null;
-}
-
-async function getRecentlyCalledContactIds(contactIds, sinceIso) {
-  if (!sinceIso || !contactIds.length) return new Set();
-  const { data } = await supabase
-    .from('crm_calls')
-    .select('contact_id')
-    .in('contact_id', contactIds)
-    .gte('started_at', sinceIso)
-    .is('deleted_at', null);
-  return new Set((data || []).map(r => r.contact_id));
-}
+// Eram 4 fontes (contatos, leads parados, agendadas, prospects), cada uma com
+// sua propria ordenacao — e nenhuma usava a prioridade do resto do sistema.
+// Com o discador removido, ligar virou acao DENTRO da tarefa da Agenda, que ja
+// tem uma fila priorizada. Manter 330 linhas de fila paralela sem chamador era
+// deixar armadilha pro proximo que fosse mexer em ligacao.
+//
+// O que ficou: o registro da chamada (crm_calls continua sendo a fonte
+// primaria), o historico por contato e as tentativas contadas pelo toque.
 
 /**
- * Roteador da fila do discador por fonte.
- */
-export async function getDialerQueue(filters = {}) {
-  const source = filters.source || 'contacts';
-  switch (source) {
-    case 'contacts':        return getQueueFromContacts(filters);
-    case 'stuck_deals':     return getQueueFromStuckDeals(filters);
-    case 'scheduled_calls': return getQueueFromScheduledCalls(filters);
-    case 'prospects':       return getQueueFromProspects(filters);
-    default:                return getQueueFromContacts(filters);
-  }
-}
-
-async function getQueueFromContacts(filters) {
-  const { status, tag, search, excludeCalledSince, limit = 50 } = filters;
-
-  let query = supabase
-    .from('crm_contacts')
-    .select('*, crm_companies(id, name)')
-    .is('deleted_at', null)
-    .not('phone', 'is', null)
-    .neq('phone', '');
-
-  if (status) query = query.eq('status', status);
-  if (tag)    query = query.contains('tags', [tag]);
-  if (search) {
-    query = query.or(orIlike(['name', 'phone'], search));
-  }
-
-  query = query.order('updated_at', { ascending: false }).limit(limit);
-
-  const { data, error } = await query;
-  if (error) {
-    toast(`Erro ao montar fila de chamadas: ${error.message}`, 'error');
-    return [];
-  }
-
-  let contacts = data || [];
-  if (excludeCalledSince && contacts.length) {
-    const recentSet = await getRecentlyCalledContactIds(contacts.map(c => c.id), excludeCalledSince);
-    contacts = contacts.filter(c => !recentSet.has(c.id));
-  }
-
-  return contacts.map(row => ({
-    id: `contact:${row.id}`,
-    contactId: row.id,
-    companyId: row.company_id || null,
-    name: row.name,
-    phone: row.phone,
-    email: row.email || null,
-    position: row.position || null,
-    status: row.status || 'lead',
-    avatarColor: row.avatar_color || null,
-    company: row.crm_companies ? { id: row.crm_companies.id, name: row.crm_companies.name } : null,
-    tags: Array.isArray(row.tags) ? row.tags : [],
-    sourceType: 'contacts',
-    sourceId: row.id,
-    sourceContext: null,
-  }));
-}
-
-async function getQueueFromStuckDeals(filters) {
-  const { search, limit = 50, stuckDays = DEFAULT_STUCK_DAYS, excludeCalledSince } = filters;
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - stuckDays);
-
-  let query = supabase
-    .from('crm_deals')
-    .select('id, title, value, status, contact_id, contact_name, contact_phone, company_id, stage_id, updated_at, crm_contacts(id, name, phone, avatar_color), crm_companies(id, name), crm_pipeline_stages(id, name)')
-    .is('deleted_at', null)
-    .eq('status', 'open')
-    .lte('updated_at', cutoff.toISOString());
-
-  if (search) {
-    query = query.or(orIlike(['title', 'contact_name', 'contact_phone'], search));
-  }
-
-  query = query.order('updated_at', { ascending: true }).limit(limit);
-
-  const { data, error } = await query;
-  if (error) {
-    toast(`Erro ao buscar leads parados: ${error.message}`, 'error');
-    return [];
-  }
-
-  let deals = (data || []).filter(d => {
-    const phone = d.contact_phone || d.crm_contacts?.phone;
-    return !!phone;
-  });
-
-  if (excludeCalledSince && deals.length) {
-    const contactIds = deals.map(d => d.contact_id).filter(Boolean);
-    const recentSet = await getRecentlyCalledContactIds(contactIds, excludeCalledSince);
-    deals = deals.filter(d => !d.contact_id || !recentSet.has(d.contact_id));
-  }
-
-  const now = Date.now();
-  return deals.map(d => {
-    const daysStuck = Math.floor((now - new Date(d.updated_at).getTime()) / (1000 * 60 * 60 * 24));
-    const phone = d.contact_phone || d.crm_contacts?.phone || '';
-    const name = d.crm_contacts?.name || d.contact_name || 'Sem nome';
-    const stageName = d.crm_pipeline_stages?.name || '';
-    return {
-      id: `deal:${d.id}`,
-      contactId: d.contact_id || null,
-      companyId: d.company_id || null,
-      name,
-      phone,
-      email: null,
-      position: null,
-      status: null,
-      avatarColor: pickAvatarColor(d),
-      company: d.crm_companies ? { id: d.crm_companies.id, name: d.crm_companies.name } : null,
-      tags: [],
-      sourceType: 'stuck_deals',
-      sourceId: d.id,
-      sourceContext: stageName
-        ? `${stageName} · parado ha ${daysStuck} dias`
-        : `Parado ha ${daysStuck} dias`,
-      dealId: d.id,
-      dealTitle: d.title,
-      dealValue: d.value,
-    };
-  });
-}
-
-async function getQueueFromScheduledCalls(filters) {
-  const { search, limit = 50, windowDays = 1 } = filters;
-  const start = new Date();
-  start.setDate(start.getDate() - 30);
-  const end = new Date();
-  end.setDate(end.getDate() + windowDays);
-
-  let query = supabase
-    .from('crm_activities')
-    .select('*, crm_contacts(id, name, phone, avatar_color, company_id, position, crm_companies(id, name)), crm_deals(id, title)')
-    .is('deleted_at', null)
-    .eq('type', 'call')
-    .eq('completed', false)
-    .gte('start_date', start.toISOString())
-    .lte('start_date', end.toISOString());
-
-  if (search) query = query.ilike('title', `%${escapeIlike(search)}%`);
-
-  query = query.order('start_date', { ascending: true }).limit(limit);
-
-  const { data, error } = await query;
-  if (error) {
-    toast(`Erro ao buscar ligacoes agendadas: ${error.message}`, 'error');
-    return [];
-  }
-
-  return (data || [])
-    .filter(a => a.crm_contacts?.phone)
-    .map(a => {
-      const c = a.crm_contacts;
-      const when = new Date(a.start_date);
-      const now = Date.now();
-      const diffMin = Math.round((when.getTime() - now) / 60000);
-      let context;
-      if (diffMin < -60) context = `Atrasada ha ${Math.abs(Math.round(diffMin / 60))}h`;
-      else if (diffMin < 0) context = `Atrasada ha ${Math.abs(diffMin)}min`;
-      else if (diffMin < 60) context = `Em ${diffMin}min`;
-      else context = when.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-
-      return {
-        id: `activity:${a.id}`,
-        contactId: c.id,
-        companyId: c.company_id || null,
-        name: c.name,
-        phone: c.phone,
-        email: null,
-        position: c.position || null,
-        status: null,
-        avatarColor: c.avatar_color || null,
-        company: c.crm_companies ? { id: c.crm_companies.id, name: c.crm_companies.name } : null,
-        tags: [],
-        sourceType: 'scheduled_calls',
-        sourceId: a.id,
-        sourceContext: a.title ? `${a.title} · ${context}` : context,
-        dealId: a.deal_id || null,
-        activityId: a.id,
-      };
-    });
-}
-
-async function getQueueFromProspects(filters) {
-  const { search, limit = 50 } = filters;
-
-  let query = supabase
-    .from('crm_prospects')
-    .select('*')
-    .is('deleted_at', null)
-    .not('phone', 'is', null)
-    .neq('phone', '')
-    .not('status', 'in', '(sent_to_pipeline,converted)');
-
-  if (search) {
-    query = query.or(orIlike(['company_name', 'contact_name', 'phone'], search));
-  }
-
-  query = query.order('created_at', { ascending: false }).limit(limit);
-
-  const { data, error } = await query;
-  if (error) {
-    toast(`Erro ao buscar prospects: ${error.message}`, 'error');
-    return [];
-  }
-
-  return (data || []).map(p => {
-    const name = p.contact_name || p.company_name || 'Sem nome';
-    const cityState = [p.city, p.state].filter(Boolean).join('/');
-    const sourceTag = p.source ? `${p.source}` : 'prospect';
-    return {
-      id: `prospect:${p.id}`,
-      contactId: null,
-      companyId: null,
-      name,
-      phone: p.phone,
-      email: p.email || null,
-      position: p.position || null,
-      status: null,
-      avatarColor: null,
-      company: p.company_name ? { id: null, name: p.company_name } : null,
-      tags: [],
-      sourceType: 'prospects',
-      sourceId: p.id,
-      sourceContext: cityState ? `${sourceTag} · ${cityState}` : sourceTag,
-      prospectId: p.id,
-      prospectData: p,
-    };
-  });
-}
-
-/**
- * Ultimas N chamadas de um contato (timeline no painel lateral do discador).
+ * Ultimas N chamadas de um contato.
  */
 export async function getRecentCallsForContact(contactId, limit = 5) {
   if (!contactId) return [];
@@ -732,4 +414,62 @@ export async function softDeleteCrmCall(id) {
   }
 
   return true;
+}
+
+/**
+ * Registra o TOQUE no botao Ligar — uma tentativa, nao uma ligacao concluida.
+ *
+ * Por que nao usar createCrmCall: ele conclui a atividade de origem quando
+ * recebe `activityId`. Aqui isso seria errado por dois motivos. O passo da
+ * cadencia manda "3 TENTATIVAS SEGUIDAS" — fechar a tarefa no primeiro toque
+ * apagaria os outros dois antes de acontecerem. E a tarefa so termina quando a
+ * pessoa registra o que houve; o toque e o comeco, nao o fim.
+ *
+ * O que isto resolve: ate agora a contagem de tentativas era auto-declarada —
+ * saia do que a vendedora lembrava de marcar. O toque no botao e o unico
+ * momento em que o sistema tem certeza de que uma ligacao foi iniciada.
+ *
+ * Fica DELIBERADAMENTE sem outcome: quem preenche e o registro da tarefa. Uma
+ * tentativa sem desfecho e informacao honesta (discou e nao se sabe o resto),
+ * enquanto chutar 'no_answer' contaminaria a taxa de atendimento com ligacoes
+ * que podem ter sido atendidas.
+ */
+export async function registrarTentativaDeLigacao({ contactId = null, dealId = null, phone = null, activityId = null } = {}) {
+  if (!phone) return null;
+  const session = await supabase.auth.getSession();
+  const userId = session.data?.session?.user?.id;
+
+  const { data, error } = await supabase
+    .from('crm_calls')
+    .insert({
+      contact_id: contactId,
+      deal_id: dealId,
+      // Guarda de qual tarefa o toque saiu SEM concluir ela: e o vinculo que
+      // deixa contar quantas tentativas aquele passo ja levou.
+      activity_id: activityId,
+      phone_dialed: phone,
+      direction: 'outbound',
+      channel: 'device',
+      started_at: new Date().toISOString(),
+      created_by: userId,
+    })
+    .select('id, started_at')
+    .single();
+
+  // Falha aqui NAO pode atrapalhar a ligacao: o discar ja aconteceu no celular.
+  // Perder a contagem e ruim; travar a tela de quem esta ligando e pior.
+  if (error) { console.warn('[registrarTentativaDeLigacao]', error.message); return null; }
+  return data;
+}
+
+/** Quantas tentativas de ligacao ja saíram desta tarefa. */
+export async function contarTentativas(activityId) {
+  if (!activityId) return 0;
+  const { count, error } = await supabase
+    .from('crm_calls')
+    .select('id', { count: 'exact', head: true })
+    .eq('activity_id', activityId)
+    .is('deleted_at', null);
+  if (error) { console.warn('[contarTentativas]', error.message); return 0; }
+  return count || 0;
 }
