@@ -573,113 +573,13 @@ function dayHeading(date) {
   return date.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' });
 }
 
-function AgendaRow({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner }) {
-  const isGoogle = ev.source === 'google';
-  const isCrm = ev.source === 'crm';
-  const Icon = iconFor(ev);
-  const label = ev.leadName && isCrm ? ev.leadName : ev.title;
-  const sub = [ev.typeLabel, ev.stageName].filter(Boolean).join(' · ');
-  // Previsto = o FIM agendado (prazo da tarefa), não o início. Sem fim, cai no início.
-  const timing = !isGoogle && ev.completed && ev.completedAt ? scheduleTiming(ev.endDate || ev.startDate, ev.completedAt) : null;
-  return (
-    <div className={`group/row w-full flex items-center gap-3 py-2.5 px-3 rounded-lg transition-colors
-        hover:bg-slate-50 dark:hover:bg-white/5 ${dimmed ? 'opacity-30 hover:opacity-100' : ''}`}>
-      <span className="w-14 shrink-0 tabular-nums text-right">
-        {ev.isAllDay || !ev.startDate ? (
-          <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">—</span>
-        ) : (
-          <>
-            <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">{fmtTime(ev.startDate)}</div>
-            {ev.endDate && fmtTime(ev.endDate) !== fmtTime(ev.startDate) && (
-              <div className="text-[12px] text-slate-500 dark:text-slate-400">–{fmtTime(ev.endDate)}</div>
-            )}
-          </>
-        )}
-      </span>
-      {/* Ícone do tipo (vira ✓ quando concluído) */}
-      <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-        style={{ backgroundColor: isGoogle ? 'transparent' : `${ev.color}1a`, border: isGoogle ? '1px dashed #94a3b8' : 'none' }}>
-        {ev.completed
-          ? <Check size={16} style={{ color: ev.color }} />
-          : <Icon size={15} style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
-      </span>
-      <button type="button" onClick={() => onClick?.(ev)} className="flex-1 min-w-0 text-left cursor-pointer">
-        <div className={`text-sm truncate ${ev.completed ? 'line-through text-slate-500 dark:text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-800 dark:text-slate-100 font-medium'}`}>
-          {label}
-        </div>
-        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{isGoogle ? 'Google Agenda' : sub}</div>
-        {timing && (
-          <div className="flex items-center gap-1.5 mt-1 text-[12px] flex-wrap">
-            <span className="text-slate-500 dark:text-slate-400 tabular-nums">
-              Previsto {fmtTime(ev.endDate || ev.startDate)} · feito {fmtTime(ev.completedAt)}
-            </span>
-            <span className={`px-1.5 py-px rounded-full font-medium ${TIMING_CLASS[timing.state]}`}>{timing.label}</span>
-          </div>
-        )}
-      </button>
-      {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={22} />}
-      {/* Concluir — sempre visível (itens do CRM ainda não concluídos) */}
-      {isCrm && !ev.completed && (
-        <button type="button" onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
-          title="Concluir tarefa"
-          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-emerald-500 transition-colors">
-          <CheckCircle2 size={20} />
-        </button>
-      )}
-      {/* Editar entrega — tarefa do CRM já concluída */}
-      {isCrm && ev.completed && onEditDelivery && (
-        <button type="button" onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
-          title="Editar o que aconteceu"
-          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-fyness-primary transition-colors">
-          <Pencil size={18} />
-        </button>
-      )}
-    </div>
-  );
-}
-
-function AgendaListView({ current, eventsByDay, onSelectEvent, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
-  const days = useMemo(() => {
-    const out = [];
-    for (let i = 0; i < 31; i++) {
-      const d = addDays(startOfDay(current), i);
-      const evs = eventsByDay.get(toKey(d));
-      if (evs && evs.length) out.push({ date: d, events: evs });
-    }
-    return out;
-  }, [current, eventsByDay]);
-
-  if (days.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-center text-sm text-slate-500 dark:text-slate-400">
-        Nenhuma atividade nos próximos 30 dias.
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="max-w-3xl mx-auto pb-4">
-        {days.map(({ date, events }) => (
-          <section key={toKey(date)} className="mb-1">
-            <div className="sticky top-0 z-10 bg-white/85 dark:bg-slate-900/80 backdrop-blur px-3 py-1.5 mb-0.5">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 capitalize">{dayHeading(date)}</span>
-              <span className="ml-2 text-[12px] text-slate-500 dark:text-slate-400">{events.length} {events.length === 1 ? 'item' : 'itens'}</span>
-            </div>
-            {events.map(ev => (
-              <AgendaRow key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
-                dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
-            ))}
-          </section>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ==================== COMPONENTE PRINCIPAL ====================
 
-const VIEWS = [{ id: 'agenda', label: 'Lista' }, { id: 'month', label: 'Mês' }, { id: 'week', label: 'Semana' }, { id: 'day', label: 'Dia' }];
+// Sem "Lista": a FILA (aba Fila) ja e a lista de tarefas, e melhor — priorizada,
+// com atrasadas e agrupada por lead. Duas listas com layouts diferentes pro
+// mesmo trabalho era a maior fonte de confusao da Agenda. Aqui ficam so as
+// visoes que o calendario faz bem: panorama e grade de horario.
+const VIEWS = [{ id: 'month', label: 'Mês' }, { id: 'week', label: 'Semana' }, { id: 'day', label: 'Dia' }];
 
 export default function CrmCalendar({
   events = [],
@@ -961,7 +861,6 @@ export default function CrmCalendar({
   }, [effectiveEvents]);
 
   const title = useMemo(() => {
-    if (view === 'agenda') return `A partir de ${currentDate.getDate()} de ${MONTHS[currentDate.getMonth()]}`;
     if (view === 'month') return `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
     if (view === 'week') {
       const w = weekDays(currentDate);
@@ -1021,7 +920,6 @@ export default function CrmCalendar({
         </div>
       ) : (
         <>
-          {view === 'agenda' && <AgendaListView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />}
           {view === 'month' && <MonthView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onShowDay={onShowDay} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />}
           {view === 'week' && <WeekView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />}
           {view === 'day' && <DayView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />}
