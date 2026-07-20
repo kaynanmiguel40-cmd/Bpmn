@@ -98,7 +98,7 @@ const ORDEM_DESC = (q) => q
  * Mensagens de uma conversa (contato ou prospect), pra UI do chat.
  * Ordem ASC (mais antigas primeiro, scroll natural do chat).
  */
-export async function getConversationMessages({ contactId, prospectId, limit = 100 }) {
+export async function getConversationMessages({ contactId, prospectId, instanceId, limit = 100 }) {
   if (!contactId && !prospectId) return [];
 
   // Pega as N mensagens MAIS RECENTES (desc + limit), depois reverte para ASC
@@ -114,6 +114,13 @@ export async function getConversationMessages({ contactId, prospectId, limit = 1
 
   if (contactId)  query = query.eq('contact_id', contactId);
   if (prospectId) query = query.eq('prospect_id', prospectId);
+  // A conversa e (com quem + por qual numero). Sem este filtro, abrir a thread
+  // do fyness-principal mostrava junto o que chegou pela lorena-consultora — e
+  // a resposta saia pela instancia da ultima mensagem, que podia ser a outra.
+  //
+  // Opcional de proposito: deep-link antigo (?contact= sem instancia) continua
+  // valendo e mostra a conversa inteira, em vez de abrir vazia.
+  if (instanceId) query = query.eq('instance_id', instanceId);
 
   const { data, error } = await query;
   if (error) throw erroDeLeitura('carregar a conversa', error);
@@ -147,6 +154,8 @@ function ehFuncaoInexistente(error) {
 /** Linha da RPC crm_inbox_conversations -> shape que a UI ja consome. */
 function rpcToConversation(r) {
   return {
+    // Ja vem no formato 'c:<id>:<instance_id>' — carrega a instancia porque duas
+    // threads do mesmo lead (uma por numero) nao podem colidir na lista.
     key:             r.conversa_key,
     contactId:       r.contact_id || null,
     prospectId:      r.prospect_id || null,
@@ -175,7 +184,10 @@ function rpcToConversation(r) {
 function groupMessagesIntoConversations(msgs, limit) {
   const seen = new Map();
   for (const m of (msgs || [])) {
-    const key = m.contact_id ? `c:${m.contact_id}` : `p:${m.prospect_id}`;
+    // Mesma chave da RPC (migration 108): interlocutor + instancia. O mesmo lead
+    // falando com dois numeros da empresa da duas conversas, nao uma misturada.
+    const quem = m.contact_id ? `c:${m.contact_id}` : `p:${m.prospect_id}`;
+    const key = `${quem}:${m.instance_id || '-'}`;
     if (seen.has(key)) {
       // ja tem essa conversa; so incrementa unread se inbound nao lido
       if (m.direction === 'inbound' && m.status !== 'read') {
@@ -460,7 +472,7 @@ export async function sendCrmMessage(payload) {
  * `status <> 'read'` pra nao reescrever linha ja lida: alem de barato, evita
  * mexer na ordem fisica das tuplas sem necessidade.
  */
-export async function markConversationAsRead({ contactId, prospectId } = {}) {
+export async function markConversationAsRead({ contactId, prospectId, instanceId } = {}) {
   if (!contactId && !prospectId) return { ok: true };
 
   let q = supabase
@@ -472,6 +484,9 @@ export async function markConversationAsRead({ contactId, prospectId } = {}) {
 
   if (contactId)  q = q.eq('contact_id', contactId);
   if (prospectId) q = q.eq('prospect_id', prospectId);
+  // Mesmo escopo da thread e do COUNT da RPC: abrir a conversa de um numero nao
+  // pode zerar o badge do outro, que ninguem leu.
+  if (instanceId) q = q.eq('instance_id', instanceId);
 
   const { error } = await q;
   if (error) {

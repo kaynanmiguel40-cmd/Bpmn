@@ -1469,10 +1469,13 @@ export function useCrmInboxConversations(opts = {}) {
  * Mensagens de uma conversa especifica (contato OU prospect).
  * Ordem ASC pra scroll natural do chat.
  */
-export function useCrmConversation({ contactId, prospectId, limit = 100 } = {}) {
+export function useCrmConversation({ contactId, prospectId, instanceId, limit = 100 } = {}) {
   return useQuery({
-    queryKey: crmQueryKeys.conversation({ contactId, prospectId, limit }),
-    queryFn: () => getConversationMessages({ contactId, prospectId, limit }),
+    // instanceId entra na chave: a thread do fyness-principal e a da
+    // lorena-consultora com o MESMO lead sao conversas distintas e nao podem
+    // compartilhar cache (uma sobrescreveria a outra na tela).
+    queryKey: crmQueryKeys.conversation({ contactId, prospectId, instanceId, limit }),
+    queryFn: () => getConversationMessages({ contactId, prospectId, instanceId, limit }),
     enabled: !!(contactId || prospectId),
     staleTime: 10_000,
   });

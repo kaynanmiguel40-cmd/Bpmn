@@ -133,6 +133,7 @@ export function MessageThread({ conversation, children }) {
   const { data: messages = [], isLoading, isError, error, refetch, isFetching } = useCrmConversation({
     contactId:  conversation?.contactId,
     prospectId: conversation?.prospectId,
+    instanceId: conversation?.instanceId,
     limit:      200,
   });
 
@@ -157,6 +158,7 @@ export function MessageThread({ conversation, children }) {
     markReadMutation.mutate({
       contactId:  conversation.contactId,
       prospectId: conversation.prospectId,
+      instanceId: conversation.instanceId,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation?.contactId, conversation?.prospectId, ultimaId]);
