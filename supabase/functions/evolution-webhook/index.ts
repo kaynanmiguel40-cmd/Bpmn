@@ -668,6 +668,22 @@ serve(async (req) => {
     }, 500)
   }
 
+  // Evento de mensagem e a prova mais forte de que a instancia esta viva — mais
+  // forte que o reconciliador, que so pergunta. Carimbar aqui da ao heartbeat
+  // uma SEGUNDA fonte independente: se o cron do reconciliador morrer, um numero
+  // que esta trabalhando nao dispara alarme de "sem sinal".
+  //
+  // Isso importa porque o alarme com fonte unica ja mentiu: o cron ficou sem
+  // permissao de execucao e a tela passou a acusar os dois numeros como fora do
+  // ar enquanto os dois recebiam mensagem normalmente. Alarme falso ensina a
+  // ignorar o alarme.
+  if (event === 'messages_upsert') {
+    await supabase
+      .from('crm_whatsapp_instances')
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq('id', instance.id)
+  }
+
   const debug: Record<string, unknown> = { event, instanceName, instanceId: instance.id }
   // Mensagens que falharam por causa nossa e que a Evolution deve reentregar.
   let retryable: string[] = []
