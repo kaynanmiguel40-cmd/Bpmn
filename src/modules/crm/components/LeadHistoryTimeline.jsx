@@ -30,13 +30,20 @@ const TIMING_CLASS = {
 };
 const hhmm = (d) => (d ? new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '');
 
+// As chaves cobrem os DOIS vocabularios que chegam aqui: o `type` da
+// crm_activities (call/email/message/meeting/task/follow_up/lunch) e o `kind`
+// do historico da agenda, que emite 'whatsapp' como canal proprio. Chave que
+// falta nao quebra a tela — ela cai no icone generico e mostra o nome cru em
+// ingles, que e pior: a vendedora ve "whatsapp" no meio de um historico em
+// portugues e nao sabe se aquilo foi mensagem, ligacao ou outra coisa.
 const ACTIVITY_ICONS = {
-  call: Phone, email: Mail, message: MessageCircle, meeting: Video,
-  task: CheckSquare, follow_up: Coffee, visit: MapPin,
+  call: Phone, email: Mail, message: MessageCircle, whatsapp: MessageCircle,
+  meeting: Video, task: CheckSquare, follow_up: Coffee, visit: MapPin, lunch: Coffee,
 };
 const ACTIVITY_LABELS = {
-  call: 'Ligação', email: 'E-mail', message: 'Mensagem', meeting: 'Reunião',
-  task: 'Tarefa', follow_up: 'Follow-up', visit: 'Visita',
+  call: 'Ligação', email: 'E-mail', message: 'Mensagem', whatsapp: 'WhatsApp',
+  meeting: 'Reunião', task: 'Tarefa', follow_up: 'Follow-up', visit: 'Visita',
+  lunch: 'Almoço',
 };
 
 const formatDate = (d) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—');

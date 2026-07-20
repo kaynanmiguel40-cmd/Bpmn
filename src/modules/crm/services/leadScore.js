@@ -125,7 +125,7 @@ export function forcaDaOrigem(cat) {
 export function categoriaOrigem(source) {
   const t = (source || '').toLowerCase();
   if (!t.trim()) return 'desconhecida';
-  if (/tr[aá]fego|an[uú]ncio|ads?|pago/.test(t)) return 'trafego';
+  if (/tr[aá]fego|an[uú]ncio|\bads?\b|pago/.test(t)) return 'trafego';
   if (/parceiro|contador/.test(t)) return 'parceiro';
   if (/prospec|maps|lista/.test(t)) return 'prospeccao';
   if (/indica|cliente/.test(t)) return 'indicacao';
@@ -162,6 +162,12 @@ export function scoreLead(s = {}) {
     temCompromisso = false,
     estrelas = 0,
     source = null,
+    // Quem chama sem as atividades carregadas marca `semHistorico`. NAO e o
+    // mesmo que "lead sem historico": e "nao sei o historico deste lead".
+    // Confundir os dois faz a tela acusar de abandono todo lead vindo de uma
+    // tela que simplesmente nao consultou as atividades — e a acusacao sai
+    // igual pra quem respondeu ontem e pra quem nunca atendeu.
+    semHistorico = false,
   } = s;
 
   let score = 0;
@@ -186,7 +192,7 @@ export function scoreLead(s = {}) {
   }
 
   // --- ENGAJAMENTO: existe relação.
-  if (respondeuAlgumaVez) {
+  if (!semHistorico && respondeuAlgumaVez) {
     score += PESOS.engajamento;
     motivos.push('Já respondeu antes');
   }
@@ -210,7 +216,7 @@ export function scoreLead(s = {}) {
 
   // --- ESFRIANDO: só vale pra quem JÁ ENGAJOU. Para quem nunca atendeu, tempo
   // parado não é urgência — é sinal de que não há o que retomar.
-  if (respondeuAlgumaVez && diasSemContato >= 3 && diasSemContato < DIAS_ABANDONO) {
+  if (!semHistorico && respondeuAlgumaVez && diasSemContato >= 3 && diasSemContato < DIAS_ABANDONO) {
     const u = clamp((diasSemContato - 2) / (DIAS_ABANDONO - 2), 0, 1);
     score += u * PESOS.esfriando;
     motivos.push(`${diasSemContato} dias sem contato — esfriando`);
@@ -219,7 +225,7 @@ export function scoreLead(s = {}) {
   // --- TENTATIVA VAZIA: cada ligação sem atender derruba o valor do próximo
   // toque. Sem isso, o lead que nunca atende fica eternamente no topo, porque
   // "está parado há muito tempo".
-  if (tentativasSemContato > 0) {
+  if (!semHistorico && tentativasSemContato > 0) {
     score += clamp(tentativasSemContato * PESOS.tentativaVazia, -25, 0);
     if (tentativasSemContato >= 3) {
       motivos.push(`${tentativasSemContato} tentativas sem atender`);
@@ -227,7 +233,7 @@ export function scoreLead(s = {}) {
   }
 
   // --- ABANDONO.
-  if (!respondeuAlgumaVez && diasSemContato >= DIAS_ABANDONO) {
+  if (!semHistorico && !respondeuAlgumaVez && diasSemContato >= DIAS_ABANDONO) {
     score += PESOS.abandono;
     motivos.push('Nunca respondeu e está parado');
   }
@@ -271,4 +277,37 @@ export function ordenarPorPrioridade(leads = []) {
     // Entre os não fixados (ou empatados), o score decide.
     return (b.score ?? 0) - (a.score ?? 0);
   });
+}
+
+/**
+ * Traduz um deal do Kanban para os sinais do score.
+ *
+ * IMPORTANTE — o que esta tela NÃO sabe: a Pipeline carrega os negócios sem as
+ * atividades, então `diasSemContato`, `tentativasSemContato`,
+ * `respondeuAlgumaVez` e `temCompromisso` não têm valor real aqui. Ficam nos
+ * defaults, o que significa que TODO card leva a mesma penalidade de abandono
+ * e nenhum leva o bônus de engajamento.
+ *
+ * Isso não distorce a ORDEM — uma constante aplicada a todos não reordena nada
+ * — mas comprime o número mostrado pra baixo. Por isso o card fala em
+ * "prioridade" e não em "probabilidade de fechar": o que esta tela mede de
+ * verdade é profundidade no funil, frescor, qualidade e origem. Os quatro que
+ * estão aqui são justamente os que dependem só do próprio negócio.
+ *
+ * Quando a Fila calcular o score (lá as atividades estão carregadas), o mesmo
+ * scoreLead responde com o quadro completo.
+ */
+export function sinaisDoDeal(deal = {}, { stageIndex = 0, totalStages = 1 } = {}) {
+  const nascimento = deal.createdAt || deal.created_at || null;
+  const diasDesdeEntrada = nascimento
+    ? Math.max(0, Math.floor((Date.now() - new Date(nascimento).getTime()) / 86400000))
+    : 999;
+
+  return {
+    stageRank: stageRankOf(stageIndex, totalStages),
+    diasDesdeEntrada,
+    estrelas: deal.priority ?? 0,
+    source: deal.source ?? null,
+    semHistorico: true,
+  };
 }

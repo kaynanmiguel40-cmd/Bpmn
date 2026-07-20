@@ -4,6 +4,7 @@
  */
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
@@ -19,6 +20,8 @@ import { LostReasonModal } from '../components/LostReasonModal';
 import { ImportLeadsModal } from '../components/ImportLeadsModal';
 import { PriorityStars } from '../components/ui/PriorityStars';
 import { StagePlaybookModal } from '../components/StagePlaybookModal';
+import { scoreLead, sinaisDoDeal, ordenarPorPrioridade } from '../services/leadScore';
+import { reorderStageDeals, clearStageManualOrder } from '../services/crmQueueService';
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
@@ -128,6 +131,39 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
           </span>
         )}
       </div>
+
+      {/* Por que este lead esta nesta altura da coluna. So aparece quando ha
+          algo a dizer: selo sem motivo e ruido, e um numero sem explicacao numa
+          tela de vendas vira superstição — a pessoa passa a confiar ou
+          desconfiar dele sem nunca saber do que ele e feito. */}
+      {deal._score?.motivos?.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 mb-1.5">
+          {deal.positionExplicita ? (
+            <span
+              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300"
+              title="Você colocou este lead nesta posição. O score não reordena a coluna enquanto isso valer."
+            >
+              <Crown size={10} /> Fixado
+            </span>
+          ) : (
+            <span
+              className={`shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold ${
+                deal._score.display >= 60
+                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                  : deal._score.display >= 30
+                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                    : 'bg-slate-100 dark:bg-slate-700/60 text-slate-500 dark:text-slate-400'
+              }`}
+              title={`Prioridade ${deal._score.display}/100 — ${deal._score.motivos.join(' · ')}`}
+            >
+              <TrendingUp size={10} /> {deal._score.display}
+            </span>
+          )}
+          {deal._score.motivos.slice(0, 1).map(m => (
+            <span key={m} className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{m}</span>
+          ))}
+        </div>
+      )}
 
       {(deal.contact || deal.company) && (
         <div className="flex items-center gap-1.5 mb-1">
@@ -633,6 +669,9 @@ function PhaseBands({ stages }) {
 function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragOverStageId, onNewDeal, onQuickAdd, quickAddPending, onMarkLost, onDelete, allStages, onMoveStage, onOpenPlaybook, stepCount = 0, phase, onSetPriority }) {
   const PhaseIcon = PHASE_ICON[phase] || null;
   const isDragOver = dragOverStageId === stage.id;
+  // Onde a linha de insercao esta agora. Some no fim do arrasto.
+  const [dropIndex, setDropIndex] = useState(null);
+  const temOrdemManual = filteredDeals.some(d => d.positionExplicita);
   const learnedStage = learned?.stages?.find(s => s.position === stage.position);
   const showConv = learnedStage && learnedStage.sampleSize >= 5;
   const convColor = learnedStage?.learnedProbability >= 50
@@ -675,6 +714,18 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {/* A saida da ordem manual. Ordem fixada e permanente vira lixo em
+              duas semanas: o lead que era prioridade fechou ou esfriou, e a
+              coluna segue congelada num julgamento de outro dia. */}
+          {temOrdemManual && (
+            <button
+              onClick={() => onDrop.soltarOrdem(stage.id, filteredDeals.map(d => d.id))}
+              title="Voltar a ordenar pelo score — desfaz o que foi arrastado nesta coluna"
+              className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-fyness-primary transition-colors"
+            >
+              <Repeat size={13} />
+            </button>
+          )}
           <button
             onClick={() => setQuickAddOpen(true)}
             title="Criar negocio rapido"
@@ -704,12 +755,15 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           e.dataTransfer.dropEffect = 'move';
           onDrop.setDragOver(stage.id);
         }}
-        onDragLeave={() => onDrop.setDragOver(null)}
+        onDragLeave={() => { onDrop.setDragOver(null); setDropIndex(null); }}
         onDrop={(e) => {
           e.preventDefault();
           const dealId = e.dataTransfer.getData('text/plain');
-          if (dealId) onDrop.execute(dealId, stage.id);
+          // So chega aqui o que NAO caiu sobre um card: soltar no vazio da
+          // coluna e mudanca de etapa, nao reordenacao.
+          if (dealId && !onDrop.podeReordenar(stage.id)) onDrop.execute(dealId, stage.id);
           onDrop.setDragOver(null);
+          setDropIndex(null);
         }}
         className={`flex-1 overflow-y-auto p-2 space-y-2 transition-colors ${
           isDragOver
@@ -728,17 +782,42 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           />
         )}
 
-        {filteredDeals.map(deal => (
-          <DealCard
+        {filteredDeals.map((deal, i) => (
+          <div
             key={deal.id}
-            deal={deal}
-            allStages={allStages}
-            onDragStart={onDragStart}
-            onMarkLost={onMarkLost}
-            onDelete={onDelete}
-            onMoveStage={onMoveStage}
-            onSetPriority={onSetPriority}
-          />
+            // Soltar SOBRE um card insere antes dele. A linha aparece so quando
+            // o card arrastado veio desta mesma coluna: entre colunas o gesto ja
+            // significa "mudar de etapa", e mostrar as duas leituras ao mesmo
+            // tempo faria a pessoa nao saber qual vai valer.
+            onDragOver={(e) => {
+              if (!onDrop.podeReordenar(stage.id)) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setDropIndex(i);
+            }}
+            onDrop={(e) => {
+              if (!onDrop.podeReordenar(stage.id)) return;
+              e.preventDefault();
+              e.stopPropagation();
+              const dealId = e.dataTransfer.getData('text/plain');
+              const ordem = filteredDeals.map(d => d.id).filter(id => id !== dealId);
+              ordem.splice(i, 0, dealId);
+              onDrop.reordenar(stage.id, ordem);
+              setDropIndex(null);
+              onDrop.setDragOver(null);
+            }}
+            className={dropIndex === i ? 'pt-1 border-t-2 border-fyness-primary rounded-sm' : ''}
+          >
+            <DealCard
+              deal={deal}
+              allStages={allStages}
+              onDragStart={onDragStart}
+              onMarkLost={onMarkLost}
+              onDelete={onDelete}
+              onMoveStage={onMoveStage}
+              onSetPriority={onSetPriority}
+            />
+          </div>
         ))}
 
         {allCount === 0 && !isDragOver && !quickAddOpen && (
@@ -1339,7 +1418,10 @@ export function CrmPipelinePage() {
   const [deleteDealTarget, setDeleteDealTarget] = useState(null);
   const [playbookStage, setPlaybookStage] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
+  const queryClient = useQueryClient();
   const draggingDealId = useRef(null);
+  // De qual coluna o card saiu. E o que distingue reordenar de mudar de etapa.
+  const draggingFromStageId = useRef(null);
 
   // Referencia estavel: `playbook?.[id] || []` criaria um array novo a cada
   // render numa etapa sem passos, e o useEffect do modal (que depende de steps)
@@ -1428,6 +1510,37 @@ export function CrmPipelinePage() {
       return true;
     });
   }, [searchQuery, sourceFilter, probFilter, ownerFilter, myMemberId]);
+
+  /**
+   * Ordena a coluna pelos DOIS eixos que a Pipeline sempre teve, agora
+   * explicitos: a posicao que alguem arrastou manda, e o score decide o resto.
+   *
+   * `position_manual` e o que separa um do outro. O backfill deu posicao a todo
+   * mundo; sem essa marca o score nunca teria vez, porque toda coluna pareceria
+   * ja decidida a mao.
+   */
+  const ordenarColuna = useCallback((deals, stageIndex, totalStages) => {
+    const comScore = (deals || []).map(d => ({
+      ...d,
+      _score: scoreLead(sinaisDoDeal(d, { stageIndex, totalStages })),
+      positionExplicita: !!(d.positionManual ?? d.position_manual),
+    }));
+    return ordenarPorPrioridade(comScore.map(d => ({ ...d, score: d._score.score })));
+  }, []);
+
+  /** Arrastar dentro da coluna: grava a ordem e marca que foi decisao humana. */
+  const handleReorder = useCallback(async (stageId, idsNaOrdem) => {
+    if (!stageId || !idsNaOrdem?.length) return;
+    await reorderStageDeals(stageId, idsNaOrdem);
+    queryClient.invalidateQueries({ queryKey: ['crm', 'pipeline'] });
+  }, [queryClient]);
+
+  /** Devolve a coluna ao score. */
+  const handleReleaseOrder = useCallback(async (stageId, ids) => {
+    if (!stageId || !ids?.length) return;
+    await clearStageManualOrder(stageId, ids);
+    queryClient.invalidateQueries({ queryKey: ['crm', 'pipeline'] });
+  }, [queryClient]);
 
   const handleNewDeal = (stageId = null) => {
     setDefaultStageId(stageId);
@@ -1746,7 +1859,11 @@ export function CrmPipelinePage() {
                   key={stage.id}
                   stage={stage}
                   learned={learned}
-                  filteredDeals={filterDeals(stage.deals)}
+                  filteredDeals={ordenarColuna(
+                    filterDeals(stage.deals),
+                    (pipelineData?.stages || []).findIndex(s => s.id === stage.id),
+                    (pipelineData?.stages || []).length,
+                  )}
                   onOpenPlaybook={setPlaybookStage}
                   stepCount={(playbook?.[stage.id] || []).length}
                   phase={phaseById[stage.id]}
@@ -1756,13 +1873,22 @@ export function CrmPipelinePage() {
                   quickAddPending={quickCreateMutation.isPending}
                   onMarkLost={(dealId) => setLostModalDealId(dealId)}
                   onDelete={(deal) => setDeleteDealTarget(deal)}
-                  onDragStart={(id) => { draggingDealId.current = id; }}
+                  onDragStart={(id) => {
+                    draggingDealId.current = id;
+                    draggingFromStageId.current = stage.id;
+                  }}
                   allStages={allPipelineStages}
                   onMoveStage={handleMoveStage}
                   onSetPriority={handleSetPriority}
                   onDrop={{
                     execute: handleDrop,
                     setDragOver: setDragOverStageId,
+                    // Reordenar so vale DENTRO da coluna de origem. Arrastar
+                    // entre colunas ja quer dizer "mudar de etapa", e o mesmo
+                    // gesto nao pode significar duas coisas.
+                    podeReordenar: (stageId) => draggingFromStageId.current === stageId,
+                    reordenar: handleReorder,
+                    soltarOrdem: handleReleaseOrder,
                   }}
                 />
               ))}

@@ -204,3 +204,29 @@ describe('scoreLead — origem, custo e a armadilha do dado enviesado', () => {
     expect(desconhecida).toBeGreaterThan(forcaDaOrigem('prospeccao'));
   });
 });
+
+/**
+ * Regressão: o `\b` (limite de palavra) do regex de tráfego tinha virado o
+ * caractere de controle BACKSPACE — um byte que nunca aparece em texto
+ * digitado. O ramo `ads` estava morto desde que nasceu.
+ *
+ * Passava despercebido porque a única tag de tráfego da base é "Tráfego pago",
+ * que casa pelo outro lado da alternância. Bastava alguém escrever "Meta Ads"
+ * pra cair em `desconhecida` — e tráfego é o lead mais caro que existe aqui:
+ * ele perde o multiplicador de urgência e o peso de custo, os dois fatores que
+ * justificam ele furar a fila.
+ */
+describe('categoriaOrigem: tráfego', () => {
+  it('reconhece a plataforma pelo nome, sem a palavra "tráfego"', () => {
+    expect(categoriaOrigem('Google Ads')).toBe('trafego');
+    expect(categoriaOrigem('Meta Ads')).toBe('trafego');
+    expect(categoriaOrigem('Anúncio Instagram')).toBe('trafego');
+  });
+
+  // O limite de palavra não é enfeite: "cadastro" contém "ad". Sem ele, todo
+  // lead de formulário do site seria cobrado como se tivesse custado mídia.
+  it('"ad" no meio de outra palavra não vira tráfego', () => {
+    expect(categoriaOrigem('Cadastro no site')).toBe('desconhecida');
+    expect(categoriaOrigem('Indicação de parceiro (Luan)')).toBe('parceiro');
+  });
+});

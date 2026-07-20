@@ -450,6 +450,11 @@ export async function getStageWorkSummary(dealId, stageId) {
   ]);
 
   if (atividades.error) { console.warn('[getStageWorkSummary]', atividades.error.message); return vazio; }
+  // O progresso ausente por ERRO nao pode virar "ninguem atendeu": sem ele o
+  // Set fica vazio e TODA concluida cairia em semContato, acusando a vendedora
+  // de nao ter falado com o lead por causa de uma consulta que falhou. Sem esse
+  // dado nao da pra julgar, entao nao julga.
+  if (progresso.error) { console.warn('[getStageWorkSummary]', progresso.error.message); return vazio; }
 
   const comContato = new Set((progresso.data || []).map(p => p.step_id));
   const linhas = atividades.data || [];
@@ -484,7 +489,7 @@ export async function planQueueRebalance({ assignee = null, assigneeName = null 
 
   const { data, error } = await supabase
     .from('crm_activities')
-    .select('id, title, type, start_date, end_date, deal_id, assigned_to, assigned_to_name, created_by, stage_step_id, crm_deals(id, title, priority, position)')
+    .select('id, title, type, start_date, end_date, deal_id, assigned_to, assigned_to_name, created_by, stage_step_id, crm_deals(id, title, priority, position), crm_stage_steps(period)')
     .is('deleted_at', null)
     .eq('completed', false)
     .lte('start_date', ate.toISOString())
@@ -521,7 +526,12 @@ export async function planQueueRebalance({ assignee = null, assigneeName = null 
     priority: r.crm_deals?.priority ?? 0,
     notBefore: new Date(r.start_date),
     startDate: r.start_date,
-    period: new Date(r.start_date).getHours() < 12 ? 'manha' : 'tarde',
+    // O turno vem do PASSO, nao da hora em que a tarefa esta agendada. Inferir
+    // pelo relogio congela o atraso: a ligacao das 9h que ninguem fez vira
+    // "manha" pra sempre e, se a manha ja acabou, nao cabe mais hoje — ela
+    // pula pro dia seguinte em vez de encaixar a tarde. O passo sem turno
+    // definido fica livre pra qualquer hora do expediente.
+    period: r.crm_stage_steps?.period || null,
     seq: i,
     duracaoMin: r.end_date
       ? Math.round((new Date(r.end_date) - new Date(r.start_date)) / 60000)
@@ -560,13 +570,37 @@ export async function applyQueueRebalance(movidas) {
  * deixa espaco pra encaixar um card entre dois sem reescrever a coluna, mas
  * aqui reescrevemos mesmo: sao dezenas de leads por etapa, nao milhares, e
  * ordem previsivel vale mais que economia de UPDATE.
+ *
+ * Grava `position_manual` junto: e o que diz ao score que esta coluna foi
+ * decidida a mao e ele nao deve reordenar. Sem essa marca, o proximo calculo
+ * desfaria o arrasto e a pessoa arrastaria de novo, pra sempre.
  */
 export async function reorderStageDeals(stageId, idsNaOrdem) {
   if (!stageId || !idsNaOrdem?.length) return 0;
   const linhas = idsNaOrdem.map((id, i) => ({ id, position: (i + 1) * 100 }));
   for (const l of linhas) {
-    const { error } = await supabase.from('crm_deals').update({ position: l.position }).eq('id', l.id);
+    const { error } = await supabase
+      .from('crm_deals')
+      .update({ position: l.position, position_manual: true })
+      .eq('id', l.id);
     if (error) { console.warn('[reorderStageDeals]', l.id, error.message); }
   }
   return linhas.length;
+}
+
+/**
+ * Devolve a coluna ao score: apaga a marca de "fixado a mao".
+ *
+ * A saida tem que existir. Uma ordem fixada e permanente vira lixo em duas
+ * semanas — o lead que era prioridade fechou, esfriou ou virou outro problema,
+ * e a coluna continua congelada num julgamento de outro dia.
+ */
+export async function clearStageManualOrder(stageId, ids) {
+  if (!stageId || !ids?.length) return 0;
+  const { error } = await supabase
+    .from('crm_deals')
+    .update({ position_manual: false })
+    .in('id', ids);
+  if (error) { console.warn('[clearStageManualOrder]', error.message); return 0; }
+  return ids.length;
 }

@@ -20,7 +20,7 @@ import {
 } from '../../modules/crm/hooks/useCrmQueries';
 import { useOSOrders, useOSProjects, useOSSectors, useTeamMembers } from '../../hooks/queries';
 import { DailyReportBody, PeriodReportBody, eventVisual, hm, money } from '../../modules/crm/components/reports/ReportBlocks';
-import LeadJourneyDrawer from '../../modules/crm/components/LeadJourneyDrawer';
+import LeadHistoryPanel from '../../modules/crm/components/agenda/LeadHistoryPanel';
 import { getOperationalIndex, getOperationalReport, buildOperationalText, setOperationalSource } from '../../lib/operationalModel';
 import { listClosings, closeReport, reopenReport } from '../../lib/crmReportClosingsService';
 import OpReport from '../operations/components/OpReport';
@@ -392,7 +392,7 @@ export default function ArquivosPage() {
         </div>
       )}
 
-      <LeadJourneyDrawer
+      <LeadHistoryPanel
         selected={selectedLead}
         onClose={() => setSelectedLead(null)}
         onOpenLead={(lead) => lead.dealId && navigate(`/crm/deals/${lead.dealId}`)}

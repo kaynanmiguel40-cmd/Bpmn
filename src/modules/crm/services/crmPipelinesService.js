@@ -196,6 +196,11 @@ export async function getCrmPipelineWithDeals(pipelineId) {
       value: d.value,
       probability: d.probability,
       priority: d.priority ?? 0,
+      // Os dois eixos da ordem da coluna: `position` e onde o card esta, e
+      // `positionManual` diz se alguem colocou ele ali de proposito. Sem o
+      // segundo, o score nao teria vez — o backfill deu posicao a todos.
+      position: d.position ?? null,
+      positionManual: !!d.position_manual,
       status: d.status,
       source: d.source || null,
       expectedCloseDate: d.expected_close_date,

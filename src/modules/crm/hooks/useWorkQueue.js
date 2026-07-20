@@ -55,7 +55,15 @@ export function useWorkQueue(visao = null) {
   // Sem `visao`, a fila e a minha. Isto e o default de propriedade: cada um ve
   // o proprio trabalho, e ver o do time e uma escolha explicita.
   const uid = vendoTodos ? null : (visao?.uid || profile?.id || null);
-  const uname = vendoTodos ? null : (visao?.uname || profile?.name || null);
+  // Olhando a fila de OUTRA pessoa, o nome nao pode cair pro meu perfil. A
+  // cadencia legada casa por `assigned_to_name`, entao herdar o meu nome faria
+  // a tarefa antiga MINHA aparecer na fila dela — e some da minha, porque o uid
+  // ja e o dela. Sem nome informado, e melhor ficar so com o uid do que casar
+  // pela pessoa errada.
+  const vendoOutraPessoa = !vendoTodos && !!visao?.uid;
+  const uname = vendoTodos
+    ? null
+    : (vendoOutraPessoa ? (visao?.uname || null) : (profile?.name || null));
 
   const overdueQ = useQuery({
     queryKey: workQueueKeys.overdue,

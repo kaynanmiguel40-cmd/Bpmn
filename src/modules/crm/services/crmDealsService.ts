@@ -20,6 +20,10 @@ export interface CrmDeal {
   probability: number;
   /** Prioridade do lead em estrelas (0-5). 0 = nao definida. */
   priority: number;
+  /** Ordem na coluna do Kanban. Menor = mais em cima = atender primeiro. */
+  position: number | null;
+  /** true = a ordem foi arrastada a mao; false = herdada do backfill. */
+  positionManual: boolean;
   contactId: string | null;
   contactName: string | null;
   contactPhone: string | null;
@@ -54,6 +58,8 @@ export interface CrmDealRow {
   mrr?: number | null;
   probability?: number | null;
   priority?: number | null;
+  position?: number | null;
+  position_manual?: boolean | null;
   contact_id?: string | null;
   contact_name?: string | null;
   contact_phone?: string | null;
@@ -105,6 +111,8 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
     mrr: row.mrr || 0,
     probability: row.probability ?? 50,
     priority: row.priority ?? 0,
+    position: row.position ?? null,
+    positionManual: !!row.position_manual,
     contactId: row.contact_id || null,
     contactName: row.contact_name || null,
     contactPhone: row.contact_phone || null,
