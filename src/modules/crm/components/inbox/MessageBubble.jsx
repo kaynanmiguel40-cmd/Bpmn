@@ -208,10 +208,18 @@ export function MessageBubble({ message }) {
   const isOut = message.direction === 'outbound';
   const hasMedia = !!message.mediaUrl && message.status !== 'failed';
   const isSticker = hasMedia && message.mediaType === 'sticker';
-  // 'location' e 'contact' ja mostram o texto DENTRO do card (nome do lugar /
-  // nome do contato) — repetir embaixo duplicaria a mesma informacao no balao.
+  // 'location' e 'contact' mostram o texto DENTRO do card (nome do lugar / nome
+  // do contato), entao repetir embaixo duplicaria a informacao.
+  //
+  // Mas so quando o card EXISTE: MediaContent devolve null sem media_url, e ai
+  // suprimir a legenda deixa o balao literalmente vazio. Foi o que aconteceu com
+  // as mensagens gravadas antes do fix (media_type preenchido, media_url nulo) —
+  // elas sumiram da tela sem ter sumido do banco. Vale pro audio tambem: quando
+  // o espelhamento falha, `[audio nao disponivel]` e a unica coisa que resta pra
+  // mostrar, e a regra antiga escondia justamente ela.
   const CARD_COM_TEXTO_PROPRIO = ['audio', 'location', 'contact'];
-  const showCaption = !!message.content && !CARD_COM_TEXTO_PROPRIO.includes(message.mediaType);
+  const showCaption = !!message.content
+    && !(hasMedia && CARD_COM_TEXTO_PROPRIO.includes(message.mediaType));
   // figurinha: sem horario "grudado"; resto segue a regra antiga.
   const timeMt = isSticker ? 'mt-0.5' : (hasMedia && !showCaption ? '-mt-0.5' : 'mt-0.5');
 
