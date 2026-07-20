@@ -1192,10 +1192,20 @@ async function handleMessagesUpsert(
     contactId = await findContactByPhone(supabase, otherPhone)
     if (!contactId) {
       const chatId = remoteJid.replace('@s.whatsapp.net', '@lid')
-      // Evolution ja manda pushName no proprio evento; WAHA precisa buscar.
-      // (Em outbound o pushName costuma vir vazio — cai no fallback "WhatsApp ....")
-      let pushName: string | null = (m.pushName as string) || null
-      if (!pushName && PROVIDER === 'waha') {
+      // NO ECO DE MENSAGEM ENVIADA, `pushName` E O NOME DE QUEM ENVIOU — NOSSO.
+      //
+      // O comentario antigo dizia que em outbound ele "costuma vir vazio". Nao
+      // vem: a Evolution manda o nome de perfil da propria instancia, e ele era
+      // gravado como nome do LEAD. Resultado em producao — 93 pessoas diferentes
+      // salvas como "Lhorena - Fyness", 93 linhas identicas na lista do inbox.
+      // Uma delas tinha 61 mensagens e era o Ismael, com negocio aberto.
+      //
+      // Quando a conversa comeca por nos, ninguem do outro lado se apresentou
+      // ainda: o certo e nao ter nome e cair no fallback com o final do numero,
+      // que ao menos distingue as linhas. O nome real chega na primeira resposta
+      // dele (inbound), e o `findOrCreate` atualiza.
+      let pushName: string | null = fromMe ? null : ((m.pushName as string) || null)
+      if (!pushName && !fromMe && PROVIDER === 'waha') {
         pushName = await wahaGetContactName(instanceName, chatId)
       }
       // Avatar: pode vir null por timing; findOrCreate tenta atualizar depois.
@@ -1584,15 +1594,35 @@ async function findContactByPhone(
   }
   const inNat = national(phone)
   if (inNat.length < 10) return null // precisa DDD(2) + assinante(8+)
-  const last8 = inNat.slice(-8)
+
+  // O PRE-FILTRO PRECISA TOLERAR A MASCARA — era aqui que tudo falhava.
+  //
+  // A coluna guarda o numero FORMATADO: '(35) 9903-2508'. Procurar os 8 ultimos
+  // digitos ('99032508') nunca casa, porque o traco parte a sequencia no meio.
+  // Como o ilike nao devolvia linha nenhuma, o laco abaixo — que tolera mascara
+  // — nunca rodava, e TODO numero era tratado como desconhecido. Resultado: as
+  // 2762 mensagens do inbox ficaram ligadas a prospects e nenhuma a contatos.
+  //
+  // 4 digitos e o maior pedaco contiguo nos dois formatos: '2508' aparece tanto
+  // em '9903-2508' quanto em '99032508'. Filtro largo de proposito — quem decide
+  // e a comparacao digito-a-digito logo abaixo.
+  const last4 = inNat.slice(-4)
   const { data } = await supabase
     .from('crm_contacts')
     .select('id, phone')
-    .ilike('phone', `%${last8}%`)
+    .ilike('phone', `%${last4}%`)
     .is('deleted_at', null)
-    .limit(50)
+    .limit(200)
   for (const row of (data || [])) {
-    if (national(String(row.phone || '')) === inNat) return row.id
+    const rowNat = national(String(row.phone || ''))
+    if (rowNat === inNat) return row.id
+    // O 9o digito: celular brasileiro ganhou um 9 na frente em 2016 e metade da
+    // base guarda com ele, metade sem. Mesmo DDD + mesmos 8 finais = mesma
+    // linha. O DDD continua obrigatorio — final igual em estado diferente e
+    // outra pessoa, e colar a conversa nela mandaria a resposta pro lugar errado.
+    if (rowNat.length >= 10 && inNat.length >= 10
+        && rowNat.slice(0, 2) === inNat.slice(0, 2)
+        && rowNat.slice(-8) === inNat.slice(-8)) return row.id
   }
   return null
 }
@@ -1615,19 +1645,32 @@ async function findOrCreateProspectByPhoneInternal(
 ): Promise<{ id: string | null; error: string | null }> {
   const { data: existing, error: findErr } = await supabase
     .from('crm_prospects')
-    .select('id, avatar_url')
+    .select('id, avatar_url, contact_name')
     .eq('phone', phone)
     .is('deleted_at', null)
     .limit(1)
     .maybeSingle()
   if (findErr) return { id: null, error: `find: ${findErr.message}` }
   if (existing?.id) {
+    const patch: Record<string, string> = {}
     // Atualiza avatar se chegou novo e o existente nao tinha (refresh URL expirada)
-    if (avatarUrl && !existing.avatar_url) {
-      await supabase
-        .from('crm_prospects')
-        .update({ avatar_url: avatarUrl })
-        .eq('id', existing.id)
+    if (avatarUrl && !existing.avatar_url) patch.avatar_url = avatarUrl
+
+    // O NOME DE VERDADE SO CHEGA NA PRIMEIRA RESPOSTA DELE.
+    //
+    // Conversa que NOS iniciamos nasce sem nome — o pushName do eco e o nosso, e
+    // gravar aquilo criava 93 leads chamados "Lhorena - Fyness". O registro fica
+    // com o fallback "WhatsApp 2508" ate ele responder; quando responde, o
+    // inbound traz o nome real e e AQUI que ele entra.
+    //
+    // So promove por cima do fallback: nome ja preenchido pode ter sido corrigido
+    // a mao, e o pushName do WhatsApp — que a pessoa muda quando quer — nao tem
+    // autoridade pra sobrescrever o que um humano escreveu.
+    const ehFallback = !existing.contact_name || /^WhatsApp \d{4}$/.test(existing.contact_name)
+    if (pushName && ehFallback) patch.contact_name = pushName
+
+    if (Object.keys(patch).length > 0) {
+      await supabase.from('crm_prospects').update(patch).eq('id', existing.id)
     }
     return { id: existing.id, error: null }
   }
