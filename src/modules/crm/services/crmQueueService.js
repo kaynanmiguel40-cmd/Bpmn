@@ -399,41 +399,68 @@ export async function getLeadNotes(dealId) {
 }
 
 /**
- * Quanto trabalho foi feito na etapa ATUAL do lead: quantas tarefas do processo
- * ele concluiu e quantas ainda estao pendentes.
+ * Quanto trabalho VALIDO foi feito na etapa atual do lead.
  *
- * Serve pra perguntar antes de avancar. Mover um lead sem ter concluido NADA
- * costuma ser engano de arrasto — e o preco de nao perguntar e alto: mover
- * apaga as tarefas pendentes da etapa que ficou pra tras.
+ * Serve pra decidir se avancar de etapa pede confirmacao. Mover apaga as
+ * tarefas pendentes da etapa que fica pra tras, entao o custo de avancar cedo
+ * demais e alto.
  *
- * Conta ATIVIDADE concluida, nao passo do playbook cumprido. Sao coisas
- * diferentes: "nao atendeu" conclui a tarefa sem marcar o passo. Ligar tres
- * vezes sem sucesso E trabalho feito — nao pode contar como zero.
+ * "Concluida" NAO basta. Uma tarefa so conta como avanco real quando:
+ *
+ *   1. o lead ATENDEU  — a ligacao em que ninguem atendeu foi executada, e ate
+ *      merece sair da fila, mas nao houve conversa: nada ali justifica mover o
+ *      lead adiante. Detectado pela ausencia de progresso do passo, que e o que
+ *      `contacted: false` deixa de gravar (ver completeCrmActivity);
+ *   2. ficou REGISTRO do que aconteceu — tarefa fechada no automatico, sem uma
+ *      linha do que o lead disse, nao e prova de nada. Se ninguem anotou, do
+ *      ponto de vista do funil nao aconteceu.
+ *
+ * Por isso o retorno separa os tres casos: o que conta (`concluidas`), o que
+ * foi tentado sem contato (`semContato`) e o que foi fechado sem anotar
+ * (`semRegistro`). A tela usa os tres pra dizer POR QUE esta perguntando.
  */
 export async function getStageWorkSummary(dealId, stageId) {
-  if (!dealId || !stageId) return { concluidas: 0, pendentes: 0 };
+  const vazio = { concluidas: 0, pendentes: 0, semContato: 0, semRegistro: 0 };
+  if (!dealId || !stageId) return vazio;
 
   const { data: steps, error: sErr } = await supabase
     .from('crm_stage_steps')
     .select('id')
     .eq('stage_id', stageId);
-  if (sErr) { console.warn('[getStageWorkSummary] passos', sErr.message); return { concluidas: 0, pendentes: 0 }; }
+  if (sErr) { console.warn('[getStageWorkSummary] passos', sErr.message); return vazio; }
 
   const ids = (steps || []).map(s => s.id);
-  // Etapa sem playbook nao tem o que cobrar — nao ha "nada feito" a alertar.
-  if (ids.length === 0) return { concluidas: 0, pendentes: 0, semPlaybook: true };
+  // Etapa sem playbook nao tem tarefa a cobrar — nao ha "nada feito" a alertar.
+  if (ids.length === 0) return { ...vazio, semPlaybook: true };
 
-  const { data, error } = await supabase
-    .from('crm_activities')
-    .select('id, completed')
-    .eq('deal_id', dealId)
-    .is('deleted_at', null)
-    .in('stage_step_id', ids);
-  if (error) { console.warn('[getStageWorkSummary]', error.message); return { concluidas: 0, pendentes: 0 }; }
+  const [atividades, progresso] = await Promise.all([
+    supabase
+      .from('crm_activities')
+      .select('id, completed, delivery_report, stage_step_id')
+      .eq('deal_id', dealId)
+      .is('deleted_at', null)
+      .in('stage_step_id', ids),
+    // O progresso do passo e a marca de que o lead ATENDEU: "nao atendeu"
+    // conclui a atividade mas nao grava progresso.
+    supabase
+      .from('crm_deal_step_progress')
+      .select('step_id')
+      .eq('deal_id', dealId)
+      .in('step_id', ids),
+  ]);
 
-  return {
-    concluidas: (data || []).filter(a => a.completed).length,
-    pendentes: (data || []).filter(a => !a.completed).length,
-    semPlaybook: false,
-  };
+  if (atividades.error) { console.warn('[getStageWorkSummary]', atividades.error.message); return vazio; }
+
+  const comContato = new Set((progresso.data || []).map(p => p.step_id));
+  const linhas = atividades.data || [];
+
+  let concluidas = 0, semContato = 0, semRegistro = 0, pendentes = 0;
+  for (const a of linhas) {
+    if (!a.completed) { pendentes += 1; continue; }
+    if (!comContato.has(a.stage_step_id)) { semContato += 1; continue; }
+    if (!a.delivery_report || !a.delivery_report.trim()) { semRegistro += 1; continue; }
+    concluidas += 1;
+  }
+
+  return { concluidas, pendentes, semContato, semRegistro, semPlaybook: false };
 }

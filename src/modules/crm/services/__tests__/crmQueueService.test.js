@@ -108,13 +108,15 @@ describe('planBatchPostpone', () => {
  * etapa anterior, entao avancar sem ter feito nada costuma ser engano.
  */
 describe('getStageWorkSummary', () => {
-  it('conta concluidas e pendentes da etapa', async () => {
+  it('separa o que conta do que so parece contar', async () => {
     state.rows = [{ id: 'p1' }, { id: 'p2' }];
     const r = await getStageWorkSummary('d1', 'st1');
-    // O mock devolve as mesmas linhas nas duas consultas (passos e atividades);
-    // o que importa aqui e que ele SEPARA por `completed`.
+    // Os tres casos precisam existir separados: e deles que a tela tira POR QUE
+    // esta perguntando. Somar tudo em "concluidas" faria a mensagem mentir.
     expect(r).toHaveProperty('concluidas');
     expect(r).toHaveProperty('pendentes');
+    expect(r).toHaveProperty('semContato');   // ligou, ninguem atendeu
+    expect(r).toHaveProperty('semRegistro');  // fechou sem anotar nada
   });
 
   // Etapa sem playbook nao tem tarefa a cobrar. Sem esta saida, todo lead numa
@@ -129,7 +131,8 @@ describe('getStageWorkSummary', () => {
 
   it('sem dealId ou stageId nao consulta', async () => {
     state.calls = [];
-    expect(await getStageWorkSummary(null, 'st1')).toEqual({ concluidas: 0, pendentes: 0 });
-    expect(await getStageWorkSummary('d1', null)).toEqual({ concluidas: 0, pendentes: 0 });
+    const zerado = { concluidas: 0, pendentes: 0, semContato: 0, semRegistro: 0 };
+    expect(await getStageWorkSummary(null, 'st1')).toEqual(zerado);
+    expect(await getStageWorkSummary('d1', null)).toEqual(zerado);
   });
 });

@@ -387,6 +387,30 @@ function QuickAddInline({ onCreate, onCancel, isPending }) {
 
 // ==================== FAIXA DE FASES (por cima das colunas) ====================
 
+/**
+ * Diz POR QUE o avanco esta sendo questionado. "Nenhuma tarefa concluida" seria
+ * mentira quando ela ligou tres vezes e ninguem atendeu — e uma mensagem que a
+ * pessoa sabe ser falsa e uma mensagem que ela para de ler.
+ */
+export function montarAvisoDeAvanco(c) {
+  if (!c) return '';
+  const perda = c.pendentes > 0
+    ? ` Mover apaga ${c.pendentes} ${c.pendentes === 1 ? 'tarefa pendente' : 'tarefas pendentes'} de "${c.stageAtualNome}".`
+    : '';
+
+  if (c.semContato > 0) {
+    const n = c.semContato;
+    return `${n} ${n === 1 ? 'tentativa de contato foi feita' : 'tentativas de contato foram feitas'} com ${c.leadName}, `
+      + `mas ninguém atendeu — não houve conversa que justifique avançar pra "${c.stageNovoNome}".${perda}`;
+  }
+  if (c.semRegistro > 0) {
+    const n = c.semRegistro;
+    return `${n} ${n === 1 ? 'tarefa foi concluída' : 'tarefas foram concluídas'} para ${c.leadName}, `
+      + `mas sem registrar o que o lead respondeu. Sem isso não dá pra saber se ele avançou de verdade.${perda}`;
+  }
+  return `Nenhuma tarefa de "${c.stageAtualNome}" foi concluída para ${c.leadName}.${perda}`;
+}
+
 const COL_W = 288; // w-72
 const COL_GAP = 12; // gap-3
 
@@ -1469,6 +1493,8 @@ export function CrmPipelinePage() {
       stageAtualNome: origem?.name || 'a etapa atual',
       stageNovoNome: etapas.find(st => st.id === newStageId)?.name || 'a próxima etapa',
       pendentes: resumo.pendentes,
+      semContato: resumo.semContato,
+      semRegistro: resumo.semRegistro,
     });
   }, [pipelineData?.stages, moverAgora]);
 
@@ -1862,13 +1888,8 @@ export function CrmPipelinePage() {
           moverAgora(confirmMove.dealId, confirmMove.newStageId);
           setConfirmMove(null);
         }}
-        title="Avançar sem ter feito nada?"
-        message={
-          `Nenhuma tarefa de "${confirmMove?.stageAtualNome}" foi concluída para ${confirmMove?.leadName}.` +
-          (confirmMove?.pendentes > 0
-            ? ` Mover para "${confirmMove?.stageNovoNome}" vai apagar ${confirmMove.pendentes} ${confirmMove.pendentes === 1 ? 'tarefa pendente' : 'tarefas pendentes'} dessa etapa.`
-            : ` Mover para "${confirmMove?.stageNovoNome}" mesmo assim?`)
-        }
+        title={confirmMove?.semContato > 0 ? 'Você ainda não falou com esse lead' : 'Avançar sem ter feito nada?'}
+        message={montarAvisoDeAvanco(confirmMove)}
         confirmLabel="Mover mesmo assim"
         variant="warning"
         loading={moveMutation.isPending}
