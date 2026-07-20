@@ -411,6 +411,18 @@ export function montarAvisoDeAvanco(c) {
   return `Nenhuma tarefa de "${c.stageAtualNome}" foi concluída para ${c.leadName}.${perda}`;
 }
 
+/**
+ * Cabecalho da Pipeline: UMA altura e UM tamanho de texto pra todo controle.
+ *
+ * Antes cada um tinha o seu (`py-1.5` no select, `py-2` no botao, `p-1.5` no
+ * icone; `text-sm` em cima e `text-xs` nos filtros) e nada alinhava — era isso
+ * que fazia a barra parecer remendada, nao a falta de enfeite.
+ */
+const H_CTRL = 'h-9 text-sm';
+const SUP = 'bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm';
+const CTRL = `${H_CTRL} ${SUP} rounded-lg px-3 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary`;
+const BTN_NEUTRO = `${H_CTRL} inline-flex items-center gap-1.5 px-3 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors disabled:opacity-50`;
+
 const COL_W = 288; // w-72
 const COL_GAP = 12; // gap-3
 
@@ -1520,148 +1532,154 @@ export function CrmPipelinePage() {
     <div>
       <CrmPageHeader
         title="Pipeline"
-        subtitle="Kanban visual dos seus negocios"
+        subtitle="Onde cada negócio está e o que falta pra fechar"
         actions={
-          <div className="flex items-center gap-2">
-            {/* Seletor de Pipeline (com opção de criar nova) */}
-            <select
-              value={activePipelineId || ''}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === '__new__') {
-                  setCreatePipelineOpen(true);
-                  requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
-                } else if (v === '__geral__') {
-                  handleCreateGeneral();
-                  requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
-                } else {
-                  setSelectedPipelineId(v || '');
-                }
-              }}
-              className="text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
-            >
-              {(pipelines || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              <option disabled>──────────</option>
-              <option value="__geral__">+ Pipeline Geral (recomendada)</option>
-              <option value="__new__">+ Nova Pipeline</option>
-            </select>
-
-            {/* Editar etapas desta pipeline (renomear/add/remover/reordenar) */}
-            {activePipelineId && pipelineData && (
-              <button
-                onClick={() => setEditPipelineOpen(true)}
-                title="Editar etapas desta pipeline"
-                className="flex items-center gap-1.5 text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors"
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {/* GRUPO DA PIPELINE: escolher, editar, excluir. Os tres agem sobre
+                a MESMA coisa — a pipeline selecionada — entao viram um bloco so.
+                Antes a lixeira ficava solta entre "Editar" e "Importar", que
+                nao tem nada a ver com ela: acao destrutiva encostada em acao
+                de rotina, sem nada dizendo que o alvo era outro. */}
+            <div className={`flex items-stretch ${SUP} rounded-lg overflow-hidden divide-x divide-white/60 dark:divide-white/10`}>
+              <select
+                value={activePipelineId || ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === '__new__') {
+                    setCreatePipelineOpen(true);
+                    requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
+                  } else if (v === '__geral__') {
+                    handleCreateGeneral();
+                    requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
+                  } else {
+                    setSelectedPipelineId(v || '');
+                  }
+                }}
+                className={`${H_CTRL} bg-transparent px-3 pr-8 font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-fyness-primary`}
               >
-                <Pencil size={14} /> Editar
-              </button>
-            )}
+                {(pipelines || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                <option disabled>──────────</option>
+                <option value="__geral__">+ Pipeline Geral (recomendada)</option>
+                <option value="__new__">+ Nova Pipeline</option>
+              </select>
 
-            {/* SAIRAM daqui: "Agendar processos" e o consolidador de pipelines.
-                Os dois eram ferramenta de migracao, nao de uso diario —
-                agendar o processo virou automatico na troca de etapa, e a
-                consolidacao na Geral ja foi feita. Botao de mutirao que ficou
-                na barra depois do mutirao so oferece jeito de estragar o dia.
-                Os servicos continuam existindo pra uso pontual. */}
+              {activePipelineId && pipelineData && (
+                <button
+                  onClick={() => setEditPipelineOpen(true)}
+                  title="Editar etapas desta pipeline"
+                  className={`${H_CTRL} inline-flex items-center gap-1.5 px-3 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors`}
+                >
+                  <Pencil size={14} /> Editar
+                </button>
+              )}
 
-            {/* Excluir pipeline selecionada */}
-            {pipelines && pipelines.length > 1 && (
-              <button
-                onClick={() => setDeletePipelineConfirm(true)}
-                title="Excluir pipeline"
-                className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
-              >
-                <Trash2 size={15} />
-              </button>
-            )}
+              {pipelines && pipelines.length > 1 && (
+                <button
+                  onClick={() => setDeletePipelineConfirm(true)}
+                  title="Excluir esta pipeline"
+                  aria-label="Excluir esta pipeline"
+                  className={`${H_CTRL} inline-flex items-center justify-center w-9 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors`}
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
+            </div>
 
+            {/* GRUPO DOS NEGOCIOS: trazer de fora, ou criar aqui. */}
             <button
               onClick={() => setImportOpen(true)}
               disabled={!pipelineData}
-              className="flex items-center gap-2 px-3 py-2 bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm text-slate-700 dark:text-slate-300 text-sm font-medium rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+              className={`${BTN_NEUTRO} ${SUP}`}
               title="Importar lista (ligação fria / WhatsApp) pro pipeline"
             >
-              <Upload size={16} /> Importar
+              <Upload size={15} /> Importar
             </button>
 
             <button
               onClick={() => handleNewDeal()}
-              className="flex items-center gap-2 px-4 py-2 bg-fyness-primary hover:bg-fyness-secondary text-white text-sm font-medium rounded-lg transition-colors"
+              className={`${H_CTRL} inline-flex items-center gap-1.5 px-4 bg-fyness-primary hover:bg-fyness-secondary text-white font-medium rounded-lg shadow-sm transition-colors`}
             >
-              <Plus size={16} /> Novo Negocio
+              <Plus size={16} /> Novo negócio
             </button>
           </div>
         }
       />
 
-      {/* Toggle de visualizacao + barra de filtros */}
+      {/* Toggle de visualizacao + barra de filtros.
+          Tudo na MESMA altura do cabecalho (h-9) e no mesmo tamanho de texto.
+          Antes os filtros eram `text-xs` e mais baixos que o resto — duas
+          reguas diferentes na mesma tela e o que dava a sensacao de bagunca. */}
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-        <div className="flex items-center gap-1 crm-glass rounded-xl p-1 w-fit">
+        <div className={`flex items-center gap-1 ${SUP} rounded-lg p-1 w-fit`}>
           <button
             onClick={() => switchView('kanban')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`inline-flex items-center gap-1.5 h-7 px-3 text-sm font-medium rounded-md transition-colors ${
               viewMode === 'kanban'
                 ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
             }`}
           >
-            <Kanban size={13} />
+            <Kanban size={14} />
             Kanban
           </button>
           <button
             onClick={() => switchView('list')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`inline-flex items-center gap-1.5 h-7 px-3 text-sm font-medium rounded-md transition-colors ${
               viewMode === 'list'
                 ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
             }`}
           >
-            <List size={13} />
+            <List size={14} />
             Lista
           </button>
         </div>
 
         {/* Filtros */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Busca */}
+          {/* Busca. Mais larga que as 9rem de antes: "Buscar..." cabia, mas o
+              que a pessoa digita (nome de empresa) nao cabia. */}
           <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar..."
-              className="pl-8 pr-7 py-1.5 text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg w-36 focus:outline-none focus:ring-2 focus:ring-fyness-primary text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
+              placeholder="Buscar negócio ou cliente"
+              className={`${CTRL} pl-9 pr-8 w-56 placeholder:text-slate-400`}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                <X size={13} />
+              <button onClick={() => setSearchQuery('')} aria-label="Limpar busca"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X size={14} />
               </button>
             )}
           </div>
 
-          {/* Filtro Origem (canal) — so aparece quando ha origens no pipeline */}
+          {/* Filtro ATIVO fica marcado: borda e texto no tom da marca.
+              Antes so o anel de foco diferenciava — entao o ultimo filtro
+              clicado parecia ligado mesmo mostrando "Todas", e nenhum filtro
+              ligado de verdade se destacava depois que o foco saia. */}
           {sourceOptions.length > 0 && (
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
-              className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary max-w-[180px]"
+              className={`${CTRL} pr-8 max-w-[190px] ${sourceFilter !== 'all' ? 'border-fyness-primary/60 text-fyness-primary font-medium' : ''}`}
               title="Filtrar por origem do lead"
             >
-              <option value="all">Origem: Todas</option>
+              <option value="all">Origem: todas</option>
               {sourceOptions.map(s => <option key={s} value={s}>{s}</option>)}
               <option value="_none">Sem origem</option>
             </select>
           )}
 
-          {/* Filtro vendedor */}
           <select
             value={ownerFilter}
             onChange={(e) => setOwnerFilter(e.target.value)}
-            className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+            className={`${CTRL} pr-8 ${ownerFilter !== 'all' ? 'border-fyness-primary/60 text-fyness-primary font-medium' : ''}`}
           >
-            <option value="all">Vendedor: Todos</option>
-            {myMemberId && <option value="_mine">Meus Leads</option>}
+            <option value="all">Vendedor: todos</option>
+            {myMemberId && <option value="_mine">Meus leads</option>}
             <option value="_none">Sem vendedor</option>
             {crmMembers.map(m => (
               <option key={m.id} value={m.id}>{m.name}</option>
@@ -1672,11 +1690,11 @@ export function CrmPipelinePage() {
           <select
             value={probFilter}
             onChange={(e) => setProbFilter(e.target.value)}
-            className="text-xs bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-2 py-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+            className={`${CTRL} pr-8 ${probFilter !== 'all' ? 'border-fyness-primary/60 text-fyness-primary font-medium' : ''}`}
           >
-            <option value="all">Prob: Todas</option>
+            <option value="all">Chance: todas</option>
             <option value="high">Alta (70%+)</option>
-            <option value="mid">Media (30-69%)</option>
+            <option value="mid">Média (30-69%)</option>
             <option value="low">Baixa (&lt;30%)</option>
           </select>
 
@@ -1684,7 +1702,7 @@ export function CrmPipelinePage() {
           {hasFilters && (
             <button
               onClick={clearFilters}
-              className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-2 py-1.5"
+              className="inline-flex items-center gap-1 h-9 px-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               title="Limpar filtros"
             >
               <X size={14} /> Limpar
