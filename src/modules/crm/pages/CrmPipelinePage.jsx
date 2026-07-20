@@ -1541,27 +1541,31 @@ export function CrmPipelinePage() {
                 nao tem nada a ver com ela: acao destrutiva encostada em acao
                 de rotina, sem nada dizendo que o alvo era outro. */}
             <div className={`flex items-stretch ${SUP} rounded-lg overflow-hidden divide-x divide-white/60 dark:divide-white/10`}>
+              {/* SO pipelines. Criar saiu daqui: um seletor de "qual ver" que
+                  tambem CRIA mistura opcao com acao na mesma lista, e obrigava
+                  um separador desenhado a mao ("──────────") pra tentar
+                  explicar que as duas ultimas linhas nao eram pipelines.
+                  "+ Pipeline Geral (recomendada)" saiu de vez: era sobra da
+                  migracao pra Geral, ja feita — so oferecia recriar o que ja
+                  existe. Continua no estado vazio, onde e comeco e nao
+                  migracao. */}
               <select
                 value={activePipelineId || ''}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === '__new__') {
-                    setCreatePipelineOpen(true);
-                    requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
-                  } else if (v === '__geral__') {
-                    handleCreateGeneral();
-                    requestAnimationFrame(() => { e.target.value = activePipelineId || ''; });
-                  } else {
-                    setSelectedPipelineId(v || '');
-                  }
-                }}
+                onChange={(e) => setSelectedPipelineId(e.target.value || '')}
+                aria-label="Pipeline"
                 className={`${H_CTRL} bg-transparent px-3 pr-8 font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-fyness-primary`}
               >
                 {(pipelines || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                <option disabled>──────────</option>
-                <option value="__geral__">+ Pipeline Geral (recomendada)</option>
-                <option value="__new__">+ Nova Pipeline</option>
               </select>
+
+              <button
+                onClick={() => setCreatePipelineOpen(true)}
+                title="Nova pipeline"
+                aria-label="Nova pipeline"
+                className={`${H_CTRL} inline-flex items-center justify-center w-9 text-slate-500 hover:text-fyness-primary hover:bg-white dark:hover:bg-slate-800 transition-colors`}
+              >
+                <Plus size={16} />
+              </button>
 
               {activePipelineId && pipelineData && (
                 <button
