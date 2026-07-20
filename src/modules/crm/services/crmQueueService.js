@@ -397,3 +397,43 @@ export async function getLeadNotes(dealId) {
     origin: r.origin,
   }));
 }
+
+/**
+ * Quanto trabalho foi feito na etapa ATUAL do lead: quantas tarefas do processo
+ * ele concluiu e quantas ainda estao pendentes.
+ *
+ * Serve pra perguntar antes de avancar. Mover um lead sem ter concluido NADA
+ * costuma ser engano de arrasto — e o preco de nao perguntar e alto: mover
+ * apaga as tarefas pendentes da etapa que ficou pra tras.
+ *
+ * Conta ATIVIDADE concluida, nao passo do playbook cumprido. Sao coisas
+ * diferentes: "nao atendeu" conclui a tarefa sem marcar o passo. Ligar tres
+ * vezes sem sucesso E trabalho feito — nao pode contar como zero.
+ */
+export async function getStageWorkSummary(dealId, stageId) {
+  if (!dealId || !stageId) return { concluidas: 0, pendentes: 0 };
+
+  const { data: steps, error: sErr } = await supabase
+    .from('crm_stage_steps')
+    .select('id')
+    .eq('stage_id', stageId);
+  if (sErr) { console.warn('[getStageWorkSummary] passos', sErr.message); return { concluidas: 0, pendentes: 0 }; }
+
+  const ids = (steps || []).map(s => s.id);
+  // Etapa sem playbook nao tem o que cobrar — nao ha "nada feito" a alertar.
+  if (ids.length === 0) return { concluidas: 0, pendentes: 0, semPlaybook: true };
+
+  const { data, error } = await supabase
+    .from('crm_activities')
+    .select('id, completed')
+    .eq('deal_id', dealId)
+    .is('deleted_at', null)
+    .in('stage_step_id', ids);
+  if (error) { console.warn('[getStageWorkSummary]', error.message); return { concluidas: 0, pendentes: 0 }; }
+
+  return {
+    concluidas: (data || []).filter(a => a.completed).length,
+    pendentes: (data || []).filter(a => !a.completed).length,
+    semPlaybook: false,
+  };
+}

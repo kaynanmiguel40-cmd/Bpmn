@@ -16,6 +16,7 @@ import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsP
 import { getSalesReport, getLearnedProbabilities } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
 import { getCrmCalendarActivities, getLeadTimeline } from '../services/crmAgendaService';
+import { getStageWorkSummary } from '../services/crmQueueService';
 import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
@@ -537,6 +538,15 @@ export function useDeleteCrmDeal() {
       toast(`Erro ao excluir negocio: ${err.message}`, 'error');
     },
   });
+}
+
+/**
+ * Trabalho feito na etapa atual do lead — pra perguntar antes de avancar
+ * quando nada foi concluido. Busca sob demanda (nao e query reativa): a
+ * pergunta acontece no gesto, nao no render.
+ */
+export async function fetchStageWork(dealId, stageId) {
+  return getStageWorkSummary(dealId, stageId);
 }
 
 export function useMoveCrmDeal() {

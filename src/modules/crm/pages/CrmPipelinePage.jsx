@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useUpdateCrmDeal, useEnsureGeneralPipeline, useConsolidateIntoGeneral, useStagePlaybook, useScheduleProcessForPipeline } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useUpdateCrmDeal, useEnsureGeneralPipeline, useConsolidateIntoGeneral, useStagePlaybook, useScheduleProcessForPipeline, fetchStageWork } from '../hooks/useCrmQueries';
 import { getDealLeadInfo } from '../services/crmDealsService';
 import { detectFunnelStagePositions } from '../services/crmDashboardService';
 import { useTeamMembers } from '../../../hooks/queries';
@@ -1272,6 +1272,7 @@ export function CrmPipelinePage() {
     [pipelineData?.stages],
   );
   const moveMutation = useMoveCrmDeal();
+  const [confirmMove, setConfirmMove] = useState(null); // avanco sem tarefa concluida
   const lostMutation = useMarkDealLost();
   const deleteDealMutation = useDeleteCrmDeal();
   const deletePipelineMutation = useDeleteCrmPipeline();
@@ -1421,23 +1422,7 @@ export function CrmPipelinePage() {
     });
   };
 
-  const handleDrop = (dealId, newStageId) => {
-    if (draggingDealId.current === dealId) {
-      moveMutation.mutate({ dealId, stageId: newStageId }, {
-        onSuccess: (data) => {
-          if (data?.status === 'won') {
-            setShowConfetti(true);
-            playWinSound();
-          }
-        },
-      });
-    }
-    draggingDealId.current = null;
-  };
-
-  // Mesmo efeito do drop, mas via clique no botao "mover de etapa" do card —
-  // fallback pra touch/mobile, onde o drag and drop HTML5 nao dispara.
-  const handleMoveStage = (dealId, newStageId) => {
+  const moverAgora = useCallback((dealId, newStageId) => {
     moveMutation.mutate({ dealId, stageId: newStageId }, {
       onSuccess: (data) => {
         if (data?.status === 'won') {
@@ -1446,7 +1431,55 @@ export function CrmPipelinePage() {
         }
       },
     });
+  }, [moveMutation]);
+
+  /**
+   * Antes de mover, checa se ALGUMA tarefa da etapa atual foi concluida.
+   *
+   * Mover apaga as tarefas pendentes da etapa que fica pra tras — entao avancar
+   * sem ter feito nada costuma ser arrasto sem querer, e o preco e perder a
+   * cadencia inteira daquela etapa. A pergunta so aparece nesse caso: quando ha
+   * trabalho feito, mover e o gesto normal e nao se pergunta nada.
+   */
+  const pedirConfirmacaoOuMover = useCallback(async (dealId, newStageId) => {
+    // Os negocios moram DENTRO das etapas em pipelineData — nao ha lista plana.
+    const etapas = pipelineData?.stages || [];
+    const origem = etapas.find(st => (st.deals || []).some(d => d.id === dealId));
+    const deal = (origem?.deals || []).find(d => d.id === dealId);
+    const stageAtual = origem?.id || null;
+    // Sem etapa de origem (ou movendo pra mesma) nao ha o que perder.
+    if (!stageAtual || stageAtual === newStageId) return moverAgora(dealId, newStageId);
+
+    let resumo;
+    try {
+      resumo = await fetchStageWork(dealId, stageAtual);
+    } catch {
+      // Falha na checagem NAO pode travar o trabalho: move, que e o que ela
+      // pediu. Perder o aviso e melhor que perder o gesto.
+      return moverAgora(dealId, newStageId);
+    }
+
+    // Etapa sem playbook nao tem tarefa a cobrar; nada a alertar.
+    if (resumo.semPlaybook || resumo.concluidas > 0) return moverAgora(dealId, newStageId);
+
+    setConfirmMove({
+      dealId,
+      newStageId,
+      leadName: deal?.title || 'este lead',
+      stageAtualNome: origem?.name || 'a etapa atual',
+      stageNovoNome: etapas.find(st => st.id === newStageId)?.name || 'a próxima etapa',
+      pendentes: resumo.pendentes,
+    });
+  }, [pipelineData?.stages, moverAgora]);
+
+  const handleDrop = (dealId, newStageId) => {
+    if (draggingDealId.current === dealId) pedirConfirmacaoOuMover(dealId, newStageId);
+    draggingDealId.current = null;
   };
+
+  // Mesmo efeito do drop, mas via clique no botao "mover de etapa" do card —
+  // fallback pra touch/mobile, onde o drag and drop HTML5 nao dispara.
+  const handleMoveStage = (dealId, newStageId) => pedirConfirmacaoOuMover(dealId, newStageId);
 
   // Prioridade em estrelas direto do card.
   const handleSetPriority = (dealId, priority) => {
@@ -1817,6 +1850,28 @@ export function CrmPipelinePage() {
         confirmLabel="Excluir"
         variant="danger"
         loading={deleteDealMutation.isPending}
+      />
+
+      {/* Avanço sem nada concluído. A pergunta diz o que se PERDE, não só o que
+          vai acontecer: mover apaga as tarefas pendentes da etapa anterior, e
+          esse é o custo que a pessoa precisa ver antes de confirmar. */}
+      <CrmConfirmDialog
+        open={!!confirmMove}
+        onCancel={() => setConfirmMove(null)}
+        onConfirm={() => {
+          moverAgora(confirmMove.dealId, confirmMove.newStageId);
+          setConfirmMove(null);
+        }}
+        title="Avançar sem ter feito nada?"
+        message={
+          `Nenhuma tarefa de "${confirmMove?.stageAtualNome}" foi concluída para ${confirmMove?.leadName}.` +
+          (confirmMove?.pendentes > 0
+            ? ` Mover para "${confirmMove?.stageNovoNome}" vai apagar ${confirmMove.pendentes} ${confirmMove.pendentes === 1 ? 'tarefa pendente' : 'tarefas pendentes'} dessa etapa.`
+            : ` Mover para "${confirmMove?.stageNovoNome}" mesmo assim?`)
+        }
+        confirmLabel="Mover mesmo assim"
+        variant="warning"
+        loading={moveMutation.isPending}
       />
 
     </div>

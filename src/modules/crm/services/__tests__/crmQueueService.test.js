@@ -19,7 +19,7 @@ vi.mock('../../../../lib/supabase', () => {
 });
 vi.mock('../../../../contexts/ToastContext', () => ({ toast: vi.fn() }));
 
-import { dbToQueueTask, planBatchPostpone, startOfToday } from '../crmQueueService';
+import { dbToQueueTask, planBatchPostpone, startOfToday, getStageWorkSummary } from '../crmQueueService';
 import { WORK_START_HOUR } from '../crmScheduling';
 
 beforeEach(() => { state.rows = []; state.calls = []; });
@@ -99,5 +99,37 @@ describe('planBatchPostpone', () => {
     const r = await planBatchPostpone([], null, seg);
     expect(r.plano).toEqual([]);
     expect(state.calls).toHaveLength(0);
+  });
+});
+
+/**
+ * getStageWorkSummary responde "ja se fez alguma coisa nesta etapa?" — a
+ * pergunta que decide se avancar pede confirmacao. Mover apaga as pendentes da
+ * etapa anterior, entao avancar sem ter feito nada costuma ser engano.
+ */
+describe('getStageWorkSummary', () => {
+  it('conta concluidas e pendentes da etapa', async () => {
+    state.rows = [{ id: 'p1' }, { id: 'p2' }];
+    const r = await getStageWorkSummary('d1', 'st1');
+    // O mock devolve as mesmas linhas nas duas consultas (passos e atividades);
+    // o que importa aqui e que ele SEPARA por `completed`.
+    expect(r).toHaveProperty('concluidas');
+    expect(r).toHaveProperty('pendentes');
+  });
+
+  // Etapa sem playbook nao tem tarefa a cobrar. Sem esta saida, todo lead numa
+  // etapa sem processo pediria confirmacao a cada arrasto — o aviso viraria
+  // ruido e a pessoa aprenderia a clicar "sim" sem ler.
+  it('etapa sem passos devolve semPlaybook', async () => {
+    state.rows = [];
+    const r = await getStageWorkSummary('d1', 'st-vazia');
+    expect(r.semPlaybook).toBe(true);
+    expect(r.concluidas).toBe(0);
+  });
+
+  it('sem dealId ou stageId nao consulta', async () => {
+    state.calls = [];
+    expect(await getStageWorkSummary(null, 'st1')).toEqual({ concluidas: 0, pendentes: 0 });
+    expect(await getStageWorkSummary('d1', null)).toEqual({ concluidas: 0, pendentes: 0 });
   });
 });
