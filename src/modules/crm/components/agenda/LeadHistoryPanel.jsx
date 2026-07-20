@@ -4,9 +4,12 @@
  * Responde "o que aconteceu e o que vem" num lugar so:
  *  - cabecalho: lead, empresa, valor, estagio atual e status
  *  - "A fazer": atividades futuras agendadas
- *  - "Histórico": atividades feitas + ligacoes + WhatsApp + mudancas de estagio
+ *  - "Histórico": atividades feitas + ligacoes + WhatsApp, AGRUPADAS POR ETAPA
  *
- * Os dados vem de useLeadTimeline (junta as 4 fontes no servico).
+ * Os dados vem de useLeadTimeline (junta as 4 fontes no servico), mas o LAYOUT
+ * do historico e o mesmo da pagina do Negocio: LeadHistoryTimeline. Antes cada
+ * porta tinha a sua cara pra mesma pergunta — "o que ja aconteceu com esse
+ * lead" — e isso confundia mais do que ajudava.
  */
 
 import { useMemo } from 'react';
@@ -17,6 +20,7 @@ import {
 import { useLeadTimeline } from '../../hooks/useCrmQueries';
 import { scheduleTiming } from '../../services/crmAgendaService';
 import { CrmBadge } from '../ui';
+import { LeadHistoryTimeline } from '../LeadHistoryTimeline';
 
 const hm = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const TIMING_CLASS = {
@@ -162,6 +166,39 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
     return { upcoming: up, past: pa };
   }, [items]);
 
+  // Traduz a timeline do painel pro formato do componente compartilhado.
+  // As mudancas de etapa saem da LISTA e viram os CABECALHOS dos grupos — o
+  // cabecalho ja e a transicao, entao mante-las na lista diria duas vezes.
+  const { historico, stageHistory } = useMemo(() => {
+    const stages = past
+      .filter(i => i.kind === 'stage')
+      .map(i => ({
+        id: i.id,
+        createdAt: i.date,
+        // O titulo do item traz "→ Nome"; o nome limpo esta em `detail`.
+        stage: { name: (i.detail || '').replace(/^→\s*/, '') || 'Etapa', color: i.color },
+      }));
+    const registros = past
+      .filter(i => i.kind !== 'stage')
+      .map(i => ({
+        _type: 'activity',
+        _date: i.completedAt || i.date,
+        id: i.id,
+        title: i.title,
+        // Ligacao e WhatsApp nao tem `activityType` — o proprio kind ja diz o
+        // canal, e e assim que o icone certo aparece.
+        type: i.activityType || i.kind,
+        description: i.detail || '',
+        deliveryInput: i.deliveryInput || '',
+        deliveryReport: i.deliveryReport || '',
+        // So ATIVIDADE do CRM pode ter a entrega corrigida — ligacao e WhatsApp
+        // sao registro do que aconteceu, nao ha entrega a preencher.
+        _canEdit: i.kind === 'activity',
+        activityType: i.activityType,
+      }));
+    return { historico: registros, stageHistory: stages };
+  }, [past]);
+
   if (!selected) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center px-6 text-slate-500 dark:text-slate-400">
@@ -235,13 +272,19 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
               </section>
             )}
 
+            {/* MESMO layout do Histórico na página do Negócio — agrupado por
+                etapa. É a mesma pergunta ("o que já aconteceu com esse lead"),
+                então tem que ter a mesma cara, venha de onde vier. O componente
+                é compartilhado: components/LeadHistoryTimeline. */}
             <section>
               <h4 className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Histórico</h4>
-              {past.length === 0 ? (
-                <p className="text-xs text-slate-500 dark:text-slate-400 py-4">Nenhum registro ainda — ligações, mensagens, atividades e mudanças de etapa vão aparecer aqui.</p>
-              ) : (
-                <div>{past.map(i => <TimelineRow key={i.id} item={i} onEditDelivery={onEditDelivery} />)}</div>
-              )}
+              <LeadHistoryTimeline
+                items={historico}
+                stageHistory={stageHistory}
+                compact
+                onEditItem={onEditDelivery}
+                empty="Nenhum registro ainda — ligações, mensagens, atividades e mudanças de etapa vão aparecer aqui."
+              />
             </section>
           </>
         )}

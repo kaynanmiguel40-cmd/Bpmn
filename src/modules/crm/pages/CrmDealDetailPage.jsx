@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { CrmBadge, CrmAvatar } from '../components/ui';
 import { DealProcessChecklist } from '../components/DealProcessChecklist';
+import { LeadHistoryTimeline } from '../components/LeadHistoryTimeline';
 import {
   useCrmDeal, useUpdateCrmDeal, useMarkDealLost,
   useDealActivities, useDealStageHistory, useCompleteCrmActivity, useDealProgress, useStagePlaybook,
@@ -538,10 +539,15 @@ export function CrmDealDetailPage() {
             );
           })()}
 
-          {/* Tab: Histórico — o que FOI FEITO (processo + manuais + etapas) */}
+          {/* Tab: Histórico — o que FOI FEITO (processo + manuais + etapas).
+              O LAYOUT mora em LeadHistoryTimeline, compartilhado com o painel
+              da Agenda: mesma pergunta, mesma resposta, venha de onde vier. */}
           {activeTab === 'history' && (() => {
             const completedActs = activities.filter(a => a.completed).map(a => ({
-              _type: 'activity', _date: a.completedAt || a.startDate, ...a,
+              _type: 'activity', _date: a.completedAt || a.startDate,
+              id: a.id, title: a.title, type: a.type, description: a.description,
+              deliveryInput: a.deliveryInput, deliveryReport: a.deliveryReport,
+              contactName: a.contact?.name || null,
             }));
             // Concluir uma tarefa do processo na Agenda grava DUAS coisas: a
             // atividade concluida e o progresso do passo. Se as duas entrassem
@@ -565,157 +571,7 @@ export function CrmDealDetailPage() {
               new Date(b._date) - new Date(a._date)
             );
 
-            // ---- SEPARACAO POR ETAPA ----
-            // O historico de etapas vira uma linha do tempo de PERIODOS: o lead
-            // entrou na etapa X em tal data e ficou ate a mudanca seguinte.
-            // Assim ate a tarefa criada a mao (que nao tem vinculo com etapa)
-            // cai no periodo certo — pela data em que foi concluida.
-            const asc = [...stageHistory].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-            const periods = asc.map((e, i) => ({
-              key: e.id,
-              name: e.stage?.name || 'Etapa',
-              color: e.stage?.color || '#94a3b8',
-              from: new Date(e.createdAt),
-              to: i + 1 < asc.length ? new Date(asc[i + 1].createdAt) : null, // null = ate hoje
-            }));
-
-            const periodOf = (date) => {
-              const d = new Date(date);
-              for (let i = periods.length - 1; i >= 0; i--) {
-                const p = periods[i];
-                if (d >= p.from && (!p.to || d < p.to)) return p;
-              }
-              return null; // antes da 1a mudanca registrada
-            };
-
-            // Agrupa mantendo a ordem (mais recente primeiro).
-            const groups = [];
-            for (const item of timeline) {
-              const p = periodOf(item._date);
-              const key = p ? p.key : '__inicio__';
-              const last = groups[groups.length - 1];
-              if (last && last.key === key) last.items.push(item);
-              else groups.push({
-                key,
-                name: p ? p.name : 'Antes da primeira mudança de etapa',
-                color: p ? p.color : '#94a3b8',
-                since: p ? p.from : null,
-                items: [item],
-              });
-            }
-
-            return (
-              <div>
-                {timeline.length === 0 ? (
-                  <div className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">
-                    Nada feito ainda com esse lead.
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {groups.map((g, gi) => (
-                      <div key={`${g.key}-${gi}`}>
-                        {/* Cabecalho da etapa: substitui os antigos itens de
-                            "mudou de etapa" soltos na lista — o cabecalho JA e
-                            a transicao, entao repetir seria ruido. */}
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
-                          <span className="text-[12px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                            {g.name}
-                          </span>
-                          {g.since && (
-                            <span className="text-[12px] text-slate-500 dark:text-slate-400">
-                              · entrou em {formatDate(g.since)}
-                            </span>
-                          )}
-                          <span className="ml-auto text-[12px] text-slate-500 dark:text-slate-400 tnum">
-                            {g.items.length} {g.items.length === 1 ? 'registro' : 'registros'}
-                          </span>
-                        </div>
-
-                        <div className="relative pl-6">
-                          <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700/50" />
-                          <div className="space-y-1">
-                            {g.items.map((item, idx) => {
-                              // Passo do processo (playbook) cumprido
-                              if (item._type === 'step') {
-                                return (
-                                  <div key={`step-${item.id}`} className="flex items-start gap-3 py-2.5 relative">
-                                    <div className="w-[26px] h-[26px] rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px]">
-                                      <ListChecks size={12} className="text-indigo-600 dark:text-indigo-400" />
-                                    </div>
-                                    <div className="flex-1 min-w-0 crm-glass rounded-2xl px-4 py-3">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{item.title}</span>
-                                        <CrmBadge variant="info" size="sm">Processo</CrmBadge>
-                                      </div>
-                                      {item.outcome && (
-                                        <div className="mt-1.5 flex gap-1.5 text-[13px] text-slate-600 dark:text-slate-300">
-                                          <CornerDownRight size={13} className="shrink-0 mt-0.5 text-indigo-500" />
-                                          <span><span className="text-slate-500 dark:text-slate-400">Lead:</span> {item.outcome}</span>
-                                        </div>
-                                      )}
-                                      <span className="text-[12px] text-slate-500 dark:text-slate-400">{formatDateTime(item._date)}</span>
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              if (item._type === 'activity') {
-                                const Icon = ACTIVITY_ICONS[item.type] || CalendarCheck;
-                                const label = ACTIVITY_LABELS[item.type] || item.type;
-                                return (
-                                  <div key={`act-${item.id}`} className="flex items-start gap-3 py-2.5 relative">
-                                    <div className="w-[26px] h-[26px] rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px]">
-                                      <Icon size={12} className="text-emerald-600 dark:text-emerald-400" />
-                                    </div>
-                                    <div className="flex-1 min-w-0 crm-glass rounded-2xl px-4 py-3">
-                                      <div className="flex items-center justify-between gap-2 mb-0.5">
-                                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{item.title}</span>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          <span className="text-[12px] text-emerald-600 dark:text-emerald-400 font-medium">Concluida</span>
-                                          <CrmBadge variant="neutral" size="sm">{label}</CrmBadge>
-                                        </div>
-                                      </div>
-                                      {(item.deliveryInput || item.deliveryReport) ? (
-                                        <div className="mt-2 space-y-1.5">
-                                          {item.deliveryInput && (
-                                            <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-sky-400 dark:border-sky-500 bg-sky-50 dark:bg-sky-500/10 px-2.5 py-1.5">
-                                              <span className="text-[12px] font-bold uppercase tracking-wide text-sky-600 dark:text-sky-400 shrink-0 mt-px">Você</span>
-                                              <span className="text-xs text-slate-700 dark:text-slate-200">{item.deliveryInput}</span>
-                                            </div>
-                                          )}
-                                          {item.deliveryReport && (
-                                            <div className="flex items-start gap-2 rounded-lg border-l-[3px] border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1.5">
-                                              <span className="text-[12px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0 mt-px">Lead</span>
-                                              <span className="text-xs text-slate-700 dark:text-slate-200">{item.deliveryReport}</span>
-                                            </div>
-                                          )}
-                                        </div>
-                                      ) : item.description && (
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{item.description}</p>
-                                      )}
-                                      <div className="flex items-center gap-3 mt-2 text-[12px] text-slate-400">
-                                        <span>{formatDateTime(item.completedAt || item.startDate)}</span>
-                                        {item.contact && (
-                                          <>
-                                            <span>·</span>
-                                            <span>{item.contact.name}</span>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
+            return <LeadHistoryTimeline items={timeline} stageHistory={stageHistory} />;
           })()}
 
           {/* Tab: Processo — o que fazer na etapa atual deste lead */}
