@@ -20,7 +20,7 @@ import { getStageWorkSummary } from '../services/crmQueueService';
 import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getDialerQueue, getRecentCallsForContact, createCrmCall, softDeleteCrmCall, getDialerKPIs } from '../services/crmCallsService';
-import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead } from '../services/crmMessagesService';
+import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead, markConversationAsRead } from '../services/crmMessagesService';
 import { listCrmWhatsAppInstances, getCrmWhatsAppInstanceByName, getDefaultCrmWhatsAppInstance, createCrmWhatsAppInstance } from '../services/crmWhatsAppInstanceService';
 import { getCrmPartners, getLeadsByPartner, createCrmPartner, updateCrmPartner, softDeleteCrmPartner } from '../services/crmPartnersService';
 import { getCrmLeadSources, createCrmLeadSource, deleteCrmLeadSource } from '../services/crmLeadSourcesService';
@@ -1501,6 +1501,21 @@ export function useMarkCrmMessagesAsRead() {
     mutationFn: markCrmMessagesAsRead,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.inbox });
+    },
+  });
+}
+
+/**
+ * Marca a conversa inteira como lida (nao so o que a thread carregou).
+ * Invalida inbox (badge) e a conversa aberta (ticks dos baloes).
+ */
+export function useMarkConversationAsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: markConversationAsRead,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.inbox });
+      qc.invalidateQueries({ queryKey: ['crm', 'conversation'] });
     },
   });
 }

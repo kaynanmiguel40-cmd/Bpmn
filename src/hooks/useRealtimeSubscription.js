@@ -35,20 +35,44 @@ export function useRealtimeSubscription(table, queryKeys, options = {}) {
   useEffect(() => {
     if (!enabled) return;
 
+    const invalidateNow = () => {
+      (queryKeysRef.current || []).forEach((key) => {
+        queryClient.invalidateQueries({ queryKey: Array.isArray(key) ? key : [key] });
+      });
+    };
+
     // EGRESS: cada escrita disparava um refetch da query inteira em TODOS os
     // clientes. Numa rajada (cronômetro, edições seguidas) isso re-baixava a
-    // tabela dezenas de vezes. Throttle: no máximo 1 invalidação a cada 4s
-    // (coalesce a rajada num refetch só). Atualiza em até ~4s — ok pra um board.
-    let throttle = null;
+    // tabela dezenas de vezes. Throttle: no máximo 1 invalidação a cada 4s.
+    //
+    // A janela agora tem BORDA DE SUBIDA: o primeiro evento invalida na hora e
+    // só então abre o período de silêncio. Antes todo evento esperava 4s, o que
+    // atrasava CADA mensagem que chegava no inbox — e a rajada continua custando
+    // uma invalidação só, então a economia de egress fica igual.
+    let cooldown = null;
+    let pendente = false;
+
     const scheduleInvalidate = () => {
-      if (throttle) return; // já há um refetch agendado nesta janela
-      throttle = setTimeout(() => {
-        throttle = null;
-        (queryKeysRef.current || []).forEach((key) => {
-          queryClient.invalidateQueries({ queryKey: Array.isArray(key) ? key : [key] });
-        });
+      if (cooldown) { pendente = true; return; }  // dentro da janela: agrega
+      invalidateNow();
+      cooldown = setTimeout(function fim() {
+        // Houve evento durante o silêncio? Pega o estado final e reabre a janela.
+        if (pendente) {
+          pendente = false;
+          invalidateNow();
+          cooldown = setTimeout(fim, 4000);
+        } else {
+          cooldown = null;
+        }
       }, 4000);
     };
+
+    // Reconciliação na reconexão. `postgres_changes` NÃO faz replay do que
+    // aconteceu enquanto o socket esteve fora do ar: sem isto, toda mensagem que
+    // chegasse durante uma queda de wifi / suspensão do notebook / deploy ficava
+    // invisível até um reload manual — o inbox parecia ter "perdido" a mensagem
+    // que estava no banco o tempo todo.
+    let esteveFora = false;
 
     const channel = supabase
       .channel(`realtime-${table}`)
@@ -68,10 +92,24 @@ export function useRealtimeSubscription(table, queryKeys, options = {}) {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          esteveFora = true;
+          return;
+        }
+        if (status === 'SUBSCRIBED' && esteveFora) {
+          esteveFora = false;
+          invalidateNow();  // busca o que chegou durante a queda
+        }
+      });
 
     return () => {
-      if (throttle) clearTimeout(throttle);
+      // Descarregar a invalidação pendente em vez de descartá-la: sair da tela
+      // dentro dos 4s da janela jogava fora o único efeito do evento (o payload
+      // nunca é escrito no cache, só invalida), e a mensagem só reaparecia no
+      // próximo refetch por outro motivo.
+      if (cooldown) clearTimeout(cooldown);
+      if (pendente) invalidateNow();
       supabase.removeChannel(channel);
     };
   }, [table, enabled, queryClient]);

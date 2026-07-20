@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, MessageSquare, Image as ImageIcon, Video, Mic, FileText, Check, CheckCheck, Clock } from 'lucide-react';
+import { Search, MessageSquare, Image as ImageIcon, Video, Mic, FileText, Check, CheckCheck, Clock, AlertTriangle } from 'lucide-react';
 import { useCrmInboxConversations, useCrmWhatsAppInstances } from '../../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../../hooks/queries';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -176,7 +176,8 @@ export function ConversationList({ activeKey, onSelect }) {
   const inboxOpts = useMemo(() => (
     debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}
   ), [debouncedSearch]);
-  const { data: conversations = [], isLoading } = useCrmInboxConversations(inboxOpts);
+  const { data: conversations = [], isLoading, isError, error, refetch, isFetching } =
+    useCrmInboxConversations(inboxOpts);
   const { data: instances = [] } = useCrmWhatsAppInstances();
   const { data: members = [] } = useTeamMembers();
   const { user } = useAuth();
@@ -217,9 +218,13 @@ export function ConversationList({ activeKey, onSelect }) {
   }, [enriched]);
   const totalUnread = useMemo(() => enriched.reduce((sum, c) => sum + (c.unreadCount || 0), 0), [enriched]);
 
-  const showingAll = filterPhone === ALL_INSTANCES;
-  // Default (nada escolhido ainda) = 1º numero da lista = Fyness.
-  const selectedPhone = filterPhone ?? numberTabs[0]?.phone ?? null;
+  // Default = "Todos". Antes o default era o 1º numero da lista (Fyness), e o
+  // inbox abria FILTRADO sem parecer filtrado: as conversas da Lorena nao
+  // existiam na tela ate alguem descobrir a aba e clicar nela. Uma caixa de
+  // entrada que esconde metade das mensagens por padrao e indistinguivel de uma
+  // caixa que perdeu as mensagens — que e exatamente a queixa que investigamos.
+  const showingAll = (filterPhone ?? ALL_INSTANCES) === ALL_INSTANCES;
+  const selectedPhone = showingAll ? null : filterPhone;
 
   const filtered = useMemo(() => {
     let list = enriched;
@@ -299,6 +304,32 @@ export function ConversationList({ activeKey, onSelect }) {
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="p-6 text-center text-sm text-slate-400">Carregando…</div>
+        ) : isError ? (
+          // Distinto do estado vazio DE PROPOSITO. Enquanto o servico devolvia
+          // [] no erro, falha de RLS / migration nao aplicada / timeout aparecia
+          // como "Nenhuma conversa ainda" — e a caixa cheia parecia vazia.
+          <div className="p-6 text-center">
+            <AlertTriangle className="mx-auto mb-2 text-amber-500" size={32} />
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              Não foi possível carregar as conversas
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              As mensagens continuam salvas — é a leitura que falhou.
+            </p>
+            {error?.message && (
+              <p className="mt-2 break-words text-xs text-slate-400 dark:text-slate-500">
+                {error.message}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="mt-3 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {isFetching ? 'Tentando…' : 'Tentar novamente'}
+            </button>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="p-6 text-center">
             <MessageSquare className="mx-auto mb-2 text-slate-300 dark:text-slate-600" size={32} />

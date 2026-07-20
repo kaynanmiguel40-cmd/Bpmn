@@ -53,6 +53,48 @@ export function dbToCrmMessage(row) {
 // ==================== LISTAGEM ====================
 
 /**
+ * Transforma erro do PostgREST em excecao de verdade.
+ *
+ * Antes cada leitura fazia `toast(...); return []`. A promise RESOLVIA, entao o
+ * React Query marcava sucesso: sem isError, sem retry, e a tela renderizava o
+ * estado vazio normal. Falha de RLS, coluna faltando por migration nao aplicada,
+ * timeout ou 5xx do PostgREST viravam "Nenhuma conversa ainda" — indistinguivel
+ * de caixa de entrada vazia. E como o inbox nao refaz a busca ao focar a janela,
+ * a tela vazia ficava ate o reload manual.
+ *
+ * O toast continua (feedback imediato), mas o erro sobe: quem chama decide se
+ * mostra estado de erro, tenta de novo, ou deixa passar.
+ */
+function erroDeLeitura(oQue, error) {
+  toast(`Erro ao ${oQue}: ${error.message}`, 'error');
+  const e = new Error(`${oQue}: ${error.message}`);
+  e.cause = error;
+  return e;
+}
+
+/**
+ * ORDEM DAS MENSAGENS — por que sempre (sent_at, created_at, id).
+ *
+ * `sent_at` vem do `messageTimestamp` do WhatsApp, que tem precisao de SEGUNDO.
+ * Toda rajada de mensagens (o lead mandando 3 linhas seguidas) empata nesse
+ * campo, e ORDER BY com empate no Postgres nao garante ordem nenhuma: a mesma
+ * consulta pode devolver ordens diferentes, e a ordem muda de verdade sempre que
+ * um UPDATE reescreve a tupla — `markCrmMessagesAsRead` faz isso em massa toda
+ * vez que a conversa e aberta. Era isso que fazia a conversa "se reorganizar
+ * sozinha".
+ *
+ * `created_at` e o NOW() do servidor no insert: monotonico, microssegundo, imune
+ * ao relogio do celular do lead. Ele desempata. `id` desempata o desempate, pro
+ * caso de dois inserts no mesmo microssegundo.
+ *
+ * Os indices que sustentam essa ordenacao estao na migration 106.
+ */
+const ORDEM_DESC = (q) => q
+  .order('sent_at',    { ascending: false })
+  .order('created_at', { ascending: false })
+  .order('id',         { ascending: false });
+
+/**
  * Mensagens de uma conversa (contato ou prospect), pra UI do chat.
  * Ordem ASC (mais antigas primeiro, scroll natural do chat).
  */
@@ -63,21 +105,18 @@ export async function getConversationMessages({ contactId, prospectId, limit = 1
   // (mais antigas primeiro) pro scroll natural do chat. Com asc + limit o banco
   // devolvia as N mais ANTIGAS e descartava as recentes — inclusive a ultima
   // mensagem que o vendedor ia responder.
-  let query = supabase
-    .from('crm_messages')
-    .select('*')
-    .is('deleted_at', null)
-    .order('sent_at', { ascending: false })
-    .limit(limit);
+  let query = ORDEM_DESC(
+    supabase
+      .from('crm_messages')
+      .select('*')
+      .is('deleted_at', null)
+  ).limit(limit);
 
   if (contactId)  query = query.eq('contact_id', contactId);
   if (prospectId) query = query.eq('prospect_id', prospectId);
 
   const { data, error } = await query;
-  if (error) {
-    toast(`Erro ao carregar conversa: ${error.message}`, 'error');
-    return [];
-  }
+  if (error) throw erroDeLeitura('carregar a conversa', error);
   return (data || []).map(dbToCrmMessage).reverse();
 }
 
@@ -88,6 +127,45 @@ const INBOX_MESSAGE_SELECT = `
   crm_prospects(id, contact_name, company_name, phone, avatar_url, assigned_to),
   crm_whatsapp_instances(phone_number, instance_name)
 `;
+
+/**
+ * A RPC nao existe neste banco ainda (migration 107 nao aplicada)?
+ *
+ * PostgREST devolve PGRST202 quando nao acha a funcao no schema cache, e o
+ * Postgres devolve 42883 (undefined_function). Qualquer outro erro e problema
+ * real e deve subir — engolir tudo aqui recriaria o bug que acabamos de matar,
+ * o de falha silenciosa virando tela vazia.
+ */
+function ehFuncaoInexistente(error) {
+  const code = error?.code || '';
+  if (code === 'PGRST202' || code === '42883') return true;
+  const msg = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  return msg.includes('could not find the function')
+      || msg.includes('does not exist');
+}
+
+/** Linha da RPC crm_inbox_conversations -> shape que a UI ja consome. */
+function rpcToConversation(r) {
+  return {
+    key:             r.conversa_key,
+    contactId:       r.contact_id || null,
+    prospectId:      r.prospect_id || null,
+    instanceId:      r.instance_id || null,
+    instancePhone:   r.instance_phone || null,
+    instanceName:    r.instance_name || null,
+    avatarColor:     r.avatar_color || null,
+    avatarUrl:       r.avatar_url || null,
+    otherName:       r.other_name || '',
+    otherPhone:      r.other_phone || '',
+    ownerAuthUserId: r.owner_auth_user_id || null,
+    ownerMemberId:   r.owner_member_id || null,
+    lastMessage:     r.last_message || '',
+    lastDirection:   r.last_direction,
+    lastAt:          r.last_at,
+    lastStatus:      r.last_status,
+    unreadCount:     Number(r.unread_count) || 0,
+  };
+}
 
 /**
  * Agrupa mensagens (ordenadas DESC por sent_at) por conversa (contato/prospect),
@@ -169,33 +247,54 @@ async function searchInboxConversations(term, limit) {
   ]);
 
   if (contactsErr || prospectsErr) {
-    toast(`Erro ao buscar conversas: ${(contactsErr || prospectsErr).message}`, 'error');
-    return [];
+    throw erroDeLeitura('buscar conversas', contactsErr || prospectsErr);
   }
 
   const contactIds  = (contacts || []).map((c) => c.id);
   const prospectIds = (prospects || []).map((p) => p.id);
   if (contactIds.length === 0 && prospectIds.length === 0) return [];
 
-  const orParts = [];
-  if (contactIds.length)  orParts.push(`contact_id.in.(${contactIds.join(',')})`);
-  if (prospectIds.length) orParts.push(`prospect_id.in.(${prospectIds.join(',')})`);
-
-  // Mensagens JA restritas aos contatos/prospects encontrados — sem precisar
-  // do "limit * 5" do caminho default (aquele hack compensava agrupar sobre
-  // TODAS as mensagens do sistema; aqui o escopo ja e so quem deu match).
-  const { data: msgs, error } = await supabase
-    .from('crm_messages')
-    .select(INBOX_MESSAGE_SELECT)
-    .is('deleted_at', null)
-    .or(orParts.join(','))
-    .order('sent_at', { ascending: false })
-    .limit(2000);
-
-  if (error) {
-    toast(`Erro ao buscar conversas: ${error.message}`, 'error');
-    return [];
+  // Em LOTES, e nao numa lista so.
+  //
+  // O PostgREST recebe o filtro na URL de um GET. Com 200 contatos + 200
+  // prospects sao 400 UUIDs de 36 caracteres num unico `or=(...in.(...))`:
+  // passa de 15 KB de URL, e o Kong/nginx corta bem antes disso. O browser nao
+  // recebe status nenhum — a conexao morre e vira `TypeError: Failed to fetch`,
+  // que nao se parece em nada com "a busca era grande demais".
+  //
+  // Pior: isso disparava justamente na busca curta ("a", "jo"), a que casa com
+  // muita gente — ou seja, quanto mais util a busca, mais garantido o erro.
+  const LOTE = 40;                      // 40 * 37 chars ~ 1.5 KB de URL, folgado
+  const lotes = [];
+  for (let i = 0; i < contactIds.length; i += LOTE) {
+    lotes.push(`contact_id.in.(${contactIds.slice(i, i + LOTE).join(',')})`);
   }
+  for (let i = 0; i < prospectIds.length; i += LOTE) {
+    lotes.push(`prospect_id.in.(${prospectIds.slice(i, i + LOTE).join(',')})`);
+  }
+
+  const respostas = await Promise.all(lotes.map((filtro) =>
+    ORDEM_DESC(
+      supabase
+        .from('crm_messages')
+        .select(INBOX_MESSAGE_SELECT)
+        .is('deleted_at', null)
+        .or(filtro)
+    ).limit(2000)
+  ));
+
+  const falha = respostas.find((r) => r.error);
+  if (falha) throw erroDeLeitura('buscar conversas', falha.error);
+
+  // Reordena o conjunto: cada lote veio ordenado por si, mas o agrupamento
+  // depende de a mensagem mais recente de cada conversa vir primeiro.
+  const msgs = respostas
+    .flatMap((r) => r.data || [])
+    .sort((a, b) => (
+      (b.sent_at    || '').localeCompare(a.sent_at    || '')
+      || (b.created_at || '').localeCompare(a.created_at || '')
+      || (b.id         || '').localeCompare(a.id         || '')
+    ));
 
   return groupMessagesIntoConversations(msgs, limit);
 }
@@ -211,22 +310,42 @@ async function searchInboxConversations(term, limit) {
  *
  * Retorna: [{ contactId|prospectId, otherName, otherPhone, lastMessage, unreadCount, lastAt }]
  */
-export async function getInboxConversations({ limit = 100, search = '' } = {}) {
+export async function getInboxConversations({
+  limit = 100,
+  search = '',
+  offset = 0,
+  instancePhone = null,
+  ownerAuthId = null,
+  ownerMemberId = null,
+} = {}) {
   const term = (search || '').trim();
   if (term) return searchInboxConversations(term, limit);
 
-  // Busca ultimas N mensagens com join basico em contact/prospect
-  const { data: msgs, error } = await supabase
-    .from('crm_messages')
-    .select(INBOX_MESSAGE_SELECT)
-    .is('deleted_at', null)
-    .order('sent_at', { ascending: false })
-    .limit(limit * 5); // pega mais pra agrupar
+  const { data, error } = await supabase.rpc('crm_inbox_conversations', {
+    p_limit:           limit,
+    p_offset:          offset,
+    p_instance_phone:  instancePhone,
+    p_owner_auth_id:   ownerAuthId,
+    p_owner_member_id: ownerMemberId,
+  });
 
-  if (error) {
-    toast(`Erro ao carregar inbox: ${error.message}`, 'error');
-    return [];
-  }
+  if (!error) return (data || []).map(rpcToConversation);
+
+  // A RPC vive na migration 107. Enquanto ela nao estiver aplicada no banco,
+  // cai no caminho antigo em vez de deixar o inbox na tela de erro — o codigo
+  // roda antes e depois do deploy da migration. Assim que 107 estiver aplicada
+  // em todos os ambientes, este fallback (e groupMessagesIntoConversations,
+  // usado tambem pela busca) pode sair.
+  if (!ehFuncaoInexistente(error)) throw erroDeLeitura('carregar o inbox', error);
+
+  const { data: msgs, error: erroLegado } = await ORDEM_DESC(
+    supabase
+      .from('crm_messages')
+      .select(INBOX_MESSAGE_SELECT)
+      .is('deleted_at', null)
+  ).limit(limit * 5); // pega mais pra agrupar
+
+  if (erroLegado) throw erroDeLeitura('carregar o inbox', erroLegado);
 
   return groupMessagesIntoConversations(msgs, limit);
 }
@@ -324,7 +443,48 @@ export async function sendCrmMessage(payload) {
 // ==================== READ / STARRED / SPAM ====================
 
 /**
- * Marca mensagens inbound como lidas (UI manual).
+ * Marca como lidas TODAS as mensagens inbound de uma conversa.
+ *
+ * Por conversa, e nao pela lista de ids que a tela carregou: a thread mostra as
+ * 200 mais recentes, entao marcar "o que esta na tela" deixava para tras toda
+ * mensagem mais antiga que a 200a — permanentemente, porque nenhuma tela jamais
+ * volta a carregar aquelas linhas.
+ *
+ * Isso nao aparecia enquanto o contador de nao-lidas tambem so enxergava uma
+ * janela recente: os dois lados erravam junto e se cancelavam. Com o COUNT da
+ * RPC (migration 107) somando a conversa inteira, o residuo ficaria visivel e
+ * imortal — o badge travado num numero que nunca zera, por mais que o vendedor
+ * abrisse a conversa.
+ *
+ * Escopo do write agora casa com o escopo do COUNT. E o UPDATE filtra por
+ * `status <> 'read'` pra nao reescrever linha ja lida: alem de barato, evita
+ * mexer na ordem fisica das tuplas sem necessidade.
+ */
+export async function markConversationAsRead({ contactId, prospectId } = {}) {
+  if (!contactId && !prospectId) return { ok: true };
+
+  let q = supabase
+    .from('crm_messages')
+    .update({ status: 'read', read_at: new Date().toISOString() })
+    .eq('direction', 'inbound')
+    .neq('status', 'read')
+    .is('deleted_at', null);
+
+  if (contactId)  q = q.eq('contact_id', contactId);
+  if (prospectId) q = q.eq('prospect_id', prospectId);
+
+  const { error } = await q;
+  if (error) {
+    toast(`Erro ao marcar como lida: ${error.message}`, 'error');
+    return { ok: false };
+  }
+  return { ok: true };
+}
+
+/**
+ * Marca mensagens inbound especificas como lidas (por id).
+ * Mantida para acoes pontuais na UI; o fluxo de abrir conversa usa
+ * `markConversationAsRead`.
  */
 export async function markCrmMessagesAsRead(messageIds = []) {
   if (!Array.isArray(messageIds) || messageIds.length === 0) return { ok: true };

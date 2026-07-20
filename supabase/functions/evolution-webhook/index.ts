@@ -513,15 +513,28 @@ serve(async (req) => {
       .from('crm_whatsapp_instances')
       .insert({ instance_name: instanceName, status: 'connecting' })
     if (insErr) return json({ ok: false, error: `Auto-register instance: ${insErr.message}` }, 500)
-    return json({ ok: true, message: 'instance auto-registered, ignored this event' })
+    // 500 (nao 200): o evento que disparou o auto-registro ainda NAO foi
+    // processado. Com 200 a Evolution o considerava entregue e a primeira
+    // mensagem de uma instancia nova era sempre perdida. Agora ela e reentregue
+    // — e da segunda vez a instancia ja existe e a mensagem entra.
+    return json({
+      ok: false,
+      error: 'instance auto-registrada; reenvie este evento',
+      instanceName,
+    }, 500)
   }
 
   const debug: Record<string, unknown> = { event, instanceName, instanceId: instance.id }
+  // Mensagens que falharam por causa nossa e que a Evolution deve reentregar.
+  let retryable: string[] = []
   try {
     switch (event) {
-      case 'messages_upsert':
-        debug.handlerResult = await handleMessagesUpsert(supabase, instance.id, payload.data, instanceName)
+      case 'messages_upsert': {
+        const r = await handleMessagesUpsert(supabase, instance.id, payload.data, instanceName)
+        debug.handlerResult = r.debug
+        retryable = r.retryable
         break
+      }
       case 'messages_update':
         await handleMessagesUpdate(supabase, payload.data)
         break
@@ -534,6 +547,14 @@ serve(async (req) => {
       default:
         debug.handlerResult = `event "${event}" not handled`
         break
+    }
+    // 200 aqui era o que tornava a perda DEFINITIVA: a Evolution marcava como
+    // entregue e nunca mais reenviava. Agora, se alguma mensagem do lote falhou
+    // por causa nossa, devolvemos 500 pra provocar a reentrega. Reprocessar o
+    // lote e seguro — o UNIQUE de evolution_message_id e o dedup do handler
+    // fazem as que ja entraram serem ignoradas.
+    if (retryable.length) {
+      return json({ ok: false, error: 'falha parcial na ingestao', retryable, debug }, 500)
     }
     return json({ ok: true, debug })
   } catch (err) {
@@ -562,6 +583,251 @@ function mapAckStatus(raw: unknown): string {
   return ''
 }
 
+/**
+ * Converte o `messageTimestamp` da Evolution pra ISO, tolerando os formatos que
+ * o Baileys usa na pratica.
+ *
+ * O `Number(x) * 1000` cru quebrava em dois casos reais: quando o campo chega
+ * como objeto Long do protobufjs (`{low, high, unsigned}`) — `Number()` da NaN,
+ * `new Date(NaN).toISOString()` LANCA, e a excecao derrubava o lote inteiro de
+ * mensagens — e quando algum provider ja manda em milissegundos, caso em que o
+ * `* 1000` jogava a mensagem pro ano 55000 e ela grudava no topo da lista pra
+ * sempre.
+ *
+ * Sem timestamp utilizavel cai pra agora: uma mensagem com hora aproximada e
+ * infinitamente melhor que uma mensagem perdida.
+ */
+function parseMessageTimestamp(raw: unknown): string {
+  let n: number = NaN
+
+  if (typeof raw === 'number') n = raw
+  else if (typeof raw === 'string') n = Number(raw)
+  else if (raw && typeof raw === 'object') {
+    const o = raw as { low?: number; high?: number; toNumber?: () => number }
+    if (typeof o.toNumber === 'function') n = o.toNumber()
+    else if (typeof o.low === 'number') n = (o.high || 0) * 4294967296 + (o.low >>> 0)
+  }
+
+  if (!Number.isFinite(n) || n <= 0) return new Date().toISOString()
+
+  // Segundos (10 digitos) vs milissegundos (13). O corte em 1e11 separa os dois
+  // sem ambiguidade ate o ano 5138.
+  const ms = n < 1e11 ? n * 1000 : n
+  const d = new Date(ms)
+  if (Number.isNaN(d.getTime())) return new Date().toISOString()
+
+  // Data absurda (relogio do aparelho zoado) empurraria a mensagem pro topo ou
+  // pro fim da thread pra sempre. Fora da janela plausivel, usa a hora de agora.
+  const ano = d.getUTCFullYear()
+  if (ano < 2015 || ano > new Date().getUTCFullYear() + 1) return new Date().toISOString()
+
+  return d.toISOString()
+}
+
+/**
+ * Guarda o evento cru que nao virou mensagem.
+ *
+ * Antes existia um `continue` aqui: a mensagem sumia e a funcao respondia 200,
+ * entao a Evolution nunca reenviava e nao sobrava rastro nem pra saber QUANTO
+ * tinha sido perdido. O payload gravado aqui e a unica copia do conteudo
+ * original — e o que torna o reprocessamento possivel depois.
+ *
+ * Nunca lanca: falhar em registrar a perda nao pode derrubar a ingestao do
+ * resto do lote.
+ */
+async function deadLetter(
+  supabase: SupabaseClient,
+  entry: {
+    instanceName?: string
+    evolutionMessageId?: string | null
+    reason: string
+    detail?: string | null
+    payload: unknown
+  },
+): Promise<boolean> {
+  try {
+    // O supabase-js NAO lanca em erro do PostgREST — ele resolve com
+    // { data: null, error }. Um try/catch que ignora o retorno nao percebe
+    // tabela inexistente (migration 106 nao aplicada), RLS, cache de schema
+    // desatualizado nem NOT NULL violado. Seria o bug original de volta, com
+    // um agravante: a fila apareceria VAZIA, e vazio se le como "nao se perdeu
+    // nada" — a rede de seguranca falhando exatamente como o sucesso.
+    const { error } = await supabase.from('crm_webhook_dead_letter').insert({
+      instance_name:        entry.instanceName || null,
+      evolution_message_id: entry.evolutionMessageId || null,
+      reason:               entry.reason,
+      detail:               entry.detail || null,
+      payload:              entry.payload ?? {},
+    })
+    if (error) {
+      console.error('[evolution-webhook] dead-letter REJEITADO:', entry.reason, error.message)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error('[evolution-webhook] dead-letter falhou:', entry.reason, e)
+    return false
+  }
+}
+
+/**
+ * Desembrulha os "envelopes" do WhatsApp.
+ *
+ * Mensagem temporaria, ver-uma-vez e documento-com-legenda nao carregam o
+ * conteudo direto: eles ANINHAM a mensagem real um nivel abaixo. O parser
+ * antigo lia so o nivel de cima, nao achava nada que reconhecesse e descartava
+ * — ou seja, quem tivesse mensagem temporaria ligada no chat (hoje e o padrao
+ * em muita conversa) tinha 100% do que mandava apagado na entrada.
+ *
+ * O limite de 5 voltas e anti-loop: envelope dentro de envelope acontece
+ * (ver-uma-vez dentro de temporaria), envelope infinito nao.
+ */
+function unwrapMessage(msg: any): any {
+  let cur = msg || {}
+  for (let i = 0; i < 5; i++) {
+    const inner =
+      cur?.ephemeralMessage?.message ||
+      cur?.viewOnceMessage?.message ||
+      cur?.viewOnceMessageV2?.message ||
+      cur?.viewOnceMessageV2Extension?.message ||
+      cur?.documentWithCaptionMessage?.message ||
+      // eco das mensagens que o vendedor manda de um aparelho linkado
+      cur?.deviceSentMessage?.message ||
+      cur?.editedMessage?.message ||
+      cur?.protocolMessage?.editedMessage ||
+      null
+    if (!inner || typeof inner !== 'object') break
+    cur = inner
+  }
+  return cur
+}
+
+/** Linha ja existente em crm_messages, achada pelo dedup de evolution_message_id. */
+interface ExistingMessage {
+  id: string
+  status: string
+  direction: string
+}
+
+interface Extracted {
+  content: string | null
+  mediaUrl: string | null
+  mediaType: string | null
+  mediaCaption: string | null
+  mediaMime: string | null
+  /** Preenchido quando o evento NAO e mensagem de conversa (reacao, revogacao,
+   *  ack). Vai pro dead-letter em vez de poluir a thread. */
+  meta: string | null
+  /** Tipo que nao sabemos ler. Entra na thread como placeholder E vai pro
+   *  dead-letter — melhor uma linha feia que um buraco silencioso. */
+  unknown: boolean
+}
+
+/**
+ * Extrai o conteudo de uma mensagem ja desembrulhada.
+ *
+ * Regra que orienta tudo aqui: NADA sai sem virar linha. Se o tipo for
+ * desconhecido, vira placeholder visivel; se for evento de protocolo, vira
+ * dead-letter. O que nao pode acontecer e desaparecer em silencio.
+ */
+function extractContent(msg: any): Extracted {
+  const out: Extracted = {
+    content: null, mediaUrl: null, mediaType: null,
+    mediaCaption: null, mediaMime: null, meta: null, unknown: false,
+  }
+  if (!msg || typeof msg !== 'object') { out.unknown = true; return out }
+
+  // --- texto ---
+  if (msg.conversation) {
+    out.content = msg.conversation
+    return out
+  }
+  if (msg.extendedTextMessage?.text) {
+    out.content = msg.extendedTextMessage.text
+    return out
+  }
+
+  // --- midia ---
+  const media: Array<[string, any, string]> = [
+    ['image',    msg.imageMessage,    'image'],
+    ['video',    msg.videoMessage,    'video'],
+    // ptv = video-recado redondo. E video, so muda o formato de exibicao.
+    ['video',    msg.ptvMessage,      'video'],
+    ['audio',    msg.audioMessage,    'audio'],
+    ['document', msg.documentMessage, 'document'],
+    ['sticker',  msg.stickerMessage,  'sticker'],
+  ]
+  for (const [type, node] of media) {
+    if (!node) continue
+    out.mediaType    = type
+    out.mediaUrl     = node.url || null
+    out.mediaMime    = node.mimetype || null
+    out.mediaCaption = node.caption || node.fileName || null
+    out.content      = out.mediaCaption
+    return out
+  }
+
+  // --- localizacao ---
+  const loc = msg.locationMessage || msg.liveLocationMessage
+  if (loc) {
+    out.mediaType = 'location'
+    const label = loc.name || loc.address || ''
+    const coords = (loc.degreesLatitude != null && loc.degreesLongitude != null)
+      ? `${loc.degreesLatitude},${loc.degreesLongitude}`
+      : ''
+    out.content = `[localização] ${label || coords || 'sem coordenadas'}`.trim()
+    return out
+  }
+
+  // --- contato compartilhado (vCard) ---
+  if (msg.contactMessage || msg.contactsArrayMessage) {
+    out.mediaType = 'contact'
+    const nomes = msg.contactsArrayMessage?.contacts?.length
+      ? msg.contactsArrayMessage.contacts.map((c: any) => c?.displayName).filter(Boolean).join(', ')
+      : (msg.contactMessage?.displayName || '')
+    out.content = `[contato] ${nomes || 'sem nome'}`
+    return out
+  }
+
+  // --- enquete ---
+  const poll = msg.pollCreationMessage || msg.pollCreationMessageV2 || msg.pollCreationMessageV3
+  if (poll) {
+    const opcoes = (poll.options || []).map((o: any) => `- ${o?.optionName ?? o}`).join('\n')
+    out.content = `[enquete] ${poll.name || ''}${opcoes ? '\n' + opcoes : ''}`.trim()
+    return out
+  }
+
+  // --- resposta a botao / lista / template ---
+  const resposta =
+    msg.buttonsResponseMessage?.selectedDisplayText ||
+    msg.buttonsResponseMessage?.selectedButtonId ||
+    msg.listResponseMessage?.title ||
+    msg.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    msg.templateButtonReplyMessage?.selectedDisplayText ||
+    msg.interactiveResponseMessage?.body?.text ||
+    null
+  if (resposta) {
+    out.content = String(resposta)
+    return out
+  }
+
+  // --- eventos de protocolo: nao sao mensagem de conversa ---
+  if (msg.reactionMessage) {
+    out.meta = `reaction:${msg.reactionMessage.text || ''}`
+    return out
+  }
+  if (msg.protocolMessage || msg.senderKeyDistributionMessage || msg.messageContextInfo) {
+    out.meta = 'protocol'
+    return out
+  }
+
+  // --- desconhecido: entra como placeholder, nao some ---
+  out.unknown = true
+  const tipo = Object.keys(msg).find((k) => k !== 'messageContextInfo') || 'desconhecido'
+  out.content = `[mensagem não suportada: ${tipo}]`
+  return out
+}
+
 async function handleMessagesUpsert(
   supabase: SupabaseClient,
   instanceId: string,
@@ -569,12 +835,20 @@ async function handleMessagesUpsert(
   instanceName: string = '',
 ) {
   const debug: any[] = []
+  // Falhas que a Evolution DEVE reentregar (erro nosso, transitorio). Sinalizam
+  // HTTP 500 no fim. Reentrega e segura: o UNIQUE de evolution_message_id e o
+  // dedup logo abaixo impedem duplicata.
+  const retryable: string[] = []
   // Evolution manda data.key, data.message, data.messageTimestamp, data.pushName, data.message etc.
   // Pode vir tambem como array em data.messages
   const messages = Array.isArray(data?.messages) ? data.messages : [data]
 
   for (const m of messages) {
-    if (!m?.key) { debug.push({ skip: 'no_key', m }); continue }
+    if (!m?.key) {
+      await deadLetter(supabase, { instanceName, reason: 'no_key', payload: m })
+      debug.push({ skip: 'no_key', m })
+      continue
+    }
 
     const evolutionMessageId = m.key.id
     const fromMe = !!m.key.fromMe
@@ -588,16 +862,48 @@ async function handleMessagesUpsert(
       const real = extractRealPhoneFromLid(m)
       if (real) { otherPhone = real; lidResolved = true }
     }
-    if (!otherPhone) { debug.push({ skip: 'no_otherPhone', remoteJid }); continue }
+    if (!otherPhone) {
+      await deadLetter(supabase, {
+        instanceName,
+        evolutionMessageId: evolutionMessageId,
+        reason: 'no_phone',
+        detail: `remoteJid=${remoteJid}`,
+        payload: m,
+      })
+      debug.push({ skip: 'no_otherPhone', remoteJid })
+      continue
+    }
 
     // Dedup: ja existe? A Evolution re-emite upsert com o status atualizado
     // (SERVER_ACK -> DELIVERY_ACK -> READ). Em vez de so ignorar, avancamos os
     // ticks da mensagem outbound (sem rebaixar).
-    const { data: existing } = await supabase
-      .from('crm_messages')
-      .select('id, status, direction')
-      .eq('evolution_message_id', evolutionMessageId)
-      .maybeSingle()
+    //
+    // Sem key.id nao ha como deduplicar — mas isso NAO e motivo pra descartar.
+    // Segue em frente e grava: uma mensagem repetida na thread e um problema
+    // menor que uma mensagem ausente. O erro da consulta tambem nao pode virar
+    // "nao existe": tratar falha de rede como ausencia gera duplicata.
+    let existing: ExistingMessage | null = null
+    if (evolutionMessageId) {
+      const { data: found, error: dedupErr } = await supabase
+        .from('crm_messages')
+        .select('id, status, direction')
+        .eq('evolution_message_id', evolutionMessageId)
+        .limit(1)
+        .maybeSingle()
+      if (dedupErr) {
+        await deadLetter(supabase, {
+          instanceName,
+          evolutionMessageId,
+          reason: 'dedup_failed',
+          detail: dedupErr.message,
+          payload: m,
+        })
+        retryable.push(`dedup:${evolutionMessageId}`)
+        debug.push({ skip: 'dedup_query_failed', evolutionMessageId, error: dedupErr.message })
+        continue
+      }
+      existing = (found as ExistingMessage | null) ?? null
+    }
     if (existing) {
       if (existing.direction === 'outbound') {
         const ns = mapAckStatus(m.status)
@@ -613,44 +919,41 @@ async function handleMessagesUpsert(
 
     const direction: 'inbound' | 'outbound' = fromMe ? 'outbound' : 'inbound'
 
-    // Extrai conteudo
-    const msg = m.message || {}
-    let content: string | null = null
-    let mediaUrl: string | null = null
-    let mediaType: string | null = null
-    let mediaCaption: string | null = null
-    let mediaMime: string | null = null
+    // Extrai conteudo. `unwrapMessage` desce nos envelopes (temporaria,
+    // ver-uma-vez, documento-com-legenda) antes do parser olhar o conteudo —
+    // sem isso o conteudo real fica um nivel abaixo e a mensagem era descartada.
+    const msg = unwrapMessage(m.message || {})
+    const ext = extractContent(msg)
+    let content      = ext.content
+    let mediaUrl     = ext.mediaUrl
+    const mediaType  = ext.mediaType
+    const mediaCaption = ext.mediaCaption
+    const mediaMime  = ext.mediaMime
 
-    if (msg.conversation) {
-      content = msg.conversation
-    } else if (msg.extendedTextMessage?.text) {
-      content = msg.extendedTextMessage.text
-    } else if (msg.imageMessage) {
-      mediaType = 'image'
-      mediaUrl = msg.imageMessage.url || null
-      mediaCaption = msg.imageMessage.caption || null
-      mediaMime = msg.imageMessage.mimetype || null
-      content = mediaCaption
-    } else if (msg.videoMessage) {
-      mediaType = 'video'
-      mediaUrl = msg.videoMessage.url || null
-      mediaCaption = msg.videoMessage.caption || null
-      mediaMime = msg.videoMessage.mimetype || null
-      content = mediaCaption
-    } else if (msg.audioMessage) {
-      mediaType = 'audio'
-      mediaUrl = msg.audioMessage.url || null
-      mediaMime = msg.audioMessage.mimetype || null
-    } else if (msg.documentMessage) {
-      mediaType = 'document'
-      mediaUrl = msg.documentMessage.url || null
-      mediaCaption = msg.documentMessage.caption || msg.documentMessage.fileName || null
-      mediaMime = msg.documentMessage.mimetype || null
-      content = mediaCaption
-    } else if (msg.stickerMessage) {
-      mediaType = 'sticker'
-      mediaUrl = msg.stickerMessage.url || null
-      mediaMime = msg.stickerMessage.mimetype || null
+    // Reacao / evento de protocolo: nao e mensagem de conversa. Guarda no
+    // dead-letter (o dado nao se perde) mas nao polui a thread.
+    if (ext.meta) {
+      await deadLetter(supabase, {
+        instanceName,
+        evolutionMessageId: evolutionMessageId,
+        reason: ext.meta.startsWith('reaction') ? 'reaction' : 'protocol',
+        detail: ext.meta,
+        payload: m,
+      })
+      debug.push({ skip: 'meta_event', meta: ext.meta, evolutionMessageId })
+      continue
+    }
+
+    // Tipo que nao sabemos ler: entra na thread como placeholder E fica no
+    // dead-letter pra reprocessar quando o parser aprender o formato.
+    if (ext.unknown) {
+      await deadLetter(supabase, {
+        instanceName,
+        evolutionMessageId: evolutionMessageId,
+        reason: 'unsupported_type',
+        detail: content,
+        payload: m,
+      })
     }
 
     // Vinculacao: contato existente ou prospect novo
@@ -694,14 +997,19 @@ async function handleMessagesUpsert(
       }
     }
 
+    // Sem vinculo nao da pra gravar (constraint crm_messages_link_check exige
+    // contato OU prospect). Nao e culpa da mensagem — e falha nossa ao criar o
+    // prospect, quase sempre transitoria. Vai pro dead-letter E pede reentrega.
     if (!contactId && !prospectId) {
+      await deadLetter(supabase, {
+        instanceName,
+        evolutionMessageId: evolutionMessageId,
+        reason: 'no_link',
+        detail: prospectError || `sem contato/prospect para ${otherPhone}`,
+        payload: m,
+      })
+      retryable.push(`no_link:${evolutionMessageId}`)
       debug.push({ skip: 'no_link', direction, otherPhone, remoteJid, prospectError })
-      continue
-    }
-
-    // Pula mensagens sem conteudo nem midia (eventos meta como reaction, edit, ack que escapam)
-    if (!content && !mediaUrl) {
-      debug.push({ skip: 'empty_content', direction, evolutionMessageId })
       continue
     }
 
@@ -716,10 +1024,23 @@ async function handleMessagesUpsert(
     // criptografada (.enc) da Evolution — sem espelhar, o audio/imagem/video
     // nunca toca no navegador (era so pro inbound antes; por isso a maioria dos
     // audios/midias enviados pelo celular ficava com URL crua e nao tocava).
-    if (mediaType && mediaUrl) {
+    // Condicao e `mediaType`, nao `mediaType && mediaUrl`: na Evolution v2 o
+    // campo `url` vem VAZIO com frequencia, e o base64 e buscado pela chave da
+    // mensagem (evolutionGetMediaBase64 nem usa a url). Exigir url aqui fazia a
+    // midia nunca ser buscada justamente nos casos em que ela so era alcancavel
+    // por esse caminho.
+    // 'location' e 'contact' usam media_type so como rotulo — nao ha arquivo
+    // pra baixar, e tentar buscaria base64 inexistente e sujaria o dead-letter.
+    const temArquivo = mediaType
+      && mediaType !== 'location'
+      && mediaType !== 'contact'
+
+    if (temArquivo) {
       let localized: string | null = mediaUrl
       if (PROVIDER === 'waha') {
-        if (mediaUrl.startsWith('/') || mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1')) {
+        if (!mediaUrl) {
+          localized = null
+        } else if (mediaUrl.startsWith('/') || mediaUrl.includes('localhost') || mediaUrl.includes('127.0.0.1')) {
           localized = await mirrorWahaMediaToStorage(supabase, mediaUrl, mediaType, mediaMime)
         }
       } else {
@@ -729,15 +1050,32 @@ async function handleMessagesUpsert(
           : null
       }
       if (!localized) {
-        debug.push({ skip: 'media_mirror_failed', direction, evolutionMessageId, provider: PROVIDER })
-        continue
+        // A mensagem NAO se perde por causa da midia. Antes um `continue` aqui
+        // jogava fora a linha inteira — inclusive a legenda de texto — quando o
+        // espelhamento falhava. E `evolutionGetMediaBase64` retorna null logo na
+        // primeira linha se EVOLUTION_URL/EVOLUTION_API_KEY faltarem no ambiente
+        // da edge function: bastava o secret nao estar deployado pra TODA foto e
+        // TODO audio recebidos sumirem em silencio.
+        //
+        // Agora grava sem a midia, com placeholder visivel, e registra no
+        // dead-letter pra buscar o arquivo depois (a chave da mensagem fica
+        // guardada — enquanto a Evolution tiver a mensagem, da pra rebaixar).
+        await deadLetter(supabase, {
+          instanceName,
+          evolutionMessageId: evolutionMessageId,
+          reason: 'media_mirror_failed',
+          detail: `provider=${PROVIDER} type=${mediaType} url=${String(mediaUrl).slice(0, 200)}`,
+          payload: m,
+        })
+        debug.push({ degraded: 'media_mirror_failed', direction, evolutionMessageId, provider: PROVIDER })
+        mediaUrl = null
+        if (!content) content = `[${mediaType} não disponível]`
+      } else {
+        mediaUrl = localized
       }
-      mediaUrl = localized
     }
 
-    const timestamp = m.messageTimestamp
-      ? new Date(Number(m.messageTimestamp) * 1000).toISOString()
-      : new Date().toISOString()
+    const timestamp = parseMessageTimestamp(m.messageTimestamp)
 
     const { error: insErr, data: insData } = await supabase.from('crm_messages').insert({
       instance_id:          instanceId,
@@ -757,6 +1095,24 @@ async function handleMessagesUpsert(
       source:               direction === 'inbound' ? 'reply' : 'manual',
     }).select('id').single()
 
+    // Insert que falha nao pode mais sumir dentro do array `debug` com a funcao
+    // respondendo 200. Guarda o payload e sinaliza reentrega — exceto quando a
+    // causa e o UNIQUE de evolution_message_id (23505), que significa que a
+    // mensagem JA esta gravada: reentregar de novo so repetiria o erro.
+    if (insErr) {
+      const duplicada = (insErr as any).code === '23505'
+      if (!duplicada) {
+        await deadLetter(supabase, {
+          instanceName,
+          evolutionMessageId: evolutionMessageId,
+          reason: 'insert_failed',
+          detail: insErr.message,
+          payload: m,
+        })
+        retryable.push(`insert:${evolutionMessageId}`)
+      }
+    }
+
     debug.push({
       inserted: !insErr,
       error:    insErr?.message,
@@ -770,7 +1126,7 @@ async function handleMessagesUpsert(
       content: content?.slice(0, 50),
     })
   }
-  return debug
+  return { debug, retryable }
 }
 
 async function handleMessagesUpdate(supabase: SupabaseClient, data: any) {

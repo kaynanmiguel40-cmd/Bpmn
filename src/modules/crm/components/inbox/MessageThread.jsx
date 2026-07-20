@@ -1,7 +1,7 @@
 import { useEffect, useRef, Component } from 'react';
 import { Link } from 'react-router-dom';
-import { Phone, ExternalLink, MessageSquare, Lock } from 'lucide-react';
-import { useCrmConversation, useMarkCrmMessagesAsRead } from '../../hooks/useCrmQueries';
+import { Phone, ExternalLink, MessageSquare, Lock, AlertTriangle } from 'lucide-react';
+import { useCrmConversation, useMarkConversationAsRead } from '../../hooks/useCrmQueries';
 import { MessageBubble } from './MessageBubble';
 
 /**
@@ -128,24 +128,38 @@ function ThreadEmpty() {
 
 export function MessageThread({ conversation, children }) {
   const scrollRef = useRef(null);
-  const markReadMutation = useMarkCrmMessagesAsRead();
+  const markReadMutation = useMarkConversationAsRead();
 
-  const { data: messages = [], isLoading } = useCrmConversation({
+  const { data: messages = [], isLoading, isError, error, refetch, isFetching } = useCrmConversation({
     contactId:  conversation?.contactId,
     prospectId: conversation?.prospectId,
     limit:      200,
   });
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages.length]);
+  // `messages.length` nao serve de gatilho: a thread carrega no maximo 200
+  // mensagens, entao numa conversa que ja bateu o teto a mensagem nova entra e a
+  // mais antiga sai — o comprimento fica igual e o efeito nunca dispara. A tela
+  // parava de rolar e a mensagem nova ficava fora do campo de visao. O id da
+  // ultima mensagem muda sempre.
+  const ultimaId = messages.length ? messages[messages.length - 1].id : null;
 
   useEffect(() => {
-    if (!conversation || messages.length === 0) return;
-    const unreadIds = messages.filter((m) => m.direction === 'inbound' && m.status !== 'read').map((m) => m.id);
-    if (unreadIds.length > 0) markReadMutation.mutate(unreadIds);
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [ultimaId]);
+
+  useEffect(() => {
+    if (!conversation) return;
+    const temNaoLida = messages.some((m) => m.direction === 'inbound' && m.status !== 'read');
+    if (!temNaoLida) return;
+    // Marca a conversa INTEIRA no banco, nao os ids carregados aqui: as inbound
+    // anteriores a 200a mensagem nunca entram nesta lista e ficariam eternamente
+    // "nao lidas", travando o badge num numero que nao zera.
+    markReadMutation.mutate({
+      contactId:  conversation.contactId,
+      prospectId: conversation.prospectId,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversation?.contactId, conversation?.prospectId, messages.length]);
+  }, [conversation?.contactId, conversation?.prospectId, ultimaId]);
 
   if (!conversation) {
     return <main className="flex-1 flex flex-col min-w-0"><ThreadEmpty /></main>;
@@ -167,6 +181,30 @@ export function MessageThread({ conversation, children }) {
         <div className="relative px-3 md:px-10 lg:px-16 py-4 min-h-full flex flex-col justify-end">
           {isLoading ? (
             <div className="text-center text-sm text-slate-500 py-8">Carregando mensagens…</div>
+          ) : isError ? (
+            // Nunca dizer "nenhuma mensagem ainda" quando na verdade a leitura
+            // falhou: convidar o vendedor a "enviar a primeira" numa conversa que
+            // ja tem historico e pior que nao mostrar nada.
+            <div className="text-center py-8">
+              <AlertTriangle className="mx-auto mb-2 text-amber-500" size={28} />
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                Não foi possível carregar esta conversa
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                O histórico continua salvo — é a leitura que falhou.
+              </p>
+              {error?.message && (
+                <p className="mt-2 break-words text-xs text-slate-400 dark:text-slate-500">{error.message}</p>
+              )}
+              <button
+                type="button"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="mt-3 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {isFetching ? 'Tentando…' : 'Tentar novamente'}
+              </button>
+            </div>
           ) : messages.length === 0 ? (
             <div className="text-center text-sm text-slate-500 dark:text-slate-400 py-8">
               Nenhuma mensagem ainda. Envie a primeira. 👋
