@@ -93,6 +93,9 @@ describe('ExecuteTaskModal — desfecho da LIGAÇÃO', () => {
 
   it('"Não atendeu" some com os cenários — não houve resposta do lead a registrar', () => {
     setup();
+    // Numa ligacao os cenarios so existem DEPOIS de dizer que falou: as duas
+    // perguntas juntas pareciam duas decisoes competindo.
+    fireEvent.click(btn(/Falei com ele/));
     expect(btn(/Pediu proposta/)).toBeInTheDocument();
 
     fireEvent.click(btn(/Não atendeu/));
@@ -153,6 +156,7 @@ describe('ExecuteTaskModal — canais assíncronos (WhatsApp / e-mail)', () => {
 describe('ExecuteTaskModal — cenários de 1 clique', () => {
   it('clicar num cenário conclui na hora, com o texto do cenário como resposta do lead', () => {
     const { onSubmit } = setup();
+    fireEvent.click(btn(/Falei com ele/)); // ligação: cenário só existe depois
     fireEvent.click(btn(/Pediu proposta/));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -295,5 +299,57 @@ describe('ExecuteTaskModal — caminho triste', () => {
     fireEvent.click(btn(/Não atendeu/));
     expect(screen.queryByText('Respondeu outra coisa?')).toBeNull();
     expect(screen.getByText('Quer anotar alguma coisa?')).toBeInTheDocument();
+  });
+});
+
+/**
+ * O playbook real tem um cenario "Nao atendeu nas 3" — que e a MESMA coisa que
+ * o botao "Não atendeu". Mostrar os dois fazia a tela oferecer, na lista de
+ * respostas do lead, exatamente o que a pessoa acabou de negar ao clicar em
+ * "Falei com ele".
+ */
+describe('ExecuteTaskModal — cenário de "não atendeu" não briga com o desfecho', () => {
+  const STEP_REAL = {
+    title: 'Ligação 1',
+    script: 'Oi, aqui é da Fyness.',
+    scenarios: [
+      { when: 'Atendeu e conversou', then: 'Puxa a conversa e passa pra qualificação' },
+      { when: 'Nao atendeu nas 3', then: 'Deixa mensagem: "Oi, acabei de te ligar…"' },
+    ],
+  };
+
+  it('antes de escolher o desfecho, nenhuma lista de resposta aparece', () => {
+    setup({ step: STEP_REAL });
+    // As duas perguntas juntas — "conseguiu falar?" e "o que respondeu?" —
+    // pareciam duas decisoes competindo. Uma so existe depois da outra.
+    expect(screen.queryByText('O que o lead respondeu?')).toBeNull();
+    expect(screen.getByText(/Conseguiu falar com/)).toBeInTheDocument();
+  });
+
+  it('"Falei com ele" mostra só as respostas de quem CONVERSOU', () => {
+    setup({ step: STEP_REAL });
+    fireEvent.click(btn(/Falei com ele/));
+    expect(screen.getByText('Atendeu e conversou')).toBeInTheDocument();
+    // O que contradiz o desfecho escolhido nao pode estar na tela.
+    expect(screen.queryByText('Nao atendeu nas 3')).toBeNull();
+  });
+
+  // O playbook JA diz o que fazer quando ninguem atende (deixar recado). Essa
+  // orientacao vivia num cenario da lista — e a lista some justamente aqui.
+  it('"Não atendeu" traz o script do recado, que antes sumia', () => {
+    setup({ step: STEP_REAL });
+    fireEvent.click(btn(/Não atendeu/));
+    expect(screen.getByText(/Deixa mensagem/)).toBeInTheDocument();
+    expect(screen.queryByText('Atendeu e conversou')).toBeNull();
+  });
+
+  // WhatsApp/e-mail nao tem "atendeu ou nao": a mensagem foi enviada e pronto.
+  it('em canal assíncrono todos os cenários continuam valendo', () => {
+    setup({
+      step: STEP_REAL,
+      activity: makeActivity({ title: 'D2 — WhatsApp com a cartilha' }),
+    });
+    expect(screen.getByText('Atendeu e conversou')).toBeInTheDocument();
+    expect(screen.getByText('Nao atendeu nas 3')).toBeInTheDocument();
   });
 });

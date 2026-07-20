@@ -101,10 +101,20 @@ export function ExecuteTaskModal({
 
   const phone = activity.contactPhone;
   const wa = whatsappUrl(phone);
-  const scenarios = step?.scenarios || [];
   // So ligacao tem "nao atendeu". E-mail e WhatsApp sao assincronos: mandar JA
   // e o passo cumprido — a resposta (ou o silencio) vem no toque seguinte.
   const isCall = stepChannel(activity.title) === 'call';
+  const todosCenarios = step?.scenarios || [];
+  // O cenario de "ninguem atendeu" e a MESMA coisa que o botao "Não atendeu" —
+  // dito duas vezes, em dois lugares. Depois de escolher "Falei com ele", ver
+  // "Não atendeu nas 3" na lista de respostas e contradicao pura: a tela
+  // oferece o que a pessoa acabou de negar.
+  const SEM_CONTATO_RE = /n[ãa]o\s+atend|caixa\s+postal|n[ãa]o\s+retorn|sem\s+resposta|nao\s+respond/i;
+  const cenariosDeConversa = todosCenarios.filter(sc => !SEM_CONTATO_RE.test(sc.when || ''));
+  const cenarioSemContato = todosCenarios.find(sc => SEM_CONTATO_RE.test(sc.when || ''));
+  // Sem o botao de desfecho (e-mail, WhatsApp) todos os cenarios valem: ali nao
+  // existe "atendeu ou nao", a mensagem foi enviada e pronto.
+  const scenarios = isCall ? cenariosDeConversa : todosCenarios;
 
   // Confirmacao pos-conclusao: mostra o proximo toque pra nao perder o fio da
   // cadencia. "Corrigir" volta pro formulario — e o desfazer de quem clicou no
@@ -346,20 +356,34 @@ export function ExecuteTaskModal({
               </button>
             </div>
             {contacted === false && (
-              <p className="mt-2 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-2.5 py-2">
-                A tarefa sai da fila, mas o passo continua pendente — você ainda
-                precisa falar com {activity.leadName || 'ele'}. Depois de concluir,
-                marque quando vai tentar de novo.
-              </p>
+              <div className="mt-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-2.5 py-2 space-y-1.5">
+                {/* O playbook JA tem o que fazer quando ninguem atende (deixar
+                    recado). Isso vivia num cenario da lista, que some justamente
+                    aqui — a orientacao desaparecia na hora em que era necessaria.
+                    Agora ela aparece como INSTRUCAO: o desfecho ja foi escolhido,
+                    nao ha mais o que clicar. */}
+                {cenarioSemContato?.then && (
+                  <p className="text-[13px] text-amber-900 dark:text-amber-200 flex gap-1.5">
+                    <CornerDownRight size={13} className="shrink-0 mt-0.5" />
+                    <span>{cenarioSemContato.then}</span>
+                  </p>
+                )}
+                <p className="text-[12px] text-amber-700 dark:text-amber-300">
+                  A tarefa sai da fila, mas o passo continua pendente — você ainda
+                  precisa falar com {activity.leadName || 'ele'}.
+                </p>
+              </div>
             )}
           </div>
         )}
 
         {/* 4b. Cenarios: 1 clique conclui com aquele resultado. O "como reagir"
             fica visivel junto — e o script da resposta, nao so o rotulo.
-            So aparecem depois de "falei com ele": se ninguem atendeu, nao ha
-            resposta do lead a registrar. */}
-        {scenarios.length > 0 && contacted !== false && (
+            Numa LIGACAO so aparecem DEPOIS de "Falei com ele". Mostrar as duas
+            perguntas ao mesmo tempo — "conseguiu falar?" e "o que ele
+            respondeu?" — fazia parecer que havia duas decisoes competindo,
+            quando na verdade uma so existe depois da outra. */}
+        {scenarios.length > 0 && (!isCall || isEditing || contacted === true) && (
           <div>
             <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
               O que o lead respondeu?
