@@ -41,7 +41,7 @@ export function CrmConfirmDialog({
   onConfirm,
   onCancel,
   onClose,
-  title = 'Confirmar acao',
+  title = 'Confirmar ação',
   message = 'Tem certeza que deseja continuar?',
   confirmLabel = 'Confirmar',
   variant = 'danger',
@@ -54,22 +54,27 @@ export function CrmConfirmDialog({
   return (
     <CrmModal open={open} onClose={handleCancel} title={title} size="sm" footer={
       <>
+        {/* Mesmas classes de rodape dos outros modais (secundario / perigo):
+            44px de alvo de toque e largura cheia no celular, onde o rodape
+            empilha. O estilo "glass" que este dialogo usava era o unico do CRM
+            e fazia o botao mais critico do sistema — o de acao destrutiva —
+            parecer de outra familia. */}
         <button
           onClick={handleCancel}
           disabled={loading}
-          className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white/60 dark:bg-white/5 backdrop-blur border border-slate-300/70 dark:border-white/10 rounded-xl hover:bg-white/80 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+          className="min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto"
         >
           Cancelar
         </button>
         <button
           onClick={onConfirm}
           disabled={loading}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2 ${config.btnClass}`}
+          className={`min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto ${config.btnClass}`}
         >
           {loading && (
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           )}
-          {confirmLabel}
+          {loading ? 'Aguarde…' : confirmLabel}
         </button>
       </>
     }>

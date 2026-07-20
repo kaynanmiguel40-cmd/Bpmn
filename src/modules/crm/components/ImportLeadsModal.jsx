@@ -13,7 +13,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Upload, AlertTriangle } from 'lucide-react';
+import { Upload, AlertTriangle } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { createCrmDeal } from '../services/crmDealsService';
 import { toast } from '../../../contexts/ToastContext';
@@ -131,8 +131,10 @@ export function ImportLeadsModal({ open, onClose, pipeline }) {
     onClose();
   };
 
-  const selectCls =
-    'w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-fyness-primary focus:outline-none';
+  // Classe de campo padrao do CRM (mesma dos demais modais). Aqui nao ha
+  // validacao por campo, entao e uma constante em vez de funcao (name) => ….
+  const fieldClass =
+    'w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-fyness-primary bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2';
 
   return (
     <CrmModal
@@ -145,17 +147,17 @@ export function ImportLeadsModal({ open, onClose, pipeline }) {
           <button
             onClick={onClose}
             disabled={importing}
-            className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
+            className="min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             Cancelar
           </button>
           <button
             onClick={handleImport}
             disabled={importing || validRows.length === 0 || !effectiveDefaultStage}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-fyness-primary hover:bg-fyness-secondary text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             {importing
-              ? <><Loader2 size={16} className="animate-spin" /> Importando {progress.done}/{progress.total}…</>
+              ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importando {progress.done}/{progress.total}…</>
               : <><Upload size={16} /> Importar {validRows.length} negócio{validRows.length !== 1 ? 's' : ''}</>}
           </button>
         </>
@@ -169,7 +171,7 @@ export function ImportLeadsModal({ open, onClose, pipeline }) {
           <select
             value={effectiveDefaultStage}
             onChange={(e) => setDefaultStageId(e.target.value)}
-            className={selectCls}
+            className={fieldClass}
           >
             {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
@@ -187,7 +189,7 @@ export function ImportLeadsModal({ open, onClose, pipeline }) {
             onChange={(e) => setRawText(e.target.value)}
             rows={8}
             placeholder={'João Silva\nMaria Souza, (11) 98888-7777\nPedro Lima, 11977776666, Respondeu'}
-            className={`${selectCls} font-mono text-xs leading-relaxed`}
+            className={`${fieldClass} font-mono text-xs leading-relaxed resize-none`}
           />
           <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">
             Formatos: <code>Nome</code> · <code>Nome, telefone</code> · <code>Nome, telefone, estágio</code>. Separador: vírgula, ponto-e-vírgula ou tab.

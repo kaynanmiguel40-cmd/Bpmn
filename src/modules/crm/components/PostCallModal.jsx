@@ -23,10 +23,16 @@ const OUTCOME_GROUPS = [
     keys: ['answered', 'meeting_scheduled', 'callback_scheduled', 'deal_advanced', 'not_interested'],
   },
   {
-    label: 'Nao falou',
+    label: 'Não falou',
     keys: ['no_answer', 'voicemail', 'busy', 'wrong_number'],
   },
 ];
+
+// Estilo padrao de campo do CRM. Aqui e uma constante (e nao o helper
+// fieldClass(name) dos formularios) porque este modal nao tem erro por campo:
+// a validacao acontece no botao Registrar, que fica desabilitado.
+const fieldClass =
+  'w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary';
 
 function formatSeconds(total) {
   const s = Math.max(0, Math.floor(total || 0));
@@ -137,14 +143,14 @@ export function PostCallModal({
       open={open}
       onClose={onClose}
       onBeforeClose={handleBeforeClose}
-      title="Registrar resultado da ligacao"
+      title="Registrar resultado da ligação"
       size="md"
       footer={
         <>
           <button
             onClick={requestClose}
             disabled={isPending}
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+            className="min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             Pular registro
           </button>
@@ -152,10 +158,10 @@ export function PostCallModal({
             onClick={handleConfirm}
             disabled={!canSubmit || isPending}
             title="Ctrl+Enter pra registrar"
-            className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            Registrar
+            {isPending ? 'Registrando…' : 'Registrar'}
           </button>
         </>
       }
@@ -184,7 +190,7 @@ export function PostCallModal({
             </div>
           </div>
 
-          {/* Duracao */}
+          {/* Duração */}
           <div className="flex items-center gap-2 shrink-0">
             <Clock size={14} className="text-slate-400" />
             <input
@@ -198,8 +204,8 @@ export function PostCallModal({
                   setDuration(m * 60 + s);
                 }
               }}
-              className="w-16 text-center text-sm font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-fyness-primary"
-              aria-label="Duracao da chamada (mm:ss)"
+              className="min-h-[44px] w-16 text-center text-sm font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+              aria-label="Duração da chamada (mm:ss)"
             />
           </div>
         </div>
@@ -218,7 +224,7 @@ export function PostCallModal({
             {OUTCOME_GROUPS.map((group) => (
               <div key={group.label}>
                 <div className="text-[12px] text-slate-500 dark:text-slate-400 mb-1.5">{group.label}</div>
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {group.keys.map((key) => {
                     const o = CALL_OUTCOMES[key];
                     if (!o) return null;
@@ -228,7 +234,7 @@ export function PostCallModal({
                         key={key}
                         type="button"
                         onClick={() => setOutcome(key)}
-                        className={`px-3 py-2 text-sm rounded-lg border text-left transition-colors ${
+                        className={`min-h-[44px] flex items-center px-3 py-2 text-sm rounded-lg border text-left transition-colors ${
                           active
                             ? 'bg-fyness-primary/10 dark:bg-fyness-primary/20 border-fyness-primary text-fyness-primary dark:text-blue-300 font-medium'
                             : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
@@ -254,10 +260,10 @@ export function PostCallModal({
               type="datetime-local"
               value={followUpAt}
               onChange={(e) => setFollowUpAt(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+              className={fieldClass}
             />
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">
-              Cria uma atividade tipo "ligacao" agendada na sua agenda.
+              Cria uma atividade tipo "ligação" agendada na sua agenda.
             </p>
           </div>
         )}
@@ -271,8 +277,8 @@ export function PostCallModal({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            placeholder="O que foi conversado, proximos passos, objecoes..."
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none"
+            placeholder="O que foi conversado, próximos passos, objeções…"
+            className={`${fieldClass} resize-none`}
           />
         </div>
       </div>
@@ -282,8 +288,8 @@ export function PostCallModal({
       open={confirmDiscardOpen}
       onConfirm={() => { setConfirmDiscardOpen(false); onClose?.(); }}
       onCancel={() => setConfirmDiscardOpen(false)}
-      title="Descartar anotacao da ligacao?"
-      message="Voce preencheu resultado e/ou notas dessa ligacao. Fechar agora sem registrar vai perder essas informacoes."
+      title="Descartar anotação da ligação?"
+      message="Você preencheu resultado e/ou notas dessa ligação. Fechar agora sem registrar vai perder essas informações."
       confirmLabel="Descartar"
       variant="warning"
     />

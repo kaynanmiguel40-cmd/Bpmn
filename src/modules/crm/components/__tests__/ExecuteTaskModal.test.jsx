@@ -281,7 +281,9 @@ describe('ExecuteTaskModal — caminho triste', () => {
   it('isPending trava o Concluir mesmo com o desfecho já escolhido (não dá para concluir 2x)', () => {
     setup({ isPending: true });
     expect(btn(/Falei com ele/)).toBeDisabled();
-    expect(btn(/Concluir/)).toBeDisabled();
+    // /Conclui/ casa tanto "Concluir" quanto "Concluindo…": o que este teste
+    // trava e o botao ficar DESABILITADO enquanto envia, nao a palavra exata.
+    expect(btn(/Conclui/)).toBeDisabled();
   });
 
   // O rotulo do campo livre segue o que esta VISIVEL na tela, nao o que existe

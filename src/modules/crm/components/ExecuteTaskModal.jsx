@@ -42,6 +42,21 @@ function whatsappUrl(val) {
   return `https://wa.me/${withCountry}`;
 }
 
+// Classes da norma de modal do CRM. Alvo de toque de 44px porque a usuaria
+// principal opera no celular.
+const BTN_PRIMARY =
+  'min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
+const BTN_SECONDARY =
+  'min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+// Concluir e VERDE de proposito (verde = concluido em todo o CRM); so a
+// geometria segue o primario da norma.
+const BTN_PRIMARY_DONE =
+  'min-h-[44px] px-4 py-2 text-sm font-medium bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
+
+// Este modal nao tem validacao de campo — so o ramo "sem erro" do fieldClass.
+const fieldClass =
+  'w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-fyness-primary bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2';
+
 const whenLabel = (iso) => {
   if (!iso) return null;
   const d = new Date(iso);
@@ -102,13 +117,11 @@ export function ExecuteTaskModal({
             {/* O chip de cenario conclui em 1 clique, entao errar e facil.
                 "Corrigir" e o desfazer que sobrevive ao fechamento do modal. */}
             {onCorrect && (
-              <button onClick={onCorrect}
-                className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700">
+              <button onClick={onCorrect} className={BTN_SECONDARY}>
                 Corrigir
               </button>
             )}
-            <button onClick={onClose}
-              className="px-4 py-2 text-sm font-semibold bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg">
+            <button onClick={onClose} className={BTN_PRIMARY}>
               {nextActivity ? 'Próxima tarefa →' : 'Fechar'}
             </button>
           </>
@@ -138,20 +151,23 @@ export function ExecuteTaskModal({
               <div className="text-sm text-slate-700 dark:text-slate-200 mb-2">
                 {activity.leadName || 'Esse lead'} avançou para <strong>{advance.next.name}</strong>?
               </div>
-              <div className="flex gap-2">
+              {/* Empilha no celular: os dois rotulos carregam o nome da etapa e
+                  nao cabem lado a lado numa tela estreita. */}
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
                   onClick={() => onAdvance?.(advance.next)}
                   disabled={advancing}
-                  className="min-h-[44px] px-4 rounded-lg text-sm font-bold text-white bg-fyness-primary hover:bg-fyness-secondary disabled:opacity-50"
+                  className={BTN_PRIMARY}
                 >
+                  {advancing && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                   {advancing ? 'Movendo…' : `Mover para ${advance.next.name}`}
                 </button>
                 <button
                   type="button"
                   onClick={onDismissAdvance}
                   disabled={advancing}
-                  className="min-h-[44px] px-4 rounded-lg text-sm font-medium border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                  className={BTN_SECONDARY}
                 >
                   Continua em {advance.current.name}
                 </button>
@@ -192,8 +208,7 @@ export function ExecuteTaskModal({
       size="md"
       footer={
         <>
-          <button onClick={onClose} disabled={isPending}
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
+          <button onClick={onClose} disabled={isPending} className={BTN_SECONDARY}>
             Cancelar
           </button>
           <button
@@ -206,10 +221,17 @@ export function ExecuteTaskModal({
             // nao e o que fazia o passo virar verde por engano.
             disabled={isPending || (isCall && !isEditing && contacted === null)}
             title={isCall && contacted === null ? 'Diga se conseguiu falar com o lead' : undefined}
-            className="px-4 py-2 text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className={BTN_PRIMARY_DONE}
           >
-            {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            <CheckCircle2 size={15} /> {isEditing ? 'Salvar' : 'Concluir'}
+            {/* Carregando: o spinner ocupa o lugar do check e o texto diz o que
+                esta acontecendo — "disco girando" nao informa nada. */}
+            {isPending
+              ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              : <CheckCircle2 size={15} />}
+            {/* O texto muda junto com o spinner: "Concluindo…" diz o que esta
+                acontecendo, um disco girando nao diz. Mesmo comportamento do
+                CompleteActivityModal — sao a mesma acao em telas irmas. */}
+            {isEditing ? (isPending ? 'Salvando…' : 'Salvar') : (isPending ? 'Concluindo…' : 'Concluir')}
           </button>
         </>
       }
@@ -297,7 +319,7 @@ export function ExecuteTaskModal({
             <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
               Conseguiu falar com {activity.leadName || 'o lead'}?
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
                 disabled={isPending}
@@ -397,7 +419,7 @@ export function ExecuteTaskModal({
             onChange={(e) => setOutput(e.target.value)}
             rows={2}
             placeholder="Escreva o que ele respondeu"
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none"
+            className={`${fieldClass} resize-none`}
           />
         </div>
 
@@ -410,7 +432,7 @@ export function ExecuteTaskModal({
             onChange={(e) => setInput(e.target.value)}
             rows={2}
             placeholder="Ex.: liguei, caiu na caixa postal, deixei recado"
-            className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none"
+            className={`mt-1.5 ${fieldClass} resize-none`}
           />
         </details>
       </div>

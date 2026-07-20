@@ -15,6 +15,23 @@ import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
 import { useSaveStageSteps, useSaveStageGoal } from '../hooks/useCrmQueries';
 
+// Estilo canonico de campo da norma de modal do CRM. Este modal nao tem
+// validacao por campo (nada aqui e obrigatorio), entao so o estado normal.
+const fieldClass =
+  'w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 focus:ring-fyness-primary bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2';
+
+const BTN_PRIMARIO =
+  'min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
+
+const BTN_SECUNDARIO =
+  'min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+
+// Controles de icone do passo (subir/descer/remover) ficam em 36px, nao 44px:
+// sao adjacentes numa linha densa e 44px quebraria a linha do passo. Unica
+// excecao registrada da norma.
+const BTN_ICONE_PASSO =
+  'min-h-[36px] min-w-[36px] flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30';
+
 function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2 bg-white/60 dark:bg-slate-800/40">
@@ -29,19 +46,19 @@ function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
         <input
           value={step.title}
           onChange={(e) => onChange({ ...step, title: e.target.value })}
-          placeholder="O que o vendedor faz (ex: Ligação manhã, WhatsApp, E-mail…)"
-          className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100"
+          placeholder="O que o vendedor faz (ex.: Ligação manhã, WhatsApp, E-mail…)"
+          className={`${fieldClass} flex-1`}
         />
         <button type="button" onClick={() => onMove(index, -1)} disabled={index === 0}
-          className="p-1 rounded text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30" title="Subir">
+          className={BTN_ICONE_PASSO} title="Subir">
           <ChevronUp size={15} />
         </button>
         <button type="button" onClick={() => onMove(index, 1)} disabled={index === total - 1}
-          className="p-1 rounded text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30" title="Descer">
+          className={BTN_ICONE_PASSO} title="Descer">
           <ChevronDown size={15} />
         </button>
         <button type="button" onClick={() => onRemove(index)}
-          className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30" title="Remover passo">
+          className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30" title="Remover passo">
           <Trash2 size={15} />
         </button>
       </div>
@@ -50,7 +67,7 @@ function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
         onChange={(e) => onChange({ ...step, script: e.target.value })}
         placeholder="Script — o que falar. Use [nome], [empresa]…"
         rows={3}
-        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 resize-y"
+        className={`${fieldClass} resize-none`}
       />
 
       {/* Cenarios: o que o cliente responde + como reagir. */}
@@ -65,7 +82,7 @@ function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
                 onChange({ ...step, scenarios: next });
               }}
               placeholder="Se o cliente diz…"
-              className="flex-1 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[13px]"
+              className="flex-1 px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-[13px] text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
             />
             <span className="text-slate-400 text-xs shrink-0">→</span>
             <input
@@ -76,7 +93,7 @@ function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
                 onChange({ ...step, scenarios: next });
               }}
               placeholder="você faz/responde…"
-              className="flex-1 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[13px]"
+              className="flex-1 px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-[13px] text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
             />
             <button type="button"
               onClick={() => onChange({ ...step, scenarios: (step.scenarios || []).filter((_, k) => k !== si) })}
@@ -146,45 +163,43 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
       size="lg"
       footer={
         editing ? (
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setEditing(false)} disabled={saving}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <>
+            <button onClick={() => setEditing(false)} disabled={saving} className={BTN_SECUNDARIO}>
               Cancelar
             </button>
-            <button onClick={handleSave} disabled={saving}
-              className="px-4 py-2 rounded-lg text-sm font-semibold bg-fyness-primary text-white hover:bg-fyness-secondary disabled:opacity-60">
+            <button onClick={handleSave} disabled={saving} className={BTN_PRIMARIO}>
+              {saving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
               {saving ? 'Salvando…' : 'Salvar processo'}
             </button>
-          </div>
+          </>
         ) : (
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+          <>
+            <span className="mr-auto text-xs text-slate-500 dark:text-slate-400">
               O checklist de cada lead fica na aba Atividades dele.
             </span>
-            <button onClick={() => setEditing(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-fyness-primary text-white hover:bg-fyness-secondary">
+            <button onClick={() => setEditing(true)} className={BTN_PRIMARIO}>
               <Pencil size={15} /> Editar
             </button>
-          </div>
+          </>
         )
       }
     >
       {editing ? (
         <div className="space-y-5">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Objetivo da etapa
             </label>
             <input
               value={objetivo}
               onChange={(e) => setObjetivo(e.target.value)}
-              placeholder="Por que essa etapa existe (ex: conseguir a primeira resposta)"
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100"
+              placeholder="Por que essa etapa existe (ex.: conseguir a primeira resposta)"
+              className={fieldClass}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Passos — o que o vendedor faz
             </label>
             <div className="space-y-2">
@@ -203,21 +218,21 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
             <button
               type="button"
               onClick={() => setDraft([...draft, { title: '', script: '' }])}
-              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-fyness-primary hover:bg-fyness-primary/10"
+              className="mt-2 min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-fyness-primary hover:bg-fyness-primary/10"
             >
               <Plus size={15} /> Adicionar passo
             </button>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Quando mover o lead
             </label>
             <input
               value={exitCriteria}
               onChange={(e) => setExitCriteria(e.target.value)}
               placeholder="O que precisa acontecer pra ele sair dessa etapa"
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100"
+              className={fieldClass}
             />
           </div>
         </div>

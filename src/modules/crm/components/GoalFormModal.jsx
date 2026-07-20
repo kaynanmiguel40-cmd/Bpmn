@@ -6,13 +6,14 @@
 import { useState, useEffect } from 'react';
 import { Brain, Sparkles, AlertTriangle, ArrowRight, Check } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { fieldClass as sharedFieldClass } from './ui/formFieldClass';
 import { useCreateCrmGoal, useUpdateCrmGoal } from '../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../hooks/queries';
 import { getSmartSuggestion } from '../services/crmGoalsService';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Ativa' },
-  { value: 'completed', label: 'Concluida' },
+  { value: 'completed', label: 'Concluída' },
   { value: 'cancelled', label: 'Cancelada' },
 ];
 
@@ -90,10 +91,10 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
 
   const validate = () => {
     const errs = {};
-    if (!form.title.trim()) errs.title = 'Titulo e obrigatorio';
-    if (!form.periodStart) errs.periodStart = 'Data inicio e obrigatoria';
-    if (!form.periodEnd) errs.periodEnd = 'Data fim e obrigatoria';
-    if (form.type === 'individual' && !form.ownerId) errs.ownerId = 'Selecione um responsavel';
+    if (!form.title.trim()) errs.title = 'Título é obrigatório';
+    if (!form.periodStart) errs.periodStart = 'Data de início é obrigatória';
+    if (!form.periodEnd) errs.periodEnd = 'Data de fim é obrigatória';
+    if (form.type === 'individual' && !form.ownerId) errs.ownerId = 'Selecione um responsável';
     const target = parseFloat(form.targetValue);
     if (!target || target <= 0) errs.targetValue = 'Valor alvo deve ser maior que 0';
     setErrors(errs);
@@ -132,8 +133,8 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
     if (!form.periodStart || !form.periodEnd) {
       setErrors(prev => ({
         ...prev,
-        periodStart: !form.periodStart ? 'Defina o periodo primeiro' : null,
-        periodEnd: !form.periodEnd ? 'Defina o periodo primeiro' : null,
+        periodStart: !form.periodStart ? 'Defina o período primeiro' : null,
+        periodEnd: !form.periodEnd ? 'Defina o período primeiro' : null,
       }));
       return;
     }
@@ -157,25 +158,24 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
     }
   };
 
-  const fieldClass = (name) =>
-    `w-full px-3 py-2 text-sm rounded-lg border ${errors[name] ? 'border-rose-400 dark:border-rose-600' : 'border-slate-300 dark:border-slate-600'} bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary`;
+  const fieldClass = (name) => sharedFieldClass(!!errors[name]);
 
   return (
     <CrmModal
       open={open}
       onClose={onClose}
-      title={isEdit ? 'Editar Meta' : 'Nova Meta'}
+      title={isEdit ? 'Editar meta' : 'Nova meta'}
       size="lg"
       footer={
         <>
           <button type="button" onClick={onClose} disabled={isPending}
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
+            className="min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto">
             Cancelar
           </button>
           <button type="submit" form="goal-form" disabled={isPending}
-            className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 flex items-center gap-2">
+            className="min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto">
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {isEdit ? 'Salvar' : 'Criar Meta'}
+            {isPending ? (isEdit ? 'Salvando…' : 'Criando…') : (isEdit ? 'Salvar' : 'Criar meta')}
           </button>
         </>
       }
@@ -183,14 +183,14 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
       <form id="goal-form" onSubmit={handleSubmit} className="space-y-4">
         {/* Escopo: Individual ou Global */}
         <div className="flex gap-3">
-          {[{ value: 'individual', label: 'Individual' }, { value: 'global', label: 'Global (Equipe)' }].map(opt => (
+          {[{ value: 'individual', label: 'Individual' }, { value: 'global', label: 'Global (equipe)' }].map(opt => (
             <button
               key={opt.value}
               type="button"
               onClick={() => setField('type', opt.value)}
-              className={`flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border transition-colors ${
+              className={`flex-1 min-h-[44px] px-4 py-2.5 text-sm font-medium rounded-lg border transition-colors ${
                 form.type === opt.value
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                  ? 'border-fyness-primary bg-fyness-primary/10 text-fyness-primary'
                   : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
@@ -201,25 +201,25 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
 
         {/* Titulo */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titulo *</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Título *</label>
           <input value={form.title} onChange={(e) => setField('title', e.target.value)}
-            placeholder="Ex: Meta de vendas Marco" className={fieldClass('title')} />
+            placeholder="Ex.: Meta de vendas março" className={fieldClass('title')} />
           {errors.title && <p className="text-xs text-rose-500 mt-0.5">{errors.title}</p>}
         </div>
 
         {/* Descricao */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Descricao</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Descrição</label>
           <textarea value={form.description} onChange={(e) => setField('description', e.target.value)}
-            placeholder="Detalhes da meta..." rows={2} className={`${fieldClass('description')} resize-none`} />
+            placeholder="Detalhes da meta…" rows={2} className={`${fieldClass('description')} resize-none`} />
         </div>
 
         {/* Responsavel (so individual) */}
         {form.type === 'individual' && (
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Responsavel *</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Responsável *</label>
             <select value={form.ownerId} onChange={(e) => setField('ownerId', e.target.value)} className={fieldClass('ownerId')}>
-              <option value="">Selecione...</option>
+              <option value="">Selecione…</option>
               {crmMembers.length > 0 ? (
                 <>
                   {crmMembers.filter(m => m.crmRole === 'gestor').length > 0 && (
@@ -233,7 +233,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                     </optgroup>
                   )}
                   {crmMembers.filter(m => m.crmRole === 'pre_vendedor').length > 0 && (
-                    <optgroup label="Pre-vendedores">
+                    <optgroup label="Pré-vendedores">
                       {crmMembers.filter(m => m.crmRole === 'pre_vendedor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </optgroup>
                   )}
@@ -249,7 +249,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
         {/* Periodo */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Inicio *</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Início *</label>
             <input type="date" value={form.periodStart}
               onChange={(e) => setField('periodStart', e.target.value)} className={fieldClass('periodStart')} />
             {errors.periodStart && <p className="text-xs text-rose-500 mt-0.5">{errors.periodStart}</p>}
@@ -266,15 +266,15 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Valor Alvo (R$) *</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Valor alvo (R$) *</label>
               <button
                 type="button"
                 onClick={handleSmartSuggest}
                 disabled={smartLoading}
-                className="flex items-center gap-1 px-2 py-0.5 text-[12px] font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded-md hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1 px-2.5 py-1 text-[12px] font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded-md hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors disabled:opacity-50"
               >
                 <Brain size={12} />
-                Sugerir Meta
+                Sugerir meta
               </button>
             </div>
             <input type="number" min="0" step="0.01" value={form.targetValue}
@@ -283,11 +283,11 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
             {errors.targetValue && <p className="text-xs text-rose-500 mt-0.5">{errors.targetValue}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Ajuste Manual (R$)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Ajuste manual (R$)</label>
             <input type="number" min="0" step="0.01" value={form.currentValue}
               onChange={(e) => setField('currentValue', e.target.value)}
               placeholder="0" className={fieldClass('currentValue')} />
-            <p className="text-[12px] text-slate-400 mt-0.5">Valor extra somado ao progresso automatico</p>
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">Valor extra somado ao progresso automático</p>
           </div>
         </div>
 
@@ -297,7 +297,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
             {smartLoading ? (
               <div className="flex items-center gap-3 justify-center py-4">
                 <div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm text-violet-600 dark:text-violet-400">Analisando dados do CRM...</span>
+                <span className="text-sm text-violet-600 dark:text-violet-400">Analisando dados do CRM…</span>
               </div>
             ) : smartData && !smartData.hasData ? (
               <div className="flex items-start gap-3 py-2">
@@ -305,7 +305,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                 <div>
                   <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Dados insuficientes</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Cadastre registros de trafego pago e feche deals primeiro para que o sistema possa calcular uma meta realista.
+                    Cadastre registros de tráfego pago e feche deals primeiro para que o sistema possa calcular uma meta realista.
                   </p>
                 </div>
               </div>
@@ -314,7 +314,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                 <div className="flex items-center gap-2 mb-3">
                   <Sparkles size={14} className="text-violet-600 dark:text-violet-400" />
                   <span className="text-xs font-semibold text-violet-700 dark:text-violet-300 uppercase tracking-wider">
-                    Sugestao SMART
+                    Sugestão SMART
                   </span>
                 </div>
 
@@ -325,7 +325,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                     <span className="font-medium text-slate-700 dark:text-slate-200">{formatCurrency(smartData.investmentAvg)}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-500 dark:text-slate-400 w-32">CPL historico:</span>
+                    <span className="text-slate-500 dark:text-slate-400 w-32">CPL histórico:</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">{formatCurrency(smartData.cpl)}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
@@ -338,10 +338,10 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                   </div>
 
                   <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-500 dark:text-slate-400 w-32">Conversao real:</span>
+                    <span className="text-slate-500 dark:text-slate-400 w-32">Conversão real:</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">
                       {smartData.conversionRate.toFixed(1)}%
-                      <span className="text-[12px] text-slate-400 ml-1">({smartData.conversionSource === 'history' ? 'historico' : 'estimada'})</span>
+                      <span className="text-[12px] text-slate-500 dark:text-slate-400 ml-1">({smartData.conversionSource === 'history' ? 'histórico' : 'estimada'})</span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
@@ -349,7 +349,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                     <span className="font-medium text-slate-700 dark:text-slate-200">{smartData.expectedDeals}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-500 dark:text-slate-400 w-32">Ticket medio:</span>
+                    <span className="text-slate-500 dark:text-slate-400 w-32">Ticket médio:</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">{formatCurrency(smartData.avgDealValue)}</span>
                   </div>
                 </div>
@@ -357,7 +357,7 @@ export function GoalFormModal({ open, onClose, goal = null, defaultType = 'indiv
                 {/* Resultado */}
                 <div className="mt-3 pt-3 border-t border-violet-200 dark:border-violet-700/50 flex items-center justify-between">
                   <div>
-                    <div className="text-[12px] font-medium text-violet-500 uppercase">Meta Sugerida</div>
+                    <div className="text-[12px] font-medium text-violet-500 uppercase">Meta sugerida</div>
                     <div className="text-lg font-bold text-violet-700 dark:text-violet-300">
                       {formatCurrency(smartData.suggestedTarget)}
                     </div>

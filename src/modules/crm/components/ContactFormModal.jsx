@@ -8,6 +8,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X, Plus } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { fieldClass as sharedFieldClass } from './ui/formFieldClass';
 import { crmContactSchema } from '../schemas/crmValidation';
 import { useCrmCompanies, useCreateCrmContact, useUpdateCrmContact } from '../hooks/useCrmQueries';
 
@@ -22,6 +23,17 @@ const STATUS_OPTIONS = [
   { value: 'inactive', label: 'Inativo' },
   { value: 'customer', label: 'Cliente' },
 ];
+
+// Norma de modal do CRM: mesma geometria/estilo do fieldClass do formulario.
+// Fica fora do componente porque TagInput/CompanyCombobox nao enxergam os errors do form.
+const BASE_FIELD_CLASS =
+  'w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary';
+
+// Norma de modal do CRM: classes canonicas do rodape (alvo de toque >= 44px).
+const BTN_PRIMARY =
+  'min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
+const BTN_SECONDARY =
+  'min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
 
 function TagInput({ value = [], onChange }) {
   const [input, setInput] = useState('');
@@ -57,10 +69,10 @@ function TagInput({ value = [], onChange }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
           placeholder="Digite e pressione Enter"
-          className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+          className={`flex-1 ${BASE_FIELD_CLASS}`}
         />
-        <button type="button" onClick={addTag} className="px-2 py-1.5 text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600">
-          <Plus size={14} />
+        <button type="button" onClick={addTag} className="min-h-[44px] min-w-[44px] shrink-0 flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+          <Plus size={16} />
         </button>
       </div>
     </div>
@@ -89,8 +101,8 @@ function CompanyCombobox({ value, onChange }) {
         value={open ? search : (selected?.name || '')}
         onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
-        placeholder="Buscar empresa..."
-        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+        placeholder="Buscar empresa…"
+        className={BASE_FIELD_CLASS}
       />
       {value && (
         <button
@@ -111,7 +123,7 @@ function CompanyCombobox({ value, onChange }) {
               className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
             >
               <span className="font-medium text-slate-800 dark:text-slate-200">{c.name}</span>
-              {c.segment && <span className="text-xs text-slate-400">({c.segment})</span>}
+              {c.segment && <span className="text-xs text-slate-500 dark:text-slate-400">({c.segment})</span>}
             </button>
           ))}
         </div>
@@ -175,22 +187,22 @@ export function ContactFormModal({ open, onClose, contact = null }) {
     onClose();
   };
 
-  const fieldClass = (name) => `w-full px-3 py-2 text-sm rounded-lg border ${errors[name] ? 'border-rose-300 dark:border-rose-700 focus:ring-rose-500' : 'border-slate-300 dark:border-slate-600 focus:ring-fyness-primary'} bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2`;
+  const fieldClass = (name) => sharedFieldClass(!!errors[name]);
 
   return (
     <CrmModal
       open={open}
       onClose={onClose}
-      title={isEdit ? 'Editar Contato' : 'Novo Contato'}
+      title={isEdit ? 'Editar contato' : 'Novo contato'}
       size="lg"
       footer={
         <>
-          <button type="button" onClick={onClose} disabled={isPending} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
+          <button type="button" onClick={onClose} disabled={isPending} className={BTN_SECONDARY}>
             Cancelar
           </button>
-          <button type="submit" form="contact-form" disabled={isPending} className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 flex items-center gap-2">
+          <button type="submit" form="contact-form" disabled={isPending} className={BTN_PRIMARY}>
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {isEdit ? 'Salvar' : 'Criar Contato'}
+            {isPending ? (isEdit ? 'Salvando…' : 'Criando…') : (isEdit ? 'Salvar' : 'Criar contato')}
           </button>
         </>
       }
@@ -218,7 +230,7 @@ export function ContactFormModal({ open, onClose, contact = null }) {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Cargo</label>
-            <input {...register('position')} placeholder="Ex: Diretor Comercial" className={fieldClass('position')} />
+            <input {...register('position')} placeholder="Ex.: Diretor comercial" className={fieldClass('position')} />
           </div>
         </div>
 
@@ -240,10 +252,10 @@ export function ContactFormModal({ open, onClose, contact = null }) {
           </div>
         </div>
 
-        {/* Endereco */}
+        {/* Endereço */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Endereco</label>
-          <input {...register('address')} placeholder="Rua, numero, complemento" className={fieldClass('address')} />
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Endereço</label>
+          <input {...register('address')} placeholder="Rua, número, complemento" className={fieldClass('address')} />
         </div>
 
         {/* Cidade + Estado */}
@@ -255,7 +267,7 @@ export function ContactFormModal({ open, onClose, contact = null }) {
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Estado</label>
             <select {...register('state')} className={fieldClass('state')}>
-              <option value="">Selecione...</option>
+              <option value="">Selecione…</option>
               {UF_LIST.map(uf => <option key={uf} value={uf}>{uf}</option>)}
             </select>
           </div>
@@ -274,7 +286,7 @@ export function ContactFormModal({ open, onClose, contact = null }) {
         {/* Notas */}
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Notas</label>
-          <textarea {...register('notes')} rows={3} placeholder="Observacoes sobre o contato..." className={`${fieldClass('notes')} resize-none`} />
+          <textarea {...register('notes')} rows={3} placeholder="Observações sobre o contato…" className={`${fieldClass('notes')} resize-none`} />
         </div>
       </form>
     </CrmModal>

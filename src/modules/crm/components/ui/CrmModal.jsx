@@ -111,9 +111,15 @@ export function CrmModal({ open, onClose, title, size = 'md', children, footer, 
           {children}
         </div>
 
-        {/* Footer */}
+        {/* Footer.
+            No celular os botoes EMPILHAM (flex-col), e `-reverse` poe o
+            primario — que e sempre o ultimo no DOM — no TOPO da pilha, onde o
+            polegar chega primeiro. Em linha unica, modal de 3 botoes estourava
+            a largura em telas de 360px.
+            Os botoes usam `w-full sm:w-auto`: e o par desta regra, e um so nao
+            funciona sem o outro. */}
         {footer && (
-          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-200/80 dark:border-white/10 rounded-b-2xl shrink-0">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 px-5 py-3 border-t border-slate-200/80 dark:border-white/10 rounded-b-2xl shrink-0">
             {footer}
           </div>
         )}

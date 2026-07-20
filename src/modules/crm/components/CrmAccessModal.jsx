@@ -100,7 +100,7 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
+            className="min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             Cancelar
           </button>
@@ -108,10 +108,12 @@ export function CrmAccessModal({ open, member, onClose, onSave }) {
             type="button"
             onClick={handleSave}
             disabled={saving || !dirty}
-            className="px-4 py-2 text-sm font-semibold bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto"
           >
-            {saving && <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-            {dirty ? 'Salvar acesso' : 'Sem alterações'}
+            {saving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {/* "Sem alterações" no lugar do rótulo é decisão de produto: o botão
+                desabilitado explica por que não dá pra salvar. */}
+            {saving ? 'Salvando…' : dirty ? 'Salvar acesso' : 'Sem alterações'}
           </button>
         </>
       }

@@ -17,6 +17,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { fieldClass } from './ui/formFieldClass';
+
+// Botões do rodapé na norma de modal do CRM: alvo de toque de 44px e
+// largura cheia no celular (a casca empilha os botões abaixo do sm).
+const PRIMARY_BTN =
+  'min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
+const SECONDARY_BTN =
+  'min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
 
 export function CompleteActivityModal({
   open,
@@ -76,7 +84,7 @@ export function CompleteActivityModal({
           <button
             onClick={onClose}
             disabled={isPending}
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+            className={SECONDARY_BTN}
           >
             Cancelar
           </button>
@@ -85,7 +93,7 @@ export function CompleteActivityModal({
               onClick={handleSkipDetails}
               disabled={!canSubmit}
               title="Conclui a tarefa sem preencher o que foi feito/respondido"
-              className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+              className={SECONDARY_BTN}
             >
               Pular detalhes e concluir
             </button>
@@ -94,10 +102,20 @@ export function CompleteActivityModal({
             onClick={handleConfirm}
             disabled={!canSubmit}
             title={isEditing ? 'Ctrl+Enter pra salvar' : 'Ctrl+Enter pra concluir'}
-            className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className={PRIMARY_BTN}
           >
-            {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            <CheckCircle2 size={15} /> {isEditing ? 'Salvar' : 'Concluir'}
+            {/* Carregando: o spinner ocupa o lugar do ícone e o texto diz o que está acontecendo. */}
+            {isPending ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                {isEditing ? 'Salvando…' : 'Concluindo…'}
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={15} />
+                {isEditing ? 'Salvar' : 'Concluir'}
+              </>
+            )}
           </button>
         </>
       }
@@ -119,7 +137,7 @@ export function CompleteActivityModal({
             onChange={(e) => setInput(e.target.value)}
             rows={3}
             placeholder="Ex.: liguei e apresentei a proposta, mandei o áudio explicando o preço..."
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none"
+            className={fieldClass(false, 'resize-none')}
             autoFocus
           />
         </div>
@@ -134,7 +152,7 @@ export function CompleteActivityModal({
             onChange={(e) => setOutput(e.target.value)}
             rows={3}
             placeholder="Ex.: achou caro, pediu pra ligar semana que vem, topou agendar reunião..."
-            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none"
+            className={fieldClass(false, 'resize-none')}
           />
         </div>
       </div>

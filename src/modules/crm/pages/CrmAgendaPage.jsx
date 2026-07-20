@@ -8,7 +8,7 @@
  *   Fila (padrão) - a lista priorizada que responde "o que eu faço agora":
  *                   atrasadas (agrupadas por lead), hoje, leads parados. É a
  *                   tela de trabalho. Ver components/agenda/WorkQueue.
- *   Calendário    - mês/semana/dia/lista, pra planejar e arrastar. Integra com
+ *   Calendário    - mês/semana/dia, pra planejar e arrastar. Integra com
  *                   o Google Calendar nos dois sentidos: as atividades do CRM
  *                   já são espelhadas pro Google (push, em crmActivitiesService)
  *                   e aqui também PUXAMOS os eventos do Google (pull,
@@ -57,10 +57,6 @@ const addMonths = (d, n) => {
 
 // Recorte de datas que o calendário precisa carregar, por visão.
 function computeRange(view, date) {
-  if (view === 'agenda') {
-    const s = startOfDay(date);
-    return [s, addDays(s, 31)]; // lista cobre ~30 dias à frente
-  }
   if (view === 'day') {
     const s = startOfDay(date);
     return [s, addDays(s, 1)];
@@ -115,8 +111,11 @@ function MyDayCalendar() {
   // Default de "view" é congelado no mount (useState) — se recalculasse a
   // cada render a partir de linkedDate, apertar "Hoje" (que limpa o param
   // "date") mudaria o default e resetaria a view sozinho.
-  const [initialView] = useState(() => (linkedDate ? 'day' : 'agenda'));
-  const [view, setView] = useUrlState('view', initialView);
+  // 'agenda' (a antiga aba Lista) saiu — a Fila ocupou esse lugar. Link salvo
+  // com ?view=agenda cai na Semana em vez de numa visao que nao existe mais.
+  const [initialView] = useState(() => (linkedDate ? 'day' : 'week'));
+  const [viewRaw, setView] = useUrlState('view', initialView);
+  const view = viewRaw === 'agenda' ? 'week' : viewRaw;
   const [dateISO, setDateISO] = useUrlState('date', '');
   const currentDate = useMemo(() => (dateISO ? new Date(dateISO) : new Date()), [dateISO]);
   const [viewingMemberId, setViewingMemberId] = useUrlState('member', ''); // '' = eu | 'all' = todos | authUserId de alguém
@@ -303,7 +302,6 @@ function MyDayCalendar() {
     let d = new Date(currentDate);
     if (view === 'month') d = addMonths(d, dir);
     else if (view === 'week') d.setDate(d.getDate() + dir * 7);
-    else if (view === 'agenda') d.setDate(d.getDate() + dir * 30);
     else d.setDate(d.getDate() + dir);
     setDateISO(d.toISOString());
   }, [view, currentDate, setDateISO]);

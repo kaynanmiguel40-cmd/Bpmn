@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CrmModal } from './ui/CrmModal';
+import { fieldClass as sharedFieldClass } from './ui/formFieldClass';
 import { crmCompanySchema } from '../schemas/crmValidation';
 import { useCreateCrmCompany, useUpdateCrmCompany } from '../hooks/useCrmQueries';
 
@@ -18,13 +19,25 @@ const UF_LIST = [
 const SIZE_OPTIONS = [
   { value: 'micro', label: 'Microempresa' },
   { value: 'small', label: 'Pequena' },
-  { value: 'medium', label: 'Media' },
+  { value: 'medium', label: 'Média' },
   { value: 'large', label: 'Grande' },
 ];
 
+// value = chave persistida no banco e usada por data/cnaeMapping.js (sem acento).
+// label = so o texto exibido. NAO acentuar o `value`: quebraria a classificacao
+// automatica por CNAE e os registros de empresa ja salvos.
 const SEGMENT_OPTIONS = [
-  'Tecnologia', 'Educacao', 'Saude', 'Varejo', 'Industria', 'Servicos',
-  'Financeiro', 'Construcao', 'Alimenticio', 'Logistica', 'Outro',
+  { value: 'Tecnologia', label: 'Tecnologia' },
+  { value: 'Educacao', label: 'Educação' },
+  { value: 'Saude', label: 'Saúde' },
+  { value: 'Varejo', label: 'Varejo' },
+  { value: 'Industria', label: 'Indústria' },
+  { value: 'Servicos', label: 'Serviços' },
+  { value: 'Financeiro', label: 'Financeiro' },
+  { value: 'Construcao', label: 'Construção' },
+  { value: 'Alimenticio', label: 'Alimentício' },
+  { value: 'Logistica', label: 'Logística' },
+  { value: 'Outro', label: 'Outro' },
 ];
 
 export function CompanyFormModal({ open, onClose, company = null }) {
@@ -73,22 +86,22 @@ export function CompanyFormModal({ open, onClose, company = null }) {
     onClose();
   };
 
-  const fieldClass = (name) => `w-full px-3 py-2 text-sm rounded-lg border ${errors[name] ? 'border-rose-300 dark:border-rose-700 focus:ring-rose-500' : 'border-slate-300 dark:border-slate-600 focus:ring-fyness-primary'} bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2`;
+  const fieldClass = (name) => sharedFieldClass(!!errors[name]);
 
   return (
     <CrmModal
       open={open}
       onClose={onClose}
-      title={isEdit ? 'Editar Empresa' : 'Nova Empresa'}
+      title={isEdit ? 'Editar empresa' : 'Nova empresa'}
       size="lg"
       footer={
         <>
-          <button type="button" onClick={onClose} disabled={isPending} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
+          <button type="button" onClick={onClose} disabled={isPending} className="min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto">
             Cancelar
           </button>
-          <button type="submit" form="company-form" disabled={isPending} className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 flex items-center gap-2">
+          <button type="submit" form="company-form" disabled={isPending} className="min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto">
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {isEdit ? 'Salvar' : 'Criar Empresa'}
+            {isPending ? (isEdit ? 'Salvando…' : 'Criando…') : (isEdit ? 'Salvar' : 'Criar empresa')}
           </button>
         </>
       }
@@ -112,14 +125,14 @@ export function CompanyFormModal({ open, onClose, company = null }) {
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Segmento</label>
             <select {...register('segment')} className={fieldClass('segment')}>
-              <option value="">Selecione...</option>
-              {SEGMENT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="">Selecione…</option>
+              {SEGMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Porte</label>
             <select {...register('size')} className={fieldClass('size')}>
-              <option value="">Selecione...</option>
+              <option value="">Selecione…</option>
               {SIZE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
@@ -144,10 +157,10 @@ export function CompanyFormModal({ open, onClose, company = null }) {
           <input {...register('website')} placeholder="https://www.empresa.com" className={fieldClass('website')} />
         </div>
 
-        {/* Endereco */}
+        {/* Endereço */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Endereco</label>
-          <input {...register('address')} placeholder="Rua, numero, complemento" className={fieldClass('address')} />
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Endereço</label>
+          <input {...register('address')} placeholder="Rua, número, complemento" className={fieldClass('address')} />
         </div>
 
         {/* Cidade + Estado */}
@@ -159,7 +172,7 @@ export function CompanyFormModal({ open, onClose, company = null }) {
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Estado</label>
             <select {...register('state')} className={fieldClass('state')}>
-              <option value="">Selecione...</option>
+              <option value="">Selecione…</option>
               {UF_LIST.map(uf => <option key={uf} value={uf}>{uf}</option>)}
             </select>
           </div>
@@ -168,7 +181,7 @@ export function CompanyFormModal({ open, onClose, company = null }) {
         {/* Notas */}
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Notas</label>
-          <textarea {...register('notes')} rows={3} placeholder="Observacoes sobre a empresa..." className={`${fieldClass('notes')} resize-none`} />
+          <textarea {...register('notes')} rows={3} placeholder="Observações sobre a empresa…" className={`${fieldClass('notes')} resize-none`} />
         </div>
       </form>
     </CrmModal>

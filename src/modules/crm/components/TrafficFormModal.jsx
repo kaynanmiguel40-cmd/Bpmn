@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { CrmModal } from './ui/CrmModal';
+import { fieldClass as sharedFieldClass } from './ui/formFieldClass';
 import { useCreateCrmTraffic, useUpdateCrmTraffic, useCrmPipelines } from '../hooks/useCrmQueries';
 
 const CHANNELS = [
@@ -14,8 +15,8 @@ const CHANNELS = [
   { value: 'linkedin', label: 'LinkedIn' },
   { value: 'tiktok', label: 'TikTok' },
   { value: 'youtube', label: 'YouTube' },
-  { value: 'organico', label: 'Organico' },
-  { value: 'indicacao', label: 'Indicacao' },
+  { value: 'organico', label: 'Orgânico' },
+  { value: 'indicacao', label: 'Indicação' },
   { value: 'outro', label: 'Outro' },
 ];
 
@@ -103,14 +104,14 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
   const validate = () => {
     const errs = {};
     if (!form.channel) errs.channel = 'Selecione um canal';
-    if (!form.periodStart) errs.periodStart = 'Data inicio obrigatoria';
-    if (!form.periodEnd) errs.periodEnd = 'Data fim obrigatoria';
+    if (!form.periodStart) errs.periodStart = 'Data de início é obrigatória';
+    if (!form.periodEnd) errs.periodEnd = 'Data de fim é obrigatória';
     // Formato YYYY-MM-DD do <input type="date"> compara corretamente como string.
     if (form.periodStart && form.periodEnd && form.periodEnd < form.periodStart) {
-      errs.periodEnd = 'Data fim deve ser igual ou posterior ao inicio';
+      errs.periodEnd = 'Data de fim deve ser igual ou posterior ao início';
     }
     const spent = parseFloat(form.amountSpent);
-    if (isNaN(spent) || spent < 0) errs.amountSpent = 'Valor gasto invalido';
+    if (isNaN(spent) || spent < 0) errs.amountSpent = 'Valor gasto inválido';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -145,25 +146,24 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
     }
   };
 
-  const fieldClass = (name) =>
-    `w-full px-3 py-2 text-sm rounded-lg border ${errors[name] ? 'border-rose-400 dark:border-rose-600' : 'border-slate-300 dark:border-slate-600'} bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary`;
+  const fieldClass = (name) => sharedFieldClass(!!errors[name]);
 
   return (
     <CrmModal
       open={open}
       onClose={onClose}
-      title={isEdit ? 'Editar Registro' : 'Novo Registro de Trafego'}
+      title={isEdit ? 'Editar registro' : 'Novo registro de tráfego'}
       size="lg"
       footer={
         <>
           <button type="button" onClick={onClose} disabled={isPending}
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
+            className="min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto">
             Cancelar
           </button>
           <button type="submit" form="traffic-form" disabled={isPending}
-            className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 flex items-center gap-2">
+            className="min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto">
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {isEdit ? 'Salvar' : 'Criar Registro'}
+            {isPending ? (isEdit ? 'Salvando…' : 'Criando…') : (isEdit ? 'Salvar' : 'Criar registro')}
           </button>
         </>
       }
@@ -174,7 +174,7 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Canal *</label>
             <select value={form.channel} onChange={(e) => setField('channel', e.target.value)} className={fieldClass('channel')}>
-              <option value="">Selecione...</option>
+              <option value="">Selecione…</option>
               {CHANNELS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
             {errors.channel && <p className="text-xs text-rose-500 mt-0.5">{errors.channel}</p>}
@@ -191,7 +191,7 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
         {/* Periodo */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Inicio *</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Início *</label>
             <input type="date" value={form.periodStart}
               onChange={(e) => setField('periodStart', e.target.value)} className={fieldClass('periodStart')} />
             {errors.periodStart && <p className="text-xs text-rose-500 mt-0.5">{errors.periodStart}</p>}
@@ -207,14 +207,14 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
         {/* Valor gasto + Receita */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Valor Gasto (R$) *</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Valor gasto (R$) *</label>
             <input type="number" min="0" step="0.01" value={form.amountSpent}
               onChange={(e) => setField('amountSpent', e.target.value)}
               placeholder="2000.00" className={fieldClass('amountSpent')} />
             {errors.amountSpent && <p className="text-xs text-rose-500 mt-0.5">{errors.amountSpent}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Receita Gerada (R$)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Receita gerada (R$)</label>
             <input type="number" min="0" step="0.01" value={form.revenueGenerated}
               onChange={(e) => setField('revenueGenerated', e.target.value)}
               placeholder="10000.00" className={fieldClass('revenueGenerated')} />
@@ -224,7 +224,7 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
         {/* Impressoes + Cliques */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Impressoes</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Impressões</label>
             <input type="number" min="0" step="1" value={form.impressions}
               onChange={(e) => setField('impressions', e.target.value)}
               placeholder="50000" className={fieldClass('impressions')} />
@@ -240,13 +240,13 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
         {/* Leads + Conversoes */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Leads Gerados</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Leads gerados</label>
             <input type="number" min="0" step="1" value={form.leadsGenerated}
               onChange={(e) => setField('leadsGenerated', e.target.value)}
               placeholder="150" className={fieldClass('leadsGenerated')} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Conversoes</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Conversões</label>
             <input type="number" min="0" step="1" value={form.conversions}
               onChange={(e) => setField('conversions', e.target.value)}
               placeholder="30" className={fieldClass('conversions')} />
@@ -281,7 +281,7 @@ export function TrafficFormModal({ open, onClose, entry = null }) {
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Notas</label>
           <textarea value={form.notes} onChange={(e) => setField('notes', e.target.value)}
-            placeholder="Observacoes sobre a campanha..." rows={2} className={`${fieldClass('notes')} resize-none`} />
+            placeholder="Observações sobre a campanha…" rows={2} className={`${fieldClass('notes')} resize-none`} />
         </div>
       </form>
     </CrmModal>

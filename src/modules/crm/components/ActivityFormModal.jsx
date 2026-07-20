@@ -8,6 +8,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus, Trash2, CheckCircle2 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { fieldClass as sharedFieldClass } from './ui/formFieldClass';
 import { CrmConfirmDialog } from './ui/CrmConfirmDialog';
 import { z } from 'zod';
 import { crmActivitySchema } from '../schemas/crmValidation';
@@ -48,15 +49,29 @@ function toLocalDatetimeInput(val) {
 
 // Tipos de atividade. Todos viram evento no Google Calendar; meeting/visit/lunch
 // aceitam convidados e a reunião ainda ganha link do Google Meet.
+// `label` é só texto de tela — quem manda no dado é `value`.
 const ACTIVITY_TYPES = [
-  { value: 'call', label: 'Ligacao', icon: Phone, kind: 'task', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700' },
+  { value: 'call', label: 'Ligação', icon: Phone, kind: 'task', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700' },
   { value: 'message', label: 'Mensagem', icon: MessageCircle, kind: 'task', color: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-300 dark:border-green-700' },
   { value: 'email', label: 'Email', icon: Mail, kind: 'task', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 border-violet-300 dark:border-violet-700' },
   { value: 'task', label: 'Tarefa', icon: FileText, kind: 'task', color: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700' },
-  { value: 'meeting', label: 'Reuniao', icon: Video, kind: 'event', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700' },
+  { value: 'meeting', label: 'Reunião', icon: Video, kind: 'event', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700' },
   { value: 'visit', label: 'Visita', icon: MapPin, kind: 'event', color: 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border-rose-300 dark:border-rose-700' },
-  { value: 'lunch', label: 'Almoco', icon: UtensilsCrossed, kind: 'event', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700' },
+  { value: 'lunch', label: 'Almoço', icon: UtensilsCrossed, kind: 'event', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700' },
 ];
+
+// Norma de modal do CRM: estilo único de campo. Subcomponentes (combobox,
+// convidados) usam FIELD_CLASS() direto; o formulário usa fieldClass(name),
+// que só troca a borda quando aquele campo tem erro de validação.
+const FIELD_CLASS = (hasError = false) => sharedFieldClass(hasError);
+
+// Botões do rodapé — norma de modal do CRM (alvo de toque >= 44px).
+const BTN_PRIMARY =
+  'min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
+const BTN_SECONDARY =
+  'min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+const BTN_ICON =
+  'min-h-[44px] min-w-[44px] p-2 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg disabled:opacity-50';
 
 function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField = 'name', labelField }) {
   const [search, setSearch] = useState('');
@@ -81,7 +96,7 @@ function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField 
         onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+        className={FIELD_CLASS()}
       />
       {value && (
         <button type="button" onClick={() => { onChange(null); setSearch(''); }}
@@ -134,7 +149,7 @@ function AttendeesInput({ value = [], onChange }) {
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } }}
         onBlur={add}
         placeholder="email@convidado.com — Enter pra adicionar"
-        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+        className={FIELD_CLASS()}
       />
     </div>
   );
@@ -271,8 +286,7 @@ export function ActivityFormModal({
     onClose();
   };
 
-  const fieldClass = (name) =>
-    `w-full px-3 py-2 text-sm rounded-lg border ${errors[name] ? 'border-rose-300 dark:border-rose-700 focus:ring-rose-500' : 'border-slate-300 dark:border-slate-600 focus:ring-fyness-primary'} bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2`;
+  const fieldClass = (name) => FIELD_CLASS(!!errors[name]);
 
   return (
     <>
@@ -281,7 +295,7 @@ export function ActivityFormModal({
         <>
           {isEdit && onOpenLeadHistory && (activity?.dealId || activity?.contactId) && (
             <button type="button" onClick={() => onOpenLeadHistory(activity)}
-              className="mr-auto px-3 py-2 text-sm font-medium text-fyness-primary hover:underline">
+              className="mr-auto min-h-[44px] inline-flex items-center px-3 py-2 text-sm font-medium text-fyness-primary hover:underline">
               Histórico do lead →
             </button>
           )}
@@ -289,27 +303,27 @@ export function ActivityFormModal({
             <>
               <button type="button" onClick={() => setConfirmDeleteOpen(true)} disabled={isPending || deleteMutation.isPending}
                 title="Excluir atividade"
-                className={`${onOpenLeadHistory && (activity?.dealId || activity?.contactId) ? '' : 'mr-auto'} p-2 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg disabled:opacity-50`}>
+                className={`${onOpenLeadHistory && (activity?.dealId || activity?.contactId) ? '' : 'mr-auto'} ${BTN_ICON}`}>
                 <Trash2 size={16} />
               </button>
-              <span className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5" aria-hidden="true" />
+              {/* Separador some no mobile: com o rodape empilhado ele viraria um
+                  risco solto entre os botoes. */}
+              <span className="hidden sm:block w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5" aria-hidden="true" />
             </>
           )}
-          <button type="button" onClick={onClose} disabled={isPending}
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
+          <button type="button" onClick={onClose} disabled={isPending} className={BTN_SECONDARY}>
             Cancelar
           </button>
-          <button type="submit" form="activity-form" disabled={isPending}
-            className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 flex items-center gap-2">
+          <button type="submit" form="activity-form" disabled={isPending} className={BTN_PRIMARY}>
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {isEdit ? 'Salvar' : 'Criar tarefa'}
+            {isPending ? (isEdit ? 'Salvando…' : 'Criando…') : (isEdit ? 'Salvar' : 'Criar tarefa')}
           </button>
         </>
       }>
       <form id="activity-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {/* Tipo da atividade */}
         <div>
-          <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Tipo</p>
+          <p className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tipo</p>
           <div className="flex flex-wrap gap-2">
             {ACTIVITY_TYPES.map(t => {
               const Icon = t.icon;
@@ -319,7 +333,7 @@ export function ActivityFormModal({
                   key={t.value}
                   type="button"
                   onClick={() => setValue('type', t.value)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                  className={`min-h-[44px] flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
                     isActive
                       ? `${t.color} ring-1 ring-offset-1 dark:ring-offset-slate-900`
                       : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300'
@@ -335,8 +349,8 @@ export function ActivityFormModal({
 
         {/* Titulo */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titulo *</label>
-          <input {...register('title')} placeholder="Ex: Ligar para cliente sobre proposta" className={fieldClass('title')} />
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Título *</label>
+          <input {...register('title')} placeholder="Ex.: Ligar para cliente sobre proposta" className={fieldClass('title')} />
           {errors.title && <p className="text-xs text-rose-500 mt-0.5">{errors.title.message}</p>}
         </div>
 
@@ -363,15 +377,15 @@ export function ActivityFormModal({
             <Controller name="contactId" control={control}
               render={({ field }) => (
                 <EntityCombobox value={field.value} onChange={field.onChange}
-                  placeholder="Buscar contato..." useQueryHook={useCrmContacts} />
+                  placeholder="Buscar contato…" useQueryHook={useCrmContacts} />
               )} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Negocio</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Negócio</label>
             <Controller name="dealId" control={control}
               render={({ field }) => (
                 <EntityCombobox value={field.value} onChange={field.onChange}
-                  placeholder="Buscar negocio..." useQueryHook={useCrmDeals} nameField="title" />
+                  placeholder="Buscar negócio…" useQueryHook={useCrmDeals} nameField="title" />
               )} />
           </div>
         </div>
@@ -400,7 +414,7 @@ export function ActivityFormModal({
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
               <UserPlus size={14} /> Convidados
-              <span className="font-normal text-xs text-slate-400">recebem convite por e-mail</span>
+              <span className="font-normal text-xs text-slate-500 dark:text-slate-400">recebem convite por e-mail</span>
             </label>
             <Controller name="attendees" control={control}
               render={({ field }) => (
@@ -416,8 +430,8 @@ export function ActivityFormModal({
 
         {/* Descricao */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Descricao</label>
-          <textarea {...register('description')} rows={3} placeholder="Detalhes da atividade..."
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Descrição</label>
+          <textarea {...register('description')} rows={3} placeholder="Detalhes da atividade…"
             className={`${fieldClass('description')} resize-none`} />
         </div>
 
@@ -430,16 +444,16 @@ export function ActivityFormModal({
               <CheckCircle2 size={13} /> O que aconteceu nesta tarefa
             </p>
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">O que você fez/disse</label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">O que você fez/disse</label>
               <textarea value={deliveryInput} onChange={(e) => setDeliveryInput(e.target.value)} rows={2}
-                placeholder="Ex.: liguei e apresentei a proposta, mandei o áudio explicando o preço..."
-                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none" />
+                placeholder="Ex.: liguei e apresentei a proposta, mandei o áudio explicando o preço…"
+                className={`${FIELD_CLASS()} resize-none`} />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">O que o lead respondeu</label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">O que o lead respondeu</label>
               <textarea value={deliveryReport} onChange={(e) => setDeliveryReport(e.target.value)} rows={2}
-                placeholder="Ex.: achou caro, pediu pra ligar semana que vem, topou agendar reunião..."
-                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary resize-none" />
+                placeholder="Ex.: achou caro, pediu pra ligar semana que vem, topou agendar reunião…"
+                className={`${FIELD_CLASS()} resize-none`} />
             </div>
           </div>
         )}

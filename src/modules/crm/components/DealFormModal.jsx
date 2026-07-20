@@ -8,6 +8,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { fieldClass as sharedFieldClass } from './ui/formFieldClass';
 import { crmDealSchema } from '../schemas/crmValidation';
 import {
   useCrmPipelines,
@@ -53,11 +54,30 @@ const STATUS_OPTIONS = [
   { value: 'won', label: 'Ganho' },
 ];
 
+// value = o que vai pro banco (sem acento, como sempre foi — mexer nisso
+// quebraria a deteccao de "Outros" dos deals ja salvos e gravaria duas grafias
+// do mesmo segmento). label = o que a usuaria le, em PT-BR correto.
 const SEGMENT_OPTIONS = [
-  'Agro', 'Alimenticio', 'Automotivo', 'Comercio', 'Construcao Civil',
-  'Educacao', 'Energia', 'Financeiro', 'Industria', 'Logistica',
-  'Saude', 'Servicos', 'Tecnologia', 'Varejo', 'Outros',
+  { value: 'Agro', label: 'Agro' },
+  { value: 'Alimenticio', label: 'Alimentício' },
+  { value: 'Automotivo', label: 'Automotivo' },
+  { value: 'Comercio', label: 'Comércio' },
+  { value: 'Construcao Civil', label: 'Construção civil' },
+  { value: 'Educacao', label: 'Educação' },
+  { value: 'Energia', label: 'Energia' },
+  { value: 'Financeiro', label: 'Financeiro' },
+  { value: 'Industria', label: 'Indústria' },
+  { value: 'Logistica', label: 'Logística' },
+  { value: 'Saude', label: 'Saúde' },
+  { value: 'Servicos', label: 'Serviços' },
+  { value: 'Tecnologia', label: 'Tecnologia' },
+  { value: 'Varejo', label: 'Varejo' },
+  { value: 'Outros', label: 'Outros' },
 ];
+
+// Mesmo desenho do fieldClass da norma no estado sem erro. Os comboboxes abaixo
+// sao componentes proprios e nao enxergam o `errors` do form.
+const FIELD_CLASS = sharedFieldClass();
 
 
 function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField = 'name', extraInfo }) {
@@ -83,7 +103,7 @@ function EntityCombobox({ value, onChange, placeholder, useQueryHook, nameField 
         onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+        className={FIELD_CLASS}
       />
       {value && (
         <button type="button" onClick={() => { onChange(null); setSearch(''); }}
@@ -154,7 +174,7 @@ function ContactField({ freeValue, onFreeChange, linkedId, onLinkChange }) {
         onChange={handleInput}
         onFocus={() => { setSearch(freeValue || ''); setOpen(true); }}
         placeholder="Nome do contato (ou busque um existente)"
-        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+        className={FIELD_CLASS}
       />
       {(freeValue || linkedId) && (
         <button type="button" onClick={handleClear}
@@ -229,7 +249,7 @@ function CompanyField({ freeValue, onFreeChange, linkedId, onLinkChange }) {
         onChange={handleInput}
         onFocus={() => { setSearch(freeValue || ''); setOpen(true); }}
         placeholder="Nome da empresa (ou busque uma existente)"
-        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+        className={FIELD_CLASS}
       />
       {(freeValue || linkedId) && (
         <button type="button" onClick={handleClear}
@@ -305,7 +325,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   // refetch e acabava apagando campos ja digitados pelo usuario.
   useEffect(() => {
     if (!open) return;
-    const knownSegments = SEGMENT_OPTIONS.filter(s => s !== 'Outros');
+    const knownSegments = SEGMENT_OPTIONS.filter(s => s.value !== 'Outros').map(s => s.value);
     const knownSources = leadSources.map(s => s.name);
     if (deal) {
       setIsCustomSegment(!!deal.segment && !knownSegments.includes(deal.segment));
@@ -429,29 +449,28 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
     onClose();
   };
 
-  const fieldClass = (name) =>
-    `w-full px-3 py-2 text-sm rounded-lg border ${errors[name] ? 'border-rose-300 dark:border-rose-700 focus:ring-rose-500' : 'border-slate-300 dark:border-slate-600 focus:ring-fyness-primary'} bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2`;
+  const fieldClass = (name) => sharedFieldClass(!!errors[name]);
 
   return (
-    <CrmModal open={open} onClose={onClose} title={isEdit ? 'Editar Negocio' : 'Novo Negocio'} size="lg"
+    <CrmModal open={open} onClose={onClose} title={isEdit ? 'Editar negócio' : 'Novo negócio'} size="lg"
       footer={
         <>
           <button type="button" onClick={onClose} disabled={isPending}
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">
+            className="min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto">
             Cancelar
           </button>
           <button type="submit" form="deal-form" disabled={isPending}
-            className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 flex items-center gap-2">
+            className="min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto">
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {isEdit ? 'Salvar' : 'Criar Negocio'}
+            {isPending ? (isEdit ? 'Salvando…' : 'Criando…') : (isEdit ? 'Salvar' : 'Criar negócio')}
           </button>
         </>
       }>
       <form id="deal-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {/* Titulo */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titulo *</label>
-          <input {...register('title')} placeholder="Ex: Projeto Website Empresa X" className={fieldClass('title')} />
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Título *</label>
+          <input {...register('title')} placeholder="Ex.: Projeto Website Empresa X" className={fieldClass('title')} />
           {errors.title && <p className="text-xs text-rose-500 mt-0.5">{errors.title.message}</p>}
         </div>
 
@@ -547,15 +566,15 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
                     }}
                     className={fieldClass('segment')}
                   >
-                    <option value="">Selecione o segmento...</option>
-                    {SEGMENT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                    <option value="">Selecione o segmento…</option>
+                    {SEGMENT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                   {isCustomSegment && (
                     <input
                       type="text"
                       value={field.value || ''}
                       onChange={(e) => field.onChange(e.target.value)}
-                      placeholder="Digite o segmento..."
+                      placeholder="Digite o segmento…"
                       autoFocus
                       className={fieldClass('segment')}
                     />
@@ -565,9 +584,9 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
             }} />
         </div>
 
-        {/* Origem do Lead */}
+        {/* Origem do lead */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Origem do Lead</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Origem do lead</label>
           <Controller name="source" control={control}
             render={({ field }) => {
               const selectValue = isCustomSource ? 'Outros' : (field.value || '');
@@ -587,7 +606,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
                     }}
                     className={fieldClass('source')}
                   >
-                    <option value="">Selecione a origem...</option>
+                    <option value="">Selecione a origem…</option>
                     {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                   {isCustomSource && (
@@ -595,7 +614,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
                       type="text"
                       value={field.value || ''}
                       onChange={(e) => field.onChange(e.target.value)}
-                      placeholder="Digite a origem..."
+                      placeholder="Digite a origem…"
                       autoFocus
                       className={fieldClass('source')}
                     />
@@ -606,8 +625,8 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         </div>
 
         {/* Contato */}
-        <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-3">
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Contato</p>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-3">
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Contato</p>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nome</label>
             <Controller name="contactName" control={control}
@@ -623,7 +642,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
                   )} />
               )} />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Telefone</label>
               <Controller name="contactPhone" control={control}
@@ -665,9 +684,9 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
 
         {/* Vendedor responsavel */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Vendedor Responsavel</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Vendedor responsável</label>
           <select {...register('ownerId')} className={fieldClass('ownerId')}>
-            <option value="">Selecione...</option>
+            <option value="">Selecione…</option>
             {crmMembers.filter(m => m.crmRole === 'gestor').length > 0 && (
               <optgroup label="Gestores">
                 {crmMembers.filter(m => m.crmRole === 'gestor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -679,7 +698,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
               </optgroup>
             )}
             {crmMembers.filter(m => m.crmRole === 'pre_vendedor').length > 0 && (
-              <optgroup label="Pre-vendedores">
+              <optgroup label="Pré-vendedores">
                 {crmMembers.filter(m => m.crmRole === 'pre_vendedor').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </optgroup>
             )}
@@ -691,14 +710,14 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Pipeline</label>
             <select {...register('pipelineId')} className={fieldClass('pipelineId')}>
-              <option value="">Selecione...</option>
+              <option value="">Selecione…</option>
               {pipelines?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Etapa</label>
             <select {...register('stageId')} className={fieldClass('stageId')}>
-              <option value="">Selecione...</option>
+              <option value="">Selecione…</option>
               {stages.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
@@ -709,7 +728,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         {/* Data prevista + Status */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Previsao de Fechamento</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Previsão de fechamento</label>
             <input type="date" {...register('expectedCloseDate')} className={fieldClass('expectedCloseDate')} />
           </div>
           <div>
@@ -718,7 +737,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
               {statusSelectOptions.map(o => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
             </select>
             {selectedStatus === 'lost' && (
-              <p className="text-xs text-slate-400 mt-1">Use o botao "Perdido" (fora deste formulario) pra reabrir ou remarcar — ele move o negocio corretamente entre as pipelines.</p>
+              <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">Use o botão "Perdido" (fora deste formulário) pra reabrir ou remarcar — ele move o negócio corretamente entre as pipelines.</p>
             )}
           </div>
         </div>
@@ -726,8 +745,8 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         {/* Motivo da perda (so se status = lost) */}
         {selectedStatus === 'lost' && (
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Motivo da Perda</label>
-            <textarea {...register('lostReason')} rows={2} placeholder="Por que o negocio foi perdido?"
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Motivo da perda</label>
+            <textarea {...register('lostReason')} rows={2} placeholder="Por que o negócio foi perdido?"
               className={`${fieldClass('lostReason')} resize-none`} />
           </div>
         )}
