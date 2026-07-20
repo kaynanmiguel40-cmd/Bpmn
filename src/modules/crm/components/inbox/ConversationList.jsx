@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, MessageSquare, Image as ImageIcon, Video, Mic, FileText, Check, CheckCheck, Clock, AlertTriangle } from 'lucide-react';
+import { Search, MessageSquare, Image as ImageIcon, Video, Mic, FileText, Check, CheckCheck, AlertTriangle } from 'lucide-react';
 import { useCrmInboxConversations, useCrmWhatsAppInstances } from '../../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../../hooks/queries';
 import { numberIdentity, numberLabel, UNKNOWN_COLOR } from './numberIdentity';
@@ -165,7 +165,6 @@ export function ConversationList({ activeKey, onSelect }) {
   const debouncedSearch = useDebounce(search, 300);
   const [filterPhone, setFilterPhone] = useState(null); // null = ainda nao escolheu (usa default); ALL_INSTANCES = aba "Todos"
   const [ownerFilter, setOwnerFilter] = useState('all'); // 'all' | 'mine'
-  const [onlyOverdue, setOnlyOverdue] = useState(false);
   // Sem termo: {} — mesma query key que outros consumidores (ex: CrmInboxPage)
   // usam sem opts, entao continua compartilhando cache/network com eles.
   // Com termo: busca server-side (ver crmMessagesService.getInboxConversations),
@@ -220,20 +219,14 @@ export function ConversationList({ activeKey, onSelect }) {
     return enriched.filter((c) => !c.instancePhone || c.instancePhone === selectedPhone);
   }, [enriched, showingAll, selectedPhone]);
 
-  // Contado sobre o recorte por numero, nao sobre tudo. Antes a faixa somava os
-  // dois numeros enquanto a lista mostrava so o selecionado: dizia "3 conversas
-  // sem resposta" e o clique abria 1.
-  const overdueCount = useMemo(() => byNumber.filter((c) => c._overdueH != null).length, [byNumber]);
-
   const filtered = useMemo(() => {
     let list = byNumber;
     if (ownerFilter === 'mine' && myMemberId) list = list.filter((c) => c._owner?.id === myMemberId);
-    if (onlyOverdue) list = list.filter((c) => c._overdueH != null);
     // Sem filtro por termo aqui de proposito: quem busca e o server (inboxOpts),
     // que casa em campos que a conversa nao carrega (ex: company_name do prospect).
     // Refiltrar no client descartaria justamente esses matches.
     return list;
-  }, [byNumber, ownerFilter, myMemberId, onlyOverdue]);
+  }, [byNumber, ownerFilter, myMemberId]);
 
   // Nome do numero SO onde a cor nao basta: o mesmo lead aparecendo duas vezes
   // na lista visivel (uma thread por numero). Nas outras linhas a faixa colorida
@@ -302,18 +295,6 @@ export function ConversationList({ activeKey, onSelect }) {
           </div>
         )}
       </div>
-
-      {/* aviso de conversas sem resposta ha muito tempo */}
-      {overdueCount > 0 && (
-        <button
-          onClick={() => setOnlyOverdue((v) => !v)}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-medium text-left shrink-0 transition-colors border-b border-black/5 dark:border-white/5
-            ${onlyOverdue ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : 'bg-rose-50 dark:bg-rose-900/15 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/25'}`}
-        >
-          <Clock size={13} className="shrink-0" />
-          {overdueCount} conversa{overdueCount > 1 ? 's' : ''} sem resposta há mais de {OVERDUE_HOURS}h
-        </button>
-      )}
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
