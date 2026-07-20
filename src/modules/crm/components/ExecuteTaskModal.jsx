@@ -25,6 +25,8 @@ import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
 import { stepChannel } from '../services/crmScheduling';
 import { formatWhen } from '../utils/stepLabel';
+import { preencherScript, dadosDoScript } from '../utils/preencherScript';
+import { useProfile } from '../../../hooks/useProfile';
 
 function formatPhone(val) {
   if (!val) return '';
@@ -115,6 +117,14 @@ export function ExecuteTaskModal({
   // Sem o botao de desfecho (e-mail, WhatsApp) todos os cenarios valem: ali nao
   // existe "atendeu ou nao", a mensagem foi enviada e pronto.
   const scenarios = isCall ? cenariosDeConversa : todosCenarios;
+
+  // Os roteiros vem com marcadores ([nome], [empresa], [consultora]) porque o
+  // mesmo texto serve pra todo lead. Quem substitui e a tela — nao a cabeca de
+  // quem esta com o telefone no ouvido. Dado que falta mantem o marcador: um
+  // buraco no meio da frase so aparece depois de ja ter saido pela boca.
+  const { profile } = useProfile();
+  const dadosScript = dadosDoScript(activity, profile);
+  const scriptPronto = preencherScript(step?.script, dadosScript);
 
   // Confirmacao pos-conclusao: mostra o proximo toque pra nao perder o fio da
   // cadencia. "Corrigir" volta pro formulario — e o desfazer de quem clicou no
@@ -313,8 +323,16 @@ export function ExecuteTaskModal({
               O que falar
             </div>
             <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap border-l-2 border-fyness-primary/40 pl-3">
-              {step.script}
+              {scriptPronto.texto}
             </p>
+            {/* Aviso, nao erro: o roteiro continua utilizavel: so diz onde
+                completar de cabeca e o que cadastrar pra nao repetir amanha. */}
+            {scriptPronto.faltando.length > 0 && (
+              <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-1 pl-3">
+                Complete de cabeça: {scriptPronto.faltando.map(f => `[${f}]`).join(', ')}
+                {scriptPronto.faltando.includes('nome') && ' — falta vincular o contato neste negócio.'}
+              </p>
+            )}
           </div>
         )}
 
@@ -415,7 +433,7 @@ export function ExecuteTaskModal({
                   {sc.then && (
                     <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 flex gap-1.5">
                       <CornerDownRight size={12} className="shrink-0 mt-0.5 text-fyness-primary" />
-                      <span>{sc.then}</span>
+                      <span>{preencherScript(sc.then, dadosScript).texto}</span>
                     </div>
                   )}
                 </button>

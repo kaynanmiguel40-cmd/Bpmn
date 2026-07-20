@@ -18,6 +18,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter, CornerDownRight, Clock, CalendarCheck } from 'lucide-react';
 import { useStagePlaybook, useDealProgress, useDealActivities } from '../hooks/useCrmQueries';
+import { preencherScript } from '../utils/preencherScript';
+import { useProfile } from '../../../hooks/useProfile';
 import { filterStepsForDeal } from '../services/crmPlaybookService';
 import { isOverdue } from '../utils/stepLabel';
 import { ChannelBadge } from './ui/ChannelBadge';
@@ -48,7 +50,7 @@ function DueLabel({ iso, done }) {
   );
 }
 
-function StepRow({ step, done, outcome, dueAt, attempts = 0 }) {
+function StepRow({ step, done, outcome, dueAt, attempts = 0, dadosScript = {} }) {
   const [open, setOpen] = useState(false);
   // Tentou e nao falou: a tarefa foi executada, mas o passo continua pendente.
   // Sem este estado o passo pareceria intocado — e ninguem saberia que ja se
@@ -122,7 +124,7 @@ function StepRow({ step, done, outcome, dueAt, attempts = 0 }) {
         <div className="px-3 pb-3 ml-7 space-y-2">
           {step.script && (
             <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap border-l-2 border-slate-200 dark:border-slate-600 pl-3">
-              {step.script}
+              {preencherScript(step.script, dadosScript).texto}
             </p>
           )}
           {step.scenarios?.length > 0 && (
@@ -134,7 +136,7 @@ function StepRow({ step, done, outcome, dueAt, attempts = 0 }) {
                   </div>
                   <div className="text-[13px] text-slate-700 dark:text-slate-200 mt-0.5 flex gap-1.5">
                     <CornerDownRight size={13} className="shrink-0 mt-0.5 text-fyness-primary" />
-                    <span>{sc.then}</span>
+                    <span>{preencherScript(sc.then, dadosScript).texto}</span>
                   </div>
                 </div>
               ))}
@@ -155,6 +157,17 @@ export function DealProcessChecklist({ deal }) {
   // Filtra os passos pela ORIGEM do lead: um lead veio de UM lugar, entao so o
   // script daquela origem aparece (ex: veio de anuncio → so o toque de anuncio).
   // Passos sem tag sao universais e sempre aparecem.
+  // O roteiro e escrito com marcadores porque o mesmo texto serve pra todo
+  // lead. Aqui o negocio JA tem contato e empresa carregados, entao a
+  // substituicao e direta — e o que falta continua visivel como marcador.
+  const { profile } = useProfile();
+  const dadosScript = {
+    nome: deal?.contact?.name || deal?.contactName || '',
+    empresa: deal?.company?.name || '',
+    segmento: deal?.company?.segment || '',
+    consultora: profile?.name || '',
+  };
+
   const allSteps = playbook?.[deal?.stageId] || [];
   const steps = filterStepsForDeal(allSteps, deal?.source);
   const doneIds = new Set(progress.map(p => p.stepId));
@@ -260,6 +273,7 @@ export function DealProcessChecklist({ deal }) {
                 outcome={outcomeByStep[step.id]}
                 dueAt={dueByStep[step.id]}
                 attempts={attemptsByStep[step.id] || 0}
+                dadosScript={dadosScript}
               />
             ))}
           </div>

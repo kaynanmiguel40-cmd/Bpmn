@@ -25,7 +25,7 @@ const QUEUE_COLS = `
   deal_id, contact_id, assigned_to, assigned_to_name, created_by,
   delivery_input, delivery_report,
   crm_contacts(id, name, phone),
-  crm_deals(id, title, contact_phone, priority, crm_pipeline_stages(id, name, color))
+  crm_deals(id, title, contact_phone, priority, crm_companies(id, name, segment), crm_pipeline_stages(id, name, color))
 `;
 
 // Tipos que sao DIVIDA (tem que ser feitos). Reuniao/visita/almoco sao
@@ -66,6 +66,10 @@ export function dbToQueueTask(row) {
     // Nome do lead: contato vinculado > titulo do negocio. Mesma ordem do
     // leadLabel da agenda, pra nao existirem dois nomes pro mesmo lead.
     leadName: row.crm_contacts?.name || deal?.title || null,
+    // Empresa vinculada — alimenta o [empresa] do roteiro. Sem ela o marcador
+    // fica visivel no script, avisando que falta o vinculo.
+    companyName: deal?.crm_companies?.name || null,
+    companySegment: deal?.crm_companies?.segment || null,
     // Telefone na ordem canonica: contato > o digitado no negocio.
     phone: row.crm_contacts?.phone || deal?.contact_phone || null,
     stageName: stage?.name || null,
