@@ -1030,6 +1030,19 @@ function extractContent(msg: any): Extracted {
     out.meta = 'protocol'
     return out
   }
+  // Blobs cifrados com o "message secret" do WhatsApp: voto de enquete, resposta
+  // de evento, fixar/manter na conversa. Chegam como encIv + encPayload e so
+  // abrem com a chave da mensagem original — nem a Evolution decifra.
+  //
+  // Placeholder disso na thread e ruido puro: nao e texto que alguem escreveu, e
+  // o vendedor nao tem o que fazer com "[mensagem nao suportada]" no meio de uma
+  // conversa com cliente. Vai pro dead-letter (o payload fica guardado, caso um
+  // dia de pra decifrar) e some da tela.
+  if (msg.secretEncryptedMessage || msg.pollUpdateMessage
+      || msg.pinInChatMessage || msg.keepInChatMessage) {
+    out.meta = 'encrypted_or_pin'
+    return out
+  }
 
   // --- desconhecido: entra como placeholder, nao some ---
   out.unknown = true
@@ -1146,7 +1159,9 @@ async function handleMessagesUpsert(
       await deadLetter(supabase, {
         instanceName,
         evolutionMessageId: evolutionMessageId,
-        reason: ext.meta.startsWith('reaction') ? 'reaction' : 'protocol',
+        reason: ext.meta.startsWith('reaction') ? 'reaction'
+              : ext.meta === 'encrypted_or_pin' ? 'encrypted'
+              : 'protocol',
         detail: ext.meta,
         payload: m,
       })
