@@ -1,43 +1,65 @@
 /**
  * PLANO COMERCIAL — o PREVISTO (baseline).
  *
- * Numeros extraidos do planejamento estrategico (PDF "Da rede do Robert a
- * receita recorrente"). Sao a meta cravada — o "previsto" que comparamos contra
- * o real do CRM mes a mes.
+ * O previsto e o PISO: o minimo que a Fyness tem que entregar. Nao e previsao
+ * nem teto — o real fica ACIMA dele (as estrategias da casa, principalmente o
+ * canal de parceiro, convertem melhor que a media de mercado).
  *
- * M1 = junho/2026. A trajetoria vai ate M12 = maio/2027, fechando ~R$96k de MRR
- * (a porta da meta de R$100k).
+ * Construcao: a barra de geracao de leads vem do planejamento estrategico (PDF
+ * "Da rede do Robert a receita recorrente"); o resto da tabela e derivado dela
+ * pelas taxas de BENCHMARK DE MERCADO (FUNIL_UNITARIO_RATES). Assim o piso
+ * responde "quanto sai se a gente gerar os leads do plano performando como a
+ * media do mercado" — qualquer coisa acima e merito da operacao.
+ *
+ * M1 = julho/2026 (o plano passa a valer em 20/07, com julho parcial). A
+ * trajetoria vai ate M12 = junho/2027, fechando ~R$20,8k de MRR com 160
+ * clientes. R$100k e meta de horizonte mais longo (~24 meses), nao dos 12
+ * primeiros: a geracao de leads do plano nao sustenta isso ao benchmark.
  */
 
-// M1 = junho/2026 (month 0-indexed: 5 = junho).
-export const PLAN_START = { year: 2026, month: 5 };
+// M1 = julho/2026 (month 0-indexed: 6 = julho). O plano comeca a valer em
+// 20/07/2026 — julho entra como mes PARCIAL (10 dos 23 dias uteis). A tabela
+// abaixo e sempre de mes CHEIO; quem corta a fatia e proratedPlanForPeriod,
+// pelos dias uteis do recorte.
+export const PLAN_START = { year: 2026, month: 6 };
 
-export const PLAN_GOAL_MRR = 100000;
+// Piso de MRR no fim dos 12 meses (M12). Bate com PLAN_MONTHS[11].mrr.
+export const PLAN_GOAL_MRR = 20000;
 
-// Posicao atual (ponto de partida do plano).
-export const PLAN_POSITION = { mrr: 536, clientes: 8 };
+// Posicao no inicio do plano (20/07/2026): clientes PAGANTES, medidos na
+// pipeline Geral. Os 6 ganhos da pipeline Parceiros sao contadores recrutados
+// (fonte de indicacao), nao clientes — ficam de fora da base.
+export const PLAN_POSITION = { mrr: 1072, clientes: 16 };
 
 /**
  * Tabela mes a mes do plano.
  * - preco:  ticket previsto naquele mes (escada 67 -> 130)
  * - novos:  novos clientes no mes (= fechamentos do funil)
  * - ativos: base ativa acumulada (ja considera o churn de 5% do plano)
- * - mrr:    MRR acumulado previsto (a curva rumo a R$100k)
+ * - mrr:    MRR acumulado previsto (a curva rumo a PLAN_GOAL_MRR)
  * - leads/reat/qualif/reun/fech: funil do mes (topo -> fechamento)
+ *
+ * A COLUNA QUE MANDA E `leads` — e a barra de geracao, o unico numero cravado
+ * (vem do planejamento original). Todo o resto e DERIVADO dela pelas taxas de
+ * benchmark (FUNIL_UNITARIO_RATES), na ordem:
+ *   qualif = leads x 0.25 | reun = qualif x 0.60 | realizadas = reun x 0.80
+ *   fech = realizadas x 0.30 | ativos = base - churn 5% + fech + reat
+ * Ou seja: o fechamento e CONSEQUENCIA do topo, nao uma meta independente.
+ * Mexeu na barra de leads ou numa taxa? Recalcule a tabela inteira.
  */
 export const PLAN_MONTHS = [
-  { m: 1,  preco: 67,  novos: 15,  ativos: 23,  mrr: 1514,  leads: 89,  reat: 0,   qualif: 31,  reun: 25,  fech: 15 },
-  { m: 2,  preco: 67,  novos: 22,  ativos: 43,  mrr: 2912,  leads: 122, reat: 3,   qualif: 46,  reun: 37,  fech: 22 },
-  { m: 3,  preco: 87,  novos: 31,  ativos: 72,  mrr: 5464,  leads: 163, reat: 7,   qualif: 65,  reun: 52,  fech: 31 },
-  { m: 4,  preco: 87,  novos: 42,  ativos: 111, mrr: 8845,  leads: 214, reat: 13,  qualif: 88,  reun: 70,  fech: 42 },
-  { m: 5,  preco: 97,  novos: 54,  ativos: 159, mrr: 13640, leads: 267, reat: 19,  qualif: 112, reun: 90,  fech: 54 },
-  { m: 6,  preco: 97,  novos: 67,  ativos: 218, mrr: 19457, leads: 322, reat: 27,  qualif: 140, reun: 112, fech: 67 },
-  { m: 7,  preco: 110, novos: 81,  ativos: 288, mrr: 27395, leads: 379, reat: 36,  qualif: 169, reun: 135, fech: 81 },
-  { m: 8,  preco: 110, novos: 96,  ativos: 370, mrr: 36585, leads: 439, reat: 46,  qualif: 200, reun: 160, fech: 96 },
-  { m: 9,  preco: 120, novos: 112, ativos: 463, mrr: 48196, leads: 501, reat: 58,  qualif: 233, reun: 187, fech: 112 },
-  { m: 10, preco: 120, novos: 130, ativos: 570, mrr: 61386, leads: 572, reat: 71,  qualif: 271, reun: 217, fech: 130 },
-  { m: 11, preco: 130, novos: 150, ativos: 692, mrr: 77817, leads: 651, reat: 85,  qualif: 312, reun: 250, fech: 150 },
-  { m: 12, preco: 130, novos: 172, ativos: 829, mrr: 96286, leads: 737, reat: 100, qualif: 358, reun: 287, fech: 172 },
+  { m: 1,  preco: 67,  novos: 3,   ativos: 19,  mrr: 1244,  leads: 89,  reat: 0, qualif: 22,  reun: 13,  fech: 3 },
+  { m: 2,  preco: 67,  novos: 4,   ativos: 22,  mrr: 1497,  leads: 122, reat: 0, qualif: 30,  reun: 18,  fech: 4 },
+  { m: 3,  preco: 87,  novos: 6,   ativos: 28,  mrr: 2398,  leads: 163, reat: 0, qualif: 41,  reun: 24,  fech: 6 },
+  { m: 4,  preco: 87,  novos: 8,   ativos: 35,  mrr: 3006,  leads: 214, reat: 1, qualif: 54,  reun: 32,  fech: 8 },
+  { m: 5,  preco: 97,  novos: 10,  ativos: 43,  mrr: 4200,  leads: 267, reat: 1, qualif: 67,  reun: 40,  fech: 10 },
+  { m: 6,  preco: 97,  novos: 12,  ativos: 54,  mrr: 5224,  leads: 322, reat: 1, qualif: 80,  reun: 48,  fech: 12 },
+  { m: 7,  preco: 110, novos: 14,  ativos: 66,  mrr: 7287,  leads: 379, reat: 1, qualif: 95,  reun: 57,  fech: 14 },
+  { m: 8,  preco: 110, novos: 16,  ativos: 81,  mrr: 8861,  leads: 439, reat: 2, qualif: 110, reun: 66,  fech: 16 },
+  { m: 9,  preco: 120, novos: 18,  ativos: 97,  mrr: 11619, leads: 501, reat: 2, qualif: 125, reun: 75,  fech: 18 },
+  { m: 10, preco: 120, novos: 21,  ativos: 115, mrr: 13842, leads: 572, reat: 3, qualif: 143, reun: 86,  fech: 21 },
+  { m: 11, preco: 130, novos: 23,  ativos: 136, mrr: 17731, leads: 651, reat: 3, qualif: 163, reun: 98,  fech: 23 },
+  { m: 12, preco: 130, novos: 27,  ativos: 160, mrr: 20822, leads: 737, reat: 4, qualif: 184, reun: 111, fech: 27 },
 ];
 
 // Comparecimento: das reunioes AGENDADAS, quantas ACONTECEM (o resto e no-show).
@@ -46,16 +68,57 @@ export const PLAN_MONTHS = [
 export const COMPARECIMENTO_RATE = 0.8;
 
 /**
+ * TAXAS DE CONVERSAO — fonte unica do funil.
+ *
+ * Alimentam as tres visoes ao mesmo tempo: os volumes de PLAN_MONTHS (derivados
+ * por cascata reversa), as PREMISSAS exibidas no Comparativo e o funil unitario
+ * ("o que custa 1 venda"). Mexeu aqui, RECALCULE PLAN_MONTHS — senao a tela
+ * mostra taxa que nao bate com o volume ao lado.
+ *
+ * Custo dessas taxas: ~28 leads por venda (3,6% lead->venda), 27 mil leads nos
+ * 12 meses do plano.
+ */
+export const FUNIL_UNITARIO_RATES = {
+  qualif:         0.25, // lead -> qualificado
+  agendamento:    0.60, // qualificado -> reuniao agendada
+  comparecimento: COMPARECIMENTO_RATE, // agendada -> realizada (o resto e no-show)
+  fechamento:     0.30, // realizada -> cliente
+};
+
+/**
  * Premissas de conversao do plano (a validar nos 90 dias).
  * Churn (5%) fica FORA por decisao — nao entra no Previsto vs Real.
  */
 export const PREMISSAS = [
-  { key: 'qualif',        label: 'Qualificacao',   sub: 'lead → qualificado',       pct: 35 },
-  { key: 'agendamento',   label: 'Agendamento',    sub: 'qualificado → agendada',   pct: 80 },
+  { key: 'qualif',        label: 'Qualificacao',   sub: 'lead → qualificado',       pct: Math.round(FUNIL_UNITARIO_RATES.qualif * 100) },
+  { key: 'agendamento',   label: 'Agendamento',    sub: 'qualificado → agendada',   pct: Math.round(FUNIL_UNITARIO_RATES.agendamento * 100) },
   { key: 'comparecimento', label: 'Comparecimento', sub: 'agendada → acontecida',   pct: Math.round(COMPARECIMENTO_RATE * 100) },
-  { key: 'fechamento',    label: 'Fechamento',     sub: 'acontecida → cliente',     pct: 60 },
+  { key: 'fechamento',    label: 'Fechamento',     sub: 'acontecida → cliente',     pct: Math.round(FUNIL_UNITARIO_RATES.fechamento * 100) },
   { key: 'reativacao',    label: 'Reativacao',     sub: 'sobre o pool',             pct: 20 },
 ];
+
+/**
+ * Cascata reversa do funil unitario: quantos leads/SQL/reunioes pra `vendas`.
+ * PURA — recebe as taxas pra ser testavel sem depender da constante.
+ *
+ * @param {number} vendas  quantas vendas no alvo (default 1)
+ * @param {object} rates   { qualif, agendamento, comparecimento, fechamento }
+ * @returns {Array<{key:string,label:string,sub:string,qtd:number,pct:number|null}>}
+ *          do topo (leads) ate a venda. `pct` = taxa que leva pra proxima etapa.
+ */
+export function unitFunnelSteps(vendas = 1, rates = FUNIL_UNITARIO_RATES) {
+  const realizadas   = vendas / rates.fechamento;
+  const agendadas    = realizadas / rates.comparecimento;
+  const qualificados = agendadas / rates.agendamento;
+  const leads        = qualificados / rates.qualif;
+  return [
+    { key: 'lead',      label: 'Leads',              sub: 'topo do funil',      qtd: leads,        pct: rates.qualif },
+    { key: 'qualif',    label: 'Qualificados',       sub: 'SQL',                qtd: qualificados, pct: rates.agendamento },
+    { key: 'agendada',  label: 'Reunioes marcadas',  sub: 'agendadas',          qtd: agendadas,    pct: rates.comparecimento },
+    { key: 'realizada', label: 'Reunioes realizadas', sub: 'o lead compareceu', qtd: realizadas,   pct: rates.fechamento },
+    { key: 'venda',     label: 'Venda',              sub: 'cliente ativo',      qtd: vendas,       pct: null },
+  ];
+}
 
 const MONTH_ABBR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
