@@ -32,16 +32,25 @@ const PinIcon = ({ pinned }) => (
   </svg>
 );
 
+// A ORDEM aqui e a ordem do dia, nao um agrupamento por assunto.
+//
+// Agenda primeiro porque ela e o nivel de EXECUCAO — e a tela que responde "o
+// que eu faco agora". A Pipeline vem depois porque so ACOMPANHA: ela mostra
+// onde cada lead esta, nao o que fazer com ele. WhatsApp e Discador fecham,
+// como os dois canais por onde o toque sai.
+//
+// Antes a lista comecava na Pipeline e a Agenda ficava por ultimo — o inverso
+// exato de como o dia acontece.
 const crmNavItems = [
   { section: 'Vendas' },
-  { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline', sectionKey: 'pipeline' },
-  { to: '/crm/discador', icon: PhoneCall, label: 'Discador', sectionKey: 'discador' },
-  { to: '/crm/inbox', icon: MessageCircle, label: 'Inbox WhatsApp', sectionKey: 'inbox' },
   // Agenda = controle do dia a dia (toggle interno "Meu Dia" / "Time"). As
   // antigas Atividades e Daily do Time viraram abas dentro dela — nao tem
   // mais item proprio na sidebar (rotas antigas /crm/activities e /crm/daily
   // redirecionam pra /crm/agenda?visao=team, ver App.jsx).
   { to: '/crm/agenda', icon: CalendarDays, label: 'Agenda', sectionKey: 'agenda' },
+  { to: '/crm/pipeline', icon: Kanban, label: 'Pipeline', sectionKey: 'pipeline' },
+  { to: '/crm/inbox', icon: MessageCircle, label: 'Inbox WhatsApp', sectionKey: 'inbox' },
+  { to: '/crm/discador', icon: PhoneCall, label: 'Discador', sectionKey: 'discador' },
   { section: 'Prospecao' },
   { to: '/crm/prospects', icon: Crosshair, label: 'Gerador de Lista', sectionKey: 'prospects' },
   // Tráfego Pago oculto por enquanto (a rota /crm/traffic e a página seguem ativas).
