@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Search, MessageSquare, Image as ImageIcon, Video, Mic, FileText, Check, CheckCheck, Clock, AlertTriangle } from 'lucide-react';
 import { useCrmInboxConversations, useCrmWhatsAppInstances } from '../../hooks/useCrmQueries';
 import { useTeamMembers } from '../../../../hooks/queries';
+import { numberIdentity, numberLabel, UNKNOWN_COLOR } from './numberIdentity';
 import { useAuth } from '../../../../contexts/AuthContext';
 
 // Limiar pra considerar uma conversa "sem resposta" — a ultima mensagem foi do
@@ -52,13 +53,6 @@ function useDebounce(value, delay = 300) {
 // que representa "nenhuma escolha ainda, usa o default (1o numero)".
 const ALL_INSTANCES = '__all__';
 
-// "fyness-principal" -> "Fyness", "lorena-consultora" -> "Lorena"
-function numberLabel(instanceName) {
-  if (!instanceName) return 'Número';
-  const base = instanceName.split('-')[0];
-  return base.charAt(0).toUpperCase() + base.slice(1);
-}
-
 const MEDIA_HINT = {
   image:    { Icon: ImageIcon, label: 'Foto' },
   video:    { Icon: Video,     label: 'Vídeo' },
@@ -87,7 +81,20 @@ function LastMessage({ conv }) {
   );
 }
 
-function ConversationItem({ conv, active, onSelect, owner, overdueH, showInstanceBadge }) {
+/**
+ * Linha da conversa. Cinco elementos, os mesmos do WhatsApp Web: foto, nome,
+ * hora, previa e nao-lidas.
+ *
+ * A identidade do numero nao entra nessa conta porque nao ocupa espaco
+ * horizontal: e a faixa de 3px na borda esquerda. O NOME do numero so aparece
+ * quando a cor sozinha e ambigua — lead que aparece duas vezes na lista, ou
+ * numero que o app nao identificou.
+ *
+ * Regra que decide empate: nada entra no canto direito alem do contador de
+ * nao-lidas. Antes ele empilhava pilula do numero, relogio de atraso, tag
+ * "novo" e o contador, quatro coisas coloridas disputando o mesmo canto.
+ */
+function ConversationItem({ conv, active, onSelect, overdueH, numberColor, numberText }) {
   const unread = conv.unreadCount > 0;
   const overdue = overdueH != null;
   return (
@@ -96,7 +103,9 @@ function ConversationItem({ conv, active, onSelect, owner, overdueH, showInstanc
       className={`relative w-full flex items-center gap-3 pl-3 pr-2 py-2.5 text-left transition-colors
         ${active ? 'bg-[#f0f2f5] dark:bg-[#2a3942]' : 'hover:bg-[#f5f6f6] dark:hover:bg-[#202c33]'}`}
     >
-      {overdue && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-rose-500" />}
+      {/* Numero da empresa. Atributo permanente de toda linha, entao fica no
+          canal permanente; o atraso, que e excecao, migrou pro horario. */}
+      <span className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: numberColor }} />
       <div className="relative shrink-0">
         {conv.avatarUrl ? (
           <img src={conv.avatarUrl} alt={conv.otherName} referrerPolicy="no-referrer"
@@ -107,51 +116,39 @@ function ConversationItem({ conv, active, onSelect, owner, overdueH, showInstanc
           style={{ backgroundColor: conv.avatarColor || '#6366f1' }}>
           {initials(conv.otherName)}
         </div>
-        {owner && (
-          <span
-            title={`Responsável: ${owner.name}`}
-            className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full ring-2 ring-white dark:ring-[#111b21] flex items-center justify-center text-[11px] font-bold text-white"
-            style={{ backgroundColor: owner.color || '#64748b' }}
-          >
-            {initials(owner.name)}
-          </span>
-        )}
       </div>
 
       <div className="flex-1 min-w-0 border-b border-black/5 dark:border-white/5 pb-2.5 -mb-2.5">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[15px] font-medium text-slate-900 dark:text-slate-100 truncate">
-            {conv.otherName || conv.otherPhone}
-          </span>
-          <span className={`text-[12px] shrink-0 ${unread ? 'text-[#25d366] font-semibold' : 'text-slate-400'}`}>
+          <div className="flex items-baseline gap-2 min-w-0 flex-1">
+            <span className="text-[15px] font-medium text-slate-900 dark:text-slate-100 truncate">
+              {conv.otherName || conv.otherPhone}
+            </span>
+            {numberText && (
+              <span className="text-[11px] font-semibold shrink-0" style={{ color: numberColor }}>
+                {numberText}
+              </span>
+            )}
+          </div>
+          {/* O horario carrega o atraso: rosa = sem resposta. Antes eram duas
+              coisas separadas (relogio + "3h" escrito) dizendo o mesmo que a
+              faixa vermelha lateral e o aviso do topo ja diziam — a mesma
+              informacao contada tres vezes. O verde de "nao lida" tambem saiu:
+              o contador verde 20px abaixo ja dizia isso. */}
+          <span
+            title={overdue ? `Sem resposta há ${Math.round(overdueH)}h` : undefined}
+            className={`text-[12px] shrink-0 ${overdue ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-slate-400'}`}
+          >
             {formatRelativeTime(conv.lastAt)}
           </span>
         </div>
         <div className="flex items-center justify-between gap-2 mt-0.5">
           <LastMessage conv={conv} />
-          <div className="flex items-center gap-1.5 shrink-0">
-            {showInstanceBadge && conv.instanceName && (
-              <span
-                title={`Número: ${numberLabel(conv.instanceName)}`}
-                className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
-              >
-                {numberLabel(conv.instanceName)}
-              </span>
-            )}
-            {overdue && (
-              <span className="flex items-center gap-0.5 text-[12px] font-bold text-rose-600 dark:text-rose-400">
-                <Clock size={11} /> {Math.round(overdueH)}h
-              </span>
-            )}
-            {conv.prospectId && !conv.contactId && !unread && (
-              <span className="text-[11px] uppercase font-bold text-orange-500 tracking-wide">novo</span>
-            )}
-            {unread && (
-              <span className="text-[12px] font-bold text-white bg-[#25d366] rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
-                {conv.unreadCount > 99 ? '99+' : conv.unreadCount}
-              </span>
-            )}
-          </div>
+          {unread && (
+            <span className="text-[12px] font-bold text-white bg-[#25d366] rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center shrink-0">
+              {conv.unreadCount > 99 ? '99+' : conv.unreadCount}
+            </span>
+          )}
         </div>
       </div>
     </button>
@@ -193,20 +190,9 @@ export function ConversationList({ activeKey, onSelect }) {
     return { ...c, _owner: owner, _overdueH: h != null && h >= OVERDUE_HOURS ? h : null };
   }), [conversations, membersById, membersByAuthId]);
 
-  const overdueCount = useMemo(() => enriched.filter((c) => c._overdueH != null).length, [enriched]);
-
-  // Abas por número (dedup por telefone)
-  const numberTabs = useMemo(() => {
-    const seen = new Set();
-    const tabs = [];
-    for (const i of instances) {
-      const phone = i.phoneNumber;
-      if (!phone || seen.has(phone)) continue;
-      seen.add(phone);
-      tabs.push({ phone, label: numberLabel(i.instanceName) });
-    }
-    return tabs;
-  }, [instances]);
+  // Cor + rotulo de cada numero, compartilhado com o cabecalho da thread.
+  const numbers = useMemo(() => numberIdentity(instances), [instances]);
+  const numberTabs = numbers.order;
 
   // unread por telefone (badge na aba) + total (badge da aba "Todos")
   const unreadByPhone = useMemo(() => {
@@ -226,27 +212,47 @@ export function ConversationList({ activeKey, onSelect }) {
   const showingAll = (filterPhone ?? ALL_INSTANCES) === ALL_INSTANCES;
   const selectedPhone = showingAll ? null : filterPhone;
 
+  // Recorte por numero, antes dos demais filtros.
+  const byNumber = useMemo(() => {
+    if (showingAll || !selectedPhone) return enriched;
+    // Mantem conversas de instancias ainda sem phone_number sincronizado visiveis
+    // em qualquer aba — senao elas somem sem nenhuma UI pra limpar o filtro.
+    return enriched.filter((c) => !c.instancePhone || c.instancePhone === selectedPhone);
+  }, [enriched, showingAll, selectedPhone]);
+
+  // Contado sobre o recorte por numero, nao sobre tudo. Antes a faixa somava os
+  // dois numeros enquanto a lista mostrava so o selecionado: dizia "3 conversas
+  // sem resposta" e o clique abria 1.
+  const overdueCount = useMemo(() => byNumber.filter((c) => c._overdueH != null).length, [byNumber]);
+
   const filtered = useMemo(() => {
-    let list = enriched;
-    // Aba "Todos" combina os 2 numeros — pula o filtro por telefone.
-    if (!showingAll && selectedPhone) {
-      // Mantem conversas de instancias ainda sem phone_number sincronizado visiveis
-      // em qualquer aba — senao elas somem sem nenhuma UI pra limpar o filtro.
-      list = list.filter((c) => !c.instancePhone || c.instancePhone === selectedPhone);
-    }
+    let list = byNumber;
     if (ownerFilter === 'mine' && myMemberId) list = list.filter((c) => c._owner?.id === myMemberId);
     if (onlyOverdue) list = list.filter((c) => c._overdueH != null);
     // Sem filtro por termo aqui de proposito: quem busca e o server (inboxOpts),
     // que casa em campos que a conversa nao carrega (ex: company_name do prospect).
     // Refiltrar no client descartaria justamente esses matches.
     return list;
-  }, [enriched, showingAll, selectedPhone, ownerFilter, myMemberId, onlyOverdue]);
+  }, [byNumber, ownerFilter, myMemberId, onlyOverdue]);
+
+  // Nome do numero SO onde a cor nao basta: o mesmo lead aparecendo duas vezes
+  // na lista visivel (uma thread por numero). Nas outras linhas a faixa colorida
+  // ja resolve, e escrever o rotulo em todas seria a pilula cinza de volta.
+  const duplicados = useMemo(() => {
+    const n = new Map();
+    for (const c of filtered) {
+      const quem = c.contactId ? `c:${c.contactId}` : `p:${c.prospectId}`;
+      n.set(quem, (n.get(quem) || 0) + 1);
+    }
+    return new Set([...n].filter(([, v]) => v > 1).map(([k]) => k));
+  }, [filtered]);
 
   return (
     <aside className="w-full max-w-sm flex flex-col bg-white dark:bg-[#111b21] border-r border-black/10 dark:border-white/5">
-      <div className="bg-[#f0f2f5] dark:bg-[#202c33] px-4 py-3 shrink-0">
-        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Conversas</h2>
-      </div>
+      {/* O titulo saiu da tela mas nao do documento: ocupava uma faixa inteira
+          pra dizer o que a tela ja diz, mas continua sendo o cabecalho que
+          nomeia esta regiao pra leitor de tela. */}
+      <h2 className="sr-only">Conversas</h2>
       <div className="px-3 py-2 bg-white dark:bg-[#111b21] shrink-0 space-y-2">
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -259,32 +265,40 @@ export function ConversationList({ activeKey, onSelect }) {
           />
         </div>
 
-        {/* abas por número — "Todos" combina os 2, ou escolhe um numero especifico */}
-        {numberTabs.length > 1 && (
+        {/* Numero e dono na MESMA linha: eram duas faixas de filtro empilhadas
+            sobre a lista, e juntas comiam mais altura que tres conversas. */}
+        {(numberTabs.length > 1 || myMemberId) && (
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            <FilterPill
-              label="Todos"
-              badge={totalUnread}
-              active={showingAll}
-              onClick={() => setFilterPhone(ALL_INSTANCES)}
-            />
-            {numberTabs.map((t) => (
+            {numberTabs.length > 1 && (
+              <>
+                <FilterPill
+                  label="Todos"
+                  badge={totalUnread}
+                  active={showingAll}
+                  onClick={() => setFilterPhone(ALL_INSTANCES)}
+                />
+                {numberTabs.map((t) => (
+                  <FilterPill
+                    key={t.phone}
+                    label={t.label}
+                    badge={unreadByPhone[t.phone] || 0}
+                    active={!showingAll && selectedPhone === t.phone}
+                    onClick={() => setFilterPhone(t.phone)}
+                    color={t.color}
+                  />
+                ))}
+              </>
+            )}
+            {/* "Minhas" e o que substitui o selo de responsavel que saiu de cada
+                linha: perguntar de quem e a conversa vira um clique, em vez de
+                trinta iniciais permanentes na tela. */}
+            {myMemberId && (
               <FilterPill
-                key={t.phone}
-                label={t.label}
-                badge={unreadByPhone[t.phone] || 0}
-                active={!showingAll && selectedPhone === t.phone}
-                onClick={() => setFilterPhone(t.phone)}
+                label="Minhas"
+                active={ownerFilter === 'mine'}
+                onClick={() => setOwnerFilter((v) => (v === 'mine' ? 'all' : 'mine'))}
               />
-            ))}
-          </div>
-        )}
-
-        {/* dono: minhas conversas vs todas do time */}
-        {myMemberId && (
-          <div className="flex items-center gap-1.5">
-            <FilterPill label="Todas" active={ownerFilter === 'all'} onClick={() => setOwnerFilter('all')} />
-            <FilterPill label="Minhas" active={ownerFilter === 'mine'} onClick={() => setOwnerFilter('mine')} />
+            )}
           </div>
         )}
       </div>
@@ -338,24 +352,31 @@ export function ConversationList({ activeKey, onSelect }) {
             </p>
           </div>
         ) : (
-          filtered.map((conv) => (
-            <ConversationItem
-              key={conv.key}
-              conv={conv}
-              active={activeKey === conv.key}
-              onSelect={onSelect}
-              owner={conv._owner}
-              overdueH={conv._overdueH}
-              showInstanceBadge={showingAll}
-            />
-          ))
+          filtered.map((conv) => {
+            const ident = conv.instancePhone ? numbers.byPhone.get(conv.instancePhone) : null;
+            const quem = conv.contactId ? `c:${conv.contactId}` : `p:${conv.prospectId}`;
+            return (
+              <ConversationItem
+                key={conv.key}
+                conv={conv}
+                active={activeKey === conv.key}
+                onSelect={onSelect}
+                overdueH={conv._overdueH}
+                numberColor={ident?.color || UNKNOWN_COLOR}
+                // Instancia sem telefone sincronizado e rotulada SEMPRE: e a
+                // linha mais incerta da tela, e ate agora era a que menos tinha
+                // marca nenhuma.
+                numberText={!ident ? numberLabel(conv.instanceName) : (duplicados.has(quem) ? ident.label : null)}
+              />
+            );
+          })
         )}
       </div>
     </aside>
   );
 }
 
-function FilterPill({ label, active, onClick, badge = 0 }) {
+function FilterPill({ label, active, onClick, badge = 0, color = null }) {
   return (
     <button
       onClick={onClick}
@@ -364,6 +385,11 @@ function FilterPill({ label, active, onClick, badge = 0 }) {
           ? 'bg-[#00a884] text-white'
           : 'bg-[#f0f2f5] dark:bg-[#202c33] text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#2a3942]'}`}
     >
+      {/* Ponto na cor do numero: e o que ensina o codigo. Sem ele a faixa
+          colorida na lista seria uma cor sem legenda. */}
+      {color && !active && (
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      )}
       {label}
       {badge > 0 && (
         <span className={`text-[12px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center ${active ? 'bg-white/25' : 'bg-[#25d366] text-white'}`}>

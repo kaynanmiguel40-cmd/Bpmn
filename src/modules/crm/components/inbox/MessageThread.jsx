@@ -1,7 +1,8 @@
-import { useEffect, useRef, Component } from 'react';
+import { useEffect, useRef, useMemo, Component } from 'react';
 import { Link } from 'react-router-dom';
 import { Phone, ExternalLink, MessageSquare, Lock, AlertTriangle } from 'lucide-react';
-import { useCrmConversation, useMarkConversationAsRead } from '../../hooks/useCrmQueries';
+import { useCrmConversation, useMarkConversationAsRead, useCrmWhatsAppInstances } from '../../hooks/useCrmQueries';
+import { numberIdentity, numberLabel, UNKNOWN_COLOR } from './numberIdentity';
 import { MessageBubble } from './MessageBubble';
 
 /**
@@ -64,21 +65,54 @@ function Avatar({ url, name, color, size = 40 }) {
   );
 }
 
-function ThreadHeader({ conversation }) {
+/**
+ * Cabecalho da conversa aberta.
+ *
+ * Alem de quem e o lead, ele responde a pergunta que decide se a mensagem sai
+ * pelo chip certo: POR QUAL NUMERO estou respondendo. Ate agora essa informacao
+ * nao existia em lugar nenhum da tela — e com as threads separadas por numero,
+ * o mesmo lead aparece duas vezes na lista, entao nao da pra deduzir pelo nome.
+ */
+function ThreadHeader({ conversation, numero }) {
   const detailLink = conversation.contactId ? `/crm/contacts/${conversation.contactId}` : null;
   const telHref = conversation.otherPhone ? `tel:+${String(conversation.otherPhone).replace(/\D/g, '')}` : null;
+  const semCadastro = !!conversation.prospectId && !conversation.contactId;
 
   return (
-    <div className="h-16 bg-[#f0f2f5] dark:bg-[#202c33] px-4 flex items-center justify-between shrink-0 border-b border-black/5 dark:border-white/5">
+    <div className="relative h-16 bg-[#f0f2f5] dark:bg-[#202c33] px-4 flex items-center justify-between shrink-0 border-b border-black/5 dark:border-white/5">
+      {/* Mesma cor da faixa da linha na lista — e o que ensina o codigo sem
+          precisar de legenda. */}
+      <span className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: numero.cor }} />
       <div className="flex items-center gap-3 min-w-0">
         <Avatar url={conversation.avatarUrl} name={conversation.otherName || conversation.otherPhone} color={conversation.avatarColor} size={40} />
         <div className="min-w-0">
-          <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 truncate leading-tight">
-            {conversation.otherName || conversation.otherPhone}
+          <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 truncate leading-tight flex items-center gap-2">
+            <span className="truncate">{conversation.otherName || conversation.otherPhone}</span>
+            {/* Herda a tag "novo" que saiu da lista, mas no lugar onde ela e
+                acionavel: aqui voce olha antes de responder. Na lista ela so
+                aparecia quando NAO havia mensagem nova — o oposto do util. */}
+            {semCadastro && (
+              <span className="text-[10px] uppercase font-bold tracking-wide text-orange-500 shrink-0">
+                sem cadastro
+              </span>
+            )}
           </h3>
-          {conversation.otherPhone && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{conversation.otherPhone}</p>
-          )}
+          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+            {conversation.otherPhone && <span>{conversation.otherPhone}</span>}
+            {conversation.otherPhone && ' · '}
+            {numero.certo ? (
+              // "via", nunca "pelo": o rotulo sai de um nome de instancia
+              // arbitrario e nao da pra inferir genero — "pelo Lorena" iria pro ar.
+              <span style={{ color: numero.cor }} className="font-semibold">via {numero.rotulo}</span>
+            ) : (
+              // Nao inventa. Um rotulo confiante aqui desligaria a desconfianca
+              // justamente no caminho (deep-link antigo, conversa sem historico)
+              // em que o envio pode sair pelo chip errado.
+              <span className="font-semibold text-amber-600 dark:text-amber-400">
+                número não definido{numero.rotulo ? `, deve sair via ${numero.rotulo}` : ''}
+              </span>
+            )}
+          </p>
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
@@ -129,6 +163,32 @@ function ThreadEmpty() {
 export function MessageThread({ conversation, children }) {
   const scrollRef = useRef(null);
   const markReadMutation = useMarkConversationAsRead();
+  const { data: instances = [] } = useCrmWhatsAppInstances();
+
+  /**
+   * Por qual numero da empresa esta conversa responde.
+   *
+   * `certo` distingue "eu sei" de "eu chutei". Quando a conversa nao carrega
+   * instancia — deep-link antigo, conversa sem historico — o envio cai no
+   * fallback da primeira instancia conectada, que pode ser o chip errado. O
+   * cabecalho precisa dizer isso em vez de exibir um nome confiante.
+   */
+  const numero = useMemo(() => {
+    const ident = numberIdentity(instances);
+    const daConversa = conversation?.instanceId
+      ? instances.find((i) => i.id === conversation.instanceId)
+      : null;
+    const usada = daConversa
+      || instances.find((i) => i.status === 'connected')
+      || instances[0]
+      || null;
+    const cor = usada?.phoneNumber ? (ident.byPhone.get(usada.phoneNumber)?.color || UNKNOWN_COLOR) : UNKNOWN_COLOR;
+    return {
+      certo:  !!daConversa,
+      rotulo: usada ? numberLabel(usada.instanceName) : '',
+      cor:    daConversa ? cor : UNKNOWN_COLOR,
+    };
+  }, [instances, conversation?.instanceId]);
 
   const { data: messages = [], isLoading, isError, error, refetch, isFetching } = useCrmConversation({
     contactId:  conversation?.contactId,
@@ -171,7 +231,7 @@ export function MessageThread({ conversation, children }) {
 
   return (
     <main className="flex-1 flex flex-col min-w-0">
-      <ThreadHeader conversation={conversation} />
+      <ThreadHeader conversation={conversation} numero={numero} />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto relative bg-[#efeae2] dark:bg-[#0b141a]">
         {/* papel de parede sutil */}
