@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmContactSchema } from '../schemas/crmValidation';
 import { dbToCrmCompany } from './crmCompaniesService';
-import { escapeOrIlike } from '../lib/searchFilters';
+import { orIlike } from '../lib/searchFilters';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -69,8 +69,7 @@ export async function getCrmContacts(filters = {}) {
     .is('deleted_at', null);
 
   if (search) {
-    const s = escapeOrIlike(search);
-    query = query.or(`name.ilike.%${s}%,email.ilike.%${s}%,phone.ilike.%${s}%`);
+    query = query.or(orIlike(['name', 'email', 'phone'], search));
   }
   if (status) {
     query = query.eq('status', status);

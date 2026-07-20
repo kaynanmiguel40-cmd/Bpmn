@@ -157,3 +157,126 @@ export function dayKey(date) {
   const day = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${m}-${day}`;
 }
+
+// ==================== REBALANCEAMENTO POR PRIORIDADE ====================
+
+/**
+ * Redistribui as tarefas pendentes pela PRIORIDADE do lead, nao pela ordem em
+ * que foram agendadas.
+ *
+ * O problema que isto resolve: a cadencia agenda tudo no momento em que o lead
+ * entra na etapa, e nunca mais reavalia. Ai a realidade muda — o Pablo liga
+ * dizendo "quero fechar agora", ou o Joao manda parar de ligar — e a agenda
+ * continua servindo a ordem de ontem. A fila fica cheia de trabalho na ordem
+ * errada, e quem importa espera atras de quem nao importa.
+ *
+ * REGRAS, e o motivo de cada uma:
+ *
+ * 1. A ORDEM DO KANBAN MANDA; A ESTRELA DESEMPATA. Sao dois eixos diferentes:
+ *    `rank` (a posicao na coluna) e PRIORIDADE — a decisao explicita de quem
+ *    se atende antes; `priority` (as estrelas) e QUALIDADE — o quanto o lead
+ *    vale. Quem arrastou o card pro topo decidiu, e essa decisao vence: o
+ *    Pablo ligando "quero fechar agora" sobe pro topo e passa na frente, tendo
+ *    duas estrelas ou cinco. A estrela so resolve empate entre leads na mesma
+ *    altura da coluna.
+ *
+ * 2. MAS NINGUEM VIAJA NO TEMPO. Cada tarefa tem um `notBefore` — o dia que a
+ *    cadencia quis (D0, D1, D3, D7...). Prioridade alta NAO puxa o follow-up de
+ *    D7 pra hoje: o espacamento existe pra dar respiro ao lead, e comprimir por
+ *    ansiedade e o oposto de cadencia. Prioridade decide a ORDEM entre as
+ *    elegiveis, nao antecipa o que ainda nao amadureceu.
+ *
+ * 3. A ORDEM DENTRO DO LEAD E SAGRADA. `seq` desempata: o 2o toque de um lead
+ *    nunca cai antes do 1o, por mais estrelas que ele tenha.
+ *
+ * 4. BURACO SE FECHA. Como cada tarefa pega o PRIMEIRO slot livre a partir do
+ *    seu notBefore, cancelar um lead (o "para de me ligar") faz as seguintes
+ *    subirem sozinhas — nao ha lacuna a varrer, ela simplesmente nao e
+ *    escolhida por ninguem.
+ *
+ * Puro de proposito: sem banco, sem relogio proprio. O `from` entra por
+ * parametro pra que o teste consiga fixar "hoje".
+ *
+ * @param {Array} tarefas  [{ id, dealId, rank, priority, notBefore: Date|null,
+ *                           period: 'manha'|'tarde'|null, seq: number,
+ *                           duracaoMin?: number }]
+ * @param {{ from?: Date, busyByDay?: Object }} opts
+ *   `busyByDay` = compromissos que NAO entram no rebalanceamento (reuniao
+ *   marcada, evento do Google): eles ocupam slot mas nao sao remanejados.
+ * @returns {Array<{ id, start: Date, movida: boolean }>}
+ */
+export function rebalanceQueue(tarefas, { from = new Date(), busyByDay = {} } = {}) {
+  const lista = (tarefas || []).filter(t => t?.id);
+  if (lista.length === 0) return [];
+
+  // Copia: o algoritmo ocupa slots conforme decide, e nao pode sujar a entrada.
+  const busy = {};
+  Object.entries(busyByDay).forEach(([k, v]) => { busy[k] = [...(v || [])]; });
+
+  const hojeKey = dayKey(from);
+  const agoraMin = from.getHours() * 60 + from.getMinutes() + 15;
+  const inicioDoDia = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const hoje = inicioDoDia(from);
+
+  const ordenada = [...lista].sort((a, b) => {
+    // 1. quem esta mais em cima na coluna (menor rank) escolhe primeiro
+    const r = (a.rank ?? Number.MAX_SAFE_INTEGER) - (b.rank ?? Number.MAX_SAFE_INTEGER);
+    if (r !== 0) return r;
+    // 2. empatados na coluna: mais estrelas primeiro
+    const p = (b.priority ?? 0) - (a.priority ?? 0);
+    if (p !== 0) return p;
+    // 3. quem amadureceu antes vai antes
+    const na = a.notBefore ? inicioDoDia(a.notBefore).getTime() : 0;
+    const nb = b.notBefore ? inicioDoDia(b.notBefore).getTime() : 0;
+    if (na !== nb) return na - nb;
+    // 4. ordem original do lead
+    return (a.seq ?? 0) - (b.seq ?? 0);
+  });
+
+  // Ultimo slot dado a cada lead: garante a regra 3 mesmo quando duas tarefas
+  // do mesmo lead disputam o mesmo dia.
+  const ultimoDoLead = new Map();
+  const saida = [];
+
+  for (const t of ordenada) {
+    // Nao antes do que a cadencia quis, nem antes de agora.
+    let alvo = t.notBefore && inicioDoDia(t.notBefore) > hoje ? inicioDoDia(t.notBefore) : hoje;
+    const anterior = ultimoDoLead.get(t.dealId);
+    if (anterior && inicioDoDia(anterior) > alvo) alvo = inicioDoDia(anterior);
+
+    let dia = nextBusinessDay(alvo);
+    let slot = null;
+    let key = dayKey(dia);
+
+    for (let i = 0; i <= MAX_ROLLOVER_DAYS; i++) {
+      key = dayKey(dia);
+      // Piso do dia: hoje respeita o relogio; no dia do toque anterior do mesmo
+      // lead, respeita aquele horario (dois toques no mesmo dia nao invertem).
+      let piso = key === hojeKey ? agoraMin : -1;
+      if (anterior && dayKey(anterior) === key) {
+        piso = Math.max(piso, anterior.getHours() * 60 + anterior.getMinutes());
+      }
+      slot = findFreeSlot(busy[key] || [], piso, t.period || null);
+      if (slot !== null) break;
+      dia = nextBusinessDay(new Date(dia.getFullYear(), dia.getMonth(), dia.getDate() + 1));
+    }
+    if (slot === null) continue; // nao coube em 60 dias uteis: fica onde esta
+
+    const start = atMinutes(dia, slot);
+    const dur = t.duracaoMin || SLOT_MINUTES;
+    (busy[key] = busy[key] || []).push({
+      start: start.toISOString(),
+      end: new Date(start.getTime() + dur * 60000).toISOString(),
+    });
+    ultimoDoLead.set(t.dealId, start);
+    saida.push({
+      id: t.id,
+      start,
+      // `movida` deixa a tela mostrar SO o que muda — rebalancear 300 tarefas e
+      // avisar "300 alteradas" quando 4 mudaram de lugar seria alarme falso.
+      movida: !t.startDate || new Date(t.startDate).getTime() !== start.getTime(),
+    });
+  }
+
+  return saida;
+}

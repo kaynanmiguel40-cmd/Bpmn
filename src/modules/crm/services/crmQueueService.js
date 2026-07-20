@@ -17,7 +17,7 @@
  */
 
 import { supabase } from '../../../lib/supabase';
-import { planSteps, dayKey } from './crmScheduling';
+import { planSteps, dayKey, rebalanceQueue, SLOT_MINUTES } from './crmScheduling';
 
 // Colunas enxutas: so o que a linha da fila desenha. Sem `select('*')`.
 const QUEUE_COLS = `
@@ -463,4 +463,110 @@ export async function getStageWorkSummary(dealId, stageId) {
   }
 
   return { concluidas, pendentes, semContato, semRegistro, semPlaybook: false };
+}
+
+// ==================== REORGANIZAR A FILA POR PRIORIDADE ====================
+
+/**
+ * Monta o plano de rebalanceamento da fila de alguem: quem tem mais estrelas
+ * pega os horarios mais cedo, respeitando o dia que a cadencia quis.
+ *
+ * Devolve o PLANO, sem gravar — a confirmacao e obrigatoria porque isto mexe na
+ * agenda inteira da pessoa de uma vez, e ela precisa ver o que muda antes.
+ *
+ * O `notBefore` sai do proprio agendamento atual, nao do day_offset: a tarefa
+ * ja foi colocada num dia que a cadencia escolheu, e esse dia E a maturidade
+ * dela. Recalcular pelo offset exigiria saber quando o lead entrou na etapa e
+ * daria o mesmo numero — com mais chance de errar.
+ */
+export async function planQueueRebalance({ assignee = null, assigneeName = null } = {}, now = new Date()) {
+  const ate = new Date(now.getTime() + 90 * 86400000);
+
+  const { data, error } = await supabase
+    .from('crm_activities')
+    .select('id, title, type, start_date, end_date, deal_id, assigned_to, assigned_to_name, created_by, stage_step_id, crm_deals(id, title, priority, position)')
+    .is('deleted_at', null)
+    .eq('completed', false)
+    .lte('start_date', ate.toISOString())
+    .order('start_date', { ascending: true });
+  if (error) throw error;
+
+  // Filtro de dono no cliente, pela mesma razao do resto da fila: a cadencia
+  // legada gravou team_members.id em assigned_to.
+  const minhas = (data || []).filter(r => {
+    if (r.assigned_to) return r.assigned_to === assignee;
+    if (r.assigned_to_name && assigneeName) return r.assigned_to_name === assigneeName;
+    return r.created_by === assignee;
+  });
+
+  // COMPROMISSO nao se remaneja: reuniao e visita tem hora combinada COM O
+  // LEAD. Mover unilateralmente e furar o combinado — elas viram bloqueio.
+  const remanejaveis = minhas.filter(r => r.stage_step_id && !['meeting', 'visit', 'lunch'].includes(r.type));
+  const fixas = minhas.filter(r => !remanejaveis.includes(r));
+
+  const busyByDay = {};
+  fixas.forEach(r => {
+    const k = dayKey(new Date(r.start_date));
+    (busyByDay[k] = busyByDay[k] || []).push({ start: r.start_date, end: r.end_date || null });
+  });
+
+  // `seq` = a ordem em que a cadencia agendou. E o que preserva o 1o toque
+  // antes do 2o quando os dois disputam o mesmo dia.
+  const tarefas = remanejaveis.map((r, i) => ({
+    id: r.id,
+    dealId: r.deal_id,
+    // PRIORIDADE = posicao na coluna do Kanban (menor = mais em cima).
+    // QUALIDADE = estrelas. A ordem manda; a estrela desempata.
+    rank: r.crm_deals?.position ?? Number.MAX_SAFE_INTEGER,
+    priority: r.crm_deals?.priority ?? 0,
+    notBefore: new Date(r.start_date),
+    startDate: r.start_date,
+    period: new Date(r.start_date).getHours() < 12 ? 'manha' : 'tarde',
+    seq: i,
+    duracaoMin: r.end_date
+      ? Math.round((new Date(r.end_date) - new Date(r.start_date)) / 60000)
+      : SLOT_MINUTES,
+  }));
+
+  const plano = rebalanceQueue(tarefas, { from: now, busyByDay });
+  const porId = Object.fromEntries(remanejaveis.map(r => [r.id, r]));
+  const movidas = plano.filter(p => p.movida).map(p => ({
+    id: p.id,
+    start: p.start,
+    de: porId[p.id]?.start_date,
+    titulo: porId[p.id]?.title,
+    lead: porId[p.id]?.crm_deals?.title || null,
+    priority: porId[p.id]?.crm_deals?.priority ?? 0,
+  }));
+
+  return { total: tarefas.length, fixas: fixas.length, movidas };
+}
+
+/** Aplica o plano do rebalanceamento. Preserva a duracao de cada tarefa. */
+export async function applyQueueRebalance(movidas) {
+  let ok = 0;
+  for (const m of movidas || []) {
+    try { await snoozeActivity(m.id, m.start.toISOString()); ok += 1; }
+    catch (e) { console.warn('[applyQueueRebalance]', m.id, e.message); }
+  }
+  return ok;
+}
+
+
+/**
+ * Move um lead na coluna do Kanban — a PRIORIDADE dele.
+ *
+ * Recebe a lista de ids na ordem final e grava 100, 200, 300... O passo de 100
+ * deixa espaco pra encaixar um card entre dois sem reescrever a coluna, mas
+ * aqui reescrevemos mesmo: sao dezenas de leads por etapa, nao milhares, e
+ * ordem previsivel vale mais que economia de UPDATE.
+ */
+export async function reorderStageDeals(stageId, idsNaOrdem) {
+  if (!stageId || !idsNaOrdem?.length) return 0;
+  const linhas = idsNaOrdem.map((id, i) => ({ id, position: (i + 1) * 100 }));
+  for (const l of linhas) {
+    const { error } = await supabase.from('crm_deals').update({ position: l.position }).eq('id', l.id);
+    if (error) { console.warn('[reorderStageDeals]', l.id, error.message); }
+  }
+  return linhas.length;
 }

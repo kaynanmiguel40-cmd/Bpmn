@@ -13,7 +13,7 @@
 
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
-import { escapeOrIlike } from '../lib/searchFilters';
+import { orIlike } from '../lib/searchFilters';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -152,20 +152,19 @@ function groupMessagesIntoConversations(msgs, limit) {
  * ter existido.
  */
 async function searchInboxConversations(term, limit) {
-  const q = escapeOrIlike(term);
 
   const [{ data: contacts, error: contactsErr }, { data: prospects, error: prospectsErr }] = await Promise.all([
     supabase
       .from('crm_contacts')
       .select('id')
       .is('deleted_at', null)
-      .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
+      .or(orIlike(['name', 'phone'], term))
       .limit(200),
     supabase
       .from('crm_prospects')
       .select('id')
       .is('deleted_at', null)
-      .or(`contact_name.ilike.%${q}%,company_name.ilike.%${q}%,phone.ilike.%${q}%`)
+      .or(orIlike(['contact_name', 'company_name', 'phone'], term))
       .limit(200),
   ]);
 

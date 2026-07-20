@@ -24,21 +24,35 @@ export function escapeIlike(term) {
 }
 
 /**
- * Escapa termo para uso dentro de uma expressao `.or()` do PostgREST.
- * Alem dos wildcards ILIKE, escapa caracteres que quebram a sintaxe do `.or()`:
- * virgula (separador de filtros), parenteses, asterisco e aspas.
+ * Padrao ILIKE pronto pra embutir num filtro do PostgREST, JA ENTRE ASPAS.
  *
- * Uso: query.or(`name.ilike.%${escapeOrIlike(term)}%,email.ilike.%${escapeOrIlike(term)}%`)
+ * Por que aspas e nao barra invertida: o PostgREST NAO reconhece `\)` ou `\,`
+ * como escape fora de aspas. Ele le a barra como parte do valor e o `)` como
+ * fim do grupo — o padrao que chega no Postgres vira `%\`, terminando em
+ * caractere de escape, e o banco recusa com "LIKE pattern must not end with
+ * escape character". Buscar por ")" quebrava a tela inteira.
  *
- * @param {string | null | undefined} term
- * @returns {string}
+ * A ordem dos dois escapes importa e nao e intercambiavel:
+ *   1. LIKE   — `%` e `_` viram literais (o usuario nao pode usar curinga);
+ *   2. ASPAS  — barra e aspa sao dobradas pro PostgREST devolver ao Postgres
+ *               exatamente o que o passo 1 produziu.
+ * Inverter isso faria o passo 2 desfazer o passo 1.
  */
-export function escapeOrIlike(term) {
-  const escaped = escapeIlike(term);
-  return escaped
-    .replace(/,/g, '\\,')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
-    .replace(/\*/g, '\\*')
-    .replace(/"/g, '\\"');
+export function ilikeQuoted(term) {
+  const paraLike = escapeIlike(term);
+  const dentroDasAspas = paraLike.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `"%${dentroDasAspas}%"`;
+}
+
+/**
+ * Monta a expressao `.or()` de busca em varias colunas.
+ *
+ * Existe pra que ninguem monte a string na mao: era assim que a citacao ficava
+ * de fora e a busca por ")" ou "," derrubava a tela.
+ *
+ * @example query.or(orIlike(['name', 'email', 'phone'], termo))
+ */
+export function orIlike(colunas, term) {
+  const p = ilikeQuoted(term);
+  return colunas.map(c => `${c}.ilike.${p}`).join(',');
 }

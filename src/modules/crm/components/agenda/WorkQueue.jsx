@@ -20,11 +20,11 @@
 import { useState, useMemo } from 'react';
 import {
   AlertTriangle, Sun, Sunset, CheckCircle2, ChevronDown, ChevronRight,
-  Inbox, RefreshCw, UserX, PauseCircle, ArrowRight,
+  Inbox, RefreshCw, UserX, PauseCircle, ArrowRight, ArrowUpDown,
 } from 'lucide-react';
 import { QueueTaskRow } from './QueueTaskRow';
 import { NowCard } from './NowCard';
-import { useWorkQueue, useStalledLeads, useBatchPostpone } from '../../hooks/useWorkQueue';
+import { useWorkQueue, useStalledLeads, useBatchPostpone, useQueueRebalance } from '../../hooks/useWorkQueue';
 
 function SectionTitle({ icon: Icon, children, count, tone = 'default', right }) {
   const toneCls = tone === 'danger'
@@ -52,7 +52,9 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
   const [showAllOverdue, setShowAllOverdue] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [plano, setPlano] = useState(null); // preview do adiar em lote
+  const [rebal, setRebal] = useState(null);  // preview da reorganizacao
   const batch = useBatchPostpone();
+  const rebalance = useQueueRebalance();
   // A cor mora em team_members, nao na atividade — a linha so guarda o nome.
   // A lista vem do PAI, que ja a carregou pro seletor: buscar de novo aqui
   // duplicaria a consulta e amarraria esta tela a mais uma fonte de dados.
@@ -111,7 +113,86 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
           {q.doneCount} de {q.doneCount + q.total}
         </span>
         <span className="text-[12px] text-slate-500 dark:text-slate-400">{escopoLabel || 'Estas são só as suas tarefas.'}</span>
+        {/* Reorganizar por prioridade: quem tem mais estrelas passa pra frente.
+            Fica aqui em cima, junto do placar do dia, porque e uma decisao
+            sobre o dia inteiro — nao sobre uma tarefa. */}
+        <button
+          onClick={() => rebalance.planejar.mutate(undefined, { onSuccess: (r) => setRebal(r) })}
+          disabled={rebalance.planejar.isPending}
+          title="Coloca as tarefas dos leads com mais estrelas nos horários mais cedo"
+          className="shrink-0 inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500 dark:text-slate-400 hover:text-fyness-primary disabled:opacity-50"
+        >
+          <ArrowUpDown size={12} /> {rebalance.planejar.isPending ? 'Calculando…' : 'Reorganizar por prioridade'}
+        </button>
       </div>
+
+      {rebal && (
+        <div className="mb-4 rounded-xl border border-fyness-primary/30 bg-fyness-primary/5 p-3">
+          {rebal.movidas.length === 0 ? (
+            <>
+              <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                A fila já está na ordem certa.
+              </div>
+              <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Nenhuma das {rebal.total} tarefas mudaria de horário.
+              </p>
+              <button onClick={() => setRebal(null)}
+                className="mt-2 min-h-[44px] px-4 rounded-lg text-sm font-medium border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">
+                Fechar
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
+                {rebal.movidas.length} de {rebal.total} {rebal.movidas.length === 1 ? 'tarefa muda' : 'tarefas mudam'} de horário:
+              </div>
+              <div className="space-y-1 mb-2 max-h-48 overflow-y-auto">
+                {rebal.movidas.slice(0, 12).map(m => (
+                  <div key={m.id} className="flex items-center gap-2 text-[12px]">
+                    <span className="tnum text-amber-600 dark:text-amber-400 shrink-0">
+                      {new Date(m.de).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                    </span>
+                    <span className="text-slate-400">→</span>
+                    <span className="tnum font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
+                      {m.start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} {m.start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-slate-600 dark:text-slate-300 truncate">
+                      {m.lead || m.titulo}
+                    </span>
+                    {m.priority > 0 && (
+                      <span className="shrink-0 text-amber-500">{'★'.repeat(m.priority)}</span>
+                    )}
+                  </div>
+                ))}
+                {rebal.movidas.length > 12 && (
+                  <div className="text-[12px] text-slate-500 dark:text-slate-400">
+                    …e mais {rebal.movidas.length - 12}.
+                  </div>
+                )}
+              </div>
+              {rebal.fixas > 0 && (
+                <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-2">
+                  {rebal.fixas} {rebal.fixas === 1 ? 'compromisso fica' : 'compromissos ficam'} no lugar —
+                  reunião e visita têm hora combinada com o lead.
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => rebalance.aplicar.mutate({ movidas: rebal.movidas }, { onSuccess: () => setRebal(null) })}
+                  disabled={rebalance.aplicar.isPending}
+                  className="min-h-[44px] px-4 rounded-lg text-sm font-bold text-white bg-fyness-primary hover:bg-fyness-secondary disabled:opacity-50"
+                >
+                  {rebalance.aplicar.isPending ? 'Reorganizando…' : 'Confirmar'}
+                </button>
+                <button onClick={() => setRebal(null)}
+                  className="min-h-[44px] px-4 rounded-lg text-sm font-medium border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">
+                  Cancelar
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {q.orphanCount > 0 && (
         <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-[12px] text-amber-800 dark:text-amber-300">

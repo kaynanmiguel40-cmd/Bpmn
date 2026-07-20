@@ -2,7 +2,7 @@ import { createCRUDService } from '../../../lib/serviceFactory';
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmCompanySchema } from '../schemas/crmValidation';
-import { escapeOrIlike } from '../lib/searchFilters';
+import { orIlike } from '../lib/searchFilters';
 
 // ==================== TRANSFORMADOR ====================
 
@@ -72,8 +72,7 @@ export async function getCrmCompanies(filters = {}) {
       .is('deleted_at', null);
 
     if (search) {
-      const s = escapeOrIlike(search);
-      query = query.or(`name.ilike.%${s}%,cnpj.ilike.%${s}%,email.ilike.%${s}%`);
+      query = query.or(orIlike(['name', 'cnpj', 'email'], search));
     }
     if (segment) {
       query = query.eq('segment', segment);

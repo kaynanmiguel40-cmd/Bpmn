@@ -13,7 +13,7 @@ import { createCRUDService } from '../../../lib/serviceFactory';
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmCallSchema } from '../schemas/crmValidation';
-import { escapeIlike, escapeOrIlike } from '../lib/searchFilters';
+import { escapeIlike, orIlike } from '../lib/searchFilters';
 import { createCrmActivity } from './crmActivitiesService';
 
 // ==================== TRANSFORMADOR ====================
@@ -146,8 +146,7 @@ export async function getCrmCalls(filters = {}) {
     .is('deleted_at', null);
 
   if (search) {
-    const s = escapeOrIlike(search);
-    query = query.or(`phone_dialed.ilike.%${s}%,notes.ilike.%${s}%`);
+    query = query.or(orIlike(['phone_dialed', 'notes'], search));
   }
   if (contactId)  query = query.eq('contact_id', contactId);
   if (dealId)     query = query.eq('deal_id', dealId);
@@ -293,8 +292,7 @@ async function getQueueFromContacts(filters) {
   if (status) query = query.eq('status', status);
   if (tag)    query = query.contains('tags', [tag]);
   if (search) {
-    const s = escapeOrIlike(search);
-    query = query.or(`name.ilike.%${s}%,phone.ilike.%${s}%`);
+    query = query.or(orIlike(['name', 'phone'], search));
   }
 
   query = query.order('updated_at', { ascending: false }).limit(limit);
@@ -342,8 +340,7 @@ async function getQueueFromStuckDeals(filters) {
     .lte('updated_at', cutoff.toISOString());
 
   if (search) {
-    const s = escapeOrIlike(search);
-    query = query.or(`title.ilike.%${s}%,contact_name.ilike.%${s}%,contact_phone.ilike.%${s}%`);
+    query = query.or(orIlike(['title', 'contact_name', 'contact_phone'], search));
   }
 
   query = query.order('updated_at', { ascending: true }).limit(limit);
@@ -467,8 +464,7 @@ async function getQueueFromProspects(filters) {
     .not('status', 'in', '(sent_to_pipeline,converted)');
 
   if (search) {
-    const s = escapeOrIlike(search);
-    query = query.or(`company_name.ilike.%${s}%,contact_name.ilike.%${s}%,phone.ilike.%${s}%`);
+    query = query.or(orIlike(['company_name', 'contact_name', 'phone'], search));
   }
 
   query = query.order('created_at', { ascending: false }).limit(limit);

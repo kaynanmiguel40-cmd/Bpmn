@@ -5,16 +5,17 @@
  */
 
 import { supabase } from './supabase';
-import { escapeOrIlike } from '../modules/crm/lib/searchFilters';
+import { ilikeQuoted } from '../modules/crm/lib/searchFilters';
 
 export async function searchAll(query) {
   if (!query || query.length < 2) return [];
 
   const q = query.toLowerCase();
-  // Escapa virgula/parenteses/wildcards: input cru no `.or()` quebrava a
-  // sintaxe do PostgREST (ex.: "Silva, Ltda") -> erro 400 engolido pelo
-  // catch{} -> busca retornava zero resultados.
-  const esc = escapeOrIlike(q);
+  // Valor ENTRE ASPAS: input cru no `.or()` quebrava a sintaxe do PostgREST
+  // (ex.: "Silva, Ltda"), e escapar com barra invertida — que era a correcao
+  // anterior — nao funciona fora de aspas: buscar por ")" fazia o `)` fechar o
+  // grupo e o Postgres recusar o padrao terminado em escape.
+  const pat = ilikeQuoted(q);
   const results = [];
 
   // ==================== BUSCA VIA SUPABASE ====================
@@ -23,7 +24,7 @@ export async function searchAll(query) {
   try {
     // `number` e coluna inteira: ilike sempre erra. Busca por numero exato so
     // quando o termo tiver digitos.
-    const orParts = [`title.ilike.%${esc}%`, `client.ilike.%${esc}%`, `description.ilike.%${esc}%`];
+    const orParts = [`title.ilike.${pat}`, `client.ilike.${pat}`, `description.ilike.${pat}`];
     const digits = q.replace(/\D/g, '');
     if (digits) orParts.push(`number.eq.${digits}`);
     const { data: orders } = await supabase
@@ -50,7 +51,7 @@ export async function searchAll(query) {
     const { data: events } = await supabase
       .from('agenda_events')
       .select('id, title, description')
-      .or(`title.ilike.%${esc}%,description.ilike.%${esc}%`)
+      .or(`title.ilike.${pat},description.ilike.${pat}`)
       .limit(10);
 
     (events || []).forEach(e => {
@@ -92,7 +93,7 @@ export async function searchAll(query) {
     const { data: members } = await supabase
       .from('team_members')
       .select('id, name, role')
-      .or(`name.ilike.%${esc}%,role.ilike.%${esc}%`)
+      .or(`name.ilike.${pat},role.ilike.${pat}`)
       .limit(10);
 
     (members || []).forEach(m => {

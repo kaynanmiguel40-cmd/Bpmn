@@ -11,12 +11,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { WorkQueue } from '../WorkQueue';
-import { useWorkQueue, useStalledLeads, useBatchPostpone } from '../../../hooks/useWorkQueue';
+import { useWorkQueue, useStalledLeads, useBatchPostpone, useQueueRebalance } from '../../../hooks/useWorkQueue';
 
 vi.mock('../../../hooks/useWorkQueue', () => ({
   useWorkQueue: vi.fn(),
   useStalledLeads: vi.fn(),
   useBatchPostpone: vi.fn(),
+  useQueueRebalance: vi.fn(),
 }));
 
 const VAZIO = 'Fila limpa. Nada pendente.';
@@ -90,6 +91,10 @@ function montar(over = {}, { stalled = [] } = {}) {
   useWorkQueue.mockReturnValue(estado(over));
   useStalledLeads.mockReturnValue({ data: stalled });
   useBatchPostpone.mockReturnValue(batchMock);
+  useQueueRebalance.mockReturnValue({
+    planejar: { mutate: vi.fn(), isPending: false },
+    aplicar: { mutate: vi.fn(), isPending: false },
+  });
   return render(<WorkQueue onExecute={vi.fn()} onPostpone={vi.fn()} onOpenLead={vi.fn()} onGoToCalendar={vi.fn()} />);
 }
 

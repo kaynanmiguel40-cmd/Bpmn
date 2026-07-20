@@ -12,7 +12,7 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getOverdueQueue, getTodayQueue, getUpcomingCounts, getStalledLeads, snoozeActivity, getNextStageForDeal, planBatchPostpone, applyBatchPostpone, getNextActivityForLead, getLeadNotes,
+  getOverdueQueue, getTodayQueue, getUpcomingCounts, getStalledLeads, snoozeActivity, getNextStageForDeal, planBatchPostpone, applyBatchPostpone, getNextActivityForLead, getLeadNotes, planQueueRebalance, applyQueueRebalance,
 } from '../services/crmQueueService';
 import { isCold, COLD_AFTER_DAYS } from '../utils/stepLabel';
 import { namesMatch } from '../../../lib/kpiUtils';
@@ -230,6 +230,34 @@ export function useBatchPostpone() {
       toast(`${n} ${n === 1 ? 'tarefa adiada' : 'tarefas adiadas'}`, 'success');
     },
     onError: (err) => toast(`Não consegui adiar: ${err.message}`, 'error'),
+  });
+
+  return { planejar, aplicar };
+}
+
+/**
+ * Reorganizar a fila por prioridade — em duas etapas, como o adiar em lote:
+ * `planejar` devolve o que MUDA pra ela conferir, `aplicar` grava. Isto mexe na
+ * agenda inteira de uma vez; nunca grava sem confirmacao.
+ */
+export function useQueueRebalance() {
+  const qc = useQueryClient();
+  const { profile } = useProfile();
+
+  const planejar = useMutation({
+    mutationFn: () => planQueueRebalance({ assignee: profile?.id || null, assigneeName: profile?.name || null }),
+    onError: (err) => toast(`Não consegui calcular a reorganização: ${err.message}`, 'error'),
+  });
+
+  const aplicar = useMutation({
+    mutationFn: ({ movidas }) => applyQueueRebalance(movidas),
+    onSuccess: (n) => {
+      qc.invalidateQueries({ queryKey: workQueueKeys.all });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      toast(`${n} ${n === 1 ? 'tarefa reorganizada' : 'tarefas reorganizadas'}`, 'success');
+    },
+    onError: (err) => toast(`Não consegui reorganizar: ${err.message}`, 'error'),
   });
 
   return { planejar, aplicar };
