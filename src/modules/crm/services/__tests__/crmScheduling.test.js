@@ -26,6 +26,41 @@ describe('daySlots — expediente 9-18 com almoco 11-12', () => {
   });
 });
 
+describe('turno (manha/tarde) — "sempre ligar de manha e a tarde"', () => {
+  it('manha vai das 9h ate antes do almoco', () => {
+    const s = daySlots('manha').map(hhmm);
+    expect(s[0]).toBe('09:00');
+    expect(s[s.length - 1]).toBe('10:30'); // 10:30+30 = 11:00, encosta no almoco
+    expect(s).not.toContain('12:00');
+  });
+  it('tarde comeca depois do almoco', () => {
+    const s = daySlots('tarde').map(hhmm);
+    expect(s[0]).toBe('12:00');
+    expect(s[s.length - 1]).toBe('17:30');
+    expect(s).not.toContain('09:00');
+  });
+  it('sem turno = dia inteiro', () => {
+    expect(daySlots().length).toBeGreaterThan(daySlots('manha').length);
+  });
+
+  it('as duas ligacoes do MESMO dia caem em turnos diferentes', () => {
+    const plan = planSteps([
+      { id: 'manha', dayOffset: 0, period: 'manha' },
+      { id: 'tarde', dayOffset: 0, period: 'tarde' },
+    ], {}, new Date(2026, 6, 20));
+    expect(plan[0].start.getHours()).toBeLessThan(11);
+    expect(plan[1].start.getHours()).toBeGreaterThanOrEqual(12);
+  });
+
+  it('manha lotada NAO joga a ligacao pra tarde — empurra pro dia seguinte', () => {
+    // Sem isto o "ligar de manha" viraria uma ligacao as 17h.
+    const busy = { '2026-07-20': [{ start: at(9, 0), end: at(11, 0) }] };
+    const plan = planSteps([{ id: 'a', dayOffset: 0, period: 'manha' }], busy, new Date(2026, 6, 20));
+    expect(dayKey(plan[0].start)).toBe('2026-07-21');
+    expect(plan[0].start.getHours()).toBeLessThan(11);
+  });
+});
+
 describe('findFreeSlot', () => {
   it('dia vazio -> 9h', () => {
     expect(hhmm(findFreeSlot([]))).toBe('09:00');

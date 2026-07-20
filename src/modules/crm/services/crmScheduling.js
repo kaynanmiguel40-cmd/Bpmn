@@ -10,6 +10,22 @@
  * e o que mais quebra em silencio, entao da pra testar sem mock nenhum.
  */
 
+/**
+ * Canal do toque a partir do titulo do passo: ligacao, WhatsApp ou e-mail.
+ *
+ * Fonte UNICA dessa regra — usada pelo icone do checklist E pelo `type` da
+ * atividade criada na Agenda. Duplicar em dois lugares faria o icone da Agenda
+ * discordar do icone do checklist pro mesmo toque.
+ */
+export function stepChannel(title) {
+  const t = (title || '').toLowerCase();
+  if (/e-?mail/.test(t)) return 'email';
+  if (/liga|ligar|ligacao|ligação|telefone/.test(t)) return 'call';
+  if (/whats|audio|áudio|mensagem|dm|material|cartilha|video|vídeo/.test(t)) return 'message';
+  if (/reuni|demo/.test(t)) return 'meeting';
+  return 'task';
+}
+
 export const WORK_START_HOUR = 9;
 export const WORK_END_HOUR = 18;
 export const LUNCH_START_HOUR = 11;
@@ -18,10 +34,18 @@ export const SLOT_MINUTES = 30;
 // Ate quantos dias uteis empurrar quando o dia alvo lota.
 export const MAX_ROLLOVER_DAYS = 60;
 
-/** Todos os inicios de slot possiveis num dia, em minutos desde 00:00. */
-export function daySlots() {
+/**
+ * Todos os inicios de slot possiveis num dia, em minutos desde 00:00.
+ *
+ * `period` prende o toque a um turno: 'manha' (antes do almoco) ou 'tarde'
+ * (depois). Sem isso, duas ligacoes do mesmo dia — a "de manha" e a "de tarde"
+ * — cairiam as duas de manha, porque o agendador so pega o primeiro slot vago.
+ */
+export function daySlots(period = null) {
+  const from = period === 'tarde' ? LUNCH_END_HOUR * 60 : WORK_START_HOUR * 60;
+  const to = period === 'manha' ? LUNCH_START_HOUR * 60 : WORK_END_HOUR * 60;
   const slots = [];
-  for (let m = WORK_START_HOUR * 60; m + SLOT_MINUTES <= WORK_END_HOUR * 60; m += SLOT_MINUTES) {
+  for (let m = from; m + SLOT_MINUTES <= to; m += SLOT_MINUTES) {
     // Almoco: descarta qualquer slot que comece dentro da janela OU que
     // invada ela (um slot que comeca 10:45 e termina 11:15 nao serve).
     const end = m + SLOT_MINUTES;
@@ -44,14 +68,14 @@ const toMinutes = (iso) => {
  *   varias tarefas do mesmo dia sem repetir horario)
  * @returns {number|null} minuto de inicio, ou null se o dia lotou
  */
-export function findFreeSlot(busy = [], afterMinutes = -1) {
+export function findFreeSlot(busy = [], afterMinutes = -1, period = null) {
   const taken = (busy || []).map(b => {
     const start = toMinutes(b.start);
     const end = b.end ? toMinutes(b.end) : start + SLOT_MINUTES;
     return [start, end > start ? end : start + SLOT_MINUTES];
   });
 
-  for (const slot of daySlots()) {
+  for (const slot of daySlots(period)) {
     if (slot <= afterMinutes) continue;
     const slotEnd = slot + SLOT_MINUTES;
     const conflita = taken.some(([s, e]) => slot < e && slotEnd > s);
@@ -102,7 +126,7 @@ export function planSteps(steps, busyByDay = {}, from = new Date()) {
     let key = dayKey(target);
     for (let i = 0; i <= MAX_ROLLOVER_DAYS; i++) {
       key = dayKey(target);
-      slot = findFreeSlot(busy[key] || []);
+      slot = findFreeSlot(busy[key] || [], -1, step.period || null);
       if (slot !== null) break;
       target = nextBusinessDay(new Date(target.getFullYear(), target.getMonth(), target.getDate() + 1));
     }

@@ -52,7 +52,7 @@ BEGIN
     v_assignee_name := d.owner_name;
 
     FOR s IN
-      SELECT st.id, st.title, st.day_offset
+      SELECT st.id, st.title, st.day_offset, st.period
       FROM crm_stage_steps st
       WHERE st.stage_id = d.stage_id AND st.source_tag IS NULL
       ORDER BY st.position
@@ -73,10 +73,13 @@ BEGIN
           v_date := v_date + 1;
         END LOOP;
 
+        -- Turno do passo: 'manha' so antes do almoco, 'tarde' so depois. Sem
+        -- isto as duas ligacoes do mesmo dia caem as duas de manha (o slot
+        -- livre e sempre o mais cedo).
         SELECT q.slot INTO v_slot
         FROM generate_series(
-               (v_date + time '09:00') AT TIME ZONE v_tz,
-               (v_date + time '17:30') AT TIME ZONE v_tz,
+               (v_date + CASE WHEN s.period = 'tarde' THEN time '12:00' ELSE time '09:00' END) AT TIME ZONE v_tz,
+               (v_date + CASE WHEN s.period = 'manha' THEN time '10:30' ELSE time '17:30' END) AT TIME ZONE v_tz,
                interval '30 minutes'
              ) AS q(slot)
         WHERE NOT (
@@ -104,6 +107,7 @@ BEGIN
       VALUES (
         s.title,
         CASE
+          WHEN s.title ~* 'e-?mail'                                           THEN 'email'
           WHEN s.title ~* 'liga'                                              THEN 'call'
           WHEN s.title ~* 'whats|audio|áudio|mensagem|material|cartilha|v[ií]deo' THEN 'message'
           WHEN s.title ~* 'reuni|demo'                                        THEN 'meeting'

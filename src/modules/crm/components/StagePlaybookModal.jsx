@@ -12,6 +12,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Pencil, ChevronUp, ChevronDown, Target, Flag, X } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { ChannelBadge } from './ui/ChannelBadge';
 import { useSaveStageSteps, useSaveStageGoal } from '../hooks/useCrmQueries';
 
 function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
@@ -21,10 +22,14 @@ function StepEditor({ step, index, total, onChange, onRemove, onMove }) {
         <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 text-[12px] font-bold text-slate-500 dark:text-slate-300 flex items-center justify-center shrink-0">
           {index + 1}
         </span>
+        {/* O canal sai do TITULO — mostrar aqui deixa claro, ao editar, que
+            escrever "Ligação"/"WhatsApp"/"E-mail" no nome e o que define o
+            canal do toque (e o icone que vai aparecer na Agenda). */}
+        <ChannelBadge title={step.title} showLabel={false} />
         <input
           value={step.title}
           onChange={(e) => onChange({ ...step, title: e.target.value })}
-          placeholder="O que o vendedor faz (ex: Ligação 1 — manhã)"
+          placeholder="O que o vendedor faz (ex: Ligação manhã, WhatsApp, E-mail…)"
           className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100"
         />
         <button type="button" onClick={() => onMove(index, -1)} disabled={index === 0}
@@ -248,6 +253,7 @@ export function StagePlaybookModal({ open, onClose, stage, pipelineId, steps = [
                       <span className="w-6 h-6 rounded-full bg-fyness-primary/10 text-[12px] font-bold text-fyness-primary flex items-center justify-center shrink-0">
                         {i + 1}
                       </span>
+                      <ChannelBadge title={s.title} />
                       <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{s.title}</span>
                     </div>
                     {s.script && (

@@ -389,15 +389,12 @@ function QuickAddInline({ onCreate, onCancel, isPending }) {
 
 const COL_W = 288; // w-72
 const COL_GAP = 12; // gap-3
-// Etapa sem nenhum lead vira uma faixa fina: 4 das 8 colunas vazias comiam
-// metade da largura util mostrando nada e forcavam scroll horizontal.
-const COL_W_EMPTY = 64;
 
-const stageWidth = (stage) => ((stage?.deals?.length || 0) > 0 ? COL_W : COL_W_EMPTY);
-
-/** Largura real de um trecho de colunas (as vazias sao estreitas). */
+/** Largura de um trecho de colunas. Toda coluna tem a MESMA largura, mesmo
+ *  vazia: espremer a etapa sem lead fazia o kanban "pular" de tamanho a cada
+ *  arrasto e escondia justamente a etapa que precisa ser preenchida. */
 const spanWidth = (stages) =>
-  stages.reduce((sum, s) => sum + stageWidth(s), 0) + Math.max(0, stages.length - 1) * COL_GAP;
+  stages.length * COL_W + Math.max(0, stages.length - 1) * COL_GAP;
 
 // Cor de cada fase = a MESMA do passo correspondente no funil do Dashboard
 // (FunnelPrevistoReal.STEP_META). A faixa e o funil sao a mesma etapa vista de
@@ -612,38 +609,6 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
   const isFiltered = filteredDeals.length !== allCount;
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-
-  // Etapa vazia vira faixa fina: 4 das 8 colunas vazias comiam metade da tela.
-  const isEmpty = allCount === 0;
-
-  if (isEmpty) {
-    return (
-      <div
-        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDrop.setDragOver(stage.id); }}
-        onDragLeave={() => onDrop.setDragOver(null)}
-        onDrop={(e) => {
-          e.preventDefault();
-          const dealId = e.dataTransfer.getData('text/plain');
-          if (dealId) onDrop.execute(dealId, stage.id);
-          onDrop.setDragOver(null);
-        }}
-        title={`${stage.name} — vazia. Arraste um lead pra cá.`}
-        style={{ width: COL_W_EMPTY }}
-        className={`shrink-0 flex flex-col items-center h-full crm-glass rounded-2xl overflow-hidden py-3 transition-colors ${
-          isDragOver ? 'bg-fyness-primary/10 ring-2 ring-inset ring-fyness-primary/30' : ''
-        }`}
-      >
-        <div className="w-2.5 h-2.5 rounded-full shrink-0 mb-2" style={{ backgroundColor: stage.color }} />
-        {/* Nome na vertical: cabe em 64px e ainda da pra ler a etapa. */}
-        <span
-          className="text-[12px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap"
-          style={{ writingMode: 'vertical-rl' }}
-        >
-          {stage.name}
-        </span>
-      </div>
-    );
-  }
 
   return (
     <div className="w-72 shrink-0 flex flex-col h-full crm-glass rounded-2xl overflow-hidden">

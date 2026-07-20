@@ -13,7 +13,7 @@
 
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
-import { planSteps, dayKey, SLOT_MINUTES } from './crmScheduling';
+import { planSteps, dayKey, SLOT_MINUTES, stepChannel } from './crmScheduling';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -186,13 +186,9 @@ export async function saveStageGoal(stageId, { objetivo, exitCriteria }) {
 
 // Tipo da atividade a partir do titulo do passo — so pra o icone/filtro da
 // agenda fazer sentido. Nao muda comportamento.
-function guessType(title) {
-  const t = (title || '').toLowerCase();
-  if (/liga|ligar|ligacao|ligação|telefone/.test(t)) return 'call';
-  if (/whats|audio|áudio|mensagem|dm|material|cartilha|video|vídeo/.test(t)) return 'message';
-  if (/reuni|demo|call/.test(t)) return 'meeting';
-  return 'task';
-}
+// Fonte unica em crmScheduling.stepChannel — o mesmo canal alimenta o icone do
+// checklist e o `type` da atividade na Agenda.
+const guessType = stepChannel;
 
 /**
  * Agenda as tarefas do processo de uma etapa na AGENDA do dono do negocio.
@@ -232,13 +228,16 @@ export async function scheduleStepsForDeal(dealId, stageId) {
 
   const { data: stepRows } = await supabase
     .from('crm_stage_steps')
-    .select('id, title, position, source_tag, day_offset')
+    .select('id, title, position, source_tag, day_offset, period')
     .eq('stage_id', stageId)
     .order('position', { ascending: true });
 
   // So os passos que valem pra ORIGEM deste lead (mesma regra do checklist).
   const steps = filterStepsForDeal(
-    (stepRows || []).map(r => ({ id: r.id, title: r.title, sourceTag: r.source_tag || null, dayOffset: r.day_offset || 0 })),
+    (stepRows || []).map(r => ({
+      id: r.id, title: r.title, sourceTag: r.source_tag || null,
+      dayOffset: r.day_offset || 0, period: r.period || null,
+    })),
     deal.source,
   );
   if (steps.length === 0) return 0;

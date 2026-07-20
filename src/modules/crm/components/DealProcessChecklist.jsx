@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter, CornerDownRight, Clock } from 'lucide-react';
 import { useStagePlaybook, useDealProgress, useToggleDealStep, useDealActivities } from '../hooks/useCrmQueries';
 import { filterStepsForDeal } from '../services/crmPlaybookService';
+import { ChannelBadge } from './ui/ChannelBadge';
 import { CrmModal } from './ui/CrmModal';
 
 // Data agendada da tarefa. Marca atraso pra tarefa vencida e nao feita — e o
@@ -58,6 +59,8 @@ function StepRow({ step, done, onToggle, disabled, outcome, onEditOutcome, dueAt
         >
           {done && <Check size={13} strokeWidth={3} />}
         </button>
+
+        <ChannelBadge title={step.title} />
 
         <span className={`flex-1 text-sm font-medium ${
           done

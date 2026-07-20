@@ -532,23 +532,58 @@ export function CrmDealDetailPage() {
 
           {/* Tab: Histórico — o que FOI FEITO (processo + manuais + etapas) */}
           {activeTab === 'history' && (() => {
-            const pending = [];
             const completedActs = activities.filter(a => a.completed).map(a => ({
               _type: 'activity', _date: a.completedAt || a.startDate, ...a,
             }));
-            const stageEntries = stageHistory.map(e => ({
-              _type: 'stage', _date: e.createdAt, ...e,
-            }));
             // Passos do playbook que o lead cumpriu — entram na mesma linha do
-            // tempo das tarefas manuais e das mudancas de etapa.
+            // tempo das tarefas manuais.
             const stepEntries = (progress || []).map(p => ({
               _type: 'step', _date: p.doneAt, id: p.id,
               title: stepTitleById[p.stepId] || 'Tarefa do processo',
               outcome: p.outcome || '',
             }));
-            const timeline = [...completedActs, ...stageEntries, ...stepEntries].sort((a, b) =>
+            const timeline = [...completedActs, ...stepEntries].sort((a, b) =>
               new Date(b._date) - new Date(a._date)
             );
+
+            // ---- SEPARACAO POR ETAPA ----
+            // O historico de etapas vira uma linha do tempo de PERIODOS: o lead
+            // entrou na etapa X em tal data e ficou ate a mudanca seguinte.
+            // Assim ate a tarefa criada a mao (que nao tem vinculo com etapa)
+            // cai no periodo certo — pela data em que foi concluida.
+            const asc = [...stageHistory].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            const periods = asc.map((e, i) => ({
+              key: e.id,
+              name: e.stage?.name || 'Etapa',
+              color: e.stage?.color || '#94a3b8',
+              from: new Date(e.createdAt),
+              to: i + 1 < asc.length ? new Date(asc[i + 1].createdAt) : null, // null = ate hoje
+            }));
+
+            const periodOf = (date) => {
+              const d = new Date(date);
+              for (let i = periods.length - 1; i >= 0; i--) {
+                const p = periods[i];
+                if (d >= p.from && (!p.to || d < p.to)) return p;
+              }
+              return null; // antes da 1a mudanca registrada
+            };
+
+            // Agrupa mantendo a ordem (mais recente primeiro).
+            const groups = [];
+            for (const item of timeline) {
+              const p = periodOf(item._date);
+              const key = p ? p.key : '__inicio__';
+              const last = groups[groups.length - 1];
+              if (last && last.key === key) last.items.push(item);
+              else groups.push({
+                key,
+                name: p ? p.name : 'Antes da primeira mudança de etapa',
+                color: p ? p.color : '#94a3b8',
+                since: p ? p.from : null,
+                items: [item],
+              });
+            }
 
             return (
               <div>
@@ -557,13 +592,31 @@ export function CrmDealDetailPage() {
                     Nada feito ainda com esse lead.
                   </div>
                 ) : (
-                  <>
-                    {timeline.length > 0 && (
-                      <div>
+                  <div className="space-y-6">
+                    {groups.map((g, gi) => (
+                      <div key={`${g.key}-${gi}`}>
+                        {/* Cabecalho da etapa: substitui os antigos itens de
+                            "mudou de etapa" soltos na lista — o cabecalho JA e
+                            a transicao, entao repetir seria ruido. */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+                          <span className="text-[12px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                            {g.name}
+                          </span>
+                          {g.since && (
+                            <span className="text-[12px] text-slate-500 dark:text-slate-400">
+                              · entrou em {formatDate(g.since)}
+                            </span>
+                          )}
+                          <span className="ml-auto text-[12px] text-slate-500 dark:text-slate-400 tnum">
+                            {g.items.length} {g.items.length === 1 ? 'registro' : 'registros'}
+                          </span>
+                        </div>
+
                         <div className="relative pl-6">
                           <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700/50" />
                           <div className="space-y-1">
-                            {timeline.map((item, idx) => {
+                            {g.items.map((item, idx) => {
                               // Passo do processo (playbook) cumprido
                               if (item._type === 'step') {
                                 return (
@@ -634,33 +687,13 @@ export function CrmDealDetailPage() {
                                   </div>
                                 );
                               }
-                              // stage transition
-                              return (
-                                <div key={`stg-${item.id || idx}`} className="flex items-start gap-3 py-2 relative">
-                                  <div className="w-[22px] h-[22px] rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[17px]">
-                                    <GitBranch size={10} className="text-slate-500 dark:text-slate-400" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      {item.stage ? (
-                                        <div className="flex items-center gap-1.5">
-                                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.stage.color }} />
-                                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{item.stage.name}</span>
-                                        </div>
-                                      ) : (
-                                        <span className="text-sm text-slate-500">Estagio movido</span>
-                                      )}
-                                    </div>
-                                    <span className="text-[12px] text-slate-400">{formatDateTime(item.createdAt)}</span>
-                                  </div>
-                                </div>
-                              );
+                              return null;
                             })}
                           </div>
                         </div>
                       </div>
-                    )}
-                  </>
+                    ))}
+                  </div>
                 )}
               </div>
             );
