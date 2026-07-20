@@ -61,6 +61,23 @@ async function wahaGetContactName(session: string, chatId: string): Promise<stri
 }
 
 /**
+ * Tira os parametros do MIME: 'audio/ogg; codecs=opus' -> 'audio/ogg'.
+ *
+ * Todo audio de voz do WhatsApp chega como `audio/ogg; codecs=opus`, e o bucket
+ * crm-whatsapp-media tem allowed_mime_types com `audio/ogg` puro. Mandar o tipo
+ * com o parametro junto fazia o Storage REJEITAR o upload — entao o espelhamento
+ * falhava em 100% dos audios de voz, que sao a midia mais comum numa conversa
+ * comercial por WhatsApp. Antes do dead-letter isso era invisivel: a mensagem
+ * inteira era descartada e nao sobrava nem o registro de que existiu.
+ *
+ * O parametro tambem quebrava a busca na tabela de extensoes, jogando todo audio
+ * pra `.bin`.
+ */
+function baseMime(mime: string | null | undefined): string {
+  return String(mime || '').split(';')[0].trim().toLowerCase()
+}
+
+/**
  * Espelha midia inbound do WAHA no Supabase Storage.
  *
  * WAHA serve midia via /api/files/{session}/{msgId}.ext, protegida por X-Api-Key.
@@ -92,7 +109,7 @@ async function mirrorWahaMediaToStorage(
     const r = await fetch(absUrl, { headers: { 'X-Api-Key': EVOLUTION_API_KEY } })
     if (!r.ok) return null
     const blob = await r.blob()
-    const contentType = blob.type || mime || 'application/octet-stream'
+    const contentType = baseMime(blob.type) || baseMime(mime) || 'application/octet-stream'
 
     // Determina extensao a partir do MIME
     const extMap: Record<string, string> = {
@@ -173,9 +190,13 @@ async function uploadBase64ToStorage(
   supabase: SupabaseClient,
   base64: string,
   mime: string | null,
+  // Recebe o motivo real da falha pra ir junto no dead-letter. Sem isto o
+  // registro dizia so "media_mirror_failed" e a causa (o Storage recusando o
+  // mime com parametro) so aparecia reproduzindo a chamada na mao.
+  falha?: { motivo: string },
 ): Promise<string | null> {
   try {
-    const contentType = mime || 'application/octet-stream'
+    const contentType = baseMime(mime) || 'application/octet-stream'
     const extMap: Record<string, string> = {
       'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
       'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
@@ -189,10 +210,14 @@ async function uploadBase64ToStorage(
     const { error: upErr } = await supabase.storage
       .from('crm-whatsapp-media')
       .upload(path, bytes, { contentType, upsert: false })
-    if (upErr) return null
+    if (upErr) {
+      if (falha) falha.motivo = `storage.upload (${contentType}): ${upErr.message}`
+      return null
+    }
     const { data: pub } = supabase.storage.from('crm-whatsapp-media').getPublicUrl(path)
     return pub.publicUrl.replace(SUPABASE_URL, PUBLIC_BASE)
-  } catch {
+  } catch (e) {
+    if (falha) falha.motivo = `upload: ${String(e)}`
     return null
   }
 }
@@ -247,7 +272,7 @@ async function mirrorImageToStorage(
     const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
     if (!r.ok) return null
     const blob = await r.blob()
-    const ct = blob.type || 'image/jpeg'
+    const ct = baseMime(blob.type) || 'image/jpeg'
     const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg'
     const path = `avatars/${crypto.randomUUID()}.${ext}`
     const { error } = await supabase.storage
@@ -1206,6 +1231,7 @@ async function handleMessagesUpsert(
 
     if (temArquivo) {
       let localized: string | null = mediaUrl
+      const motivoFalha = { motivo: '' }
       if (PROVIDER === 'waha') {
         if (!mediaUrl) {
           localized = null
@@ -1214,9 +1240,14 @@ async function handleMessagesUpsert(
         }
       } else {
         const media = await evolutionGetMediaBase64(instanceName, evolutionMessageId)
-        localized = media
-          ? await uploadBase64ToStorage(supabase, media.base64, media.mimetype || mediaMime)
-          : null
+        if (!media) {
+          motivoFalha.motivo = 'getBase64FromMediaMessage nao devolveu base64'
+          localized = null
+        } else {
+          localized = await uploadBase64ToStorage(
+            supabase, media.base64, media.mimetype || mediaMime, motivoFalha,
+          )
+        }
       }
       if (!localized) {
         // A mensagem NAO se perde por causa da midia. Antes um `continue` aqui
@@ -1233,7 +1264,8 @@ async function handleMessagesUpsert(
           instanceName,
           evolutionMessageId: evolutionMessageId,
           reason: 'media_mirror_failed',
-          detail: `provider=${PROVIDER} type=${mediaType} url=${String(mediaUrl).slice(0, 200)}`,
+          detail: `provider=${PROVIDER} type=${mediaType} mime=${mediaMime || '?'} `
+                + `motivo=${motivoFalha.motivo || 'desconhecido'} url=${String(mediaUrl).slice(0, 120)}`,
           payload: m,
         })
         debug.push({ degraded: 'media_mirror_failed', direction, evolutionMessageId, provider: PROVIDER })
