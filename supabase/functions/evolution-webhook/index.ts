@@ -828,6 +828,32 @@ interface ExistingMessage {
   direction: string
 }
 
+/**
+ * Extrai o telefone de um vCard de contato compartilhado.
+ *
+ * O WhatsApp manda a linha TEL com o id dele proprio embutido:
+ *   TEL;type=CELL;waid=5535999998888:+55 35 99999-8888
+ *
+ * O `waid` e a fonte melhor — ja vem dig-only e com DDI, exatamente o formato
+ * que a gente usa. O valor apos os dois-pontos e formatado pra humano e varia
+ * (parenteses, traco, espaco, com ou sem +), entao so serve de fallback.
+ */
+function phoneFromVcard(vcard: unknown): string {
+  const texto = typeof vcard === 'string' ? vcard : ''
+  if (!texto) return ''
+
+  const waid = texto.match(/waid=(\d{8,15})/i)
+  if (waid) return waid[1]
+
+  for (const linha of texto.split(/\r?\n/)) {
+    if (!/^TEL/i.test(linha)) continue
+    const valor = linha.slice(linha.indexOf(':') + 1)
+    const digitos = normalizePhone(valor)
+    if (digitos.length >= 10) return digitos
+  }
+  return ''
+}
+
 interface Extracted {
   content: string | null
   mediaUrl: string | null
@@ -890,21 +916,45 @@ function extractContent(msg: any): Extracted {
   const loc = msg.locationMessage || msg.liveLocationMessage
   if (loc) {
     out.mediaType = 'location'
+    const lat = loc.degreesLatitude
+    const lng = loc.degreesLongitude
+    const temCoord = lat != null && lng != null
+
+    // media_url vira o LINK DO MAPA. Coordenada crua na tela nao serve pra
+    // nada — "-20.742988,-46.755634" nao diz onde o lead esta, e o vendedor
+    // teria que copiar, colar num mapa e torcer. O que ele precisa e clicar.
+    //
+    // Nao ha arquivo pra baixar aqui: 'location' fica fora do espelhamento de
+    // midia (ver `temArquivo`), entao esta URL chega intacta ate a UI.
+    if (temCoord) {
+      out.mediaUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+    }
+
+    // Quando o lead escolhe um lugar com nome ("Padaria X"), o WhatsApp manda
+    // name/address. Quando ele solta o pin no mapa, nao manda nada — dai o
+    // rotulo generico, que a UI complementa com o botao de abrir.
     const label = loc.name || loc.address || ''
-    const coords = (loc.degreesLatitude != null && loc.degreesLongitude != null)
-      ? `${loc.degreesLatitude},${loc.degreesLongitude}`
-      : ''
-    out.content = `[localização] ${label || coords || 'sem coordenadas'}`.trim()
+    out.mediaCaption = label || null
+    out.content = label || (temCoord ? 'Localização' : 'Localização sem coordenadas')
     return out
   }
 
   // --- contato compartilhado (vCard) ---
   if (msg.contactMessage || msg.contactsArrayMessage) {
     out.mediaType = 'contact'
-    const nomes = msg.contactsArrayMessage?.contacts?.length
-      ? msg.contactsArrayMessage.contacts.map((c: any) => c?.displayName).filter(Boolean).join(', ')
-      : (msg.contactMessage?.displayName || '')
-    out.content = `[contato] ${nomes || 'sem nome'}`
+    const contatos: any[] = msg.contactsArrayMessage?.contacts?.length
+      ? msg.contactsArrayMessage.contacts
+      : [msg.contactMessage]
+
+    const nomes = contatos.map((c) => c?.displayName).filter(Boolean)
+    const telefone = phoneFromVcard(contatos[0]?.vcard)
+
+    // Um contato compartilhado E UM LEAD: alguem indicou alguem. Guardar so o
+    // nome jogava fora justamente a parte acionavel — o vendedor via "Bruce Lee"
+    // e nao tinha o que fazer com isso. O numero esta no vCard, era so ler.
+    if (telefone) out.mediaUrl = `https://wa.me/${telefone}`
+    out.mediaCaption = telefone || null
+    out.content = nomes.join(', ') || 'Contato sem nome'
     return out
   }
 

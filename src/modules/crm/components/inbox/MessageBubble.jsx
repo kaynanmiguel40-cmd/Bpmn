@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, CheckCheck, AlertCircle, FileText, Play, Pause, Download, Mic } from 'lucide-react';
+import { Check, CheckCheck, AlertCircle, FileText, Play, Pause, Download, Mic, MapPin, UserRound } from 'lucide-react';
 
 /**
  * MessageBubble - Mensagem no thread, estilo WhatsApp.
@@ -92,11 +92,67 @@ function AudioPlayer({ url, isOut }) {
   );
 }
 
+/** 5535999998888 -> (35) 99999-8888. Fora do padrão BR, devolve como veio. */
+function formatarTelefone(digitos) {
+  const d = String(digitos || '').replace(/\D/g, '');
+  const nac = d.startsWith('55') && d.length > 11 ? d.slice(2) : d;
+  if (nac.length === 11) return `(${nac.slice(0, 2)}) ${nac.slice(2, 7)}-${nac.slice(7)}`;
+  if (nac.length === 10) return `(${nac.slice(0, 2)}) ${nac.slice(2, 6)}-${nac.slice(6)}`;
+  return digitos;
+}
+
 function MediaContent({ message, isOut }) {
   const { mediaType: type, mediaUrl: url, mediaMime: mime, mediaFilename: filename, mediaCaption: caption } = message;
   if (!url) return null;
 
   const m = mime || '';
+
+  // Localização: não há arquivo, `url` é o link do mapa. Mostrar a coordenada
+  // crua no balão não resolvia nada — o vendedor precisa ABRIR, não ler número.
+  if (type === 'location') {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className={`flex items-center gap-2.5 py-1.5 pr-2 min-w-[180px] group ${isOut ? '' : ''}`}
+      >
+        <span className="w-10 h-10 rounded-lg bg-black/10 dark:bg-white/10 flex items-center justify-center shrink-0">
+          <MapPin size={18} className="text-rose-500" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[13px] font-medium truncate">
+            {caption || 'Localização'}
+          </span>
+          <span className="block text-[11px] opacity-70 group-hover:underline">
+            Abrir no mapa
+          </span>
+        </span>
+      </a>
+    );
+  }
+
+  // Contato compartilhado: alguém indicou alguém — ou seja, um lead. O balão
+  // trazia só o nome, que não dá pra fazer nada. `url` é o wa.me do número que
+  // veio no vCard, então dá pra puxar conversa num clique.
+  if (type === 'contact') {
+    return (
+      <a href={url} target="_blank" rel="noreferrer"
+        className="flex items-center gap-2.5 py-1.5 pr-2 min-w-[180px] group">
+        <span className="w-10 h-10 rounded-lg bg-black/10 dark:bg-white/10 flex items-center justify-center shrink-0">
+          <UserRound size={18} className="text-emerald-500" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[13px] font-medium truncate">
+            {message.content || 'Contato'}
+          </span>
+          <span className="block text-[11px] opacity-70 group-hover:underline">
+            {caption ? formatarTelefone(caption) : 'Abrir conversa'}
+          </span>
+        </span>
+      </a>
+    );
+  }
 
   // Figurinha (sticker): webp pequeno, fundo transparente — NUNCA vira "arquivo".
   if (type === 'sticker') {
@@ -152,7 +208,10 @@ export function MessageBubble({ message }) {
   const isOut = message.direction === 'outbound';
   const hasMedia = !!message.mediaUrl && message.status !== 'failed';
   const isSticker = hasMedia && message.mediaType === 'sticker';
-  const showCaption = !!message.content && message.mediaType !== 'audio';
+  // 'location' e 'contact' ja mostram o texto DENTRO do card (nome do lugar /
+  // nome do contato) — repetir embaixo duplicaria a mesma informacao no balao.
+  const CARD_COM_TEXTO_PROPRIO = ['audio', 'location', 'contact'];
+  const showCaption = !!message.content && !CARD_COM_TEXTO_PROPRIO.includes(message.mediaType);
   // figurinha: sem horario "grudado"; resto segue a regra antiga.
   const timeMt = isSticker ? 'mt-0.5' : (hasMedia && !showCaption ? '-mt-0.5' : 'mt-0.5');
 
