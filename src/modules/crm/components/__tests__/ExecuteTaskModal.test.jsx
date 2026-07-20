@@ -353,3 +353,26 @@ describe('ExecuteTaskModal — cenário de "não atendeu" não briga com o desfe
     expect(screen.getByText('Nao atendeu nas 3')).toBeInTheDocument();
   });
 });
+
+// A Agenda e o nivel de EXECUCAO: clicar numa tarefa pendente e pedir pra
+// fazer. Antes, so a tarefa do playbook abria a execucao — a criada a mao caia
+// no historico. Duas tarefas lado a lado no mesmo dia respondiam a coisas
+// diferentes ao mesmo clique, e a diferenca (ter passo por tras) e invisivel.
+describe('ExecuteTaskModal — porta pro historico', () => {
+  it('oferece "Ver histórico do lead" quando ha lead e handler', () => {
+    const onOpenHistory = vi.fn();
+    setup({ onOpenHistory });
+    fireEvent.click(screen.getByText(/Ver histórico do lead/));
+    expect(onOpenHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem handler, nao mostra o link', () => {
+    setup();
+    expect(screen.queryByText(/Ver histórico do lead/)).toBeNull();
+  });
+
+  it('tarefa sem lead nao oferece histórico — nao ha lead a que voltar', () => {
+    setup({ onOpenHistory: vi.fn(), activity: makeActivity({ dealId: null, leadName: null }) });
+    expect(screen.queryByText(/Ver histórico do lead/)).toBeNull();
+  });
+});

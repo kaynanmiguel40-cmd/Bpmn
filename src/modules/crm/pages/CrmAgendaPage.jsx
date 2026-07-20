@@ -326,20 +326,24 @@ function MyDayCalendar() {
       if (ev.htmlLink) window.open(ev.htmlLink, '_blank', 'noopener');
       return;
     }
-    // Tarefa do PROCESSO ainda pendente: clicar abre a EXECUÇÃO (script,
-    // telefone, cenários). Antes o gesto óbvio — clicar no nome da tarefa —
-    // levava a um painel de leitura, e o roteiro do que falar só aparecia
-    // depois de apertar um botão que prometia "concluir". Ninguém aperta
-    // "concluir" ANTES de fazer a ligação, então o playbook ficava invisível.
+    // TAREFA PENDENTE, clicou: abre pra EXECUTAR. Sempre — venha ela do
+    // playbook ou criada a mao.
+    //
+    // Antes, so a tarefa do processo abria a execucao; a avulsa vinculada a um
+    // lead caia no historico. Duas tarefas lado a lado no mesmo dia respondiam
+    // a coisas diferentes ao mesmo clique, e a diferenca (ter ou nao um passo
+    // de playbook por tras) e invisivel na tela. A Agenda e o nivel de
+    // execucao: clicar numa tarefa pendente e pedir pra fazer, ponto.
+    //
+    // Quem tem passo abre o modal com script e cenarios; quem nao tem abre o
+    // generico. Quem escolhe e o ExecuteTaskModal vs CompleteActivityModal la
+    // embaixo, por `stageStepId` — aqui a decisao e uma so.
     if (ev.activityId && !ev.completed) {
-      const full = activitiesById.get(ev.activityId);
-      if (full?.stageStepId) {
-        setCompletingTask({ id: ev.activityId, title: ev.title, type: ev.typeKey });
-        return;
-      }
+      setCompletingTask({ id: ev.activityId, title: ev.title, type: ev.typeKey });
+      return;
     }
-    // Sem processo (tarefa avulsa vinculada a lead) ou já concluída: o
-    // histórico do lead continua sendo a resposta certa.
+    // Ja concluida: nao ha o que executar. O historico do lead e a resposta —
+    // e de la da pra corrigir o que foi registrado.
     if (ev.dealId || ev.contactId) {
       setSelected({ dealId: ev.dealId || null, contactId: ev.contactId || null });
       return;
@@ -483,6 +487,12 @@ function MyDayCalendar() {
           justDone={justDoneId === completingActivity.id}
           isPending={completeMutation.isPending || updateActivityMutation.isPending}
           onOpenLead={(id) => { closeExecute(); navigate(`/crm/deals/${id}`); }}
+          // O historico continua a UM clique: clicar na tarefa agora abre a
+          // execucao, entao o painel do lead precisa de porta aqui dentro.
+          onOpenHistory={(act) => {
+            closeExecute();
+            setSelected({ dealId: act.dealId || null, contactId: act.contactId || null });
+          }}
           onSubmit={({ input, output, contacted }) => {
             if (completingActivity.completed) {
               updateActivityMutation.mutate(
@@ -504,7 +514,11 @@ function MyDayCalendar() {
         <CompleteActivityModal
           open={!!completingTask}
           onClose={() => setCompletingTask(null)}
-          activity={completingTask}
+          activity={completingActivity || completingTask}
+          onOpenHistory={(act) => {
+            setCompletingTask(null);
+            setSelected({ dealId: act.dealId || null, contactId: act.contactId || null });
+          }}
           isPending={completeMutation.isPending || updateActivityMutation.isPending}
           onSubmit={({ input, output }) => {
             if (completingTask.completed) {

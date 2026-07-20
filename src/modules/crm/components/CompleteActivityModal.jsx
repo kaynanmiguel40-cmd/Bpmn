@@ -31,6 +31,7 @@ export function CompleteActivityModal({
   onClose,
   activity,     // { title, type, completed?, deliveryInput?, deliveryReport? }
   onSubmit,     // ({ input, output }) => void
+  onOpenHistory,// (activity) => void — opcional; o historico do lead
   isPending,
 }) {
   const isEditing = !!activity?.completed;
@@ -122,8 +123,20 @@ export function CompleteActivityModal({
     >
       <div className="space-y-4">
         {activity?.title && (
-          <div className="text-sm font-medium text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg p-3">
-            {activity.title}
+          <div className="flex items-start justify-between gap-2 text-sm font-medium text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+            <span className="min-w-0">{activity.title}</span>
+            {/* Clicar na tarefa passou a abrir a conclusao (a Agenda executa),
+                entao o historico do lead perdeu o gesto que o abria. Fica aqui,
+                a um clique — so quando ha lead a que voltar. */}
+            {onOpenHistory && (activity.dealId || activity.contactId) && (
+              <button
+                type="button"
+                onClick={() => onOpenHistory(activity)}
+                className="shrink-0 text-[12px] font-semibold text-fyness-primary hover:underline"
+              >
+                Ver histórico →
+              </button>
+            )}
           </div>
         )}
 
