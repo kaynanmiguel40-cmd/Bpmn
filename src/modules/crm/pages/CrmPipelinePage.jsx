@@ -5,10 +5,10 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, Combine, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
+import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useUpdateCrmDeal, useEnsureGeneralPipeline, useConsolidateIntoGeneral, useStagePlaybook, useScheduleProcessForPipeline, fetchStageWork } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useUpdateCrmDeal, useEnsureGeneralPipeline, useStagePlaybook, fetchStageWork } from '../hooks/useCrmQueries';
 import { getDealLeadInfo } from '../services/crmDealsService';
 import { detectFunnelStagePositions } from '../services/crmDashboardService';
 import { useTeamMembers } from '../../../hooks/queries';
@@ -1287,7 +1287,6 @@ export function CrmPipelinePage() {
   // Playbook de todas as etapas de uma vez (uma query pra pipeline inteira, em
   // vez de uma por coluna).
   const { data: playbook } = useStagePlaybook(activePipelineId);
-  const scheduleProcessMutation = useScheduleProcessForPipeline();
   const updateDealMutation = useUpdateCrmDeal();
   // Fase (etapa do funil) de cada coluna — pro icone no cabecalho. Mesmo calculo
   // das faixas, entao coluna e faixa nunca discordam.
@@ -1301,7 +1300,6 @@ export function CrmPipelinePage() {
   const deleteDealMutation = useDeleteCrmDeal();
   const deletePipelineMutation = useDeleteCrmPipeline();
   const ensureGeneralMutation = useEnsureGeneralPipeline();
-  const consolidateMutation = useConsolidateIntoGeneral();
   const quickCreateMutation = useCreateCrmDeal();
   const { data: allMembers = [] } = useTeamMembers();
   const crmMembers = allMembers.filter(m => m.crmRole);
@@ -1324,7 +1322,6 @@ export function CrmPipelinePage() {
   const [createPipelineOpen, setCreatePipelineOpen] = useState(false);
   const [editPipelineOpen, setEditPipelineOpen] = useState(false);
   const [deletePipelineConfirm, setDeletePipelineConfirm] = useState(false);
-  const [consolidateConfirm, setConsolidateConfirm] = useState(false);
   const [lostModalDealId, setLostModalDealId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [deleteDealTarget, setDeleteDealTarget] = useState(null);
@@ -1560,31 +1557,12 @@ export function CrmPipelinePage() {
               </button>
             )}
 
-            {/* Agenda o processo dos leads que JA estavam parados nas etapas —
-                o gatilho normal e a troca de etapa, entao quem ja estava la
-                nunca passou por ele. Idempotente: so cria o que falta. */}
-            {activePipelineId && pipelineData && (
-              <button
-                onClick={() => scheduleProcessMutation.mutate(activePipelineId)}
-                disabled={scheduleProcessMutation.isPending}
-                title="Gera as tarefas do processo (com data e hora) pros leads que ainda nao tem"
-                className="flex items-center gap-1.5 text-sm bg-white/70 dark:bg-slate-900/50 backdrop-blur border border-white/60 dark:border-white/10 shadow-sm rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors disabled:opacity-60"
-              >
-                <CalendarCheck size={14} />
-                {scheduleProcessMutation.isPending ? 'Agendando…' : 'Agendar processos'}
-              </button>
-            )}
-
-            {/* Consolidar leads das pipelines antigas na Geral */}
-            {pipelines && pipelines.length > 1 && (
-              <button
-                onClick={() => setConsolidateConfirm(true)}
-                title="Consolidar leads das pipelines de venda antigas na Geral (origem = nome da pipeline)"
-                className="p-1.5 text-slate-400 hover:text-fyness-primary hover:bg-fyness-primary/10 rounded-lg transition-colors"
-              >
-                <Combine size={15} />
-              </button>
-            )}
+            {/* SAIRAM daqui: "Agendar processos" e o consolidador de pipelines.
+                Os dois eram ferramenta de migracao, nao de uso diario —
+                agendar o processo virou automatico na troca de etapa, e a
+                consolidacao na Geral ja foi feita. Botao de mutirao que ficou
+                na barra depois do mutirao so oferece jeito de estragar o dia.
+                Os servicos continuam existindo pra uso pontual. */}
 
             {/* Excluir pipeline selecionada */}
             {pipelines && pipelines.length > 1 && (
@@ -1825,24 +1803,6 @@ export function CrmPipelinePage() {
         pipeline={pipelineData}
         onClose={() => setEditPipelineOpen(false)}
         onCreated={() => setEditPipelineOpen(false)}
-      />
-
-      <CrmConfirmDialog
-        open={consolidateConfirm}
-        onCancel={() => setConsolidateConfirm(false)}
-        onConfirm={() => {
-          consolidateMutation.mutate(undefined, {
-            onSuccess: (res) => {
-              setConsolidateConfirm(false);
-              if (res?.geralId) setSelectedPipelineId(res.geralId);
-            },
-          });
-        }}
-        title="Consolidar leads na pipeline Geral"
-        message='Move os negocios das pipelines de venda antigas (Outbound, IA, Vendedor, Leads de Parceiros...) pra pipeline "Geral", mapeando cada etapa na equivalente e marcando a ORIGEM com o nome da pipeline de onde vieram (so quando o negocio ainda nao tem origem). As pipelines de venda antigas que ficarem vazias sao REMOVIDAS. Aquisicao de Parceiros e Nutricao NAO sao tocadas.'
-        confirmLabel="Consolidar"
-        variant="info"
-        loading={consolidateMutation.isPending}
       />
 
       <CrmConfirmDialog
