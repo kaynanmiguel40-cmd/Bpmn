@@ -690,7 +690,11 @@ serve(async (req) => {
   try {
     switch (event) {
       case 'messages_upsert': {
-        const r = await handleMessagesUpsert(supabase, instance.id, payload.data, instanceName)
+        // ?mode=existing_only — usado so pelo backfill (scripts/whatsapp_backfill.mjs).
+        // O trafego normal da Evolution nao manda esse parametro e segue criando
+        // prospect pra numero novo, como sempre.
+        const existingOnly = new URL(req.url).searchParams.get('mode') === 'existing_only'
+        const r = await handleMessagesUpsert(supabase, instance.id, payload.data, instanceName, existingOnly)
         debug.handlerResult = r.debug
         retryable = r.retryable
         break
@@ -1051,11 +1055,36 @@ function extractContent(msg: any): Extracted {
   return out
 }
 
+/**
+ * Procura prospect existente por telefone SEM criar.
+ *
+ * Usado pelo modo `existing_only` do backfill: reprocessar meses de historico
+ * com a criacao ligada encheria o CRM de prospects de numeros que nunca foram
+ * lead — inclusive conversa pessoal. Aqui a mensagem so entra se ja houver com
+ * quem vincular; senao vai pro dead-letter e fica recuperavel depois.
+ */
+async function findProspectByPhone(
+  supabase: SupabaseClient,
+  phone: string,
+): Promise<string | null> {
+  if (!phone) return null
+  const { data } = await supabase
+    .from('crm_prospects')
+    .select('id')
+    .eq('phone', phone)
+    .is('deleted_at', null)
+    .limit(1)
+    .maybeSingle()
+  return data?.id || null
+}
+
 async function handleMessagesUpsert(
   supabase: SupabaseClient,
   instanceId: string,
   data: any,
   instanceName: string = '',
+  // true = backfill: vincula so a contato/prospect que JA existe, nunca cria.
+  existingOnly = false,
 ) {
   const debug: any[] = []
   // Falhas que a Evolution DEVE reentregar (erro nosso, transitorio). Sinalizam
@@ -1076,6 +1105,26 @@ async function handleMessagesUpsert(
     const evolutionMessageId = m.key.id
     const fromMe = !!m.key.fromMe
     const remoteJid = m.key.remoteJid as string
+
+    // Grupo e status/broadcast nao sao conversa 1:1 e nao cabem no modelo:
+    // `crm_messages` liga a UM contato ou UM prospect. Sem esta guarda o JID do
+    // grupo passa pela validacao de telefone e vira prospect fantasma, com o id
+    // do grupo gravado no campo `phone` — dado corrompido, nao so escondido.
+    //
+    // Sao 16 linhas no store da Evolution hoje, mas um backfill processaria as
+    // 16 de uma vez. Fica no dead-letter: nada se perde, e se um dia houver
+    // suporte a grupo o payload esta guardado.
+    if (remoteJid && (remoteJid.endsWith('@g.us') || remoteJid.includes('broadcast'))) {
+      await deadLetter(supabase, {
+        instanceName,
+        evolutionMessageId,
+        reason: 'group',
+        detail: remoteJid,
+        payload: m,
+      })
+      debug.push({ skip: 'grupo_ou_broadcast', remoteJid })
+      continue
+    }
     let otherPhone = jidToPhone(remoteJid)
     // @lid (privacidade WhatsApp v2): o ID opaco != numero real e DUPLICA o
     // prospect. Se o payload trouxer o numero real num campo paralelo, usa ele
@@ -1190,7 +1239,26 @@ async function handleMessagesUpsert(
     // assim conversas que o vendedor INICIA do celular (outbound p/ numero novo)
     // tambem entram no sistema — nao so as que o lead manda primeiro.
     contactId = await findContactByPhone(supabase, otherPhone)
-    if (!contactId) {
+
+    // Backfill: vincula so a quem JA existe. Sem criar, e sem buscar avatar —
+    // reprocessar meses de historico dispararia milhares de chamadas na
+    // Evolution pra montar foto de gente que talvez nem entre.
+    if (!contactId && existingOnly) {
+      prospectId = await findProspectByPhone(supabase, otherPhone)
+      if (!prospectId) {
+        await deadLetter(supabase, {
+          instanceName,
+          evolutionMessageId,
+          reason: 'sem_lead_existente',
+          detail: `telefone ${otherPhone} nao esta em crm_contacts nem crm_prospects`,
+          payload: m,
+        })
+        debug.push({ skip: 'sem_lead_existente', otherPhone })
+        continue
+      }
+    }
+
+    if (!contactId && !existingOnly) {
       const chatId = remoteJid.replace('@s.whatsapp.net', '@lid')
       // NO ECO DE MENSAGEM ENVIADA, `pushName` E O NOME DE QUEM ENVIOU — NOSSO.
       //
