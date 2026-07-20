@@ -156,7 +156,13 @@ function MyDayCalendar() {
   const { profile } = useProfile();
   const { isAdmin } = useCrmAccess();
   const { data: allMembers = [] } = useTeamMembers();
-  const crmMembers = useMemo(() => allMembers.filter(m => m.crmRole && m.authUserId), [allMembers]);
+  // Tira EU da lista: a primeira opcao ("Minha fila" / "Meu calendário") ja e
+  // eu, entao aparecer de novo pelo nome oferece duas portas pro mesmo lugar —
+  // e quem escolhe pelo nome nao entende por que a tela nao mudou.
+  const crmMembers = useMemo(
+    () => allMembers.filter(m => m.crmRole && m.authUserId && m.authUserId !== profile?.id),
+    [allMembers, profile?.id],
+  );
 
   // Identidade de quem esta sendo visto (self quando nao-admin ou sem selecao).
   // Usada tanto pro filtro de atividades quanto pro responsavel padrao de
@@ -559,6 +565,31 @@ function QueueTab() {
   const [historyLead, setHistoryLead] = useState(null);
   const [lastContacted, setLastContacted] = useState(true);
 
+  // De quem e a fila. Mora na URL ('member', a mesma chave do Calendario) pra
+  // sobreviver a troca de aba e a um F5.
+  const [viewingMemberId, setViewingMemberId] = useUrlState('member', '');
+  const { isAdmin } = useCrmAccess();
+  const { profile } = useProfile();
+  const { data: allMembers = [] } = useTeamMembers();
+  // Tira EU da lista: a primeira opcao ("Minha fila" / "Meu calendário") ja e
+  // eu, entao aparecer de novo pelo nome oferece duas portas pro mesmo lugar —
+  // e quem escolhe pelo nome nao entende por que a tela nao mudou.
+  const crmMembers = useMemo(
+    () => allMembers.filter(m => m.crmRole && m.authUserId && m.authUserId !== profile?.id),
+    [allMembers, profile?.id],
+  );
+
+  // Nao-admin nunca sai da propria fila, mesmo com ?member= na URL — a barra de
+  // endereco nao pode ser um contorno do controle de acesso.
+  const alvo = isAdmin ? viewingMemberId : '';
+  const membroVisto = alvo && alvo !== 'all' ? crmMembers.find(m => m.authUserId === alvo) : null;
+  const visao = alvo === 'all'
+    ? { all: true }
+    : membroVisto ? { uid: membroVisto.authUserId, uname: membroVisto.name, memberId: membroVisto.id } : null;
+  const escopoLabel = alvo === 'all'
+    ? 'Fila do time inteiro — confira de quem é a tarefa antes de concluir.'
+    : membroVisto ? `Mostrando a fila de ${membroVisto.name}.` : 'Estas são só as suas tarefas.';
+
   const completeMutation = useCompleteCrmActivity();
   const updateMutation = useUpdateCrmActivity();
   const moveMutation = useMoveCrmDeal();
@@ -596,7 +627,24 @@ function QueueTab() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="flex justify-end mb-3">
+      <div className="flex items-center justify-end gap-2 mb-3 flex-wrap">
+        {/* Ver a fila de outra pessoa e privilegio de admin, igual ao
+            Calendario: a cadencia de um lead e trabalho de quem o atende, e
+            expor a fila alheia por padrao seria vigilancia, nao gestao. */}
+        {isAdmin && crmMembers.length > 0 && (
+          <select
+            value={viewingMemberId}
+            onChange={(e) => setViewingMemberId(e.target.value)}
+            title="Ver a fila de"
+            className="text-xs bg-white dark:bg-slate-800 border border-slate-200/70 dark:border-white/10 rounded-lg px-2 py-2 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+          >
+            <option value="">Minha fila</option>
+            <option value="all">Todos os vendedores</option>
+            {crmMembers.map(m => (
+              <option key={m.authUserId} value={m.authUserId}>{m.name}</option>
+            ))}
+          </select>
+        )}
         <button onClick={() => setFormOpen(true)}
           className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg shadow-sm">
           <Plus size={15} /> Nova tarefa
@@ -604,6 +652,9 @@ function QueueTab() {
       </div>
 
       <WorkQueue
+        visao={visao}
+        escopoLabel={escopoLabel}
+        membros={crmMembers}
         onExecute={(t) => { setJustDoneId(null); setExecuting(t); }}
         onPostpone={handlePostpone}
         onOpenLead={(id) => navigate(`/crm/deals/${id}`)}
@@ -668,10 +719,14 @@ function QueueTab() {
         </div>
       )}
 
+      {/* Tarefa nova nasce pra quem esta sendo VISTO, nao pra quem clicou: numa
+          fila alheia, criar sempre pra si mesmo era criar no lugar errado. */}
       <ActivityFormModal
         open={formOpen}
         onClose={() => setFormOpen(false)}
         activity={null}
+        defaultAssignedTo={membroVisto?.authUserId || undefined}
+        defaultAssignedToName={membroVisto?.name || undefined}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cleanStepTitle, taskHeadline, relativeDayLabel, isOverdue, isCold, COLD_AFTER_DAYS,
+  cleanStepTitle, taskHeadline, relativeDayLabel, isOverdue, isCold, COLD_AFTER_DAYS, formatWhen,
 } from '../stepLabel';
 
 describe('cleanStepTitle', () => {
@@ -39,6 +39,19 @@ describe('taskHeadline', () => {
   // respeitar o texto que a pessoa escreveu.
   it('sem lead devolve o titulo original', () => {
     expect(taskHeadline('Comprar café', null)).toBe('Comprar café');
+  });
+
+  // O titulo do banco vem com espaco sobrando ("Cobrar o edson ... tata ").
+  // Devolver cru aqui e limpo no taskDetail fazia as duas strings diferirem por
+  // um espaco invisivel, e a fila escrevia a mesma frase duas vezes seguidas.
+  it('normaliza o titulo mesmo sem lead — bate com taskDetail', () => {
+    const sujo = 'Cobrar o edson para reativar o vanderley tata ';
+    expect(taskHeadline(sujo, null)).toBe('Cobrar o edson para reativar o vanderley tata');
+    expect(taskHeadline(sujo, null)).toBe(cleanStepTitle(sujo));
+  });
+
+  it('tira o prefixo de agendamento tambem quando nao ha lead', () => {
+    expect(taskHeadline('D2 13h — Ligação 3', null)).toBe('Ligação 3');
   });
 });
 
@@ -87,5 +100,34 @@ describe('isCold', () => {
 
   it('tarefa de hoje nunca e fria', () => {
     expect(isCold({ startDate: hoje.toISOString() }, hoje)).toBe(false);
+  });
+});
+
+// A faixa inicio–fim importa porque a tarefa OCUPA a agenda: saber que a
+// ligacao e "09:00" nao diz se da tempo de encaixar outra coisa as 09:15.
+describe('formatWhen', () => {
+  const ini = new Date(2026, 6, 20, 9, 0).toISOString();
+  const fim = new Date(2026, 6, 20, 9, 30).toISOString();
+
+  it('mostra dia + faixa de horario', () => {
+    const s = formatWhen(ini, fim);
+    expect(s).toContain('20/07');
+    expect(s).toContain('09:00–09:30');
+  });
+
+  it('sem dia quando a tela ja diz qual e', () => {
+    expect(formatWhen(ini, fim, { comDia: false })).toBe('09:00–09:30');
+  });
+
+  it('sem fim, mostra so o inicio — repetir o mesmo horario e ruido', () => {
+    expect(formatWhen(ini, null, { comDia: false })).toBe('09:00');
+  });
+
+  it('fim igual ao inicio nao vira faixa', () => {
+    expect(formatWhen(ini, ini, { comDia: false })).toBe('09:00');
+  });
+
+  it('sem data nao quebra', () => {
+    expect(formatWhen(null, null)).toBe('');
   });
 });

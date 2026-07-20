@@ -9,7 +9,7 @@
 
 import { Phone, MessageCircle, Mail, AlertTriangle, ExternalLink, CheckSquare } from 'lucide-react';
 import { stepChannel } from '../../services/crmScheduling';
-import { taskHeadline, taskDetail, relativeDayLabel, isOverdue } from '../../utils/stepLabel';
+import { taskHeadline, taskDetail, relativeDayLabel, isOverdue, formatWhen } from '../../utils/stepLabel';
 import { PostponeMenu } from './PostponeMenu';
 
 const ICON = { call: Phone, message: MessageCircle, email: Mail };
@@ -29,8 +29,6 @@ function whatsappUrl(val) {
   return `https://wa.me/${c.startsWith('55') && c.length >= 12 ? c : `55${c}`}`;
 }
 
-const hora = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
 export function NowCard({ task, onExecute, onPostpone, onOpenLead, busy }) {
   if (!task) return null;
   const canal = stepChannel(task.title);
@@ -47,11 +45,11 @@ export function NowCard({ task, onExecute, onPostpone, onOpenLead, busy }) {
       <div className="p-4 space-y-3">
         {atrasada ? (
           <div className="flex items-center gap-1.5 text-[12px] font-bold text-rose-600 dark:text-rose-400">
-            <AlertTriangle size={13} /> ATRASADA · {relativeDayLabel(task.startDate)}, {hora(task.startDate)}
+            <AlertTriangle size={13} /> ATRASADA · {relativeDayLabel(task.startDate)} · {formatWhen(task.startDate, task.endDate)}
           </div>
         ) : (
           <div className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">
-            Hoje às {hora(task.startDate)}
+            Hoje · {formatWhen(task.startDate, task.endDate, { comDia: false })}
           </div>
         )}
 
@@ -73,7 +71,9 @@ export function NowCard({ task, onExecute, onPostpone, onOpenLead, busy }) {
             {task.dealId && <ExternalLink size={13} className="opacity-50 shrink-0" />}
           </button>
           <div className="text-[13px] text-slate-500 dark:text-slate-400">
-            {[task.stageName, taskDetail(task.title)].filter(Boolean).join(' · ')}
+            {/* Sem lead, a manchete acima JA e o titulo — repetir o detalhe
+                escreveria a mesma frase duas vezes seguidas. */}
+            {[task.stageName, task.leadName ? taskDetail(task.title) : null].filter(Boolean).join(' · ')}
           </div>
         </div>
 

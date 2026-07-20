@@ -17,7 +17,7 @@
  * vermelha que nunca zera vira mobilia e para de ser lida).
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   AlertTriangle, Sun, Sunset, CheckCircle2, ChevronDown, ChevronRight,
   Inbox, RefreshCw, UserX, PauseCircle, ArrowRight,
@@ -43,13 +43,25 @@ function SectionTitle({ icon: Icon, children, count, tone = 'default', right }) 
   );
 }
 
-export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, busy }) {
-  const q = useWorkQueue();
-  const { data: stalled = [] } = useStalledLeads();
+export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, busy, visao, escopoLabel, membros = [] }) {
+  const q = useWorkQueue(visao);
+  // Vendo a fila de outra pessoa (ou a de todos), cada linha precisa dizer de
+  // QUEM e a tarefa — senao da pra concluir a de outro sem perceber.
+  const showOwner = !!(visao?.all || visao?.uid);
+  const { data: stalled = [] } = useStalledLeads(visao?.memberId || null);
   const [showAllOverdue, setShowAllOverdue] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [plano, setPlano] = useState(null); // preview do adiar em lote
   const batch = useBatchPostpone();
+  // A cor mora em team_members, nao na atividade — a linha so guarda o nome.
+  // A lista vem do PAI, que ja a carregou pro seletor: buscar de novo aqui
+  // duplicaria a consulta e amarraria esta tela a mais uma fonte de dados.
+  const corPorNome = useMemo(() => {
+    const m = {};
+    membros.forEach(x => { if (x.name) m[x.name.trim().toLowerCase()] = x.color; });
+    return m;
+  }, [membros]);
+  const comCor = (t) => ({ ...t, assignedToColor: corPorNome[(t.assignedToName || '').trim().toLowerCase()] || null });
 
   if (q.isLoading) {
     return (
@@ -98,7 +110,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
         <span className="text-sm font-bold text-slate-700 dark:text-slate-200 tnum">
           {q.doneCount} de {q.doneCount + q.total}
         </span>
-        <span className="text-[12px] text-slate-500 dark:text-slate-400">Estas são só as suas tarefas.</span>
+        <span className="text-[12px] text-slate-500 dark:text-slate-400">{escopoLabel || 'Estas são só as suas tarefas.'}</span>
       </div>
 
       {q.orphanCount > 0 && (
@@ -192,10 +204,14 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
                     <div key={g.key}>
                       <div className="flex items-center gap-2 mb-1 px-0.5">
                         <span className="text-[13px] font-bold text-slate-700 dark:text-slate-200 truncate">
-                          {g.leadName || 'Sem lead'}
+                          {g.semLead ? 'Sem lead vinculado' : (g.leadName || 'Sem lead vinculado')}
                         </span>
+                        {/* "toque parado" e vocabulario de cadencia — nao cabe
+                            pra tarefa avulsa, que nao e toque em lead nenhum. */}
                         <span className="text-[12px] text-slate-500 dark:text-slate-400 shrink-0">
-                          · {g.tasks.length} {g.tasks.length === 1 ? 'toque parado' : 'toques parados'}
+                          · {g.tasks.length} {g.semLead
+                            ? (g.tasks.length === 1 ? 'tarefa' : 'tarefas')
+                            : (g.tasks.length === 1 ? 'toque parado' : 'toques parados')}
                         </span>
                         {g.dealId && (
                           <button onClick={() => onOpenLead?.(g.dealId)}
@@ -206,7 +222,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
                       </div>
                       <div className="space-y-1.5">
                         {tarefas.map(t => (
-                          <QueueTaskRow key={t.id} task={t} onExecute={onExecute} onPostpone={onPostpone} busy={busy} />
+                          <QueueTaskRow key={t.id} task={comCor(t)} onExecute={onExecute} onPostpone={onPostpone} showOwner={showOwner} busy={busy} />
                         ))}
                       </div>
                     </div>
@@ -232,7 +248,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
                   </div>
                   <div className="space-y-1.5 mb-3">
                     {q.manha.filter(t => t.id !== nowId).map(t => (
-                      <QueueTaskRow key={t.id} task={t} onExecute={onExecute} onPostpone={onPostpone} showTime busy={busy} />
+                      <QueueTaskRow key={t.id} task={comCor(t)} onExecute={onExecute} onPostpone={onPostpone} showTime showOwner={showOwner} busy={busy} />
                     ))}
                   </div>
                 </>
@@ -244,7 +260,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
                   </div>
                   <div className="space-y-1.5">
                     {q.tarde.filter(t => t.id !== nowId).map(t => (
-                      <QueueTaskRow key={t.id} task={t} onExecute={onExecute} onPostpone={onPostpone} showTime busy={busy} />
+                      <QueueTaskRow key={t.id} task={comCor(t)} onExecute={onExecute} onPostpone={onPostpone} showTime showOwner={showOwner} busy={busy} />
                     ))}
                   </div>
                 </>

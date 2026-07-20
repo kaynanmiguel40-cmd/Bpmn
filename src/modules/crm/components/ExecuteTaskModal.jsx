@@ -24,6 +24,7 @@ import {
 import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
 import { stepChannel } from '../services/crmScheduling';
+import { formatWhen } from '../utils/stepLabel';
 
 function formatPhone(val) {
   if (!val) return '';
@@ -216,11 +217,18 @@ export function ExecuteTaskModal({
       <div className="space-y-4">
         {/* 1+2. O que e, pra quem, e o contato a um clique */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-3 space-y-2.5">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <ChannelBadge title={activity.title} />
             <span className="flex-1 text-sm font-semibold text-slate-800 dark:text-slate-100 min-w-0">
               {activity.title}
             </span>
+            {/* Quando ela esta marcada, com a faixa inicio–fim: a tarefa ocupa
+                a agenda, entao so o inicio nao diz se cabe outra coisa depois. */}
+            {activity.startDate && (
+              <span className="shrink-0 inline-flex items-center gap-1 text-[12px] font-semibold tnum text-slate-500 dark:text-slate-400">
+                <Clock size={11} /> {formatWhen(activity.startDate, activity.endDate)}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">

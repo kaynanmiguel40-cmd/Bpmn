@@ -324,13 +324,22 @@ export async function getNextStageForDeal(dealId) {
  * justamente porque nao tem tarefa. Sem este bloco, ninguem descobre que ele
  * existe ate alguem lembrar dele.
  */
-export async function getStalledLeads(now = new Date()) {
-  const { data: deals, error } = await supabase
+export async function getStalledLeads(now = new Date(), ownerId = null) {
+  let dq = supabase
     .from('crm_deals')
     .select('id, title, owner_id, updated_at, priority, crm_pipeline_stages(id, name, color), crm_contacts(name)')
     .eq('status', 'open')
     .is('deleted_at', null)
+    // Sem ORDER BY, o limite corta um subconjunto ARBITRARIO: o lead mais
+    // parado — justamente o que este bloco existe pra achar — podia ficar de
+    // fora sem aviso. Mais antigo primeiro, que e a ordem da resposta.
+    .order('updated_at', { ascending: true })
     .limit(200);
+  // `owner_id` referencia team_members.id (TEXT), NAO auth_user_id: o dono do
+  // negocio e o do calendario sao ids diferentes pra mesma pessoa.
+  if (ownerId) dq = dq.eq('owner_id', ownerId);
+
+  const { data: deals, error } = await dq;
   if (error) throw error;
   if (!deals?.length) return [];
 

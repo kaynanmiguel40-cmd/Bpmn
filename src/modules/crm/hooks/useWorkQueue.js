@@ -43,10 +43,19 @@ export function isOrphan(task) {
   return !task?.assignedTo && !task?.assignedToName && !task?.createdBy;
 }
 
-export function useWorkQueue() {
+/**
+ * @param {object} [visao]  de quem e a fila que estamos vendo.
+ *   - omitido       -> a minha
+ *   - { all: true } -> de todo mundo (so admin; ver useCrmAccess)
+ *   - { uid, uname }-> a de outra pessoa
+ */
+export function useWorkQueue(visao = null) {
   const { profile, isLoading: profileLoading } = useProfile();
-  const uid = profile?.id || null;
-  const uname = profile?.name || null;
+  const vendoTodos = !!visao?.all;
+  // Sem `visao`, a fila e a minha. Isto e o default de propriedade: cada um ve
+  // o proprio trabalho, e ver o do time e uma escolha explicita.
+  const uid = vendoTodos ? null : (visao?.uid || profile?.id || null);
+  const uname = vendoTodos ? null : (visao?.uname || profile?.name || null);
 
   const overdueQ = useQuery({
     queryKey: workQueueKeys.overdue,
@@ -65,7 +74,10 @@ export function useWorkQueue() {
   });
 
   return useMemo(() => {
-    const mine = (list) => (list || []).filter(t => ownsTask(t, uid, uname));
+    // Vendo "todos", nada e filtrado — inclusive a tarefa orfa, que justamente
+    // nesta visao precisa aparecer: e a unica tela onde alguem pode descobrir
+    // que ela existe e assumir.
+    const mine = (list) => (vendoTodos ? (list || []) : (list || []).filter(t => ownsTask(t, uid, uname)));
 
     const overdueAll = mine(overdueQ.data);
     // O corte de 7 dias existe pra fila ser ZERAVEL. Uma faixa vermelha que
@@ -82,10 +94,21 @@ export function useWorkQueue() {
     const byLead = [];
     const idx = new Map();
     for (const t of overdue) {
-      const key = t.dealId || t.contactId || t.id;
+      // Tarefa avulsa (sem lead) cai TODA num balde so. Chaveando por t.id,
+      // cada uma virava um grupo de 1 com o cabecalho "Sem lead · 1 toque
+      // parado" repetido — o cabecalho ocupava mais espaco que a tarefa e nao
+      // dizia nada.
+      const key = t.dealId || t.contactId || '__sem_lead__';
       if (!idx.has(key)) {
         idx.set(key, byLead.length);
-        byLead.push({ key, leadName: t.leadName, dealId: t.dealId, stageName: t.stageName, tasks: [] });
+        byLead.push({
+          key,
+          leadName: t.leadName,
+          semLead: !t.dealId && !t.contactId,
+          dealId: t.dealId,
+          stageName: t.stageName,
+          tasks: [],
+        });
       }
       byLead[idx.get(key)].tasks.push(t);
     }
@@ -102,7 +125,7 @@ export function useWorkQueue() {
 
     const upcomingByDay = {};
     (upcomingQ.data || []).forEach(r => {
-      if (!ownsTask({ assignedTo: r.assigned_to, assignedToName: r.assigned_to_name, createdBy: r.created_by }, uid, uname)) return;
+      if (!vendoTodos && !ownsTask({ assignedTo: r.assigned_to, assignedToName: r.assigned_to_name, createdBy: r.created_by }, uid, uname)) return;
       const d = new Date(r.start_date);
       const k = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
       upcomingByDay[k] = (upcomingByDay[k] || 0) + 1;
@@ -127,13 +150,14 @@ export function useWorkQueue() {
       total,
       doneCount: doneToday.length,
       orphanCount,
+      vendoTodos,
       isEmpty: total === 0,
       isLoading: profileLoading || overdueQ.isLoading || todayQ.isLoading,
       isError: overdueQ.isError || todayQ.isError,
       error: overdueQ.error || todayQ.error,
       refetch: () => { overdueQ.refetch(); todayQ.refetch(); upcomingQ.refetch(); },
     };
-  }, [overdueQ.data, overdueQ.isLoading, overdueQ.isError, todayQ.data, todayQ.isLoading, todayQ.isError, upcomingQ.data, uid, uname, profileLoading]);
+  }, [overdueQ.data, overdueQ.isLoading, overdueQ.isError, todayQ.data, todayQ.isLoading, todayQ.isError, upcomingQ.data, uid, uname, vendoTodos, profileLoading]);
 }
 
 /**
@@ -162,10 +186,14 @@ export function useNextActivityForLead({ dealId, contactId, after } = {}) {
   });
 }
 
-export function useStalledLeads() {
+/**
+ * Leads parados de quem esta sendo visto. `memberId` e o team_members.id (o
+ * dono do NEGOCIO), nao o auth_user_id — sao ids diferentes pra mesma pessoa.
+ */
+export function useStalledLeads(memberId = null) {
   return useQuery({
-    queryKey: workQueueKeys.stalled,
-    queryFn: () => getStalledLeads(),
+    queryKey: [...workQueueKeys.stalled, memberId || 'todos'],
+    queryFn: () => getStalledLeads(new Date(), memberId),
     staleTime: 5 * 60_000,
   });
 }

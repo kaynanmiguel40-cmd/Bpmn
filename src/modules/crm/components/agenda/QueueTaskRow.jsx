@@ -8,7 +8,7 @@
 
 import { Phone, MessageCircle, Mail, Users, MapPin, CheckSquare, ArrowRight } from 'lucide-react';
 import { stepChannel } from '../../services/crmScheduling';
-import { taskHeadline, taskDetail, relativeDayLabel, isOverdue } from '../../utils/stepLabel';
+import { taskHeadline, taskDetail, relativeDayLabel, isOverdue, formatWhen } from '../../utils/stepLabel';
 import { PostponeMenu } from './PostponeMenu';
 
 const ICON = {
@@ -21,13 +21,18 @@ const TONE = {
   email: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
 };
 
-const hora = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-export function QueueTaskRow({ task, onExecute, onPostpone, showTime = false, busy }) {
+export function QueueTaskRow({ task, onExecute, onPostpone, showTime = false, showOwner = false, busy }) {
   const canal = stepChannel(task.title);
   const Icon = ICON[canal] || CheckSquare;
   const tone = TONE[canal] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
   const atrasada = isOverdue(task);
+  // Sem lead, a manchete JA e o titulo — repetir o detalhe escreveria a mesma
+  // frase duas vezes. A comparacao normaliza os dois lados: titulo do banco vem
+  // com espaco sobrando, e um espaco invisivel ja bastou pra "sao diferentes".
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const bruto = taskDetail(task.title);
+  const detalhe = bruto && norm(bruto) !== norm(taskHeadline(task.title, task.leadName)) ? bruto : '';
+  const dono = showOwner ? (task.assignedToName || null) : null;
 
   return (
     <div
@@ -46,12 +51,31 @@ export function QueueTaskRow({ task, onExecute, onPostpone, showTime = false, bu
         onClick={() => onExecute?.(task)}
         className="flex-1 min-w-0 text-left"
       >
-        <div className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-          {showTime && <span className="tnum text-slate-500 dark:text-slate-400 mr-1.5">{hora(task.startDate)}</span>}
-          {taskHeadline(task.title, task.leadName)}
+        <div className="flex items-center gap-1.5 min-w-0">
+          {/* Dono so aparece quando a fila NAO e a sua: numa fila propria o dono
+              e obvio e viraria ruido. Vendo a de outra pessoa (ou a de todos),
+              sem isso da pra concluir a tarefa alheia sem perceber. */}
+          {dono && (
+            <span
+              title={dono}
+              className="shrink-0 w-[18px] h-[18px] rounded-full flex items-center justify-center text-white text-[10px] font-bold leading-none"
+              style={{ backgroundColor: task.assignedToColor || '#94a3b8' }}
+            >
+              {dono.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+            {taskHeadline(task.title, task.leadName)}
+          </span>
         </div>
         <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate">
-          {taskDetail(task.title)}
+          {/* Quando: dia + faixa inicio–fim. Dentro do bloco HOJE o dia e
+              redundante (showTime), entao mostra so o horario. */}
+          <span className="tnum">{formatWhen(task.startDate, task.endDate, { comDia: !showTime })}</span>
+          {/* O detalhe do passo so entra quando ACRESCENTA algo: numa tarefa
+              avulsa a manchete JA e o titulo, entao repetir escrevia a mesma
+              frase duas vezes, uma embaixo da outra. */}
+          {detalhe && <span> · {detalhe}</span>}
           {atrasada && <span className="ml-1.5 font-semibold text-rose-600 dark:text-rose-400">· {relativeDayLabel(task.startDate)}</span>}
         </div>
       </button>

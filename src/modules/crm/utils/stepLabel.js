@@ -38,7 +38,12 @@ export function cleanStepTitle(title) {
  * verbo de canal a inferir e inventar um seria pior que o texto do usuario.
  */
 export function taskHeadline(title, leadName) {
-  if (!leadName) return title || 'Tarefa';
+  // Normaliza SEMPRE (nao devolve o titulo cru): o texto do banco vem com
+  // espaco sobrando e as vezes com o prefixo de agendamento. Devolver cru aqui
+  // e limpo no taskDetail fazia as duas strings diferirem por um espaco
+  // invisivel — e a tela, achando que o detalhe acrescentava algo, escrevia a
+  // mesma frase duas vezes, uma embaixo da outra.
+  if (!leadName) return cleanStepTitle(title) || title || 'Tarefa';
   const verb = CHANNEL_VERB[stepChannel(title)] || CHANNEL_VERB.task;
   // "Ligar para X" / "Mandar WhatsApp para X" — mas "Reunião com X".
   const prep = stepChannel(title) === 'meeting' ? 'com' : 'para';
@@ -67,6 +72,28 @@ export function relativeDayLabel(iso, now = new Date()) {
   if (diff > 1) return `há ${diff} dias`;
   if (diff === -1) return 'amanhã';
   return `em ${Math.abs(diff)} dias`;
+}
+
+const hhmm = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+/**
+ * Quando a tarefa acontece: dia + faixa de horario.
+ *
+ * A faixa (inicio–fim) importa porque a tarefa OCUPA a agenda: saber que a
+ * ligacao e "09:00" nao diz se da tempo de encaixar outra coisa as 09:15.
+ * Sem fim, mostra so o inicio — repetir o mesmo horario duas vezes e ruido.
+ *
+ * `comDia` fica de fora quando a tela ja diz o dia (o bloco HOJE, por exemplo).
+ */
+export function formatWhen(startIso, endIso, { comDia = true } = {}) {
+  if (!startIso) return '';
+  const s = new Date(startIso);
+  const faixa = endIso && hhmm(new Date(endIso)) !== hhmm(s)
+    ? `${hhmm(s)}–${hhmm(new Date(endIso))}`
+    : hhmm(s);
+  if (!comDia) return faixa;
+  const dia = s.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  return `${dia} · ${faixa}`;
 }
 
 /** Atrasada = pendente cujo DIA agendado ja passou. */

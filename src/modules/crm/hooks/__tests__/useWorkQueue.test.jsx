@@ -137,11 +137,12 @@ describe('agrupamento das atrasadas', () => {
     expect(result.current.overdueCount).toBe(3);
   });
 
-  it('tarefa sem dealId agrupa pelo contactId, e sem os dois fica sozinha', async () => {
+  it('tarefa sem dealId agrupa pelo contactId; as sem lead nenhum caem num balde so', async () => {
     getOverdueQueue.mockResolvedValue([
       task({ id: 't1', dealId: null, contactId: 'c-9', startDate: atDay(-3, 9) }),
       task({ id: 't2', dealId: null, contactId: 'c-9', startDate: atDay(-2, 9) }),
       task({ id: 't3', dealId: null, contactId: null, startDate: atDay(-1, 9) }),
+      task({ id: 't4', dealId: null, contactId: null, startDate: atDay(-1, 14) }),
     ]);
     const { result } = await montar();
 
@@ -149,8 +150,17 @@ describe('agrupamento das atrasadas', () => {
     expect(grupos).toHaveLength(2);
     expect(grupos[0].key).toBe('c-9');
     expect(grupos[0].tasks.map(t => t.id)).toEqual(['t1', 't2']);
-    // Sem deal e sem contato o proprio id vira a chave — nao empilha com estranhos.
-    expect(grupos[1].key).toBe('t3');
+
+    // Chavear pelo proprio id daria um grupo de 1 por tarefa, e o cabecalho
+    // ("Sem lead · 1 toque parado") ocupava mais espaco que a tarefa, repetido
+    // linha a linha, sem dizer nada. Tarefa avulsa nao e conversa com lead
+    // nenhum — vai toda pro mesmo balde, marcada com semLead pra tela poder
+    // trocar o vocabulario de cadencia ("toque parado") por "tarefa".
+    expect(grupos[1].key).toBe('__sem_lead__');
+    expect(grupos[1].semLead).toBe(true);
+    expect(grupos[1].tasks.map(t => t.id)).toEqual(['t3', 't4']);
+    // O grupo com lead continua sem a marca.
+    expect(grupos[0].semLead).toBe(false);
   });
 });
 
