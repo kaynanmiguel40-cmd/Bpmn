@@ -18,7 +18,7 @@
  * — que nao tem vinculo com etapa nenhuma — cai no periodo certo, pela data.
  */
 
-import { ListChecks, CornerDownRight, CalendarCheck, Phone, Mail, MessageCircle, Video, CheckSquare, Coffee, MapPin, Pencil } from 'lucide-react';
+import { ListChecks, CornerDownRight, CalendarCheck, Phone, Mail, MessageCircle, Video, CheckSquare, Coffee, MapPin, Pencil, StickyNote } from 'lucide-react';
 import { CrmBadge } from './ui';
 
 const ACTIVITY_ICONS = {
@@ -94,6 +94,35 @@ function StepItem({ item, compact }) {
           </div>
         )}
         <span className="text-[12px] text-slate-500 dark:text-slate-400">{formatDateTime(item._date)}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Anotacao livre do lead (crm_deals.notes).
+ *
+ * Ela aparece AQUI, na linha do tempo, e nao numa caixa separada em cima:
+ * antes do sistema ter historico de verdade, o campo de notas virou o diario
+ * do lead — 290 dos 299 negocios tem nota, quase um terco com texto longo. E
+ * historico escrito no lugar errado, entao e no historico que ele se le.
+ *
+ * Nao tem data (o campo nunca teve), por isso cai no grupo mais antigo e fica
+ * por ultimo: e o que veio ANTES de tudo que o sistema passou a registrar.
+ */
+function NoteItem({ item, compact }) {
+  return (
+    <div className="flex items-start gap-3 py-2.5 relative">
+      <div className="w-[26px] h-[26px] rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px]">
+        <StickyNote size={12} className="text-amber-600 dark:text-amber-400" />
+      </div>
+      <div className={`flex-1 min-w-0 rounded-2xl ${compact ? 'px-3 py-2' : 'crm-glass px-4 py-3'}`}>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Anotações do lead</span>
+          <CrmBadge variant="warning" size="sm">Nota</CrmBadge>
+        </div>
+        <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words">{item.text}</p>
+        <p className="text-[12px] text-slate-400 mt-1.5">Texto livre, sem data — anotado antes do histórico existir.</p>
       </div>
     </div>
   );
@@ -191,11 +220,11 @@ export function LeadHistoryTimeline({ items = [], stageHistory = [], compact = f
           <div className="relative pl-6">
             <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700/50" />
             <div className="space-y-1">
-              {g.items.map((item, idx) => (
-                item._type === 'step'
-                  ? <StepItem key={`step-${item.id || idx}`} item={item} compact={compact} />
-                  : <ActivityItem key={`act-${item.id || idx}`} item={item} compact={compact} onEdit={item._canEdit ? onEditItem : undefined} />
-              ))}
+              {g.items.map((item, idx) => {
+                if (item._type === 'note') return <NoteItem key={`note-${idx}`} item={item} compact={compact} />;
+                if (item._type === 'step') return <StepItem key={`step-${item.id || idx}`} item={item} compact={compact} />;
+                return <ActivityItem key={`act-${item.id || idx}`} item={item} compact={compact} onEdit={item._canEdit ? onEditItem : undefined} />;
+              })}
             </div>
           </div>
         </div>

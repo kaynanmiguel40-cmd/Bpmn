@@ -444,23 +444,16 @@ function MyDayCalendar() {
         </div>
       </div>
 
-      {/* Histórico do lead — slide-over (modal) visível em QUALQUER tela.
-          Antes era um <aside hidden lg:block>, que sumia em telas < 1024px. */}
+      {/* Histórico do lead — modal padrão do CRM (CrmModal), igual a todos os
+          outros. Era um slide-over próprio: a única superfície do módulo com
+          casca diferente. */}
       {selected && (
-        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm"
-            onClick={() => setSelected(null)} />
-          <aside className="relative w-full sm:max-w-[400px] h-full bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border-l border-white/60 dark:border-white/10 shadow-glass-lg overflow-hidden animate-scale-in">
-            <LeadHistoryPanel
-              selected={selected}
-              onClose={() => setSelected(null)}
-              onOpenLead={(lead) => lead.dealId && navigate(`/crm/deals/${lead.dealId}`)}
-              onCompleteTask={(item) => setCompletingTask({ id: item.activityId, title: item.title, type: item.activityType })}
-              onEditDelivery={(item) => setCompletingTask({ id: item.activityId, title: item.title, type: item.activityType, completed: true, deliveryInput: item.deliveryInput, deliveryReport: item.deliveryReport })}
-              onDeleteTask={(item) => setDeleteActivityTarget(item)}
-            />
-          </aside>
-        </div>
+        <LeadHistoryPanel
+          selected={selected}
+          onClose={() => setSelected(null)}
+          onOpenLead={(lead) => lead.dealId && navigate(`/crm/deals/${lead.dealId}`)}
+          onEditDelivery={(item) => setCompletingTask({ id: item.activityId, title: item.title, type: item.activityType, completed: true, deliveryInput: item.deliveryInput, deliveryReport: item.deliveryReport })}
+        />
       )}
 
       <ActivityFormModal
@@ -704,17 +697,11 @@ function QueueTab() {
       {/* Historico do lead sem sair da Agenda: a execucao continua sendo aqui,
           o painel e so consulta. */}
       {historyLead && (
-        <div className="fixed inset-0 z-[55] flex justify-end" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm"
-            onClick={() => setHistoryLead(null)} />
-          <aside className="relative w-full sm:max-w-[400px] h-full bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border-l border-white/60 dark:border-white/10 shadow-glass-lg overflow-hidden animate-scale-in">
-            <LeadHistoryPanel
-              selected={historyLead}
-              onClose={() => setHistoryLead(null)}
-              onOpenLead={(lead) => lead.dealId && navigate(`/crm/deals/${lead.dealId}`)}
-            />
-          </aside>
-        </div>
+        <LeadHistoryPanel
+          selected={historyLead}
+          onClose={() => setHistoryLead(null)}
+          onOpenLead={(lead) => lead.dealId && navigate(`/crm/deals/${lead.dealId}`)}
+        />
       )}
 
       {/* Tarefa nova nasce pra quem esta sendo VISTO, nao pra quem clicou: numa

@@ -571,6 +571,14 @@ export function CrmDealDetailPage() {
               new Date(b._date) - new Date(a._date)
             );
 
+            // A anotacao livre entra como o ULTIMO item. Ela e editada na aba
+            // Notas; aqui ela e LIDA, porque na pratica virou o diario do lead
+            // — foi o que existiu antes de o sistema ter historico. Sem data,
+            // cai no grupo mais antigo.
+            if (deal.notes?.trim()) {
+              timeline.push({ _type: 'note', _date: null, text: deal.notes.trim() });
+            }
+
             return <LeadHistoryTimeline items={timeline} stageHistory={stageHistory} />;
           })()}
 
