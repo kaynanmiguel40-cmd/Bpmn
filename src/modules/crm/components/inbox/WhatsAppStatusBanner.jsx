@@ -37,6 +37,17 @@ const STATUS_CONFIG = {
   },
 };
 
+/** "há 2 dias" / "há 3h" / "há 40min" — sem sinal desde quando. */
+function tempoSemSinal(lastSeenAt) {
+  if (!lastSeenAt) return 'desde sempre';
+  const min = Math.floor((Date.now() - new Date(lastSeenAt).getTime()) / 60000);
+  if (min < 60)   return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24)     return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  return `há ${d} dia${d > 1 ? 's' : ''}`;
+}
+
 /**
  * Banner no topo do Inbox com status de TODAS as instancias WhatsApp
  * configuradas — nao so a que esta ativa na conversa aberta. Com 2 numeros
@@ -61,11 +72,49 @@ export function WhatsAppStatusBanner() {
     );
   }
 
+  // "Conectado" nao basta: o status so mudava quando chegava um evento de
+  // conexao, entao uma sessao que morre calada congela em 'connected' pra
+  // sempre — e este banner, que so olhava status != 'connected', nunca tinha o
+  // que mostrar. Foi assim que um numero passou 24 dias fora com a tela dizendo
+  // que estava tudo certo.
+  //
+  // O reconciliador (evolution-webhook ?action=reconcile_instances) carimba
+  // last_seen_at a cada checagem em que a instancia esta mesmo de pe. Entao
+  // silencio prolongado aqui significa uma de duas coisas, e as duas merecem
+  // alarme: a instancia caiu, ou a propria checagem parou de rodar.
+  const LIMITE_SEM_SINAL_MIN = 30;
+  const mudas = instances.filter((i) => {
+    if (i.status !== 'connected') return false;
+    if (!i.lastSeenAt) return true;
+    const min = (Date.now() - new Date(i.lastSeenAt).getTime()) / 60000;
+    return min > LIMITE_SEM_SINAL_MIN;
+  });
+
   const problematic = instances.filter((i) => i.status !== 'connected');
-  if (problematic.length === 0) return null;
+  if (problematic.length === 0 && mudas.length === 0) return null;
 
   return (
     <div className="flex flex-col">
+      {mudas.map((instance) => (
+        <div
+          key={`mudo-${instance.id}`}
+          className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 px-4 py-2 flex items-center gap-2 text-sm"
+        >
+          <AlertTriangle size={14} className="text-amber-500 shrink-0" />
+          <span className="text-amber-700 dark:text-amber-300">
+            Diz conectado, mas está sem sinal {tempoSemSinal(instance.lastSeenAt)}. Pode não estar recebendo.
+          </span>
+          <span className="text-xs text-slate-500 ml-1">
+            ({instance.phoneNumber || instance.instanceName})
+          </span>
+          <Link
+            to="/crm/whatsapp"
+            className="ml-auto text-amber-700 dark:text-amber-300 hover:underline font-medium text-xs"
+          >
+            Verificar
+          </Link>
+        </div>
+      ))}
       {problematic.map((instance) => {
         const c = STATUS_CONFIG[instance.status] || STATUS_CONFIG.disconnected;
         return (

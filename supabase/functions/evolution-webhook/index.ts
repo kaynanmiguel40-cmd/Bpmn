@@ -338,6 +338,106 @@ async function runBackfillAvatars(supabase: SupabaseClient) {
   }
 }
 
+/**
+ * Traduz o estado da Evolution pro nosso vocabulario.
+ * Evolution v2 usa 'open' | 'connecting' | 'close'.
+ */
+function mapConnectionState(raw: unknown): string | null {
+  const s = String(raw || '').toLowerCase()
+  if (s === 'open')       return 'connected'
+  if (s === 'connecting') return 'connecting'
+  if (s === 'close' || s === 'closed') return 'disconnected'
+  return null
+}
+
+/**
+ * Pergunta a Evolution o estado REAL de cada instancia e corrige o banco.
+ *
+ * Nao inventa status: se a Evolution nao responder, ou nao souber traduzir o
+ * estado, a linha fica como esta. Marcar tudo como desconectado num blip de
+ * rede seria trocar uma mentira por outra — e essa alarmaria falso, que treina
+ * o vendedor a ignorar o banner.
+ */
+async function reconcileInstances(supabase: SupabaseClient) {
+  if (!EVOLUTION_URL || !EVOLUTION_API_KEY) {
+    return { ok: false, error: 'EVOLUTION_URL/EVOLUTION_API_KEY ausentes no ambiente da function' }
+  }
+
+  let remotas: any[]
+  try {
+    const r = await fetch(`${EVOLUTION_URL}/instance/fetchInstances`, {
+      headers: { apikey: EVOLUTION_API_KEY },
+    })
+    if (!r.ok) return { ok: false, error: `fetchInstances HTTP ${r.status}` }
+    const data = await r.json()
+    remotas = Array.isArray(data) ? data : (data?.instances || [data])
+  } catch (e) {
+    return { ok: false, error: `fetchInstances: ${String(e)}` }
+  }
+
+  // A Evolution ja mudou esse shape entre versoes (as vezes {instance:{...}},
+  // as vezes o objeto direto). Achata os dois.
+  const porNome = new Map<string, { estado: string | null; numero: string }>()
+  for (const item of remotas) {
+    const i = item?.instance || item
+    const nome = i?.instanceName || i?.name
+    if (!nome) continue
+    porNome.set(String(nome), {
+      estado: mapConnectionState(i?.connectionStatus ?? i?.state ?? i?.status),
+      numero: jidToPhone(i?.ownerJid || i?.owner || ''),
+    })
+  }
+
+  const { data: locais, error: erroLocais } = await supabase
+    .from('crm_whatsapp_instances')
+    .select('id, instance_name, status, phone_number')
+    .is('deleted_at', null)
+  if (erroLocais) return { ok: false, error: `select instancias: ${erroLocais.message}` }
+
+  const agora = new Date().toISOString()
+  const relatorio: any[] = []
+
+  for (const local of locais || []) {
+    const remota = porNome.get(local.instance_name)
+
+    // A Evolution nao conhece essa instancia: ela foi apagada de la, ou o nome
+    // divergiu. Nao e "desconectada" — e uma inconsistencia que merece ser dita
+    // com todas as letras em vez de virar um status plausivel.
+    if (!remota) {
+      relatorio.push({ instancia: local.instance_name, alerta: 'ausente_na_evolution', statusBanco: local.status })
+      continue
+    }
+    if (!remota.estado) {
+      relatorio.push({ instancia: local.instance_name, alerta: 'estado_desconhecido' })
+      continue
+    }
+
+    const patch: Record<string, unknown> = { status: remota.estado }
+    // last_seen_at so avanca quando a instancia esta REALMENTE de pe. E isso que
+    // faz dele um heartbeat: se parar de avancar, ou a instancia caiu ou este
+    // reconciliador parou de rodar — os dois casos merecem alarme.
+    if (remota.estado === 'connected') {
+      patch.last_seen_at = agora
+      patch.qr_code = null
+      patch.qr_expires_at = null
+      if (remota.numero) patch.phone_number = remota.numero
+    }
+
+    const { error: erroUp } = await supabase
+      .from('crm_whatsapp_instances').update(patch).eq('id', local.id)
+
+    relatorio.push({
+      instancia: local.instance_name,
+      de: local.status,
+      para: remota.estado,
+      mudou: local.status !== remota.estado,
+      erro: erroUp?.message,
+    })
+  }
+
+  return { ok: true, verificadas: relatorio.length, instancias: relatorio, em: agora }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
@@ -429,6 +529,25 @@ serve(async (req) => {
     if (provided !== WEBHOOK_SECRET) {
       return json({ ok: false, error: 'invalid webhook secret' }, 401)
     }
+  }
+
+  // Acao: reconcilia o status das instancias com a REALIDADE da Evolution.
+  //
+  // Existe porque `crm_whatsapp_instances.status` so mudava quando chegava um
+  // evento `connection.update`. Se a sessao morre sem avisar — que e o caso
+  // comum: o WhatsApp desloga o aparelho e ninguem manda evento nenhum — o
+  // valor congela em 'connected' PARA SEMPRE. Foi assim que o fyness-principal
+  // passou 24 dias fora do ar com a tela dizendo que estava tudo certo, e o
+  // banner do inbox (que filtra status != 'connected') nunca teve o que mostrar.
+  //
+  // Aqui a gente PERGUNTA em vez de esperar ser avisado. E, quando a instancia
+  // esta mesmo de pe, carimba last_seen_at — o que transforma esse campo num
+  // heartbeat de verdade: "sem sinal ha X" passa a significar alguma coisa,
+  // porque antes ele so avancava em eventos de conexao e ficava velho mesmo com
+  // a instancia saudavel.
+  if (new URL(req.url).searchParams.get('action') === 'reconcile_instances') {
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return json(await reconcileInstances(sb))
   }
 
   // Acao administrativa: backfill de avatares (re-hospeda fotos no Storage).
