@@ -87,3 +87,29 @@ describe('contarTentativas', () => {
     expect(capturado.tabelas).toEqual([]);
   });
 });
+
+/**
+ * Telefone e WhatsApp são canais diferentes, não dois botões pro mesmo.
+ * Economia e taxa de atendimento não são iguais, e só separando dá pra
+ * responder "por onde atendem mais?" — que é o que decide a ordem dos toques
+ * na próxima cadência. Juntos, viram uma média que não descreve nenhum dos dois.
+ */
+describe('canal da tentativa', () => {
+  it('o padrão é o chip do aparelho', async () => {
+    await registrarTentativaDeLigacao({ activityId: 'a1', phone: '11999998888' });
+    expect(capturado.insert.channel).toBe('device');
+  });
+
+  it('a ligação por WhatsApp grava o canal próprio', async () => {
+    await registrarTentativaDeLigacao({ activityId: 'a1', phone: '11999998888', canal: 'whatsapp' });
+    expect(capturado.insert.channel).toBe('whatsapp');
+  });
+
+  // Os dois canais contam pro mesmo passo: 3 tentativas são 3, tenha ela ligado
+  // pelo chip, pelo WhatsApp ou misturado.
+  it('os dois canais somam nas tentativas da mesma tarefa', async () => {
+    await registrarTentativaDeLigacao({ activityId: 'a1', phone: '1', canal: 'device' });
+    await registrarTentativaDeLigacao({ activityId: 'a1', phone: '1', canal: 'whatsapp' });
+    expect(capturado.tabelas.filter(t => t === 'crm_calls')).toHaveLength(2);
+  });
+});

@@ -433,8 +433,13 @@ export async function softDeleteCrmCall(id) {
  * tentativa sem desfecho e informacao honesta (discou e nao se sabe o resto),
  * enquanto chutar 'no_answer' contaminaria a taxa de atendimento com ligacoes
  * que podem ter sido atendidas.
+ *
+ * `canal`: 'device' = chip do aparelho (tel:), 'whatsapp' = chamada de voz pelo
+ * WhatsApp. Separar os dois e o que deixa responder "por onde atendem mais?" —
+ * a pergunta que decide a ordem dos toques na proxima cadencia. Juntos, viram
+ * uma media que nao descreve nenhum dos dois.
  */
-export async function registrarTentativaDeLigacao({ contactId = null, dealId = null, phone = null, activityId = null } = {}) {
+export async function registrarTentativaDeLigacao({ contactId = null, dealId = null, phone = null, activityId = null, canal = 'device' } = {}) {
   if (!phone) return null;
   const session = await supabase.auth.getSession();
   const userId = session.data?.session?.user?.id;
@@ -449,7 +454,7 @@ export async function registrarTentativaDeLigacao({ contactId = null, dealId = n
       activity_id: activityId,
       phone_dialed: phone,
       direction: 'outbound',
-      channel: 'device',
+      channel: canal,
       started_at: new Date().toISOString(),
       created_by: userId,
     })

@@ -330,6 +330,30 @@ export function ExecuteTaskModal({
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/40 dark:text-sky-300">
                 <Phone size={12} /> Ligar
               </a>
+              {/* Ligar POR WHATSAPP e outro canal, nao outro botao pro mesmo.
+                  Economia e taxa de atendimento sao diferentes das do telefone,
+                  e so separando da pra responder "por onde atendem mais?".
+
+                  O link abre a CONVERSA, nao a chamada: o WhatsApp nao expõe
+                  jeito de iniciar ligacao por link. Por isso o rotulo diz onde
+                  tocar — prometer que disca e mentir pra quem esta com pressa. */}
+              {wa && isCall && (
+                <a href={wa} target="_blank" rel="noopener noreferrer"
+                  onClick={() => {
+                    setTentativas(t => t + 1);
+                    registrarTentativaDeLigacao({
+                      contactId: activity.contactId,
+                      dealId: activity.dealId,
+                      activityId: activity.id,
+                      phone,
+                      canal: 'whatsapp',
+                    });
+                  }}
+                  title="Abre a conversa — toque no ícone de telefone lá dentro pra chamar"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  <Phone size={12} /> Ligar no WhatsApp
+                </a>
+              )}
               {tentativas > 0 && (
                 <span
                   className="text-[12px] font-semibold text-slate-500 dark:text-slate-400"
@@ -339,10 +363,16 @@ export function ExecuteTaskModal({
                   {tentativas >= 3 && ' — já deu as 3, pode deixar recado'}
                 </span>
               )}
+              {/* Mandar MENSAGEM e outra coisa e NAO conta tentativa de ligacao.
+                  Fica visivel tambem no passo de ligacao de proposito: os
+                  proprios roteiros mandam "deixa mensagem" depois das 3
+                  tentativas, entao esconder aqui quebraria o passo no momento
+                  exato em que ele e usado. */}
               {wa && (
                 <a href={wa} target="_blank" rel="noopener noreferrer"
+                  title="Mandar mensagem — não conta como tentativa de ligação"
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300">
-                  <MessageCircle size={12} /> WhatsApp
+                  <MessageCircle size={12} /> {isCall ? 'Mensagem' : 'WhatsApp'}
                 </a>
               )}
             </div>
