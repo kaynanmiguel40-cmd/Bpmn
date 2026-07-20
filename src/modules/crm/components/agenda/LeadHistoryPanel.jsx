@@ -110,6 +110,11 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onEdit
         // sao registro do que aconteceu, nao ha entrega a preencher.
         _canEdit: i.kind === 'activity',
         activityType: i.activityType,
+        // `activityId` e o id REAL da atividade no banco. `id` acima e o da
+        // timeline, prefixado ("act_<uuid>", "call_<uuid>") pra nao colidir
+        // entre as fontes — mandar ele pro update quebra: o Postgres recebe
+        // "act_..." (ou undefined, se o campo nem vier) onde espera um uuid.
+        activityId: i.activityId || null,
       }));
     // A anotacao livre entra como o ULTIMO item: e o que foi escrito antes de
     // o sistema ter historico, entao vem antes de tudo que ele registrou. Fica

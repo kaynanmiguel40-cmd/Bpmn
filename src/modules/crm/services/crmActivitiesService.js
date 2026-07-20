@@ -295,6 +295,15 @@ export async function cancelCadenceForDeal(dealId) {
 }
 
 export async function updateCrmActivity(id, updates) {
+  // Sem id valido, nao ha o que atualizar. Sem esta guarda, um `undefined`
+  // vindo de uma prop faltando virava a string "undefined" na query e o
+  // Postgres devolvia "invalid input syntax for type uuid" — erro que fala do
+  // banco quando o problema esta na tela, e nao diz QUAL tela.
+  if (!id || typeof id !== 'string') {
+    console.error('[updateCrmActivity] id invalido:', id);
+    toast('Não consegui identificar a tarefa. Recarregue a página e tente de novo.', 'error');
+    return null;
+  }
   const result = await activityService.update(id, updates);
 
   // Propagar mudancas de data/hora/titulo/descricao/tipo para o evento da agenda
@@ -390,6 +399,11 @@ export async function softDeleteCrmActivity(id) {
  * mentir sobre o quanto o lead avancou.
  */
 export async function completeCrmActivity(id, { input = '', output = '', contacted } = {}) {
+  // Mesma guarda do updateCrmActivity: id ausente vira "undefined" na query.
+  if (!id || typeof id !== 'string') {
+    console.error('[completeCrmActivity] id invalido:', id);
+    throw new Error('Não consegui identificar a tarefa. Recarregue a página e tente de novo.');
+  }
   const now = new Date().toISOString();
   const session = await supabase.auth.getSession();
   const completedBy = session.data?.session?.user?.id || null;

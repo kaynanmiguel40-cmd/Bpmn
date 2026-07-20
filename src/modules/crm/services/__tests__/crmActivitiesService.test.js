@@ -12,7 +12,7 @@ vi.mock('../../../../lib/serviceFactory', () => ({
 }));
 vi.mock('../../schemas/crmValidation', () => ({ crmActivitySchema: {} }));
 
-import { dbToCrmActivity, completeCrmActivity } from '../crmActivitiesService';
+import { dbToCrmActivity, completeCrmActivity, updateCrmActivity } from '../crmActivitiesService';
 import { supabase } from '../../../../lib/supabase';
 
 describe('dbToCrmActivity', () => {
@@ -154,5 +154,25 @@ describe('completeCrmActivity — contacted', () => {
     const tables = setup({ ...ROW, stage_step_id: null });
     await completeCrmActivity('a1', { output: 'ok', contacted: true });
     expect(tables.some(t => t.table === 'crm_deal_step_progress')).toBe(false);
+  });
+});
+
+// Uma prop faltando na tela mandava `undefined` pro banco e o Postgres devolvia
+// "invalid input syntax for type uuid: undefined" — erro que fala do banco
+// quando o problema esta na tela, e que nao diz QUAL tela. A guarda para antes.
+describe('guarda de id invalido', () => {
+  it('completeCrmActivity sem id nao chega no banco', async () => {
+    supabase.from.mockClear();
+    supabase.from.mockImplementation(() => { throw new Error('nao deveria consultar'); });
+    await expect(completeCrmActivity(undefined, {})).rejects.toThrow(/identificar a tarefa/);
+    await expect(completeCrmActivity(null, {})).rejects.toThrow(/identificar a tarefa/);
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('updateCrmActivity sem id devolve null em vez de quebrar', async () => {
+    supabase.from.mockClear();
+    supabase.from.mockImplementation(() => { throw new Error('nao deveria consultar'); });
+    expect(await updateCrmActivity(undefined, { title: 'x' })).toBeNull();
+    expect(supabase.from).not.toHaveBeenCalled();
   });
 });
