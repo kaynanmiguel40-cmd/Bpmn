@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { daySlots, findFreeSlot, planSteps, dayKey, nextBusinessDay } from '../crmScheduling';
+import { daySlots, findFreeSlot, planSteps, dayKey, nextBusinessDay, WORK_START_HOUR } from '../crmScheduling';
 
 const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 // Helper: ISO de um horario num dia fixo (2026-07-20 = segunda-feira)
@@ -137,5 +137,31 @@ describe('nextBusinessDay', () => {
   });
   it('dia util nao muda', () => {
     expect(dayKey(nextBusinessDay(new Date(2026, 6, 20)))).toBe('2026-07-20');
+  });
+});
+
+// Tarefa do dia 0 nao pode nascer no passado: um lead que entra na etapa as 15h
+// ganhava o toque de "hoje" as 9h — ja atrasado no instante da criacao, caindo
+// direto na fila de atrasadas sem ninguem ter falhado.
+describe('planSteps — piso do agora', () => {
+  it('nao agenda no passado quando a etapa comeca no meio da tarde', () => {
+    const from = new Date(2026, 6, 20, 15, 0); // segunda, 15h
+    const plan = planSteps([{ id: 'p1', dayOffset: 0 }], {}, from);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].start.getTime()).toBeGreaterThan(from.getTime());
+  });
+
+  it('dia seguinte continua comecando as 9h (o piso vale so pra hoje)', () => {
+    const from = new Date(2026, 6, 20, 15, 0);
+    const plan = planSteps([{ id: 'p1', dayOffset: 1 }], {}, from);
+    expect(plan[0].start.getHours()).toBe(WORK_START_HOUR);
+  });
+
+  it('entrada depois do expediente empurra pro proximo dia util', () => {
+    const from = new Date(2026, 6, 20, 19, 30); // segunda, 19h30 — ja fechou
+    const plan = planSteps([{ id: 'p1', dayOffset: 0 }], {}, from);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].start.getDate()).toBe(21);
+    expect(plan[0].start.getHours()).toBe(WORK_START_HOUR);
   });
 });

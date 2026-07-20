@@ -8,6 +8,8 @@ vi.mock('../../../../lib/supabase', () => {
     q.select = () => q;
     q.eq = (col, val) => { q._filters[col] = val; return q; };
     q.in = (col, vals) => { q._filters[col] = vals; return q; };
+    q.is = (col, val) => { q._filters[`is:${col}`] = val; return q; };
+    q.not = (col, op, val) => { q._filters[`not:${col}`] = `${op}:${val}`; return q; };
     q.order = () => q;
     q.insert = (payload) => {
       state.calls.push({ op: 'insert', table, payload });
@@ -35,7 +37,7 @@ vi.mock('../../../../lib/supabase', () => {
 
 vi.mock('../../../../contexts/ToastContext', () => ({ toast: vi.fn() }));
 
-import { saveStageSteps, toggleDealStep, dbToStep } from '../crmPlaybookService';
+import { saveStageSteps, toggleDealStep, dbToStep, cancelPendingStepsForDeal } from '../crmPlaybookService';
 
 beforeEach(() => { state.steps = []; state.progress = []; state.calls = []; });
 
@@ -124,6 +126,46 @@ describe('toggleDealStep', () => {
   it('sem dealId ou stepId nao toca no banco', async () => {
     expect(await toggleDealStep(null, 'p1', true)).toBeNull();
     expect(await toggleDealStep('d1', null, true)).toBeNull();
+    expect(state.calls).toHaveLength(0);
+  });
+});
+
+// A cadencia da etapa que ficou pra tras precisa SAIR da fila. Sem isso o lead
+// que avancou continua sendo tocado pelo script da etapa anterior, e a agenda
+// acumula lixo que cresce sozinho todo dia.
+describe('cancelPendingStepsForDeal', () => {
+  it('cancela so as tarefas PENDENTES dos passos da etapa informada', async () => {
+    state.steps = [{ id: 'p1' }, { id: 'p2' }];
+    await cancelPendingStepsForDeal('d1', 'st-1');
+
+    const upd = state.calls.find(c => c.op === 'update' && c.table === 'crm_activities');
+    expect(upd.payload.deleted_at).toBeTruthy();      // soft-delete, nao DELETE
+    expect(upd.filters.deal_id).toBe('d1');
+    expect(upd.filters.completed).toBe(false);        // concluida e historico
+    expect(upd.filters.stage_step_id).toEqual(['p1', 'p2']);
+    expect(upd.filters['is:deleted_at']).toBeNull();  // nao recancela
+  });
+
+  it('sem stageId cancela TODAS as pendentes do processo (ganho/perdido)', async () => {
+    await cancelPendingStepsForDeal('d1');
+
+    const upd = state.calls.find(c => c.op === 'update' && c.table === 'crm_activities');
+    // Sem filtro por passo, mas ainda so o que veio do processo...
+    expect(upd.filters.stage_step_id).toBeUndefined();
+    expect(upd.filters['not:stage_step_id']).toBe('is:null');
+    // ...e nunca toca em tarefa avulsa criada a mao.
+    expect(upd.filters.completed).toBe(false);
+  });
+
+  it('etapa sem nenhum passo nao dispara update', async () => {
+    state.steps = [];
+    const n = await cancelPendingStepsForDeal('d1', 'st-vazia');
+    expect(n).toBe(0);
+    expect(state.calls.some(c => c.op === 'update')).toBe(false);
+  });
+
+  it('sem dealId nao toca no banco', async () => {
+    expect(await cancelPendingStepsForDeal(null)).toBe(0);
     expect(state.calls).toHaveLength(0);
   });
 });

@@ -415,9 +415,11 @@ describe('markDealAsLost', () => {
 
     const result = await markDealAsLost('d1', 'preco');
 
-    // 4 chamadas a from(): deal SELECT, pipeline_stages (procura Excluida), deal UPDATE, history INSERT.
+    // 5 chamadas a from(): deal SELECT, pipeline_stages (procura Excluida), deal
+    // UPDATE, history INSERT e o cancelamento da cadencia pendente (perdido sai
+    // da fila inteiro — cancelPendingStepsForDeal).
     // NAO houve select de crm_pipelines (skip por causa da config explicita).
-    expect(supabase.from).toHaveBeenCalledTimes(4);
+    expect(supabase.from).toHaveBeenCalledTimes(5);
 
     const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
     expect(updatePayload.pipeline_id).toBe('custom_pipe');

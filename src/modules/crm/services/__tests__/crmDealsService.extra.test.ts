@@ -80,6 +80,7 @@ interface ChainCapture {
   rangeArgs: [number, number] | null;
   orderArgs: unknown[] | null;
   notCalls: unknown[];
+  updateCalls: unknown[][];
 }
 
 interface MakeChainResult {
@@ -99,12 +100,20 @@ function makeChain(finalResult: { data?: unknown; error?: unknown; count?: numbe
     rangeArgs: null,
     orderArgs: null,
     notCalls: [],
+    updateCalls: [],
   };
 
   // Pra suportar `await query` (sem .single()) precisa de `.then`.
   const chain: Record<string, unknown> = {
     select: vi.fn((...args: unknown[]) => { captured.selectArgs = args; return chain; }),
-    update: vi.fn((...args: unknown[]) => { captured.updateArgs = args; return chain; }),
+    // updateArgs = o PRIMEIRO update (o da funcao sob teste). Depois dele vem o
+    // cancelamento da cadencia pendente, disparado sem await — se sobrescrever,
+    // a asserção passa a olhar o `deleted_at` em vez do payload do negocio.
+    update: vi.fn((...args: unknown[]) => {
+      captured.updateCalls.push(args);
+      if (captured.updateArgs === null) captured.updateArgs = args;
+      return chain;
+    }),
     insert: vi.fn((...args: unknown[]) => { captured.insertArgs = args; return chain; }),
     delete: vi.fn(() => chain),
     eq: vi.fn((f: string, v: unknown) => { captured.eqCalls.push([f, v]); return chain; }),
@@ -554,9 +563,10 @@ describe('moveDealToStage', () => {
 
     const result = await moveDealToStage('d1', 's_new');
 
-    // history insert (4a chamada) + o agendamento das tarefas do processo da
-    // etapa nova (5a) — scheduleStepsForDeal roda solto apos a troca de etapa.
-    expect(mockedSupabase.from).toHaveBeenCalledTimes(5);
+    // history insert (4a chamada), o cancelamento da cadencia da etapa ANTIGA
+    // (5a) e o agendamento das tarefas da etapa nova (6a) — ambos rodam soltos
+    // apos a troca de etapa.
+    expect(mockedSupabase.from).toHaveBeenCalledTimes(6);
     expect(mockTriggerAutomations).toHaveBeenCalledWith(result, 's_new');
   });
 
@@ -615,8 +625,9 @@ describe('markDealAsWon', () => {
     const payload = dealUpdate.captured.updateArgs?.[0] as Record<string, unknown>;
     expect(payload.status).toBe('won');
     expect(payload.stage_id).toBe('s_win'); // moveu pra coluna de vitoria
-    // history (4a chamada) + automations disparadas
-    expect(mockedSupabase.from).toHaveBeenCalledTimes(4);
+    // history (4a chamada) + o cancelamento da cadencia pendente (5a): lead
+    // ganho nao continua recebendo toque de prospeccao.
+    expect(mockedSupabase.from).toHaveBeenCalledTimes(5);
     expect(mockTriggerAutomations).toHaveBeenCalledWith(result, 's_win');
   });
 
