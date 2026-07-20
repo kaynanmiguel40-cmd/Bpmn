@@ -86,7 +86,9 @@ function leadLabel({ deal, contact }) {
 export async function getCrmCalendarActivities({ start, end } = {}) {
   let query = supabase
     .from('crm_activities')
-    .select('*, crm_contacts(id, name, avatar_color), crm_deals(id, title, value, crm_pipeline_stages(name, color))')
+    // phone do contato: a Agenda e onde a tarefa e EXECUTADA, entao o telefone
+    // precisa estar a um clique (ligar/WhatsApp) sem abrir o lead.
+    .select('*, crm_contacts(id, name, avatar_color, phone), crm_deals(id, title, value, source, crm_pipeline_stages(name, color))')
     .is('deleted_at', null)
     .order('start_date', { ascending: true });
 
@@ -113,6 +115,7 @@ export async function getCrmCalendarActivities({ start, end } = {}) {
       typeLabel: meta.label,
       leadName: leadLabel(a),
       stageName: stage?.name || null,
+      contactPhone: row.crm_contacts?.phone || null,
     };
   });
 }
@@ -308,7 +311,7 @@ export async function getLeadTimeline({ dealId = null, contactId = null } = {}) 
     items.push({
       id: `stage_${h.id}`,
       kind: 'stage',
-      title: 'Mudou de estágio',
+      title: 'Avançou de etapa',
       detail: h.stage?.name ? `→ ${h.stage.name}` : '',
       date: h.createdAt,
       color: h.stage?.color || '#a855f7',

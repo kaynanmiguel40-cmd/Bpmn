@@ -9,7 +9,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Check, Circle, CheckCircle2, Pencil,
-  Phone, Mail, MessageCircle, Users, MapPin, CheckSquare, Coffee, ArrowRight, CalendarClock,
+  Phone, Mail, MessageCircle, Users, MapPin, CheckSquare, Coffee, ArrowRight, CalendarClock, AlertTriangle,
 } from 'lucide-react';
 import { scheduleTiming } from '../../services/crmAgendaService';
 
@@ -30,6 +30,16 @@ const TYPE_ICON = {
   visit: MapPin, task: CheckSquare, lunch: Coffee, follow_up: ArrowRight,
 };
 const iconFor = (ev) => (ev.source === 'google' ? CalendarClock : (TYPE_ICON[ev.typeKey] || Circle));
+
+// Atrasada = tarefa do CRM, pendente, cujo DIA agendado ja passou. Por DIA e
+// nao por hora: a ligacao das 9h nao pode ficar vermelha as 9h01 com a pessoa
+// ainda no telefone — e a comparacao por dia dispensa timer de re-render.
+const isLate = (ev) => {
+  if (ev.source !== 'crm' || ev.completed || !ev.startDate || ev.isAllDay || ev._dragging) return false;
+  const d = new Date(ev.startDate);
+  const hoje = new Date();
+  return d < new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+};
 
 const DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -104,19 +114,22 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
   const label = ev.leadName && isCrm ? ev.leadName : ev.title;
   const draggable = dnd ? dnd.canDrag(ev) : false;
   const beingDragged = !!ev._dragging;
+  const late = isLate(ev);
 
   // Tudo é bloco. Itens do CRM podem ser concluídos (botão sempre visível).
   return (
     <div
       onPointerDown={draggable ? (e) => dnd.onPointerDown(ev, e) : undefined}
-      style={{ ...(isGoogle ? {} : { borderLeftColor: ev.color }), ...(draggable ? { touchAction: 'none' } : {}), ...(beingDragged ? { pointerEvents: 'none' } : {}) }}
+      style={{ ...(isGoogle ? {} : { borderLeftColor: ev.color }), ...(draggable ? { touchAction: dnd?.armedId === ev.id ? 'none' : 'pan-y' } : {}), ...(beingDragged ? { pointerEvents: 'none' } : {}) }}
       className={`group/chip w-full flex items-center gap-1 rounded-md pl-1 pr-1 py-1 transition-colors duration-150
         ${draggable && !beingDragged ? 'cursor-grab active:cursor-grabbing' : ''}
         ${beingDragged ? 'ring-2 ring-fyness-primary shadow-lg relative z-20' : ''}
         ${dimmed ? 'opacity-30 hover:opacity-100' : ''}
         ${isGoogle
           ? 'border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-slate-800/30 hover:border-slate-400'
-          : 'border-l-2 bg-white/80 dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          : late
+            ? 'border-l-2 bg-rose-50/80 dark:bg-rose-950/30 hover:bg-rose-100/80 dark:hover:bg-rose-950/50'
+            : 'border-l-2 bg-white/80 dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
     >
       <button
         type="button"
@@ -127,8 +140,9 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
         {ev.completed
           ? <Check size={11} className="shrink-0" style={{ color: ev.color }} />
           : <Icon size={11} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
+        {late && <AlertTriangle size={10} className="shrink-0 text-rose-500" />}
         {ev.startDate && !ev.isAllDay && (
-          <span className="text-[12px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtTime(ev.startDate)}</span>
+          <span className={`text-[12px] font-medium shrink-0 tabular-nums ${late ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>{fmtTime(ev.startDate)}</span>
         )}
         <span className={`flex-1 min-w-0 truncate text-[12px] ${ev.completed ? 'line-through text-slate-500 dark:text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
           {label}
@@ -140,7 +154,7 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
           type="button"
           data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
-          title="Marcar como concluída"
+          title="Concluir tarefa"
           className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-emerald-500 transition-colors"
         >
           <CheckCircle2 size={12} />
@@ -151,8 +165,8 @@ function EventChip({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
           type="button"
           data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
-          title="Editar o que foi feito/respondido"
-          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-fyness-primary transition-colors md:opacity-0 md:group-hover/chip:opacity-100"
+          title="Editar o que aconteceu"
+          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-fyness-primary transition-colors"
         >
           <Pencil size={11} />
         </button>
@@ -368,7 +382,7 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
         borderLeftColor: isGoogle ? undefined : ev.color,
         zIndex: beingDragged ? 40 : 10,
         pointerEvents: beingDragged ? 'none' : undefined,
-        ...(draggable ? { touchAction: 'none' } : {}),
+        ...(draggable ? { touchAction: dnd?.armedId === ev.id ? 'none' : 'pan-y' } : {}),
       }}
     >
       {short ? (
@@ -405,8 +419,8 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
           data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onCompleteTask?.(ev); } }}
-          title="Marcar como concluída"
-          className="hidden group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-emerald-500 transition-colors cursor-pointer"
+          title="Concluir tarefa"
+          className="flex md:hidden md:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-emerald-500 transition-colors cursor-pointer"
         >
           <CheckCircle2 size={12} />
         </span>
@@ -418,8 +432,8 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
           data-cal-nodrag=""
           onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEditDelivery(ev); } }}
-          title="Editar o que foi feito/respondido"
-          className="hidden group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-fyness-primary transition-colors cursor-pointer"
+          title="Editar o que aconteceu"
+          className="flex md:hidden md:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-fyness-primary transition-colors cursor-pointer"
         >
           <Pencil size={12} />
         </span>
@@ -607,7 +621,7 @@ function AgendaRow({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
       {/* Concluir — sempre visível (itens do CRM ainda não concluídos) */}
       {isCrm && !ev.completed && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
-          title="Marcar como concluída"
+          title="Concluir tarefa"
           className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-emerald-500 transition-colors">
           <CheckCircle2 size={20} />
         </button>
@@ -615,8 +629,8 @@ function AgendaRow({ ev, onClick, onCompleteTask, onEditDelivery, dimmed, showOw
       {/* Editar entrega — tarefa do CRM já concluída */}
       {isCrm && ev.completed && onEditDelivery && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
-          title="Editar o que foi feito/respondido"
-          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-fyness-primary transition-colors md:opacity-0 md:group-hover/row:opacity-100">
+          title="Editar o que aconteceu"
+          className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-fyness-primary transition-colors">
           <Pencil size={18} />
         </button>
       )}
@@ -693,8 +707,16 @@ export default function CrmCalendar({
   // novo lugar até o refetch chegar. Só CRM pendente e evento local não-recorrente
   // arrastam (Google/O.S. são read-only aqui).
   const DRAG_THRESHOLD = 5;
+  // Toque precisa de mais folga: o dedo treme e a area de contato e grande.
+  const TOUCH_THRESHOLD = 12;
+  const TOUCH_SLOP = 10;    // mexeu mais que isso antes de armar = e scroll
+  const LONG_PRESS_MS = 350;
   const stateRef = useRef(null);              // { ev, startX, startY, started }
   const [drop, setDrop] = useState(null);     // { dayKey, minutes|null } | null — alvo (highlight do Mês)
+  // Qual tarefa ja passou pelo long-press e pode ser arrastada no toque. Enquanto
+  // for null, o chip mantem touch-action pan-y — ou seja, rolar a pagina em cima
+  // dele continua rolando a pagina.
+  const [armedId, setArmedId] = useState(null);
   const [previewMove, setPreviewMove] = useState(null); // { id, startDate, endDate } — o PRÓPRIO bloco renderizado no destino durante o arrasto
   const [pendingMoves, setPendingMoves] = useState(() => new Map());
   // Reconciliação: mantém o override otimista até os dados FRESCOS refletirem o
@@ -775,7 +797,16 @@ export default function CrmCalendar({
       const st = stateRef.current;
       if (!st) return;
       if (!st.started) {
-        if (Math.hypot(e.clientX - st.startX, e.clientY - st.startY) < DRAG_THRESHOLD) return;
+        const dist = Math.hypot(e.clientX - st.startX, e.clientY - st.startY);
+        // No TOQUE o arrasto so arma depois do long-press. Sem isso, o gesto de
+        // ROLAR a tela em cima de uma tarefa virava reagendamento — o dedo nao
+        // tem "hover" pra distinguir intencao, e a pessoa nem percebia que
+        // moveu o compromisso.
+        if (st.touch && !st.armed) {
+          if (dist > TOUCH_SLOP) { clearTimeout(st.timer); setArmedId(null); stateRef.current = null; }
+          return;
+        }
+        if (dist < (st.touch ? TOUCH_THRESHOLD : DRAG_THRESHOLD)) return;
         st.started = true;
         document.body.style.cursor = 'grabbing';
         document.body.style.userSelect = 'none';
@@ -794,6 +825,8 @@ export default function CrmCalendar({
     const onUp = (e) => {
       const st = stateRef.current;
       if (!st) return;
+      clearTimeout(st.timer);
+      setArmedId(null);
       const started = st.started;
       stateRef.current = null;
       if (started) {
@@ -816,6 +849,8 @@ export default function CrmCalendar({
     // contra estado de arrasto preso.
     const cancel = () => {
       if (!stateRef.current) return;
+      clearTimeout(stateRef.current.timer);
+      setArmedId(null);
       stateRef.current = null;
       setPreviewMove(null);
       setDrop(null);
@@ -824,13 +859,16 @@ export default function CrmCalendar({
     const onKey = (e) => { if (e.key === 'Escape') cancel(); };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
+    // pointercancel CANCELA, nunca confirma: no toque, o navegador dispara isso
+    // quando decide que o gesto virou scroll. Confirmando ali, rolar a agenda
+    // no celular reagendava a tarefa que estava sob o dedo.
+    window.addEventListener('pointercancel', cancel);
     window.addEventListener('blur', cancel);
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('pointercancel', cancel);
       window.removeEventListener('blur', cancel);
       window.removeEventListener('keydown', onKey);
       clearBody();
@@ -840,6 +878,7 @@ export default function CrmCalendar({
   const dnd = onEventDrop ? {
     canDrag,
     drop,
+    armedId,
     onPointerDown: (ev, e) => {
       if (e.button != null && e.button !== 0) return; // só botão primário
       // NÃO sequestrar cliques nos controles do card (concluir ✓ / editar): sem
@@ -849,7 +888,26 @@ export default function CrmCalendar({
       // Captura o ponteiro: garante que o pointerup chegue mesmo se soltar fora
       // da janela — sem isso um arrasto podia "ficar preso" e travar a página.
       try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
-      stateRef.current = { ev, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, started: false };
+      const touch = e.pointerType === 'touch';
+      const st = {
+        ev, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
+        started: false, touch, armed: !touch, timer: null,
+      };
+      // No toque, o arrasto só existe depois de segurar. Antes disso o gesto
+      // pertence ao scroll — é o mesmo contrato que a pessoa já conhece de
+      // arrastar ícone no celular.
+      if (touch) {
+        st.timer = setTimeout(() => {
+          if (stateRef.current === st) {
+            st.armed = true;
+            setArmedId(st.ev.id);
+            // Feedback tátil de "agora pode arrastar": sem isso ela não tem
+            // como saber que o long-press pegou.
+            try { navigator.vibrate?.(15); } catch { /* noop */ }
+          }
+        }, LONG_PRESS_MS);
+      }
+      stateRef.current = st;
     },
   } : null;
 

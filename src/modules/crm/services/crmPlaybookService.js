@@ -109,6 +109,32 @@ export async function getPlaybookByPipeline(pipelineId) {
 }
 
 /**
+ * Passos avulsos por id, indexados: { [stepId]: step }.
+ *
+ * A Agenda precisa do script/cenarios das tarefas do recorte visivel, e essas
+ * tarefas podem vir de etapas de PIPELINES DIFERENTES — carregar o playbook
+ * inteiro de cada uma pra achar um punhado de passos sairia caro. Aqui busca
+ * so os ids que aparecem na tela.
+ */
+export async function getStepsByIds(ids = []) {
+  const unique = [...new Set((ids || []).filter(Boolean))];
+  if (unique.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from('crm_stage_steps')
+    .select('*')
+    .in('id', unique);
+  if (error) { console.error('[getStepsByIds]', error.message); throw error; }
+
+  const byId = {};
+  for (const row of data || []) {
+    const step = dbToStep(row);
+    byId[step.id] = step;
+  }
+  return byId;
+}
+
+/**
  * Substitui os passos de uma etapa reconciliando por id:
  *   com id  -> UPDATE (preserva o progresso dos leads que ja marcaram)
  *   sem id  -> INSERT
@@ -300,6 +326,54 @@ export async function scheduleStepsForDeal(dealId, stageId) {
     return 0;
   }
   return rows.length;
+}
+
+/**
+ * Cancela as tarefas PENDENTES do processo de um lead.
+ *
+ * Sem isso a fila e alimentada por lixo que cresce sozinho: o lead avanca de
+ * etapa (ou e ganho/perdido) e a cadencia da etapa ANTIGA continua marcada,
+ * competindo por atencao com o trabalho que importa. `scheduleStepsForDeal` so
+ * insere; nunca removia nada.
+ *
+ * Soft-delete (deleted_at), nao DELETE: o passo cumprido continua no historico
+ * e da pra desfazer. So mexe no que esta PENDENTE — tarefa ja concluida e
+ * historico, nao entulho.
+ *
+ * @param {string} dealId   negocio
+ * @param {string|null} [stageId]  se informado, cancela so as tarefas dos
+ *   passos DESSA etapa; senao, todas as pendentes do processo (ganho/perdido).
+ * @returns {Promise<number>} quantas sairam da fila
+ */
+export async function cancelPendingStepsForDeal(dealId, stageId = null) {
+  if (!dealId) return 0;
+
+  // Quais atividades sao "do processo" desta etapa: as que apontam pra um passo
+  // (stage_step_id) cujo dono e a etapa. Precisa dos ids dos passos primeiro —
+  // nao da pra filtrar por join no PostgREST.
+  let stepIds = null;
+  if (stageId) {
+    const { data: steps, error: stepErr } = await supabase
+      .from('crm_stage_steps')
+      .select('id')
+      .eq('stage_id', stageId);
+    if (stepErr) { console.error('[cancelPendingStepsForDeal] passos', stepErr.message); return 0; }
+    stepIds = (steps || []).map(s => s.id);
+    if (stepIds.length === 0) return 0;
+  }
+
+  let q = supabase
+    .from('crm_activities')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('deal_id', dealId)
+    .eq('completed', false)
+    .is('deleted_at', null)
+    .not('stage_step_id', 'is', null);
+  if (stepIds) q = q.in('stage_step_id', stepIds);
+
+  const { data, error } = await q.select('id');
+  if (error) { console.error('[cancelPendingStepsForDeal]', error.message); return 0; }
+  return data?.length || 0;
 }
 
 /**

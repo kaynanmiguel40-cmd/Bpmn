@@ -39,7 +39,7 @@ function AgendaItem({ item, overdue }) {
           {item.title}
         </div>
         <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate">
-          {item.contactName || item.dealTitle || 'Sem vínculo'}
+          {item.contactName || item.dealTitle || 'Tarefa avulsa'}
         </div>
       </div>
       <span
@@ -199,7 +199,7 @@ export function TeamDailyBriefing() {
           loading={isLoading}
         />
         <CrmKpiCard
-          title="No pipe (em aberto)"
+          title="Em negociação"
           rawValue={pipe.value}
           format={formatCurrency}
           subtitle={pipe.subtitle}

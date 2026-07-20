@@ -36,6 +36,10 @@ export function dbToCrmActivity(row) {
     completedBy: row.completed_by || null,
     deliveryInput: row.delivery_input || '',
     deliveryReport: row.delivery_report || '',
+    // Passo do playbook que gerou esta tarefa (null = tarefa avulsa). E o que
+    // permite a Agenda mostrar o script/cenarios na hora de executar, e o que
+    // liga a conclusao de volta ao progresso do lead.
+    stageStepId: row.stage_step_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at || null,
@@ -373,8 +377,19 @@ export async function softDeleteCrmActivity(id) {
 /**
  * Conclui a tarefa registrando o par input (o que o vendedor fez/disse) /
  * output (o que o lead respondeu) — cada tarefa guarda o seu.
+ *
+ * `contacted` separa os dois desfechos que antes eram um so:
+ *   true  — falou com o lead. O passo do playbook e marcado como CUMPRIDO.
+ *   false — tentou e nao falou (caiu na caixa postal, nao atendeu). A tarefa e
+ *           concluida (ela foi executada!), mas o passo NAO conta como
+ *           cumprido, porque o objetivo dele — falar com a pessoa — nao
+ *           aconteceu.
+ *
+ * Sem essa distincao, "nao atendeu" pintava o passo de verde igual a "topou a
+ * reuniao", e a Pipeline — cujo unico trabalho e mostrar a verdade — passava a
+ * mentir sobre o quanto o lead avancou.
  */
-export async function completeCrmActivity(id, { input = '', output = '' } = {}) {
+export async function completeCrmActivity(id, { input = '', output = '', contacted } = {}) {
   const now = new Date().toISOString();
   const session = await supabase.auth.getSession();
   const completedBy = session.data?.session?.user?.id || null;
@@ -406,7 +421,13 @@ export async function completeCrmActivity(id, { input = '', output = '' } = {}) 
   // concluir na Agenda ja marca o passo no checklist, levando junto o que o
   // lead respondeu (o "output" e exatamente isso). Sem essa ponte o vendedor
   // marcaria duas vezes e as duas telas nunca bateriam.
-  if (data?.stage_step_id && data?.deal_id) {
+  // `contacted !== false` e nao `contacted`: quem chama sem a flag (tarefa
+  // avulsa, telas antigas) mantem o comportamento de sempre — marca o passo.
+  // So o "Nao atendeu" EXPLICITO impede. Um `contacted = true` como default de
+  // parametro parece equivalente, mas nao e: ele apaga a diferenca entre
+  // "ninguem informou" e "informou true", e foi assim que uma tela esqueceu de
+  // repassar a flag e voltou a marcar passo de ligacao nao atendida.
+  if (data?.stage_step_id && data?.deal_id && contacted !== false) {
     const { error: progErr } = await supabase
       .from('crm_deal_step_progress')
       .upsert(

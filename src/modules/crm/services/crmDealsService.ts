@@ -4,7 +4,7 @@ import { toast } from '../../../contexts/ToastContext';
 import { crmDealSchema } from '../schemas/crmValidation';
 import { triggerAutomationsForDeal } from './crmAutomationsService';
 import { createCrmActivity } from './crmActivitiesService';
-import { scheduleStepsForDeal } from './crmPlaybookService';
+import { scheduleStepsForDeal, cancelPendingStepsForDeal } from './crmPlaybookService';
 import { getCrmWorkspaceSettings } from '../lib/workspaceSettings';
 import { escapeIlike } from '../lib/searchFilters';
 
@@ -375,6 +375,12 @@ export async function moveDealToStage(dealId: string, stageId: string): Promise<
 
   if (cur && cur.stage_id !== stageId && result) {
     triggerAutomationsForDeal(result, stageId).catch(console.warn);
+    // A cadencia da etapa que ficou pra tras sai da fila ANTES de agendar a
+    // nova: o lead que avancou nao deve mais ser tocado pelo script da etapa
+    // anterior. Sem isso a agenda acumula lixo que cresce sozinho todo dia.
+    if (cur.stage_id) {
+      cancelPendingStepsForDeal(dealId, cur.stage_id).catch(console.warn);
+    }
     // Agenda as tarefas do processo da etapa nova (9-18h, sem almoco, sem
     // colidir). Idempotente. Nao pode derrubar o move: se falhar, o lead ja
     // mudou de etapa e a agenda pode ser gerada depois.
@@ -437,6 +443,10 @@ export async function markDealAsWon(dealId: string): Promise<CrmDeal | null> {
   if (movedStage && result) {
     triggerAutomationsForDeal(result, winStageId as string).catch(console.warn);
   }
+  // Lead fechado nao tem mais cadencia: TODAS as tarefas pendentes do processo
+  // saem da fila (nao so as da etapa atual). Continuar ligando pra quem ja
+  // comprou e o tipo de erro que queima cliente.
+  cancelPendingStepsForDeal(dealId).catch(console.warn);
   return result;
 }
 
@@ -590,6 +600,10 @@ export async function markDealAsLost(dealId: string, reason = ''): Promise<CrmDe
 
   const result = dbToCrmDeal(data as CrmDealRow);
   if (result) result._movedTo = movedTo;
+  // Perdido sai da fila inteiro. Ele vai pra Triagem da Nurturing e so volta a
+  // ser trabalhado quando alguem o arrastar pra frente — que dispara
+  // moveDealToStage e agenda a cadencia da etapa nova.
+  cancelPendingStepsForDeal(dealId).catch(console.warn);
   return result;
 }
 

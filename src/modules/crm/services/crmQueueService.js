@@ -1,0 +1,360 @@
+/**
+ * crmQueueService — a FILA DE TRABALHO da Agenda.
+ *
+ * A Agenda e o nivel de EXECUCAO (a Pipeline so acompanha), entao a tela
+ * precisa responder "o que eu faco agora", nao "como esta meu mes". Isso e uma
+ * fila priorizada, nao um recorte de calendario.
+ *
+ * Por que NAO reusa getCrmCalendarActivities:
+ *   1. O calendario so olha pra FRENTE (a partir do dia visivel). A fila
+ *      precisa das ATRASADAS — que sao justamente as que somem de la.
+ *   2. O select do calendario e gordo (`*` + 3 joins). A fila e a tela que mais
+ *      abre no dia; o projeto ja estourou egress uma vez. Aqui as colunas sao
+ *      nomeadas e cada consulta tem teto.
+ *   3. Sao DUAS consultas, nao uma com limit: um `limit(300)` cronologico
+ *      ascendente enche com o lixo mais antigo e trunca as tarefas de HOJE —
+ *      exatamente o cenario que a fila existe pra resolver.
+ */
+
+import { supabase } from '../../../lib/supabase';
+import { planSteps, dayKey } from './crmScheduling';
+
+// Colunas enxutas: so o que a linha da fila desenha. Sem `select('*')`.
+const QUEUE_COLS = `
+  id, title, type, start_date, end_date, completed, stage_step_id,
+  deal_id, contact_id, assigned_to, assigned_to_name, created_by,
+  delivery_input, delivery_report,
+  crm_contacts(id, name, phone),
+  crm_deals(id, title, contact_phone, priority, crm_pipeline_stages(id, name, color))
+`;
+
+// Tipos que sao DIVIDA (tem que ser feitos). Reuniao/visita/almoco sao
+// compromissos com hora marcada — nao entram na fila de toques atrasados.
+const DEBT_TYPES = ['call', 'message', 'email', 'follow_up', 'task'];
+
+// Teto do lote de atrasadas. Acima disso a tela nao ajuda mais ninguem — o
+// excedente vira "toques frios" (ver COLD_AFTER_DAYS em utils/stepLabel).
+const OVERDUE_LIMIT = 80;
+
+export function startOfToday(now = new Date()) {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+export function endOfToday(now = new Date()) {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+}
+
+/** Achata a linha do banco no formato que a fila desenha. */
+export function dbToQueueTask(row) {
+  if (!row) return null;
+  const deal = row.crm_deals || null;
+  const stage = deal?.crm_pipeline_stages || null;
+  return {
+    id: row.id,
+    title: row.title,
+    type: row.type,
+    startDate: row.start_date,
+    endDate: row.end_date || null,
+    completed: !!row.completed,
+    stageStepId: row.stage_step_id || null,
+    dealId: row.deal_id || null,
+    contactId: row.contact_id || null,
+    assignedTo: row.assigned_to || null,
+    assignedToName: row.assigned_to_name || null,
+    createdBy: row.created_by || null,
+    deliveryInput: row.delivery_input || '',
+    deliveryReport: row.delivery_report || '',
+    // Nome do lead: contato vinculado > titulo do negocio. Mesma ordem do
+    // leadLabel da agenda, pra nao existirem dois nomes pro mesmo lead.
+    leadName: row.crm_contacts?.name || deal?.title || null,
+    // Telefone na ordem canonica: contato > o digitado no negocio.
+    phone: row.crm_contacts?.phone || deal?.contact_phone || null,
+    stageName: stage?.name || null,
+    stageColor: stage?.color || null,
+    priority: deal?.priority ?? 0,
+  };
+}
+
+function baseQuery() {
+  return supabase
+    .from('crm_activities')
+    .select(QUEUE_COLS)
+    .is('deleted_at', null);
+}
+
+/**
+ * Atrasadas: pendentes cujo DIA agendado ja passou.
+ *
+ * Ordem DESCENDENTE de propósito: a mais recente primeiro. Numa cadencia, o
+ * toque de ontem ainda e recuperavel; o de duas semanas atras raramente e.
+ * Ascendente colocaria o mais morto no topo da tela.
+ */
+export async function getOverdueQueue(now = new Date()) {
+  const { data, error } = await baseQuery()
+    .eq('completed', false)
+    .lt('start_date', startOfToday(now).toISOString())
+    // Divida = toque a fazer OU qualquer passo do playbook. Filtrar so por
+    // `type` fazia o passo cujo titulo tem "Reuniao"/"demo" (que stepChannel
+    // classifica como meeting) sumir da fila ao atrasar — justamente um passo
+    // da cadencia, que e o que a fila existe pra cobrar.
+    .or('type.in.(' + DEBT_TYPES.join(',') + '),stage_step_id.not.is.null')
+    .order('start_date', { ascending: false })
+    .limit(OVERDUE_LIMIT);
+  if (error) throw error;
+  return (data || []).map(dbToQueueTask);
+}
+
+/** Tudo que esta marcado pra hoje — pendente e concluido (o feito vira placar). */
+export async function getTodayQueue(now = new Date()) {
+  const { data, error } = await baseQuery()
+    .gte('start_date', startOfToday(now).toISOString())
+    .lte('start_date', endOfToday(now).toISOString())
+    .order('start_date', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(dbToQueueTask);
+}
+
+/**
+ * Contagem por dia dos proximos dias — o bloco "DEPOIS".
+ *
+ * So `start_date`: e um contador, nao uma lista. Trazer a linha inteira pra
+ * mostrar "amanhã 6" seria pagar caro por um numero.
+ */
+export async function getUpcomingCounts(days = 8, now = new Date()) {
+  const from = new Date(startOfToday(now).getTime() + 86400000);
+  const to = new Date(from.getTime() + days * 86400000);
+  const { data, error } = await supabase
+    .from('crm_activities')
+    .select('start_date, assigned_to, assigned_to_name, created_by')
+    .is('deleted_at', null)
+    .eq('completed', false)
+    .gte('start_date', from.toISOString())
+    .lt('start_date', to.toISOString())
+    .order('start_date', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Reagenda uma tarefa preservando a DURACAO.
+ *
+ * Mover so o start_date faria a tarefa de 30min virar uma de varias horas (ou
+ * negativa) conforme o end_date antigo ficasse pra tras — e o calendario
+ * desenha altura por duracao.
+ */
+export async function snoozeActivity(id, newStart) {
+  if (!id || !newStart) return null;
+
+  const { data: cur, error: readErr } = await supabase
+    .from('crm_activities')
+    .select('start_date, end_date')
+    .eq('id', id)
+    .maybeSingle();
+  if (readErr) throw readErr;
+
+  const start = new Date(newStart);
+  const dur = cur?.end_date
+    ? new Date(cur.end_date).getTime() - new Date(cur.start_date).getTime()
+    : 30 * 60000;
+  const end = new Date(start.getTime() + Math.max(dur, 0));
+
+  const { data, error } = await supabase
+    .from('crm_activities')
+    .update({ start_date: start.toISOString(), end_date: end.toISOString() })
+    .eq('id', id)
+    .select(QUEUE_COLS)
+    .single();
+  if (error) throw error;
+  return dbToQueueTask(data);
+}
+
+/**
+ * O proximo toque pendente de um lead, depois de uma data.
+ *
+ * Vai ao BANCO em vez de procurar no que a tela ja carregou: a fila so tem
+ * atrasadas e hoje, e o proximo toque da cadencia quase sempre e amanha ou
+ * depois — procurar nela devolvia null praticamente sempre, e a confirmacao
+ * pos-conclusao dizia "nao ha mais contato agendado" com a cadencia inteira
+ * pela frente.
+ */
+export async function getNextActivityForLead({ dealId = null, contactId = null, after } = {}) {
+  if (!dealId && !contactId) return null;
+
+  let q = supabase
+    .from('crm_activities')
+    .select('id, title, type, start_date, stage_step_id, deal_id, contact_id')
+    .is('deleted_at', null)
+    .eq('completed', false)
+    .gt('start_date', new Date(after || Date.now()).toISOString())
+    .order('start_date', { ascending: true })
+    .limit(1);
+
+  // Casa deal OU contato: a tarefa da cadencia aponta pro deal, mas a criada a
+  // mao pode ter so o contato.
+  if (dealId && contactId) q = q.or(`deal_id.eq.${dealId},contact_id.eq.${contactId}`);
+  else if (dealId) q = q.eq('deal_id', dealId);
+  else q = q.eq('contact_id', contactId);
+
+  const { data, error } = await q;
+  if (error) { console.warn('[getNextActivityForLead]', error.message); return null; }
+  const row = (data || [])[0];
+  return row ? { id: row.id, title: row.title, type: row.type, startDate: row.start_date } : null;
+}
+
+/**
+ * Redistribui um lote de tarefas nos proximos dias uteis, respeitando o
+ * expediente, o almoco e o que ja esta marcado.
+ *
+ * Devolve o PLANO, sem gravar. A confirmacao e obrigatoria porque o resultado
+ * e contraintuitivo: 18 atrasadas nao cabem "amanha" — o dia tem 16 slots e
+ * parte deles ja esta ocupada. Sem ver isso antes, ela aperta "adiar todas"
+ * esperando limpar a fila e descobre depois que empurrou trabalho pra semana
+ * que vem.
+ */
+export async function planBatchPostpone(tasks, assignee, now = new Date()) {
+  const lista = (tasks || []).filter(t => t?.id);
+  if (lista.length === 0) return { plano: [], porDia: [] };
+
+  // O que ja esta ocupado na agenda de quem vai receber — sem isso o lote
+  // empilharia em cima das tarefas de hoje/amanha que ja existem.
+  const ate = new Date(now.getTime() + 45 * 86400000);
+  let q = supabase
+    .from('crm_activities')
+    // `id` e obrigatorio: sem ele o filtro de auto-exclusao abaixo nunca casa e
+    // as tarefas do proprio lote contam como horario ocupado — o plano fica mais
+    // esparso do que precisa, empurrando trabalho pra frente sem motivo.
+    .select('id, start_date, end_date, assigned_to')
+    .is('deleted_at', null)
+    .eq('completed', false)
+    .gte('start_date', startOfToday(now).toISOString())
+    .lte('start_date', ate.toISOString());
+  if (assignee) q = q.eq('assigned_to', assignee);
+  const { data: busyRows, error } = await q;
+  if (error) throw error;
+
+  const busyByDay = {};
+  // As proprias tarefas do lote nao contam como ocupado: elas estao sendo
+  // MOVIDAS, entao os slots antigos ficam livres.
+  const noLote = new Set(lista.map(t => t.id));
+  (busyRows || []).forEach(r => {
+    if (noLote.has(r.id)) return;
+    const k = dayKey(new Date(r.start_date));
+    (busyByDay[k] = busyByDay[k] || []).push({ start: r.start_date, end: r.end_date || null });
+  });
+
+  // dayOffset 1 = a partir de amanha; planSteps rola sozinho quando o dia lota.
+  const plano = planSteps(
+    lista.map(t => ({ id: t.id, dayOffset: 1 })),
+    busyByDay,
+    now,
+  );
+
+  const porDiaMap = {};
+  plano.forEach(p => {
+    const k = dayKey(p.start);
+    porDiaMap[k] = (porDiaMap[k] || 0) + 1;
+  });
+  const porDia = Object.entries(porDiaMap).map(([k, n]) => {
+    const [y, m, d] = k.split('-').map(Number);
+    return { date: new Date(y, m - 1, d), count: n };
+  }).sort((a, b) => a.date - b.date);
+
+  return {
+    plano: plano.map(p => ({ id: p.stepId, start: p.start })),
+    porDia,
+    naoCoube: lista.length - plano.length,
+  };
+}
+
+/** Aplica o plano do adiamento em lote. */
+export async function applyBatchPostpone(plano) {
+  let ok = 0;
+  for (const item of plano || []) {
+    try {
+      await snoozeActivity(item.id, item.start.toISOString());
+      ok += 1;
+    } catch (e) {
+      console.warn('[applyBatchPostpone]', item.id, e.message);
+    }
+  }
+  return ok;
+}
+
+/**
+ * A PROXIMA etapa do lead na pipeline dele (a seguinte por posicao).
+ *
+ * Serve pro convite de avancar que aparece depois de um toque bem-sucedido.
+ * Deliberadamente NAO le efeito de cenario: carregar "avance a etapa" dentro
+ * do JSONB dos cenarios exigiria reescrever o playbook ja semeado em producao,
+ * num Supabase self-hosted sem staging. A proxima etapa por posicao acerta o
+ * caso comum e nao arrisca dado.
+ *
+ * Devolve null quando nao ha proxima, quando o lead ja esta na etapa de ganho
+ * ou quando ele nao esta aberto — nesses casos nao ha o que sugerir.
+ */
+export async function getNextStageForDeal(dealId) {
+  if (!dealId) return null;
+
+  const { data: deal, error } = await supabase
+    .from('crm_deals')
+    .select('id, status, pipeline_id, stage_id, crm_pipeline_stages(id, name, position, is_win_stage)')
+    .eq('id', dealId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error || !deal || deal.status !== 'open' || !deal.pipeline_id) return null;
+
+  const atual = deal.crm_pipeline_stages;
+  if (!atual || atual.is_win_stage) return null;
+
+  const { data: stages, error: sErr } = await supabase
+    .from('crm_pipeline_stages')
+    .select('id, name, color, position')
+    .eq('pipeline_id', deal.pipeline_id)
+    .gt('position', atual.position)
+    .order('position', { ascending: true })
+    .limit(1);
+  if (sErr || !stages?.length) return null;
+
+  return { current: { id: atual.id, name: atual.name }, next: stages[0] };
+}
+
+/**
+ * Leads ABERTOS sem nenhuma tarefa pendente — os que param de ser tocados.
+ *
+ * Este e o furo silencioso da operacao: o lead nao aparece em lugar nenhum
+ * justamente porque nao tem tarefa. Sem este bloco, ninguem descobre que ele
+ * existe ate alguem lembrar dele.
+ */
+export async function getStalledLeads(now = new Date()) {
+  const { data: deals, error } = await supabase
+    .from('crm_deals')
+    .select('id, title, owner_id, updated_at, priority, crm_pipeline_stages(id, name, color), crm_contacts(name)')
+    .eq('status', 'open')
+    .is('deleted_at', null)
+    .limit(200);
+  if (error) throw error;
+  if (!deals?.length) return [];
+
+  const ids = deals.map(d => d.id);
+  const { data: pend, error: pErr } = await supabase
+    .from('crm_activities')
+    .select('deal_id')
+    .is('deleted_at', null)
+    .eq('completed', false)
+    .in('deal_id', ids);
+  if (pErr) throw pErr;
+
+  const comPendencia = new Set((pend || []).map(r => r.deal_id));
+  return deals
+    .filter(d => !comPendencia.has(d.id))
+    .map(d => ({
+      dealId: d.id,
+      leadName: d.crm_contacts?.name || d.title,
+      ownerId: d.owner_id || null,
+      stageName: d.crm_pipeline_stages?.name || null,
+      stageColor: d.crm_pipeline_stages?.color || null,
+      priority: d.priority ?? 0,
+      since: d.updated_at,
+      dias: Math.round((now.getTime() - new Date(d.updated_at).getTime()) / 86400000),
+    }))
+    .sort((a, b) => b.dias - a.dias);
+}

@@ -1,27 +1,38 @@
 /**
- * DealProcessChecklist — o processo da etapa ATUAL do negocio, com checklist.
+ * DealProcessChecklist — o processo da etapa ATUAL do negocio, em LEITURA.
  *
- * Mostra o objetivo da etapa, os passos (com script) pra marcar conforme o
- * vendedor executa, e quando mover o lead. Os passos vem da etapa (nao sao
+ * Mostra o objetivo da etapa, os passos (com script), o que ja foi feito e o
+ * que o lead respondeu, e quando mover o lead. Os passos vem da etapa (nao sao
  * copiados pro deal), entao editar o playbook vale na hora pra todo mundo.
+ *
+ * NAO tem check: o pipeline (e o lead dentro dele) e o nivel de ACOMPANHAMENTO
+ * — quem executa e a Agenda, onde a tarefa tem horario, script, cenarios e o
+ * contato do lead. Dois lugares de check faziam a mesma tarefa parecer duas.
+ * O botao "Executar na Agenda" leva pro proximo toque agendado.
  *
  * Ao mudar de etapa o checklist troca junto: o progresso da etapa anterior fica
  * gravado (referencia o passo dela), so sai de vista.
  */
 
-import { useState, useEffect } from 'react';
-import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter, CornerDownRight, Clock } from 'lucide-react';
-import { useStagePlaybook, useDealProgress, useToggleDealStep, useDealActivities } from '../hooks/useCrmQueries';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Target, Flag, ChevronDown, ChevronRight, Check, BookOpen, Filter, CornerDownRight, Clock, CalendarCheck } from 'lucide-react';
+import { useStagePlaybook, useDealProgress, useDealActivities } from '../hooks/useCrmQueries';
 import { filterStepsForDeal } from '../services/crmPlaybookService';
+import { isOverdue } from '../utils/stepLabel';
 import { ChannelBadge } from './ui/ChannelBadge';
-import { CrmModal } from './ui/CrmModal';
 
 // Data agendada da tarefa. Marca atraso pra tarefa vencida e nao feita — e o
 // que faz o vendedor priorizar sem abrir a Agenda.
 function DueLabel({ iso, done }) {
   if (!iso) return null;
   const d = new Date(iso);
-  const atrasada = !done && d < new Date();
+  // Atraso pela MESMA regra do resto do sistema (isOverdue): por DIA, nao por
+  // instante. Comparando com `new Date()` direto, a tarefa das 9h ficava
+  // vermelha as 9h01 — com o vendedor ainda no telefone — enquanto a fila e o
+  // calendario continuavam mostrando ela como do dia. Duas telas discordando
+  // sobre a mesma tarefa.
+  const atrasada = isOverdue({ startDate: iso, completed: done });
   const quando = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
     + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   return (
@@ -37,28 +48,35 @@ function DueLabel({ iso, done }) {
   );
 }
 
-function StepRow({ step, done, onToggle, disabled, outcome, onEditOutcome, dueAt }) {
+function StepRow({ step, done, outcome, dueAt, attempts = 0 }) {
   const [open, setOpen] = useState(false);
+  // Tentou e nao falou: a tarefa foi executada, mas o passo continua pendente.
+  // Sem este estado o passo pareceria intocado — e ninguem saberia que ja se
+  // ligou 3 vezes pra esse lead sem sucesso.
+  const tentado = !done && attempts > 0;
   return (
     <div className={`rounded-xl border transition-colors ${
       done
         ? 'border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/50 dark:bg-emerald-900/10'
-        : 'border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40'
+        : tentado
+          ? 'border-amber-200 dark:border-amber-800/60 bg-amber-50/40 dark:bg-amber-900/10'
+          : 'border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40'
     }`}>
       <div className="flex items-center gap-2.5 p-3">
-        <button
-          onClick={() => onToggle(!done)}
-          disabled={disabled}
-          aria-pressed={done}
-          aria-label={done ? `Desmarcar: ${step.title}` : `Marcar como feito: ${step.title}`}
-          className={`w-5 h-5 rounded-md border-2 shrink-0 flex items-center justify-center transition-colors disabled:opacity-50 ${
+        {/* Marcador de STATUS, nao checkbox: aqui so se acompanha. Executar (e
+            concluir) e na Agenda — um caminho so, sem dois lugares de check. */}
+        <span
+          aria-label={done ? 'Feito' : tentado ? 'Tentado, sem contato' : 'Pendente'}
+          className={`w-5 h-5 rounded-full shrink-0 flex items-center justify-center ${
             done
-              ? 'bg-emerald-500 border-emerald-500 text-white'
-              : 'border-slate-300 dark:border-slate-600 hover:border-fyness-primary'
+              ? 'bg-emerald-500 text-white'
+              : tentado
+                ? 'border-2 border-amber-400 text-amber-500 text-[10px] font-bold'
+                : 'border-2 border-dashed border-slate-300 dark:border-slate-600'
           }`}
         >
-          {done && <Check size={13} strokeWidth={3} />}
-        </button>
+          {done ? <Check size={13} strokeWidth={3} /> : tentado ? attempts : null}
+        </span>
 
         <ChannelBadge title={step.title} />
 
@@ -82,27 +100,22 @@ function StepRow({ step, done, onToggle, disabled, outcome, onEditOutcome, dueAt
         )}
       </div>
 
-      {/* O que o lead respondeu — fica atribuido na propria tarefa, nao so no
-          Historico. Clicar reabre pra corrigir. */}
-      {done && (
-        <button
-          type="button"
-          onClick={onEditOutcome}
-          className="w-full text-left px-3 pb-2.5 -mt-1 ml-7 pr-6 group/outcome"
-        >
+      {tentado && (
+        <div className="px-3 pb-2.5 -mt-1 ml-7 text-[13px] text-amber-700 dark:text-amber-300">
+          {attempts} {attempts === 1 ? 'tentativa' : 'tentativas'}, sem contato — ainda precisa falar com ele
+        </div>
+      )}
+
+      {/* O que o lead respondeu, registrado ao concluir a tarefa na Agenda. */}
+      {done && outcome && (
+        <div className="px-3 pb-2.5 -mt-1 ml-7 pr-6">
           <span className="flex gap-1.5 text-[13px]">
             <CornerDownRight size={13} className="shrink-0 mt-0.5 text-emerald-500" />
-            {outcome ? (
-              <span className="text-slate-600 dark:text-slate-300">
-                <span className="text-slate-500 dark:text-slate-400">Lead:</span> {outcome}
-              </span>
-            ) : (
-              <span className="text-slate-500 dark:text-slate-400 italic group-hover/outcome:text-fyness-primary">
-                Sem resposta registrada — clique pra anotar
-              </span>
-            )}
+            <span className="text-slate-600 dark:text-slate-300">
+              <span className="text-slate-500 dark:text-slate-400">Lead:</span> {outcome}
+            </span>
           </span>
-        </button>
+        </div>
       )}
 
       {open && (
@@ -133,82 +146,11 @@ function StepRow({ step, done, onToggle, disabled, outcome, onEditOutcome, dueAt
   );
 }
 
-/**
- * Ao concluir uma tarefa, pergunta O QUE O LEAD RESPONDEU. Os cenarios do passo
- * ja sao as respostas provaveis — viram botao de 1 clique; o campo livre cobre
- * o resto. Sem isso o historico so diria "feito", sem contar a conversa.
- */
-function StepOutcomeModal({ open, step, onClose, onConfirm, saving, initial = '' }) {
-  const [text, setText] = useState('');
-
-  // Pre-preenche com o que ja foi registrado (edicao); vazio ao concluir agora.
-  useEffect(() => { if (open) setText(initial || ''); }, [open, step?.id, initial]);
-
-  if (!step) return null;
-  return (
-    <CrmModal
-      open={open}
-      onClose={onClose}
-      title={`Concluir: ${step.title}`}
-      size="md"
-      footer={
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} disabled={saving}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
-            Cancelar
-          </button>
-          <button onClick={() => onConfirm(text)} disabled={saving}
-            className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60">
-            {saving ? 'Salvando…' : 'Concluir'}
-          </button>
-        </div>
-      }
-    >
-      <div className="space-y-3">
-        <div className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          O que o lead respondeu / como reagiu?
-        </div>
-
-        {step.scenarios?.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {step.scenarios.map((sc, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setText(sc.when)}
-                className={`px-2.5 py-1.5 rounded-lg text-[12px] border transition-colors ${
-                  text === sc.when
-                    ? 'bg-fyness-primary text-white border-fyness-primary'
-                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-fyness-primary'
-                }`}
-              >
-                {sc.when}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={3}
-          placeholder="Escreva o que ele respondeu (ou escolha acima)"
-          className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 resize-y"
-        />
-        <p className="text-[12px] text-slate-500 dark:text-slate-400">
-          Pode deixar em branco se não houve resposta.
-        </p>
-      </div>
-    </CrmModal>
-  );
-}
-
-export function DealProcessChecklist({ deal, memberId = null }) {
+export function DealProcessChecklist({ deal }) {
+  const navigate = useNavigate();
   const { data: playbook, isLoading: loadingPlaybook } = useStagePlaybook(deal?.pipelineId);
   const { data: progress = [], isLoading: loadingProgress } = useDealProgress(deal?.id);
   const { data: activities = [] } = useDealActivities(deal?.id);
-  const toggle = useToggleDealStep();
-  const [outcomeStep, setOutcomeStep] = useState(null);
 
   // Filtra os passos pela ORIGEM do lead: um lead veio de UM lugar, entao so o
   // script daquela origem aparece (ex: veio de anuncio → so o toque de anuncio).
@@ -220,8 +162,17 @@ export function DealProcessChecklist({ deal, memberId = null }) {
   const outcomeByStep = {};
   progress.forEach(p => { outcomeByStep[p.stepId] = p.outcome || ''; });
   // Data/hora agendada de cada passo — vem da atividade gerada na Agenda.
+  // Da PENDENTE: uma vez concluida a tarefa, a data dela e passado.
   const dueByStep = {};
-  activities.forEach(a => { if (a.stageStepId) dueByStep[a.stageStepId] = a.startDate; });
+  activities.forEach(a => { if (a.stageStepId && !a.completed) dueByStep[a.stageStepId] = a.startDate; });
+  // Quantas vezes ja se tentou este passo sem conseguir falar: tarefa concluida
+  // cujo passo NAO foi marcado (concluir com "não atendeu" nao marca o passo).
+  const attemptsByStep = {};
+  activities.forEach(a => {
+    if (a.stageStepId && a.completed) {
+      attemptsByStep[a.stageStepId] = (attemptsByStep[a.stageStepId] || 0) + 1;
+    }
+  });
   const doneCount = steps.filter(s => doneIds.has(s.id)).length;
   // So avisa sobre origem quando ela REALMENTE muda o que aparece (etapa tem
   // passos por origem) e o lead nao tem origem definida.
@@ -232,19 +183,17 @@ export function DealProcessChecklist({ deal, memberId = null }) {
   const objetivo = deal?.stage?.objetivo || '';
   const exitCriteria = deal?.stage?.exitCriteria || '';
 
-  // Concluir SEMPRE passa pelo modal do resultado (o que o lead respondeu).
-  // Desmarcar e direto — nao ha resultado a registrar.
-  const handleToggle = (step, done) => {
-    if (done) { setOutcomeStep(step); return; }
-    toggle.mutate({ dealId: deal.id, stepId: step.id, done: false, memberId });
-  };
+  // Proxima tarefa pendente: e pra ela que o botao "Executar na Agenda" leva
+  // (abre a Agenda no dia certo, com o lead em foco). Sem data, cai no hoje.
+  const nextDue = steps
+    .filter(s => !doneIds.has(s.id) && dueByStep[s.id])
+    .map(s => dueByStep[s.id])
+    .sort((a, b) => new Date(a) - new Date(b))[0] || null;
 
-  const confirmOutcome = (text) => {
-    if (!outcomeStep) return;
-    toggle.mutate(
-      { dealId: deal.id, stepId: outcomeStep.id, done: true, memberId, outcome: text },
-      { onSuccess: () => setOutcomeStep(null) },
-    );
+  const goToAgenda = () => {
+    const params = new URLSearchParams({ dealId: deal.id, view: 'day' });
+    if (nextDue) params.set('date', new Date(nextDue).toISOString());
+    navigate(`/crm/agenda?${params.toString()}`);
   };
 
   if (loadingPlaybook || loadingProgress) {
@@ -308,14 +257,23 @@ export function DealProcessChecklist({ deal, memberId = null }) {
                 key={step.id}
                 step={step}
                 done={doneIds.has(step.id)}
-                disabled={toggle.isPending}
-                onToggle={(done) => handleToggle(step, done)}
                 outcome={outcomeByStep[step.id]}
                 dueAt={dueByStep[step.id]}
-                onEditOutcome={() => setOutcomeStep(step)}
+                attempts={attemptsByStep[step.id] || 0}
               />
             ))}
           </div>
+
+          {/* O check nao mora aqui: esta tela acompanha, a Agenda executa. */}
+          {doneCount < steps.length && (
+            <button
+              type="button"
+              onClick={goToAgenda}
+              className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-white bg-fyness-primary hover:bg-fyness-secondary"
+            >
+              <CalendarCheck size={15} /> Executar na Agenda
+            </button>
+          )}
         </div>
       )}
 
@@ -331,14 +289,6 @@ export function DealProcessChecklist({ deal, memberId = null }) {
         </div>
       )}
 
-      <StepOutcomeModal
-        open={!!outcomeStep}
-        step={outcomeStep}
-        initial={outcomeStep ? (outcomeByStep[outcomeStep.id] || '') : ''}
-        onClose={() => setOutcomeStep(null)}
-        onConfirm={confirmOutcome}
-        saving={toggle.isPending}
-      />
     </div>
   );
 }

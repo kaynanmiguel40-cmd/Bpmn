@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../../contexts/ToastContext';
 
@@ -8,7 +9,7 @@ import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmP
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, markDealAsChurned, reactivateChurnedDeal, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
 import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal } from '../services/crmActivitiesService';
 import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel, getFunnelStageDeals } from '../services/crmDashboardService';
-import { getPlaybookByPipeline, saveStageSteps, saveStageGoal, getDealProgress, toggleDealStep } from '../services/crmPlaybookService';
+import { getPlaybookByPipeline, getStepsByIds, saveStageSteps, saveStageGoal, getDealProgress, toggleDealStep } from '../services/crmPlaybookService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, getCrmProspectById, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
 import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
@@ -34,6 +35,7 @@ export const crmQueryKeys = {
   pipelines: ['crm', 'pipelines'],
   pipelineDeals: (id) => ['crm', 'pipelineDeals', id],
   playbook: (pipelineId) => ['crm', 'playbook', pipelineId],
+  playbookSteps: (idsKey) => ['crm', 'playbookSteps', idsKey],
   dealProgress: (dealId) => ['crm', 'dealProgress', dealId],
   deals: ['crm', 'deals'],
   deal: (id) => ['crm', 'deal', id],
@@ -334,6 +336,26 @@ export function useStagePlaybook(pipelineId) {
   });
 }
 
+/**
+ * Passos do playbook por id — o que a Agenda usa pra mostrar script/cenarios
+ * na hora de executar a tarefa. Recebe a lista de ids visiveis no recorte.
+ *
+ * A chave e ordenada e serializada: a MESMA lista de ids em ordem diferente
+ * tem que bater no mesmo cache, senao rolar o calendario refaz a query a toa.
+ */
+export function usePlaybookSteps(ids = []) {
+  const key = useMemo(
+    () => [...new Set((ids || []).filter(Boolean))].sort().join(','),
+    [ids],
+  );
+  return useQuery({
+    queryKey: crmQueryKeys.playbookSteps(key),
+    queryFn: () => getStepsByIds(key ? key.split(',') : []),
+    enabled: !!key,
+    staleTime: 5 * 60_000, // playbook muda raramente
+  });
+}
+
 export function useSaveStageSteps(pipelineId) {
   const qc = useQueryClient();
   return useMutation({
@@ -382,21 +404,10 @@ export function useScheduleProcessForPipeline() {
   });
 }
 
-export function useToggleDealStep() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dealId, stepId, done, memberId, outcome }) => toggleDealStep(dealId, stepId, done, memberId, outcome),
-    onSuccess: (_r, vars) => {
-      qc.invalidateQueries({ queryKey: crmQueryKeys.dealProgress(vars.dealId) });
-      // Marcar no checklist conclui/reabre a atividade da Agenda (ponte em
-      // toggleDealStep) — as duas telas tem que refletir na hora.
-      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
-      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
-    },
-  });
-}
+// Nao ha mais useToggleDealStep: marcar passo direto pelo checklist do lead
+// era o SEGUNDO lugar de check. Agora so a Agenda conclui, e a ponte em
+// completeCrmActivity grava o progresso do passo (com o que o lead respondeu).
+// O servico toggleDealStep segue existindo pra uso programatico (backfill).
 
 export function useSeedCommercialPipelines() {
   const qc = useQueryClient();
@@ -584,6 +595,17 @@ export function useMoveCrmDeal() {
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
+      // Trocar de etapa CANCELA a cadencia da anterior e AGENDA a da nova
+      // (moveDealToStage) — a fila e a agenda mudam junto, entao precisam
+      // recarregar. Sem isso a tela continua mostrando os toques cancelados.
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealProgress'] });
+      // A etapa mudou, entao "qual e a proxima" mudou junto. Sem isto o convite
+      // de avancar continuava servindo a resposta velha por ate 1 minuto — e
+      // convidava a mover o lead pra etapa em que ele acabou de entrar.
+      qc.invalidateQueries({ queryKey: ['crm', 'nextStage'] });
 
       // Atualizar status do deal no cache do kanban. lastStageChangedAt tambem
       // precisa ser resetado aqui — sem isso, o selo de dias parado na etapa
@@ -913,7 +935,7 @@ export function useDeleteCrmActivity() {
 export function useCompleteCrmActivity() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input, output } = {}) => completeCrmActivity(id, { input, output }),
+    mutationFn: ({ id, input, output, contacted } = {}) => completeCrmActivity(id, { input, output, contacted }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
@@ -925,7 +947,8 @@ export function useCompleteCrmActivity() {
       // card mudam junto (ver a ponte em completeCrmActivity).
       qc.invalidateQueries({ queryKey: ['crm', 'dealProgress'] });
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
-      toast('Atividade concluida', 'success');
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      toast('Tarefa concluída', 'success');
     },
     onError: (err) => {
       toast(`Erro ao concluir atividade: ${err.message}`, 'error');

@@ -114,6 +114,12 @@ export function planSteps(steps, busyByDay = {}, from = new Date()) {
   const busy = {};
   Object.entries(busyByDay).forEach(([k, v]) => { busy[k] = [...(v || [])]; });
 
+  // Piso do "agora": tarefa do dia 0 nao pode nascer no passado. Um lead que
+  // entra na etapa as 15h ganhava o toque de hoje as 9h — ja atrasado no
+  // instante em que foi criado, entrando direto na fila de atrasadas.
+  const hojeKey = dayKey(from);
+  const agoraMin = from.getHours() * 60 + from.getMinutes() + 15; // 15min de folga
+
   for (const step of steps) {
     let target = nextBusinessDay(
       atMinutes(new Date(from.getFullYear(), from.getMonth(), from.getDate() + (step.dayOffset || 0)), 0),
@@ -126,7 +132,10 @@ export function planSteps(steps, busyByDay = {}, from = new Date()) {
     let key = dayKey(target);
     for (let i = 0; i <= MAX_ROLLOVER_DAYS; i++) {
       key = dayKey(target);
-      slot = findFreeSlot(busy[key] || [], -1, step.period || null);
+      // So o dia de HOJE tem piso de horario; nos dias seguintes o expediente
+      // comeca as 9h normalmente.
+      const piso = key === hojeKey ? agoraMin : -1;
+      slot = findFreeSlot(busy[key] || [], piso, step.period || null);
       if (slot !== null) break;
       target = nextBusinessDay(new Date(target.getFullYear(), target.getMonth(), target.getDate() + 1));
     }

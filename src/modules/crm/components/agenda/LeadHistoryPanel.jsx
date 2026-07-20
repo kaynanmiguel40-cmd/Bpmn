@@ -88,7 +88,7 @@ function TimelineRow({ item, onComplete, onDelete, onEditDelivery }) {
           </span>
           <span className="text-[12px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${item.color}22`, color: item.color }}>{item.typeLabel}</span>
           {isPendingActivity && (onComplete || onDelete) && (
-            <span className="ml-auto flex items-center gap-1 md:opacity-0 md:group-hover/tl:opacity-100 transition-opacity">
+            <span className="ml-auto flex items-center gap-1 transition-opacity">
               {onComplete && (
                 <button type="button" onClick={() => onComplete(item)} title="Marcar como concluída"
                   className="p-1 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded">
@@ -105,8 +105,8 @@ function TimelineRow({ item, onComplete, onDelete, onEditDelivery }) {
           )}
           {isDoneActivity && onEditDelivery && (
             <button type="button" onClick={() => onEditDelivery(item)}
-              title={item.deliveryInput || item.deliveryReport ? 'Editar o que foi feito/respondido' : 'Preencher o que foi feito/respondido'}
-              className="ml-auto p-1 text-slate-500 dark:text-slate-400 hover:text-fyness-primary hover:bg-fyness-primary/10 rounded md:opacity-0 md:group-hover/tl:opacity-100 transition-opacity">
+              title={item.deliveryInput || item.deliveryReport ? 'Editar o que aconteceu' : 'Preencher o que aconteceu'}
+              className="ml-auto p-1 text-slate-500 dark:text-slate-400 hover:text-fyness-primary hover:bg-fyness-primary/10 rounded transition-opacity">
               <Pencil size={13} />
             </button>
           )}
@@ -167,7 +167,7 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
       <div className="h-full flex flex-col items-center justify-center text-center px-6 text-slate-500 dark:text-slate-400">
         <CalendarCheck size={32} className="mb-3 opacity-50" />
         <p className="text-sm font-medium">Selecione uma atividade</p>
-        <p className="text-xs mt-1">Clique num evento do calendário para ver o histórico completo do lead — o que foi feito, conversado, o estágio atual e o que está agendado.</p>
+        <p className="text-xs mt-1">Clique num evento do calendário para ver o histórico completo do lead — o que foi feito, conversado, em que etapa ele está e o que está agendado.</p>
       </div>
     );
   }
@@ -238,7 +238,7 @@ export default function LeadHistoryPanel({ selected, onClose, onOpenLead, onComp
             <section>
               <h4 className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Histórico</h4>
               {past.length === 0 ? (
-                <p className="text-xs text-slate-500 dark:text-slate-400 py-4">Nenhum registro ainda — ligações, mensagens, atividades e mudanças de estágio vão aparecer aqui.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 py-4">Nenhum registro ainda — ligações, mensagens, atividades e mudanças de etapa vão aparecer aqui.</p>
               ) : (
                 <div>{past.map(i => <TimelineRow key={i.id} item={i} onEditDelivery={onEditDelivery} />)}</div>
               )}

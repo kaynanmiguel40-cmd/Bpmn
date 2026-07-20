@@ -197,7 +197,7 @@ export function TeamActivitiesTable() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Todas as atividades</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Ligações, reuniões, tarefas e follow-ups do time inteiro</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Tudo que o time tem pra fazer e já fez</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">

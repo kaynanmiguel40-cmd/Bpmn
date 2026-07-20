@@ -164,6 +164,11 @@ export function CrmDealDetailPage() {
     );
   }
 
+  // Contador da aba Atividades = tudo que esta PENDENTE, do processo e avulso.
+  // O que a aba lista separado (processo em cima, avulsas embaixo) aqui soma:
+  // o selo responde "quanto falta fazer com esse lead".
+  const pendingCount = activities.filter(a => !a.completed).length;
+
   const st = STATUS_MAP[deal.status] || STATUS_MAP.open;
   const currentNotes = notes !== null ? notes : (deal.notes || '');
   const probColor = deal.probability >= 70 ? 'bg-emerald-500' : deal.probability >= 30 ? 'bg-amber-500' : 'bg-rose-500';
@@ -438,8 +443,8 @@ export function CrmDealDetailPage() {
                     }`}
                   >
                     <Icon size={15} /> {tab.label}
-                    {tab.id === 'activities' && activities.filter(a => !a.completed).length > 0 && (
-                      <span className="text-[12px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">{activities.filter(a => !a.completed).length}</span>
+                    {tab.id === 'activities' && pendingCount > 0 && (
+                      <span className="text-[12px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">{pendingCount}</span>
                     )}
                   </button>
                 );
@@ -449,7 +454,10 @@ export function CrmDealDetailPage() {
 
           {/* Tab: Atividades — o que FAZER: processo da etapa + tarefas pendentes */}
           {activeTab === 'activities' && (() => {
-            const pending = activities.filter(a => !a.completed);
+            // AVULSA = criada a mao. A tarefa que veio do playbook (stageStepId)
+            // ja esta logo acima, no bloco do processo — listar de novo aqui
+            // fazia a MESMA tarefa aparecer duas vezes na mesma tela.
+            const pending = activities.filter(a => !a.completed && !a.stageStepId);
             return (
               <div className="space-y-5">
                 {/* Processo da etapa: as tarefas do playbook */}
@@ -535,13 +543,24 @@ export function CrmDealDetailPage() {
             const completedActs = activities.filter(a => a.completed).map(a => ({
               _type: 'activity', _date: a.completedAt || a.startDate, ...a,
             }));
-            // Passos do playbook que o lead cumpriu — entram na mesma linha do
-            // tempo das tarefas manuais.
-            const stepEntries = (progress || []).map(p => ({
-              _type: 'step', _date: p.doneAt, id: p.id,
-              title: stepTitleById[p.stepId] || 'Tarefa do processo',
-              outcome: p.outcome || '',
-            }));
+            // Concluir uma tarefa do processo na Agenda grava DUAS coisas: a
+            // atividade concluida e o progresso do passo. Se as duas entrassem
+            // na linha do tempo, cada toque da cadencia apareceria duas vezes.
+            // A ATIVIDADE ganha, porque carrega mais: horario real, canal e o
+            // par do que foi feito / do que o lead respondeu.
+            const passosJaNaAtividade = new Set(
+              activities.filter(a => a.completed && a.stageStepId).map(a => a.stageStepId),
+            );
+            // Sobra o passo marcado SEM atividade correspondente (backfill,
+            // dado legado) — esse ainda precisa aparecer, senao some do
+            // historico.
+            const stepEntries = (progress || [])
+              .filter(p => !passosJaNaAtividade.has(p.stepId))
+              .map(p => ({
+                _type: 'step', _date: p.doneAt, id: p.id,
+                title: stepTitleById[p.stepId] || 'Tarefa do processo',
+                outcome: p.outcome || '',
+              }));
             const timeline = [...completedActs, ...stepEntries].sort((a, b) =>
               new Date(b._date) - new Date(a._date)
             );

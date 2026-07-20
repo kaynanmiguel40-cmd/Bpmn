@@ -69,7 +69,7 @@ export function CompleteActivityModal({
     <CrmModal
       open={open}
       onClose={onClose}
-      title={isEditing ? 'Editar entrega da tarefa' : 'Concluir tarefa'}
+      title={isEditing ? 'Editar o que aconteceu' : 'Concluir tarefa'}
       size="md"
       footer={
         <>

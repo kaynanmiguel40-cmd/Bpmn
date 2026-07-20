@@ -23,7 +23,7 @@ const activityFormSchema = crmActivitySchema
   .extend({ endDate: z.string().nullable().optional() })
   .superRefine((data, ctx) => {
     if (!INSTANT_ACTIVITY_TYPES.includes(data.type) && !data.endDate) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'Data de entrega é obrigatória' });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'Informe a hora em que a tarefa termina' });
     }
   });
 import {
@@ -276,7 +276,7 @@ export function ActivityFormModal({
 
   return (
     <>
-    <CrmModal open={open} onClose={onClose} title={isEdit ? 'Editar Atividade' : 'Nova Atividade'} size="lg"
+    <CrmModal open={open} onClose={onClose} title={isEdit ? 'Editar tarefa' : 'Nova tarefa'} size="lg"
       footer={
         <>
           {isEdit && onOpenLeadHistory && (activity?.dealId || activity?.contactId) && (
@@ -302,7 +302,7 @@ export function ActivityFormModal({
           <button type="submit" form="activity-form" disabled={isPending}
             className="px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg disabled:opacity-50 flex items-center gap-2">
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {isEdit ? 'Salvar' : 'Criar Atividade'}
+            {isEdit ? 'Salvar' : 'Criar tarefa'}
           </button>
         </>
       }>
@@ -421,13 +421,13 @@ export function ActivityFormModal({
             className={`${fieldClass('description')} resize-none`} />
         </div>
 
-        {/* Entrega da tarefa concluída (input/output) — EDITÁVEL: quem concluiu
+        {/* O que aconteceu nesta tarefa (input/output) — EDITÁVEL: quem concluiu
             pulando os detalhes volta aqui e preenche. Só aparece pra tarefa já
             concluída (em aberto a entrega vem depois, na conclusão). */}
         {isEdit && activity?.completed && (
           <div className="rounded-xl border border-emerald-200/70 dark:border-emerald-800/40 bg-emerald-50/40 dark:bg-emerald-900/10 p-3 space-y-3">
             <p className="text-[12px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-              <CheckCircle2 size={13} /> Entrega da tarefa concluída
+              <CheckCircle2 size={13} /> O que aconteceu nesta tarefa
             </p>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">O que você fez/disse</label>
