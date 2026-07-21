@@ -166,6 +166,47 @@ export async function getOwnerBusyWindows({ ownerId = null, fromISO, toISO } = {
  * pra casar deal_id/contact_id nas tabelas transacionais. Compartilhado por
  * getLeadTimeline e getLeadActivityHistory pra manter a mesma âncora.
  */
+/**
+ * Todos os negocios (e contatos) de uma CADEIA de leads ligados.
+ *
+ * "2 leads em 1": um lead gera outro (origin_deal_id) que continua o mesmo
+ * historico. Aqui a gente monta a cadeia inteira a partir de qualquer no dela —
+ * sobe pelos ancestrais (origin_deal_id) e desce pelos gerados — pra o historico
+ * juntar a conversa dos dois (ou tres) lados, nao um pedaco.
+ *
+ * Teto de 10 niveis: cadeia de referencia nao vira arvore infinita, e evita loop
+ * se algum dado ficar circular.
+ */
+async function resolverCadeiaDeLeads(dealId) {
+  const dealIds = new Set([dealId]);
+  const contactIds = new Set();
+
+  // Sobe: ancestrais.
+  let cursor = dealId;
+  for (let i = 0; i < 10 && cursor; i++) {
+    const { data } = await supabase
+      .from('crm_deals').select('origin_deal_id, contact_id').eq('id', cursor).maybeSingle();
+    if (data?.contact_id) contactIds.add(data.contact_id);
+    cursor = data?.origin_deal_id || null;
+    if (cursor && !dealIds.has(cursor)) dealIds.add(cursor); else cursor = null;
+  }
+
+  // Desce: gerados por qualquer no ja conhecido.
+  let fronteira = [...dealIds];
+  for (let i = 0; i < 10 && fronteira.length; i++) {
+    const { data } = await supabase
+      .from('crm_deals').select('id, contact_id').in('origin_deal_id', fronteira).is('deleted_at', null);
+    const novos = [];
+    for (const d of data || []) {
+      if (d.contact_id) contactIds.add(d.contact_id);
+      if (!dealIds.has(d.id)) { dealIds.add(d.id); novos.push(d.id); }
+    }
+    fronteira = novos;
+  }
+
+  return { dealIds: [...dealIds], contactIds: [...contactIds] };
+}
+
 async function resolveLeadAndFilter({ dealId = null, contactId = null } = {}) {
   let lead = null;
   let resolvedContactId = contactId;
@@ -218,9 +259,19 @@ async function resolveLeadAndFilter({ dealId = null, contactId = null } = {}) {
     }
   }
 
+  // O filtro do historico junta a CADEIA de leads ligados: todos os negocios
+  // gerados a partir deste (ou que o geraram) + os contatos deles. Assim abrir
+  // qualquer lead da cadeia mostra a conversa inteira — "continua o mesmo
+  // historico". Lead solto (sem cadeia) cai no caso trivial de 1 deal + 1 contato.
   const orParts = [];
-  if (dealId) orParts.push(`deal_id.eq.${dealId}`);
-  if (resolvedContactId) orParts.push(`contact_id.eq.${resolvedContactId}`);
+  const contatos = new Set();
+  if (resolvedContactId) contatos.add(resolvedContactId);
+  if (dealId) {
+    const { dealIds, contactIds } = await resolverCadeiaDeLeads(dealId);
+    for (const id of dealIds) orParts.push(`deal_id.eq.${id}`);
+    for (const cid of contactIds) contatos.add(cid);
+  }
+  for (const cid of contatos) orParts.push(`contact_id.eq.${cid}`);
   return { lead, resolvedContactId, orFilter: orParts.join(',') };
 }
 

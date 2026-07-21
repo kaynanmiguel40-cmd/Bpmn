@@ -43,12 +43,15 @@ export interface CrmDeal {
   source: string | null;
   notes: string;
   ownerId: string | null;
+  /** Negocio que GEROU este (lead ligado). Historico compartilhado na cadeia. */
+  originDealId: string | null;
   owner: { id: string; name: string; color?: string | null } | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
   _movedTo?: 'nurturing' | 'descarte' | null;
+  _reactivated?: boolean;
 }
 
 export interface CrmDealRow {
@@ -79,6 +82,7 @@ export interface CrmDealRow {
   source?: string | null;
   notes?: string | null;
   owner_id?: string | null;
+  origin_deal_id?: string | null;
   team_members?: { id: string; name: string; color?: string | null } | null;
   created_by?: string | null;
   created_at: string;
@@ -150,6 +154,7 @@ export function dbToCrmDeal(row: CrmDealRow | null | undefined): CrmDeal | null 
     source: row.source || null,
     notes: row.notes || '',
     ownerId: row.owner_id || null,
+    originDealId: row.origin_deal_id || null,
     owner: row.team_members ? {
       id: row.team_members.id,
       name: row.team_members.name,
@@ -210,6 +215,7 @@ const dealService = createCRUDService<CrmDeal, CrmDealRow>({
     closedAt: 'closed_at',
     notes: 'notes',
     ownerId: 'owner_id',
+    originDealId: 'origin_deal_id',
   },
   orderBy: 'created_at',
   orderAsc: false,
@@ -277,6 +283,73 @@ export async function createCrmDeal(data: Record<string, unknown>): Promise<CrmD
   }
 
   return result;
+}
+
+/**
+ * Gera um lead NOVO ligado a um existente ("2 leads em 1").
+ *
+ * No primeiro contato o lead as vezes passa a bola pra outra pessoa que vai
+ * continuar o atendimento. Ela vira um lead proprio — mas ligado ao original
+ * (origin_deal_id), pra o historico seguir junto. O lead novo entra no MESMO
+ * pipeline, no Primeiro contato, e ja recebe a cadencia dele.
+ *
+ * @returns o negocio criado, ou null.
+ */
+export async function gerarLeadLigado(
+  { originDealId, nome, telefone = null }:
+  { originDealId: string; nome: string; telefone?: string | null },
+): Promise<CrmDeal | null> {
+  if (!originDealId || !nome?.trim()) return null;
+
+  const { data: origem } = await supabase
+    .from('crm_deals').select('pipeline_id, owner_id').eq('id', originDealId).maybeSingle();
+  const origemRow = origem as { pipeline_id?: string; owner_id?: string | null } | null;
+  if (!origemRow?.pipeline_id) return null;
+
+  // Primeiro contato do MESMO pipeline (o estagio com cadencia). Fallback: o 2o
+  // estagio (Leads=1, Primeiro contato=2 no funil padrao), senao o primeiro.
+  const { data: stages } = await supabase
+    .from('crm_pipeline_stages').select('id, name, position')
+    .eq('pipeline_id', origemRow.pipeline_id).order('position', { ascending: true });
+  const lista = (stages || []) as Array<{ id: string; name: string; position: number }>;
+  const alvo = lista.find(s => /primeiro contato/i.test(s.name)) || lista[1] || lista[0];
+  if (!alvo) return null;
+
+  // O contato do novo lead. Insert direto (sem importar crmContactsService) pra
+  // nao acoplar este service a ele. Cor de avatar so pro cadastro nao nascer
+  // cinza; created_by pro trigger de dono resolver o responsavel.
+  const session = await supabase.auth.getSession();
+  const userId = session.data?.session?.user?.id;
+  const cores = ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#f97316', '#6366f1'];
+  const { data: contato } = await supabase
+    .from('crm_contacts')
+    .insert({
+      name: nome.trim(),
+      phone: telefone || null,
+      avatar_color: cores[Math.floor(Math.random() * cores.length)],
+      created_by: userId,
+    })
+    .select('id')
+    .single();
+
+  const deal = await createCrmDeal({
+    title: nome.trim(),
+    pipelineId: origemRow.pipeline_id,
+    stageId: alvo.id,
+    contactId: (contato as { id?: string } | null)?.id || null,
+    contactName: nome.trim(),
+    contactPhone: telefone || null,
+    ownerId: origemRow.owner_id || null,
+    originDealId,
+    probability: 10,
+    status: 'open',
+  });
+
+  // createCrmDeal so grava o negocio — a cadencia e agendada ao ENTRAR na etapa.
+  // Aqui a entrada e a propria criacao, entao dispara na mao (idempotente).
+  if (deal?.id) scheduleStepsForDeal(deal.id, alvo.id).catch(console.warn);
+
+  return deal;
 }
 
 export async function updateCrmDeal(id: string, updates: Record<string, unknown>): Promise<CrmDeal | null> {

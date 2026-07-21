@@ -28,7 +28,17 @@ import { formatWhen } from '../utils/stepLabel';
 import { preencherScript, dadosDoScript } from '../utils/preencherScript';
 import { useProfile } from '../../../hooks/useProfile';
 import { registrarTentativaDeLigacao, contarTentativas } from '../services/crmCallsService';
-import { useAgendarRetorno } from '../hooks/useCrmQueries';
+import { useAgendarRetorno, useGerarLeadLigado } from '../hooks/useCrmQueries';
+import { toast } from '../../../contexts/ToastContext';
+
+// Tipos de tarefa que a pessoa pode gerar, com rotulo e icone.
+const TIPOS_TAREFA = [
+  { tipo: 'call', label: 'Ligação' },
+  { tipo: 'message', label: 'WhatsApp' },
+  { tipo: 'email', label: 'E-mail' },
+  { tipo: 'meeting', label: 'Reunião' },
+  { tipo: 'task', label: 'Tarefa' },
+];
 
 // Date -> string do input datetime-local (local, sem fuso).
 const paraInputLocal = (d) => {
@@ -99,18 +109,28 @@ export function ExecuteTaskModal({
   const [output, setOutput] = useState('');
   // null = ainda nao escolheu. So vale pra toque que depende de ALGUEM ATENDER.
   const [contacted, setContacted] = useState(null);
-  // "Pediu pra ligar depois": aberto o seletor? e o horario escolhido (local).
-  const [retornoAberto, setRetornoAberto] = useState(false);
+  // "Gerou outra tarefa": aberto o painel? pra quem? tipo? horario? dados da
+  // outra pessoa (quando vira um lead ligado)?
+  const [gerarAberto, setGerarAberto] = useState(false);
+  const [gerarAlvo, setGerarAlvo] = useState('este');   // 'este' | 'outra'
+  const [gerarTipo, setGerarTipo] = useState('call');
   const [retornoLocal, setRetornoLocal] = useState('');
+  const [novoNome, setNovoNome] = useState('');
+  const [novoTelefone, setNovoTelefone] = useState('');
   const agendarRetorno = useAgendarRetorno();
+  const gerarLead = useGerarLeadLigado();
 
   useEffect(() => {
     if (!open) return;
     setInput(activity?.deliveryInput || '');
     setOutput(activity?.deliveryReport || '');
     setContacted(null);
-    setRetornoAberto(false);
+    setGerarAberto(false);
+    setGerarAlvo('este');
+    setGerarTipo('call');
     setRetornoLocal('');
+    setNovoNome('');
+    setNovoTelefone('');
   }, [open, activity?.id, activity?.deliveryInput, activity?.deliveryReport]);
 
   // Atalhos de horario pro retorno. Recalcula a cada abertura (o "agora" muda).
@@ -152,22 +172,46 @@ export function ExecuteTaskModal({
   const { profile } = useProfile();
   const dadosScript = dadosDoScript(activity, profile);
 
-  // Confirma o retorno: cria a tarefa de callback + re-ancora a cadencia, e ai
-  // conclui a tarefa atual (com o desfecho) e fecha.
-  const confirmarRetorno = async () => {
-    if (!retornoLocal) return;
-    const iso = new Date(retornoLocal).toISOString();
-    const r = await agendarRetorno.mutateAsync({
-      dealId: activity.dealId,
-      stageStepId: activity.stageStepId || null,
-      callbackISO: iso,
-      excludeActivityId: activity.id,
+  const tipoLabel = (t) => TIPOS_TAREFA.find(x => x.tipo === t)?.label || 'Tarefa';
+
+  // Confirma a tarefa gerada. Dois caminhos:
+  //  - ESTE lead: cria o toque no horario, cancela o atrasado e re-ancora a
+  //    cadencia; depois conclui a tarefa atual e fecha.
+  //  - OUTRA pessoa: gera um lead NOVO ligado a este (2 leads em 1), com cadencia
+  //    propria; a tarefa atual e concluida normalmente.
+  const confirmarTarefaGerada = async () => {
+    if (gerarAlvo === 'este') {
+      if (!retornoLocal) return;
+      const iso = new Date(retornoLocal).toISOString();
+      const r = await agendarRetorno.mutateAsync({
+        dealId: activity.dealId,
+        stageStepId: activity.stageStepId || null,
+        callbackISO: iso,
+        excludeActivityId: activity.id,
+        tipo: gerarTipo,
+        titulo: `${tipoLabel(gerarTipo)} — retorno`,
+      });
+      if (r?.ok === false) return;
+      const dt = new Date(iso);
+      onSubmit?.({
+        input: input.trim(),
+        output: `Gerou ${tipoLabel(gerarTipo).toLowerCase()} de retorno para ${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+        contacted: true,
+      });
+      return;
+    }
+    // Outra pessoa → lead ligado.
+    if (!novoNome.trim()) return;
+    const novo = await gerarLead.mutateAsync({
+      originDealId: activity.dealId,
+      nome: novoNome.trim(),
+      telefone: novoTelefone.trim() || null,
     });
-    if (r?.ok === false) return; // falhou; deixa o modal aberto pra tentar de novo
-    const dt = new Date(iso);
+    if (!novo?.id) { toast('Não consegui gerar o lead. Tente de novo.', 'error'); return; }
+    toast(`Lead "${novoNome.trim()}" gerado e ligado a este`, 'success');
     onSubmit?.({
       input: input.trim(),
-      output: `Pediu retorno para ${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      output: `Gerou lead ligado: ${novoNome.trim()}`,
       contacted: true,
     });
   };
@@ -554,71 +598,151 @@ export function ExecuteTaskModal({
           </div>
         )}
 
-        {/* 4c. "Pediu pra ligar depois" — o lead atendeu mas nao deu pra
-            qualificar. Cria o retorno no horario escolhido, cancela os toques
-            atrasados (voce ja falou com ele) e re-ancora o resto da cadencia a
-            partir do retorno. So aparece na LIGACAO depois de "Falei com ele". */}
+        {/* 4c. "Gerou outra tarefa" — o lead atendeu mas o atendimento continua
+            em outro toque. Dois caminhos: (a) ESTE lead pediu pra retornar num
+            horario → cria o toque, cancela o atrasado e re-ancora a cadencia;
+            (b) OUTRA pessoa vai continuar (o socio, o financeiro, um indicado) →
+            vira um lead NOVO ligado a este, com a mesma historia. So aparece na
+            LIGACAO depois de "Falei com ele". */}
         {isCall && !isEditing && contacted === true && (
           <div className="rounded-xl border border-sky-200 dark:border-sky-800/60 bg-sky-50/50 dark:bg-sky-900/15 p-3">
-            {!retornoAberto ? (
+            {!gerarAberto ? (
               <button
                 type="button"
-                onClick={() => setRetornoAberto(true)}
+                onClick={() => setGerarAberto(true)}
                 className="w-full flex items-center justify-center gap-1.5 min-h-[44px] rounded-lg text-sm font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/30 transition-colors"
               >
-                <CalendarClock size={16} /> Pediu pra ligar depois
+                <CalendarClock size={16} /> Gerou outra tarefa
               </button>
             ) : (
-              <div className="space-y-2.5">
-                <div className="text-[13px] font-semibold text-sky-800 dark:text-sky-200">
-                  Quando ligar de volta pra {activity.leadName || 'ele'}?
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {presetsRetorno.map(p => {
-                    const val = paraInputLocal(p.d);
-                    const ativo = retornoLocal === val;
-                    return (
+              <div className="space-y-3">
+                {/* Pra quem */}
+                <div>
+                  <div className="text-[12px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300 mb-1.5">Pra quem</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { v: 'este', l: `Este lead${activity.leadName ? ` (${activity.leadName})` : ''}` },
+                      { v: 'outra', l: 'Outra pessoa (lead ligado)' },
+                    ].map(o => (
                       <button
-                        key={p.label}
+                        key={o.v}
                         type="button"
-                        onClick={() => setRetornoLocal(val)}
-                        className={`px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${
-                          ativo
+                        onClick={() => setGerarAlvo(o.v)}
+                        className={`px-2.5 py-2 rounded-lg text-[12px] font-medium border text-left transition-colors ${
+                          gerarAlvo === o.v
                             ? 'border-sky-500 bg-sky-500 text-white'
                             : 'border-sky-200 dark:border-sky-700 text-sky-700 dark:text-sky-300 hover:border-sky-400'
                         }`}
                       >
-                        {p.label}
+                        {o.l}
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-                <input
-                  type="datetime-local"
-                  value={retornoLocal}
-                  onChange={(e) => setRetornoLocal(e.target.value)}
-                  className={fieldClass}
-                />
-                {/* O que vai acontecer, em palavras — pra nao ser magica silenciosa. */}
-                <p className="text-[12px] text-sky-700 dark:text-sky-300">
-                  Cria o retorno nesse horário, cancela os toques atrasados desse lead
-                  e reorganiza o resto da cadência a partir daqui.
-                </p>
+
+                {gerarAlvo === 'este' ? (
+                  <>
+                    {/* Tipo do toque */}
+                    <div>
+                      <div className="text-[12px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300 mb-1.5">Tipo</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {TIPOS_TAREFA.map(t => (
+                          <button
+                            key={t.tipo}
+                            type="button"
+                            onClick={() => setGerarTipo(t.tipo)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${
+                              gerarTipo === t.tipo
+                                ? 'border-sky-500 bg-sky-500 text-white'
+                                : 'border-sky-200 dark:border-sky-700 text-sky-700 dark:text-sky-300 hover:border-sky-400'
+                            }`}
+                          >
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Quando */}
+                    <div>
+                      <div className="text-[12px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300 mb-1.5">Quando</div>
+                      <div className="flex flex-wrap gap-1.5 mb-1.5">
+                        {presetsRetorno.map(p => {
+                          const val = paraInputLocal(p.d);
+                          return (
+                            <button
+                              key={p.label}
+                              type="button"
+                              onClick={() => setRetornoLocal(val)}
+                              className={`px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${
+                                retornoLocal === val
+                                  ? 'border-sky-500 bg-sky-500 text-white'
+                                  : 'border-sky-200 dark:border-sky-700 text-sky-700 dark:text-sky-300 hover:border-sky-400'
+                              }`}
+                            >
+                              {p.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <input
+                        type="datetime-local"
+                        value={retornoLocal}
+                        onChange={(e) => setRetornoLocal(e.target.value)}
+                        className={fieldClass}
+                      />
+                    </div>
+                    <p className="text-[12px] text-sky-700 dark:text-sky-300">
+                      Cria o toque nesse horário, cancela os atrasados desse lead e
+                      reorganiza o resto da cadência a partir daqui.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    {/* Outra pessoa → lead ligado */}
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        value={novoNome}
+                        onChange={(e) => setNovoNome(e.target.value)}
+                        placeholder="Nome da pessoa (ex.: João — sócio)"
+                        className={fieldClass}
+                      />
+                      <input
+                        type="tel"
+                        value={novoTelefone}
+                        onChange={(e) => setNovoTelefone(e.target.value)}
+                        placeholder="Telefone (opcional)"
+                        className={fieldClass}
+                      />
+                    </div>
+                    <p className="text-[12px] text-sky-700 dark:text-sky-300">
+                      Cria um lead novo <strong>ligado a este</strong> (mesma história),
+                      no Primeiro contato, já com a cadência dele começando.
+                    </p>
+                  </>
+                )}
+
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => { setRetornoAberto(false); setRetornoLocal(''); }}
+                    onClick={() => { setGerarAberto(false); setRetornoLocal(''); setNovoNome(''); setNovoTelefone(''); }}
                     className="px-3 h-9 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
                     Cancelar
                   </button>
                   <button
                     type="button"
-                    disabled={!retornoLocal || isPending || agendarRetorno.isPending}
-                    onClick={confirmarRetorno}
+                    disabled={
+                      isPending || agendarRetorno.isPending || gerarLead.isPending ||
+                      (gerarAlvo === 'este' ? !retornoLocal : !novoNome.trim())
+                    }
+                    onClick={confirmarTarefaGerada}
                     className="px-4 h-9 rounded-lg text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 inline-flex items-center gap-1.5"
                   >
-                    <Check size={15} /> {agendarRetorno.isPending ? 'Agendando…' : 'Confirmar retorno'}
+                    <Check size={15} />
+                    {(agendarRetorno.isPending || gerarLead.isPending)
+                      ? 'Gerando…'
+                      : gerarAlvo === 'este' ? 'Criar tarefa' : 'Gerar lead ligado'}
                   </button>
                 </div>
               </div>

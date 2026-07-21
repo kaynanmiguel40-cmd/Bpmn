@@ -26,6 +26,8 @@ import { listCrmWhatsAppInstances, getCrmWhatsAppInstanceByName, getDefaultCrmWh
 import { getCrmPartners, getLeadsByPartner, createCrmPartner, updateCrmPartner, softDeleteCrmPartner } from '../services/crmPartnersService';
 import { getCrmLeadSources, createCrmLeadSource, deleteCrmLeadSource } from '../services/crmLeadSourcesService';
 import { getCrmWorkspaceSettingsRemote, updateCrmWorkspaceSettingsRemote } from '../services/crmWorkspaceSettingsService';
+// Import proprio (longe do bloco de cima que outra sessao edita) — gera lead ligado.
+import { gerarLeadLigado } from '../services/crmDealsService';
 
 // ==================== QUERY KEYS ====================
 
@@ -1556,6 +1558,38 @@ export function useAgendarRetorno() {
       qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
       qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+    },
+  });
+}
+
+/**
+ * Lead pediu pra ligar depois: cria o retorno e re-ancora a cadencia. Invalida
+ * agenda + fila — a cadencia inteira do lead muda de data.
+ */
+export function useAgendarRetorno() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args) => agendarRetornoEReancorar(args),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+    },
+  });
+}
+
+/**
+ * Gera um lead NOVO ligado ao atual ("2 leads em 1"). Invalida pipeline + fila:
+ * o lead novo aparece no funil e a cadencia dele na fila.
+ */
+export function useGerarLeadLigado() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args) => gerarLeadLigado(args),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
     },
   });
 }

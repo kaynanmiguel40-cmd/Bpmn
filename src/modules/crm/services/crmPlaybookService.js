@@ -370,6 +370,7 @@ async function resolverDono(dealOwnerId) {
  */
 export async function agendarRetornoEReancorar({
   dealId, stageStepId = null, callbackISO, excludeActivityId = null,
+  tipo = 'call',
   titulo = 'Retorno — lead pediu pra ligar depois',
 } = {}) {
   if (!dealId || !callbackISO) return { ok: false, canceladas: 0, reancoradas: 0 };
@@ -402,7 +403,7 @@ export async function agendarRetornoEReancorar({
   // 2) O RETORNO no horario escolhido.
   const fimRetorno = new Date(callback.getTime() + SLOT_MINUTES * 60000);
   await supabase.from('crm_activities').insert({
-    title: titulo, type: 'call', deal_id: dealId, contact_id: deal.contact_id || null,
+    title: titulo, type: tipo, deal_id: dealId, contact_id: deal.contact_id || null,
     start_date: callback.toISOString(), end_date: fimRetorno.toISOString(), completed: false,
     assigned_to: assignee, assigned_to_name: assigneeName,
   });
