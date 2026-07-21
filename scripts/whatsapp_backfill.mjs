@@ -33,10 +33,24 @@
  */
 
 import { createRequire } from 'module';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
+import { execFile } from 'child_process';
 
 const require = createRequire(import.meta.url);
 const { Client } = require('ssh2');
+
+/**
+ * Roda no VPS ou na maquina do dev?
+ *
+ * O mesmo arquivo serve os dois: recuperacao manual daqui (via SSH) e o cron
+ * de hora em hora la dentro. Rodando NO VPS, abrir SSH pra si mesmo e absurdo —
+ * e foi o que quebrou o cron na primeira tentativa: o .env de la nao tem as
+ * credenciais de deploy, entao o script morria em "Invalid username" antes de
+ * ler uma linha sequer.
+ *
+ * Deteccao pelo unico sinal que importa: o socket do Docker esta aqui?
+ */
+const NO_VPS = existsSync('/var/run/docker.sock');
 
 const PG_CONTAINER  = 'fyness-evolution-postgres';
 const EDGE_CONTAINER = 'supabase-edge-functions';
@@ -45,6 +59,8 @@ const LOTE          = 100;   // linhas por pagina do psql
 const PAUSA_MS      = 400;   // entre mensagens: midia bate na Evolution e no Storage
 
 function loadEnv() {
+  // No VPS nao ha SSH a fazer, entao credencial ausente nao pode derrubar nada.
+  if (NO_VPS) return {};
   return Object.fromEntries(
     readFileSync(new URL('../.env', import.meta.url), 'utf8')
       .split('\n').map((l) => l.trim())
@@ -64,8 +80,17 @@ function parseArgs(argv) {
   return o;
 }
 
-/** Executa um comando no VPS e devolve o stdout. */
+/**
+ * Executa um comando onde os containers estao: shell local quando ja e o VPS,
+ * SSH quando e a maquina do dev. O resto do script nao precisa saber qual.
+ */
 function ssh(env, command) {
+  if (NO_VPS) {
+    return new Promise((resolve) => {
+      execFile('/bin/bash', ['-c', command], { maxBuffer: 64 * 1024 * 1024 },
+        (_e, stdout, stderr) => resolve({ out: stdout || '', err: stderr || '' }));
+    });
+  }
   return new Promise((resolve, reject) => {
     const conn = new Client();
     let out = '', err = '';
