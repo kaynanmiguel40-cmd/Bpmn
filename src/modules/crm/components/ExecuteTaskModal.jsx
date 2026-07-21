@@ -16,10 +16,10 @@
  * no CompleteActivityModal generico.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Phone, MessageCircle, CheckCircle2, CornerDownRight, ArrowRight,
-  ExternalLink, Clock,
+  ExternalLink, Clock, CalendarClock, Check,
 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
@@ -28,6 +28,13 @@ import { formatWhen } from '../utils/stepLabel';
 import { preencherScript, dadosDoScript } from '../utils/preencherScript';
 import { useProfile } from '../../../hooks/useProfile';
 import { registrarTentativaDeLigacao, contarTentativas } from '../services/crmCallsService';
+import { useAgendarRetorno } from '../hooks/useCrmQueries';
+
+// Date -> string do input datetime-local (local, sem fuso).
+const paraInputLocal = (d) => {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
 
 function formatPhone(val) {
   if (!val) return '';
@@ -92,13 +99,32 @@ export function ExecuteTaskModal({
   const [output, setOutput] = useState('');
   // null = ainda nao escolheu. So vale pra toque que depende de ALGUEM ATENDER.
   const [contacted, setContacted] = useState(null);
+  // "Pediu pra ligar depois": aberto o seletor? e o horario escolhido (local).
+  const [retornoAberto, setRetornoAberto] = useState(false);
+  const [retornoLocal, setRetornoLocal] = useState('');
+  const agendarRetorno = useAgendarRetorno();
 
   useEffect(() => {
     if (!open) return;
     setInput(activity?.deliveryInput || '');
     setOutput(activity?.deliveryReport || '');
     setContacted(null);
+    setRetornoAberto(false);
+    setRetornoLocal('');
   }, [open, activity?.id, activity?.deliveryInput, activity?.deliveryReport]);
+
+  // Atalhos de horario pro retorno. Recalcula a cada abertura (o "agora" muda).
+  const presetsRetorno = useMemo(() => {
+    const agora = new Date();
+    const emHoras = (h) => new Date(agora.getTime() + h * 3600000);
+    const amanha = (hh) => { const d = new Date(agora); d.setDate(d.getDate() + 1); d.setHours(hh, 0, 0, 0); return d; };
+    return [
+      { label: 'Em 2h', d: emHoras(2) },
+      { label: 'Em 3h', d: emHoras(3) },
+      { label: 'Amanhã 9h', d: amanha(9) },
+      { label: 'Amanhã 14h', d: amanha(14) },
+    ];
+  }, [open]);
 
   if (!activity) return null;
 
@@ -125,6 +151,26 @@ export function ExecuteTaskModal({
   // buraco no meio da frase so aparece depois de ja ter saido pela boca.
   const { profile } = useProfile();
   const dadosScript = dadosDoScript(activity, profile);
+
+  // Confirma o retorno: cria a tarefa de callback + re-ancora a cadencia, e ai
+  // conclui a tarefa atual (com o desfecho) e fecha.
+  const confirmarRetorno = async () => {
+    if (!retornoLocal) return;
+    const iso = new Date(retornoLocal).toISOString();
+    const r = await agendarRetorno.mutateAsync({
+      dealId: activity.dealId,
+      stageStepId: activity.stageStepId || null,
+      callbackISO: iso,
+      excludeActivityId: activity.id,
+    });
+    if (r?.ok === false) return; // falhou; deixa o modal aberto pra tentar de novo
+    const dt = new Date(iso);
+    onSubmit?.({
+      input: input.trim(),
+      output: `Pediu retorno para ${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      contacted: true,
+    });
+  };
 
   // Tentativas ja feitas nesta tarefa. Carrega ao abrir porque a pessoa pode ter
   // ligado, saido pro celular e voltado — o contador nao pode zerar no caminho.
@@ -505,6 +551,78 @@ export function ExecuteTaskModal({
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1.5">
               Um clique já conclui a tarefa com esse resultado.
             </p>
+          </div>
+        )}
+
+        {/* 4c. "Pediu pra ligar depois" — o lead atendeu mas nao deu pra
+            qualificar. Cria o retorno no horario escolhido, cancela os toques
+            atrasados (voce ja falou com ele) e re-ancora o resto da cadencia a
+            partir do retorno. So aparece na LIGACAO depois de "Falei com ele". */}
+        {isCall && !isEditing && contacted === true && (
+          <div className="rounded-xl border border-sky-200 dark:border-sky-800/60 bg-sky-50/50 dark:bg-sky-900/15 p-3">
+            {!retornoAberto ? (
+              <button
+                type="button"
+                onClick={() => setRetornoAberto(true)}
+                className="w-full flex items-center justify-center gap-1.5 min-h-[44px] rounded-lg text-sm font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/30 transition-colors"
+              >
+                <CalendarClock size={16} /> Pediu pra ligar depois
+              </button>
+            ) : (
+              <div className="space-y-2.5">
+                <div className="text-[13px] font-semibold text-sky-800 dark:text-sky-200">
+                  Quando ligar de volta pra {activity.leadName || 'ele'}?
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {presetsRetorno.map(p => {
+                    const val = paraInputLocal(p.d);
+                    const ativo = retornoLocal === val;
+                    return (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => setRetornoLocal(val)}
+                        className={`px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${
+                          ativo
+                            ? 'border-sky-500 bg-sky-500 text-white'
+                            : 'border-sky-200 dark:border-sky-700 text-sky-700 dark:text-sky-300 hover:border-sky-400'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="datetime-local"
+                  value={retornoLocal}
+                  onChange={(e) => setRetornoLocal(e.target.value)}
+                  className={fieldClass}
+                />
+                {/* O que vai acontecer, em palavras — pra nao ser magica silenciosa. */}
+                <p className="text-[12px] text-sky-700 dark:text-sky-300">
+                  Cria o retorno nesse horário, cancela os toques atrasados desse lead
+                  e reorganiza o resto da cadência a partir daqui.
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setRetornoAberto(false); setRetornoLocal(''); }}
+                    className="px-3 h-9 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!retornoLocal || isPending || agendarRetorno.isPending}
+                    onClick={confirmarRetorno}
+                    className="px-4 h-9 rounded-lg text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+                  >
+                    <Check size={15} /> {agendarRetorno.isPending ? 'Agendando…' : 'Confirmar retorno'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

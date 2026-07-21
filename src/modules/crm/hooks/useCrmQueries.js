@@ -16,7 +16,7 @@ import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsP
 import { getSalesReport, getLearnedProbabilities } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
 import { getCrmCalendarActivities, getLeadTimeline, getOwnerBusyWindows } from '../services/crmAgendaService';
-import { scheduleMeetingForDeal } from '../services/crmPlaybookService';
+import { scheduleMeetingForDeal, agendarRetornoEReancorar } from '../services/crmPlaybookService';
 import { getStageWorkSummary } from '../services/crmQueueService';
 import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
@@ -1540,6 +1540,22 @@ export function useCreateCrmWhatsAppInstance() {
     mutationFn: createCrmWhatsAppInstance,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.whatsappInstances });
+    },
+  });
+}
+
+/**
+ * Lead pediu pra ligar depois: cria o retorno e re-ancora a cadencia. Invalida
+ * agenda + fila — a cadencia inteira do lead muda de data.
+ */
+export function useAgendarRetorno() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args) => agendarRetornoEReancorar(args),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
     },
   });
 }

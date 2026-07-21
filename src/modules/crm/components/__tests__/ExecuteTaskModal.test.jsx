@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+
+// O modal usa useAgendarRetorno (react-query) pro "Pediu pra ligar depois".
+// Aqui so precisamos que ele exista sem exigir QueryClientProvider.
+vi.mock('../../hooks/useCrmQueries', () => ({
+  useAgendarRetorno: () => ({ mutateAsync: vi.fn().mockResolvedValue({ ok: true }), isPending: false }),
+}));
+
 import { ExecuteTaskModal } from '../ExecuteTaskModal';
 
 /**

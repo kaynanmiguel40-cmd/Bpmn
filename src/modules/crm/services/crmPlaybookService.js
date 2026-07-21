@@ -351,6 +351,115 @@ async function resolverDono(dealOwnerId) {
 }
 
 /**
+ * Lead atendeu e pediu pra ligar depois: cria o RETORNO e re-ancora a cadencia.
+ *
+ * O lead ENGAJOU — nao faz sentido seguir a perseguicao fria. Entao:
+ *  1. Cancela o que ficou PRA TRAS (toque de cadencia pendente ja atrasado): voce
+ *     falou com ele, nao ha mais o que perseguir antes do retorno.
+ *  2. Cria o RETORNO no horario que voce escolheu (tarefa avulsa, o proximo toque
+ *     de verdade).
+ *  3. RE-ANCORA o resto da cadencia a partir do retorno: os toques futuros se
+ *     re-espalham do callback pra frente, mantendo o espacamento RELATIVO ao
+ *     passo atual (offset - offsetAtual). Como se o lead reentrasse na cadencia
+ *     no momento do retorno.
+ *
+ * `excludeActivityId` = a tarefa que voce esta concluindo agora; fica de fora do
+ * cancelamento e da re-ancoragem (quem a fecha e o proprio modal).
+ *
+ * @returns {Promise<{ok:boolean, canceladas:number, reancoradas:number}>}
+ */
+export async function agendarRetornoEReancorar({
+  dealId, stageStepId = null, callbackISO, excludeActivityId = null,
+  titulo = 'Retorno — lead pediu pra ligar depois',
+} = {}) {
+  if (!dealId || !callbackISO) return { ok: false, canceladas: 0, reancoradas: 0 };
+  const callback = new Date(callbackISO);
+  const agora = new Date();
+
+  const { data: deal } = await supabase
+    .from('crm_deals').select('owner_id, contact_id, title').eq('id', dealId).maybeSingle();
+  if (!deal) return { ok: false, canceladas: 0, reancoradas: 0 };
+  const { assignee, assigneeName } = await resolverDono(deal.owner_id);
+
+  // Offset do passo atual — a base pra rebasear o resto da cadencia.
+  let offsetAtual = 0;
+  if (stageStepId) {
+    const { data: st } = await supabase
+      .from('crm_stage_steps').select('day_offset').eq('id', stageStepId).maybeSingle();
+    offsetAtual = st?.day_offset || 0;
+  }
+
+  // 1) PRA TRAS = toque de cadencia pendente ja atrasado. Cancela (menos a atual).
+  let cancelQ = supabase
+    .from('crm_activities')
+    .update({ deleted_at: agora.toISOString() })
+    .eq('deal_id', dealId).eq('completed', false).is('deleted_at', null)
+    .not('stage_step_id', 'is', null)
+    .lt('start_date', agora.toISOString());
+  if (excludeActivityId) cancelQ = cancelQ.neq('id', excludeActivityId);
+  const { data: canceladas } = await cancelQ.select('id');
+
+  // 2) O RETORNO no horario escolhido.
+  const fimRetorno = new Date(callback.getTime() + SLOT_MINUTES * 60000);
+  await supabase.from('crm_activities').insert({
+    title: titulo, type: 'call', deal_id: dealId, contact_id: deal.contact_id || null,
+    start_date: callback.toISOString(), end_date: fimRetorno.toISOString(), completed: false,
+    assigned_to: assignee, assigned_to_name: assigneeName,
+  });
+
+  // 3) RE-ANCORA o resto (futuros, nao atrasados) a partir do retorno.
+  let futQ = supabase
+    .from('crm_activities')
+    .select('id, stage_step_id, crm_stage_steps(day_offset, period)')
+    .eq('deal_id', dealId).eq('completed', false).is('deleted_at', null)
+    .not('stage_step_id', 'is', null)
+    .gte('start_date', agora.toISOString());
+  if (excludeActivityId) futQ = futQ.neq('id', excludeActivityId);
+  const { data: futuras } = await futQ;
+
+  const steps = (futuras || [])
+    .map(r => ({
+      id: r.id,
+      off: r.crm_stage_steps?.day_offset || 0,
+      // Rebase: offset relativo ao passo atual. O primeiro toque depois do atual
+      // cai ~1 dia depois do retorno, e o resto segue o mesmo espacamento.
+      dayOffset: Math.max(0, (r.crm_stage_steps?.day_offset || 0) - offsetAtual),
+      period: r.crm_stage_steps?.period || null,
+    }))
+    .sort((a, b) => a.off - b.off);
+
+  let reancoradas = 0;
+  if (steps.length > 0) {
+    const until = new Date(callback);
+    until.setDate(until.getDate() + Math.max(...steps.map(s => s.dayOffset), 0) + 7);
+    let bq = supabase.from('crm_activities').select('start_date, end_date, assigned_to')
+      .is('deleted_at', null)
+      .gte('start_date', callback.toISOString()).lte('start_date', until.toISOString());
+    if (assignee) bq = bq.eq('assigned_to', assignee);
+    const { data: busyRows } = await bq;
+    const busyByDay = {};
+    (busyRows || []).forEach(r => {
+      const k = dayKey(new Date(r.start_date));
+      (busyByDay[k] = busyByDay[k] || []).push({ start: r.start_date, end: r.end_date || null });
+    });
+
+    const plano = planSteps(steps, busyByDay, callback);
+    const byId = Object.fromEntries(plano.map(p => [p.stepId, p.start]));
+    for (const s of steps) {
+      const novo = byId[s.id];
+      if (!novo) continue;
+      const fim = new Date(novo.getTime() + SLOT_MINUTES * 60000);
+      const { error } = await supabase.from('crm_activities')
+        .update({ start_date: novo.toISOString(), end_date: fim.toISOString() })
+        .eq('id', s.id);
+      if (!error) reancoradas++;
+    }
+  }
+
+  return { ok: true, canceladas: (canceladas || []).length, reancoradas };
+}
+
+/**
  * Marca a reuniao de um lead e cria os lembretes ancorados nela.
  *
  * Chamado quando o lead entra numa etapa `is_meeting_stage`, com o horario que a
