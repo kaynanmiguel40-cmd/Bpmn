@@ -53,7 +53,7 @@ function useDebounce(value, delay = 300) {
   return debounced;
 }
 
-export function TeamActivitiesTable() {
+export function TeamActivitiesTable({ range }) {
   const navigate = useNavigate();
   // Filtros (persistidos em URL, prefixo "at" pra nao colidir com outros
   // params da Agenda, ex: "visao").
@@ -75,6 +75,9 @@ export function TeamActivitiesTable() {
     completed: statusFilter === 'done' ? true : statusFilter === 'pending' ? false : undefined,
     sortBy: sortConfig.key,
     sortOrder: sortConfig.direction,
+    // Segue o filtro de data do topo do Comparativo (recorte por start_date).
+    dateFrom: range?.start || undefined,
+    dateTo: range?.end || undefined,
   };
 
   const { data, isLoading } = useCrmActivities(filters);

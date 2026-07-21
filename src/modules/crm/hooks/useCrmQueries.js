@@ -8,7 +8,7 @@ import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, 
 import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, ensureGeneralPipeline, consolidateSalesPipelinesIntoGeneral, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, markDealAsChurned, reactivateChurnedDeal, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
 import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal } from '../services/crmActivitiesService';
-import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel, getFunnelStageDeals } from '../services/crmDashboardService';
+import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel, getFunnelStageDeals, getSalesCycleByStage } from '../services/crmDashboardService';
 import { getPlaybookByPipeline, getStepsByIds, saveStageSteps, saveStageGoal, getDealProgress, toggleDealStep } from '../services/crmPlaybookService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
 import { getCrmProspects, getCrmProspectById, updateCrmProspect, softDeleteCrmProspect, sendToPipeline } from '../services/crmProspectsService';
@@ -640,6 +640,14 @@ export function useMoveCrmDeal() {
         qc.invalidateQueries({ queryKey: ['crm', 'learnedProbabilities'] });
         toast('Negocio ganho! Parabens!', 'success');
       }
+
+      // Reativacao: o clone virou Cliente no Geral. Recarrega pra ele aparecer.
+      if (data?._reactivated) {
+        qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
+        qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+        qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+        toast('Reativado! Cliente criado no Geral — o lead segue na Nurturing', 'success');
+      }
     },
     onError: (err, _vars, context) => {
       // Rollback: restaurar snapshot original
@@ -718,7 +726,7 @@ export function useMarkDealWon() {
 export function useMarkDealLost() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ dealId, reason }) => markDealAsLost(dealId, reason),
+    mutationFn: ({ dealId, reason, resgatavel }) => markDealAsLost(dealId, reason, resgatavel),
     onMutate: async ({ dealId }) => {
       await qc.cancelQueries({ queryKey: ['crm', 'pipelineDeals'] });
       const snapshot = snapshotPipelineDeals(qc);
@@ -742,9 +750,9 @@ export function useMarkDealLost() {
     },
     onSuccess: (data) => {
       if (data?._movedTo === 'nurturing') {
-        toast('Perdido — lead movido pra Nurturing pra reativacao futura', 'info');
+        toast('Resgatável — foi pra Nutrição (entra na cadência)', 'info');
       } else if (data?._movedTo === 'descarte') {
-        toast('Lead descartado de vez', 'warning');
+        toast('Descartado — foi pro Descarte da Nurturing', 'warning');
       } else {
         toast('Negocio marcado como perdido', 'warning');
       }
@@ -1123,10 +1131,10 @@ export function useBonificacaoProgress(startDate, endDate) {
 
 // Drill-down do funil: os deals da coorte que alcançaram uma etapa (clicar na
 // etapa do funil do Comparativo pra ver os leads). Só dispara com `step` setado.
-export function useFunnelStageDeals(range, scope, step) {
+export function useFunnelStageDeals(range, scope, step, ownerId = null) {
   return useQuery({
-    queryKey: ['crm', 'funnelStageDeals', range?.start || null, range?.end || null, scope || 'sales', step || null],
-    queryFn: () => getFunnelStageDeals(range, scope, step),
+    queryKey: ['crm', 'funnelStageDeals', range?.start || null, range?.end || null, scope || 'sales', step || null, ownerId || 'all'],
+    queryFn: () => getFunnelStageDeals(range, scope, step, ownerId),
     enabled: !!step && !!(range?.start),
     staleTime: 30_000,
   });
@@ -1138,6 +1146,16 @@ export function useSalesFunnel(range, scope = 'sales', ownerId = null) {
     queryKey: [...crmQueryKeys.dashboard, 'funnel', range || null, scope, ownerId || 'all'],
     queryFn: () => getSalesFunnel(range, scope, ownerId),
     staleTime: 60_000,
+  });
+}
+
+// Ciclo de vendas: tempo medio por etapa (todo o historico da pipeline de
+// vendas primaria — independe do periodo, pra ter amostra suficiente).
+export function useSalesCycle(scope = 'sales') {
+  return useQuery({
+    queryKey: [...crmQueryKeys.dashboard, 'salesCycle', scope],
+    queryFn: () => getSalesCycleByStage(scope),
+    staleTime: 120_000,
   });
 }
 
@@ -1160,10 +1178,10 @@ export function useLearnedProbabilities(pipelineId = null) {
   });
 }
 
-export function useDailyScoreboard(dayStartISO, dayEndISO) {
+export function useDailyScoreboard(dayStartISO, dayEndISO, ownerId = null) {
   return useQuery({
-    queryKey: crmQueryKeys.dailyScoreboard(dayStartISO, dayEndISO),
-    queryFn: () => getDailyScoreboard(dayStartISO, dayEndISO),
+    queryKey: [...crmQueryKeys.dailyScoreboard(dayStartISO, dayEndISO), ownerId || 'all'],
+    queryFn: () => getDailyScoreboard(dayStartISO, dayEndISO, ownerId),
     enabled: !!dayStartISO && !!dayEndISO,
     staleTime: 60_000,
   });
@@ -1547,6 +1565,36 @@ export function useCreateCrmWhatsAppInstance() {
 }
 
 /**
+ * Agenda ocupada do dono do negocio, pra o modal desenhar os horarios livres.
+ * `enabled` desligado sem janela evita buscar antes do modal abrir.
+ */
+export function useOwnerBusyWindows({ ownerId, fromISO, toISO, enabled = true } = {}) {
+  return useQuery({
+    queryKey: ['crm', 'ownerBusy', ownerId || 'todos', fromISO, toISO],
+    queryFn: () => getOwnerBusyWindows({ ownerId, fromISO, toISO }),
+    enabled: enabled && !!fromISO && !!toISO,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Marca a reuniao de um lead no horario escolhido e cria os lembretes.
+ * Invalida agenda + fila: a reuniao e os lembretes tem que aparecer nas duas.
+ */
+export function useScheduleMeeting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dealId, stageId, meetingStartISO, durationMin }) =>
+      scheduleMeetingForDeal(dealId, stageId, meetingStartISO, durationMin),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'ownerBusy'] });
+    },
+  });
+}
+
+/**
  * Lead pediu pra ligar depois: cria o retorno e re-ancora a cadencia. Invalida
  * agenda + fila — a cadencia inteira do lead muda de data.
  */
@@ -1574,36 +1622,6 @@ export function useGerarLeadLigado() {
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
-    },
-  });
-}
-
-/**
- * Agenda ocupada do dono do negocio, pra o modal desenhar os horarios livres.
- * `enabled` desligado sem janela evita buscar antes do modal abrir.
- */
-export function useOwnerBusyWindows({ ownerId, fromISO, toISO, enabled = true } = {}) {
-  return useQuery({
-    queryKey: ['crm', 'ownerBusy', ownerId || 'todos', fromISO, toISO],
-    queryFn: () => getOwnerBusyWindows({ ownerId, fromISO, toISO }),
-    enabled: enabled && !!fromISO && !!toISO,
-    staleTime: 30_000,
-  });
-}
-
-/**
- * Marca a reuniao de um lead no horario escolhido e cria os lembretes.
- * Invalida agenda + fila: a reuniao e os lembretes tem que aparecer nas duas.
- */
-export function useScheduleMeeting() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ dealId, stageId, meetingStartISO, durationMin }) =>
-      scheduleMeetingForDeal(dealId, stageId, meetingStartISO, durationMin),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'ownerBusy'] });
     },
   });
 }

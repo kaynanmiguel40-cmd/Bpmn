@@ -943,6 +943,110 @@ export async function getSalesFunnel(range = {}, scope = 'sales', ownerId = null
 }
 
 /**
+ * CICLO DE VENDAS: tempo MEDIO que um negocio fica em cada etapa antes de
+ * avancar. Usa crm_deal_stage_history (created_at por transicao) + o created_at
+ * do deal como entrada na 1a etapa. Roda so na pipeline de vendas PRIMARIA (a
+ * default, ou a 1a que nao seja nurturing/parceiros) pra nao misturar etapas de
+ * pipelines diferentes.
+ *
+ * Um "tempo" = intervalo entre ENTRAR numa etapa e SAIR dela (avancar). A etapa
+ * ATUAL de cada negocio (ainda aberta) nao conta — ele nao avancou ainda. Um
+ * negocio que passa 2x pela mesma etapa soma os dois intervalos.
+ *
+ * @param {'sales'} [scope]
+ * @returns {Promise<{ stages: Array<{stageId,name,color,position,avgDays,sample}>, overallDays:number|null, totalSample:number }>}
+ */
+export async function getSalesCycleByStage(scope = 'sales') {
+  const empty = { stages: [], overallDays: null, totalSample: 0 };
+  try {
+    const { data: allPipelines = [] } = await supabase.from('crm_pipelines').select('id, name, is_default');
+    const isNurturing  = p => /nurturing|nutri/i.test(p.name || '');
+    const isPartnerAcq = p => /^\s*parceiros\s*$/i.test(p.name || '');
+    const salesPipelines = (allPipelines || []).filter(p => !isNurturing(p) && !isPartnerAcq(p));
+    const primary = salesPipelines.find(p => p.is_default) || salesPipelines[0];
+    if (!primary) return empty;
+
+    const [stagesRes, dealsRes] = await Promise.all([
+      supabase.from('crm_pipeline_stages')
+        .select('id, name, position, color')
+        .eq('pipeline_id', primary.id)
+        .order('position'),
+      supabase.from('crm_deals')
+        .select('id, created_at, closed_at, status, stage_id')
+        .eq('pipeline_id', primary.id)
+        .is('deleted_at', null),
+    ]);
+
+    const stages = stagesRes.data || [];
+    const deals = dealsRes.data || [];
+    if (!stages.length || !deals.length) return empty;
+
+    const stageInfo = {};
+    stages.forEach(s => { stageInfo[s.id] = s; });
+
+    // Historico de transicoes (com o quando) so desses deals.
+    const dealIds = deals.map(d => d.id);
+    const { data: history = [] } = await supabase
+      .from('crm_deal_stage_history')
+      .select('deal_id, from_stage_id, to_stage_id, created_at')
+      .in('deal_id', dealIds);
+    const histByDeal = {};
+    for (const h of (history || [])) {
+      (histByDeal[h.deal_id] = histByDeal[h.deal_id] || []).push(h);
+    }
+
+    // Acumula soma + contagem de amostras por etapa.
+    const acc = {}; // stageId -> { sum, n }
+    const bump = (stageId, days) => {
+      if (!stageInfo[stageId] || !(days >= 0)) return;
+      const a = acc[stageId] || (acc[stageId] = { sum: 0, n: 0 });
+      a.sum += days; a.n += 1;
+    };
+
+    for (const d of deals) {
+      const trans = (histByDeal[d.id] || []).slice()
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      // Etapa inicial = de onde saiu a 1a transicao (ou a atual, se nunca moveu).
+      let curStage = trans.length ? trans[0].from_stage_id : d.stage_id;
+      let curEnter = new Date(d.created_at);
+      for (const t of trans) {
+        const tTime = new Date(t.created_at);
+        bump(curStage, (tTime - curEnter) / 86400000);
+        curStage = t.to_stage_id;
+        curEnter = tTime;
+      }
+      // curStage final ainda aberto -> nao avancou -> nao conta.
+    }
+
+    const stageOut = stages
+      .filter(s => (acc[s.id]?.n || 0) > 0)
+      .map(s => ({
+        stageId: s.id,
+        name: s.name,
+        color: s.color || null,
+        position: s.position ?? 0,
+        avgDays: acc[s.id].sum / acc[s.id].n,
+        sample: acc[s.id].n,
+      }));
+
+    // Ciclo total: created_at -> closed_at dos GANHOS (media, em dias).
+    const closeTimes = deals
+      .filter(d => d.status === 'won' && d.created_at && d.closed_at)
+      .map(d => Math.max(0, (new Date(d.closed_at) - new Date(d.created_at)) / 86400000));
+    const overallDays = closeTimes.length ? closeTimes.reduce((a, b) => a + b, 0) / closeTimes.length : null;
+
+    return {
+      stages: stageOut,
+      overallDays,
+      totalSample: stageOut.reduce((s, x) => s + x.sample, 0),
+    };
+  } catch (err) {
+    console.error('[CRM Ciclo] Erro ao calcular ciclo de vendas:', err);
+    return empty;
+  }
+}
+
+/**
  * DRILL-DOWN do funil: os negócios (coorte do período) que ALCANÇARAM uma etapa
  * — pra clicar numa etapa do funil do Comparativo e ver os leads por trás do
  * número. Mesma lógica de contagem do getSalesFunnel (jornada real por deal),
@@ -952,7 +1056,7 @@ export async function getSalesFunnel(range = {}, scope = 'sales', ownerId = null
  * @param {'sales'|'partners'|'all'} scope
  * @param {'lead'|'qualified'|'meetingScheduled'|'meetingHeld'|'closing'} step
  */
-export async function getFunnelStageDeals(range = {}, scope = 'sales', step = 'lead') {
+export async function getFunnelStageDeals(range = {}, scope = 'sales', step = 'lead', ownerId = null) {
   try {
     const now = new Date();
     const periodStart = range.start || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -969,12 +1073,16 @@ export async function getFunnelStageDeals(range = {}, scope = 'sales', step = 'l
     else targetIds = salesPipelineIds;
     const scopedIds = targetIds.length ? targetIds : ['00000000-0000-0000-0000-000000000000'];
 
+    // Mesmo recorte por vendedor do funil (created_by = ownerId) — pra a lista
+    // do drill-down casar com o numero (real) filtrado da etapa.
+    let dealsQuery = supabase.from('crm_deals')
+      .select('id, title, value, status, stage_id, pipeline_id, created_at, crm_contacts(name), crm_companies(name), crm_pipeline_stages(name, color)')
+      .in('pipeline_id', scopedIds).is('deleted_at', null)
+      .gte('created_at', periodStart).lte('created_at', periodEnd);
+    if (ownerId) dealsQuery = dealsQuery.eq('created_by', ownerId);
     const [stagesRes, dealsRes] = await Promise.all([
       supabase.from('crm_pipeline_stages').select('id, pipeline_id, name, position, is_win_stage').in('pipeline_id', scopedIds),
-      supabase.from('crm_deals')
-        .select('id, title, value, status, stage_id, pipeline_id, created_at, crm_contacts(name), crm_companies(name), crm_pipeline_stages(name, color)')
-        .in('pipeline_id', scopedIds).is('deleted_at', null)
-        .gte('created_at', periodStart).lte('created_at', periodEnd),
+      dealsQuery,
     ]);
 
     const stages = stagesRes.data || [];

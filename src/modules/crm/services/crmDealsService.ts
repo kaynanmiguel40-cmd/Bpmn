@@ -468,6 +468,17 @@ export async function moveDealToStage(dealId: string, stageId: string): Promise<
     scheduleStepsForDeal(dealId, stageId).catch(console.warn);
   }
 
+  // Reativacao: arrastar pra etapa "Reativou" (win stage da Nurturing) clona o
+  // lead pro Geral como Cliente ganho, mantendo o original aqui.
+  if (result && (targetStage as { name?: string } | null)?.name === 'Reativou') {
+    try {
+      await cloneDealToGeralAsClient(dealId);
+      (result as CrmDeal & { _reactivated?: boolean })._reactivated = true;
+    } catch (e) {
+      console.warn('Reativacao (clone pro Geral) falhou:', e);
+    }
+  }
+
   return result;
 }
 
@@ -541,124 +552,66 @@ interface PipelineConfig {
  * Marca o deal como perdido E o move pra pipeline configurada como destino
  * de "perdidos" (handoff pra reativacao futura).
  */
-export async function markDealAsLost(dealId: string, reason = ''): Promise<CrmDeal | null> {
+export async function markDealAsLost(dealId: string, reason = '', resgatavel: boolean | null = null): Promise<CrmDeal | null> {
   const { data: current } = await supabase
     .from('crm_deals')
     .select('pipeline_id, stage_id')
     .eq('id', dealId)
     .single();
-
   const cur = current as { pipeline_id?: string | null; stage_id?: string | null } | null;
-  const settings = getCrmWorkspaceSettings();
-  let targetPipelineId = cur?.pipeline_id ?? null;
-  let targetStageId = cur?.stage_id ?? null;
-  let movedTo: 'nurturing' | 'descarte' | 'excluida' | null = null;
 
-  // Prioridade 1: se a propria pipeline tem estagio "Excluida", deal lost
-  // vai pra la (continua visivel no Kanban da pipeline original).
-  if (cur?.pipeline_id) {
-    const { data: discardStage } = await supabase
-      .from('crm_pipeline_stages')
-      .select('id, name')
-      .eq('pipeline_id', cur.pipeline_id)
-      .ilike('name', 'exclu%')
-      .maybeSingle();
+  // Destino: pipeline Nurturing. A decisao "resgatavel?" (vinda do modal de
+  // perda) roteia: SIM -> "Em Nutricao" (entra ATIVO na cadencia de nutricao);
+  // NAO -> "Descarte" (fica perdido, parado, sem trabalho). Substituiu o modelo
+  // antigo de cair na "Triagem" e so virar ativo ao arrastar pra frente.
+  const { data: nurturing } = await supabase
+    .from('crm_pipelines')
+    .select('id, crm_pipeline_stages(id, name, position)')
+    .eq('name', 'Nurturing')
+    .maybeSingle();
 
-    if (discardStage && (discardStage as { id?: string }).id) {
-      const stageId = (discardStage as { id: string }).id;
-      const nowIso = new Date().toISOString();
-      const updatePayload: Record<string, unknown> = {
-        status: 'lost',
-        probability: 0,
-        lost_reason: reason,
-        closed_at: nowIso,
-        updated_at: nowIso,
-      };
-      if (stageId !== cur.stage_id) updatePayload.stage_id = stageId;
-
-      const { data: updated, error: updErr } = await supabase
-        .from('crm_deals')
-        .update(updatePayload)
-        .eq('id', dealId)
-        .select()
-        .single();
-      if (updErr) throw new Error(updErr.message);
-
-      if (stageId !== cur.stage_id && cur.pipeline_id) {
-        await recordStageTransition(dealId, cur.stage_id || null, stageId, cur.pipeline_id);
-      }
-      const dealRow = updated as unknown as CrmDealRow;
-      const result = dbToCrmDeal(dealRow) as (CrmDeal & { movedTo?: 'excluida' | null });
-      result.movedTo = 'excluida';
-      return result;
-    }
+  let nurturingId: string | null = null;
+  let nutricaoStageId: string | null = null;
+  let descarteStageId: string | null = null;
+  if (nurturing) {
+    const n = nurturing as { id: string; crm_pipeline_stages?: Array<{ id: string; name: string; position: number }> };
+    const stages = (n.crm_pipeline_stages || []).slice().sort((a, b) => a.position - b.position);
+    nurturingId = n.id;
+    nutricaoStageId = (stages.find(s => /nutri/i.test(s.name)) || stages[0])?.id || null;
+    descarteStageId = (stages.find(s => /descarte/i.test(s.name)) || stages[stages.length - 1])?.id || null;
   }
 
-  let pipelineConfig: PipelineConfig | null = null;
-
-  if (settings.lostTargetPipelineId) {
-    pipelineConfig = {
-      pipelineId: settings.lostTargetPipelineId,
-      entryStageId: settings.lostTargetStageId || null,
-      discardStageId: settings.discardStageId || null,
-    };
-  } else {
-    const { data: nurturing } = await supabase
-      .from('crm_pipelines')
-      .select('id, crm_pipeline_stages(id, name, position)')
-      .eq('name', 'Nurturing')
-      .maybeSingle();
-
-    if (nurturing) {
-      const nurturingData = nurturing as { id: string; crm_pipeline_stages?: Array<{ id: string; name: string; position: number }> };
-      const stages = (nurturingData.crm_pipeline_stages || []).slice().sort((a, b) => a.position - b.position);
-      // Entrada = "Triagem" (1a etapa): o perdido cai la COMO PERDIDO e so vira
-      // ativo quando alguem o arrasta pra frente (moveDealToStage reabre). Antes
-      // caia direto em "Em Nutricao" (trabalho ativo), pulando a triagem.
-      const entrada = stages.find(s => s.name === 'Triagem') || stages[0];
-      const descarte = stages.find(s => s.name === 'Descarte') || stages[stages.length - 1];
-      pipelineConfig = {
-        pipelineId: nurturingData.id,
-        entryStageId: entrada?.id || null,
-        discardStageId: descarte?.id || null,
-      };
-    }
-  }
+  const goToNutricao = resgatavel === true && !!nutricaoStageId;
+  const targetStageId = goToNutricao ? nutricaoStageId : descarteStageId;
 
   const nowIso = new Date().toISOString();
-  const updatePayload: Record<string, unknown> = {
-    status: 'lost',
-    probability: 0,
-    lost_reason: reason,
-    closed_at: nowIso,
-    updated_at: nowIso,
-  };
+  const updatePayload: Record<string, unknown> = { lost_reason: reason, updated_at: nowIso };
+  let movedTo: 'nurturing' | 'descarte' | null = null;
+  let targetPipelineId = cur?.pipeline_id ?? null;
 
-  if (pipelineConfig && cur) {
-    const isAlreadyInTarget = cur.pipeline_id === pipelineConfig.pipelineId;
+  if (nurturingId && targetStageId && cur) {
+    targetPipelineId = nurturingId;
+    updatePayload.stage_id = targetStageId;
+    if (nurturingId !== cur.pipeline_id) updatePayload.pipeline_id = nurturingId;
 
-    if (isAlreadyInTarget) {
-      if (pipelineConfig.discardStageId && pipelineConfig.discardStageId !== cur.stage_id) {
-        targetStageId = pipelineConfig.discardStageId;
-        movedTo = 'descarte';
-      }
-    } else if (pipelineConfig.entryStageId) {
-      targetPipelineId = pipelineConfig.pipelineId;
-      targetStageId = pipelineConfig.entryStageId;
+    if (goToNutricao) {
+      // Resgatavel: ativo em Em Nutricao. Reabre (open) pra cadencia rodar.
+      updatePayload.status = 'open';
+      updatePayload.probability = 10;
+      updatePayload.closed_at = null;
       movedTo = 'nurturing';
+    } else {
+      // Nao resgatavel: descartado de vez, perdido e parado.
+      updatePayload.status = 'lost';
+      updatePayload.probability = 0;
+      updatePayload.closed_at = nowIso;
+      movedTo = 'descarte';
     }
-
-    // Entrar na Nurturing mantem o lead PERDIDO (cai em "Triagem"). Ele so vira
-    // ativo quando alguem o arrasta pra frente na Nurturing — moveDealToStage
-    // reabre lost -> open ao mover pra etapa nao-ganho. Sem trabalho, fica na
-    // triagem como perdido.
-
-    if (targetPipelineId !== cur.pipeline_id) {
-      updatePayload.pipeline_id = targetPipelineId;
-    }
-    if (targetStageId !== cur.stage_id) {
-      updatePayload.stage_id = targetStageId;
-    }
+  } else {
+    // Sem pipeline Nurturing: so marca perdido no lugar.
+    updatePayload.status = 'lost';
+    updatePayload.probability = 0;
+    updatePayload.closed_at = nowIso;
   }
 
   const { data, error } = await supabase
@@ -667,25 +620,63 @@ export async function markDealAsLost(dealId: string, reason = ''): Promise<CrmDe
     .eq('id', dealId)
     .select()
     .single();
-
   if (error) throw new Error(error.message);
 
   if (cur && targetStageId && targetStageId !== cur.stage_id) {
-    await supabase.from('crm_deal_stage_history').insert({
-      deal_id: dealId,
-      from_stage_id: cur.stage_id || null,
-      to_stage_id: targetStageId,
-      pipeline_id: targetPipelineId,
-    });
+    await recordStageTransition(dealId, cur.stage_id || null, targetStageId, targetPipelineId || '');
+  }
+
+  // Cadencia: descartado sai da fila; resgatavel agenda a cadencia de Em Nutricao.
+  cancelPendingStepsForDeal(dealId).catch(console.warn);
+  if (goToNutricao && targetStageId) {
+    scheduleStepsForDeal(dealId, targetStageId).catch(console.warn);
   }
 
   const result = dbToCrmDeal(data as CrmDealRow);
   if (result) result._movedTo = movedTo;
-  // Perdido sai da fila inteiro. Ele vai pra Triagem da Nurturing e so volta a
-  // ser trabalhado quando alguem o arrastar pra frente — que dispara
-  // moveDealToStage e agenda a cadencia da etapa nova.
-  cancelPendingStepsForDeal(dealId).catch(console.warn);
   return result;
+}
+
+/**
+ * Reativacao: clona um lead da Nurturing pro pipeline "Geral" como CLIENTE
+ * (ganho), MANTENDO o original na Nurturing. Copia fiel do lead (contato,
+ * empresa, valor, dono, etc) — so troca pipeline/etapa/status. Disparado ao
+ * arrastar o lead pra etapa "Reativado" (ver moveDealToStage).
+ */
+async function cloneDealToGeralAsClient(dealId: string): Promise<void> {
+  const { data: orig } = await supabase.from('crm_deals').select('*').eq('id', dealId).single();
+  if (!orig) return;
+
+  const { data: geral } = await supabase
+    .from('crm_pipelines')
+    .select('id, crm_pipeline_stages(id, name, position, is_win_stage)')
+    .eq('name', 'Geral')
+    .maybeSingle();
+  if (!geral) return;
+  const g = geral as { id: string; crm_pipeline_stages?: Array<{ id: string; name: string; position: number; is_win_stage: boolean }> };
+  const gStages = (g.crm_pipeline_stages || []).slice().sort((a, b) => a.position - b.position);
+  const winStage = gStages.find(s => s.is_win_stage) || gStages[gStages.length - 1];
+  if (!winStage) return;
+
+  const nowIso = new Date().toISOString();
+  const clone: Record<string, unknown> = { ...(orig as Record<string, unknown>) };
+  delete clone.id;
+  delete clone.created_at;
+  delete clone.updated_at;
+  delete clone.deleted_at;
+  clone.pipeline_id = g.id;
+  clone.stage_id = winStage.id;
+  clone.status = 'won';
+  clone.probability = 100;
+  clone.closed_at = nowIso;
+  clone.lost_reason = null;
+  clone.churned_at = null;
+  clone.origin_deal_id = dealId; // linka o Cliente do Geral ao lead da Nurturing que o gerou
+
+  const { data: inserted, error } = await supabase.from('crm_deals').insert(clone).select('id').single();
+  if (error) throw new Error(error.message);
+  const newId = (inserted as { id?: string } | null)?.id;
+  if (newId) await recordStageTransition(newId, null, winStage.id, g.id);
 }
 
 /**

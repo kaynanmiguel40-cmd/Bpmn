@@ -13,9 +13,6 @@
  *                   já são espelhadas pro Google (push, em crmActivitiesService)
  *                   e aqui também PUXAMOS os eventos do Google (pull,
  *                   useGCalEvents) pra mostrar junto.
- *   Time          - placar do time (ligações/reuniões/contratos, meta do mês,
- *                   agendado/atrasados do time inteiro) + tabela buscável de
- *                   todas as atividades (qualquer vendedor, qualquer período).
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -27,8 +24,6 @@ import LeadHistoryPanel from '../components/agenda/LeadHistoryPanel';
 import { WorkQueue } from '../components/agenda/WorkQueue';
 import { useSnoozeActivity, useNextStage, useNextActivityForLead } from '../hooks/useWorkQueue';
 import { toast } from '../../../contexts/ToastContext';
-import { TeamDailyBriefing } from '../components/agenda/TeamDailyBriefing';
-import { TeamActivitiesTable } from '../components/agenda/TeamActivitiesTable';
 import { ActivityFormModal } from '../components/ActivityFormModal';
 import { CompleteActivityModal } from '../components/CompleteActivityModal';
 import { ExecuteTaskModal } from '../components/ExecuteTaskModal';
@@ -763,10 +758,10 @@ export default function CrmAgendaPage() {
   const [sp] = useSearchParams();
   const temAlvo = ['dealId', 'contactId', 'date', 'view'].some(k => sp.get(k));
   const [rawTab, setTab] = useUrlState('visao', temAlvo ? 'cal' : 'fila');
-  const tab = rawTab === 'mine' ? 'cal' : rawTab;
+  const tab = (rawTab === 'mine' || rawTab === 'time' || rawTab === 'team') ? 'cal' : rawTab;
 
   return (
-    <div className={tab !== 'time' && tab !== 'team' ? 'h-full flex flex-col' : ''}>
+    <div className="h-full flex flex-col">
       <CrmPageHeader
         title="Agenda"
         subtitle="O que fazer agora"
@@ -774,25 +769,11 @@ export default function CrmAgendaPage() {
           <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100/80 dark:bg-slate-800/60">
             <TabButton active={tab === 'fila'} onClick={() => setTab('fila')}>Fila</TabButton>
             <TabButton active={tab === 'cal'} onClick={() => setTab('cal')}>Calendário</TabButton>
-            <TabButton active={tab === 'time' || tab === 'team'} onClick={() => setTab('time')}>Time</TabButton>
           </div>
         }
       />
 
-      {tab === 'fila' ? (
-        <QueueTab />
-      ) : tab === 'cal' ? (
-        <MyDayCalendar />
-      ) : (
-        <div className="max-w-6xl mx-auto space-y-6">
-          <div className="crm-glass rounded-2xl p-5">
-            <TeamDailyBriefing />
-          </div>
-          <div className="crm-glass rounded-2xl p-5">
-            <TeamActivitiesTable />
-          </div>
-        </div>
-      )}
+      {tab === 'fila' ? <QueueTab /> : <MyDayCalendar />}
     </div>
   );
 }

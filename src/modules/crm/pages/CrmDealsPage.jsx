@@ -265,8 +265,8 @@ export function CrmDealsPage() {
         open={!!lostDealId}
         onClose={() => setLostDealId(null)}
         isPending={lostMutation.isPending}
-        onConfirm={(reason) => {
-          lostMutation.mutate({ dealId: lostDealId, reason }, {
+        onConfirm={(reason, resgatavel) => {
+          lostMutation.mutate({ dealId: lostDealId, reason, resgatavel }, {
             onSuccess: () => setLostDealId(null),
           });
         }}

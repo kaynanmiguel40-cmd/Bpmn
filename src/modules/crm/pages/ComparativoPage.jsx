@@ -8,25 +8,25 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
-} from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import {
-  Target, TrendingUp, TrendingDown, Gauge, CalendarDays, Flame, X, ArrowDown,
+  Target, Check, Clock, Users, Flame, X,
 } from 'lucide-react';
 import {
   PLAN_MONTHS, PREMISSAS, PLAN_GOAL_MRR, PLAN_POSITION, COMPARECIMENTO_RATE,
-  planMonthLabel, planMonthLong, reajustarTrajetoriaMrr,
-  isBusinessDay, dailyLeadTarget, proratedPlanForPeriod, unitFunnelSteps,
+  planMonthLabel, planMonthLong,
+  proratedPlanForPeriod,
 } from '../../../lib/commercialPlan';
 import { getCommercialPlanReal } from '../../../lib/commercialPlanReal';
 import {
   PLAN_PHASES, actionId, TOTAL_ACTIONS, getPlanActionsState, setPlanActionDone,
 } from '../../../lib/commercialPlanActions';
 import { useProfile } from '../../../hooks/useProfile';
+import { useTeamMembers } from '../../../hooks/queries';
 import { FunnelPrevistoReal } from '../components/FunnelPrevistoReal';
-import { useFunnelStageDeals, useSalesFunnel } from '../hooks/useCrmQueries';
+import { TeamDailyBriefing } from '../components/agenda/TeamDailyBriefing';
+import { TeamActivitiesTable } from '../components/agenda/TeamActivitiesTable';
+import { useFunnelStageDeals, useSalesFunnel, useSalesCycle, useDailyScoreboard } from '../hooks/useCrmQueries';
 import { toast } from '../../../contexts/ToastContext';
 
 const fmtBRL = (v) => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
@@ -39,13 +39,13 @@ function gapTone(real, prev) {
   return 'text-rose-600 dark:text-rose-400';
 }
 
-// Status nunca só na cor — sempre acompanhado de um ícone (mesma linguagem do
-// selo acima/dentro/abaixo do Acompanhamento da meta).
-function gapIcon(real, prev) {
-  if (real == null) return null;
-  if (real >= prev) return TrendingUp;
-  if (real >= prev * 0.7) return Gauge;
-  return TrendingDown;
+// Cor da barra da taxa de conversao (bg, nao text): verde = bateu a meta,
+// amarelo = quase la (>=70% da meta), vermelho = longe, cinza = sem dado.
+function barTone(real, meta) {
+  if (real == null) return 'bg-slate-300 dark:bg-slate-600';
+  if (real >= meta) return 'bg-emerald-500';
+  if (real >= meta * 0.7) return 'bg-amber-500';
+  return 'bg-rose-500';
 }
 
 // ---------- Acompanhamento da meta do mes (diario / semanal) ----------
@@ -61,49 +61,26 @@ function MetaMiniCard({ label, hint, children }) {
 }
 
 function MetaMensalPanel({ planRow, currentReal }) {
-  const [metric, setMetric] = useState('clientes'); // 'clientes' (ativos) | 'mrr' (R$)
-  const isMrr = metric === 'mrr';
-
-  // Meta = ALVO ACUMULADO do plano (clientes ativos ou MRR total do mes), FIXO.
-  // O alvo NAO muda — quem anda e o Real (quantos ja sao) e, por consequencia,
-  // o "faltam". Antes o card mostrava so o "faltam" (43 ativos − ganhos), que
-  // encolhia a cada venda e parecia a meta mudando. Agora a meta e o alvo fixo
-  // e o "faltam" e claramente progresso, nao meta.
-  // Alvo ACUMULADO do mês (fixo) e onde o Real está hoje.
-  const metaAlvo = isMrr ? (planRow.mrr || 0) : (planRow.ativos || 0);
-  const realHoje = isMrr ? (currentReal?.mrrAccum ?? 0) : (currentReal?.clientesAccum ?? 0);
-  // NÚMERO ACIONÁVEL: quanto falta fechar ESTE mês pra bater o alvo — a "meta do
-  // mês" prática (some a cada venda). O alvo cumulativo (ex.: 43) fica de contexto.
-  const necessario = Math.max(0, metaAlvo - realHoje);
-  const fmt = (v) => (isMrr ? fmtBRL(v) : `${Math.round(v || 0)}`);
-  const unitNec = isMrr ? 'de MRR este mês' : (Math.round(necessario) === 1 ? 'venda este mês' : 'vendas este mês');
-  const alvoUnit = isMrr ? 'de MRR' : 'clientes ativos';
-  const pct = metaAlvo > 0 ? Math.min(100, Math.round((realHoje / metaAlvo) * 100)) : 0;
+  // So clientes ativos — sem alternancia com MRR. O ALVO acumulado do mes e
+  // FIXO (nao muda); quem anda e o Real (quantos ja sao) e, por consequencia,
+  // o "faltam". O "faltam" e progresso rumo ao alvo, nao o alvo.
+  const alvo = planRow.ativos || 0;                  // alvo cumulativo de clientes ativos
+  const realHoje = currentReal?.clientesAccum ?? 0;  // quantos ja sao
+  const necessario = Math.max(0, alvo - realHoje);
+  const unitNec = Math.round(necessario) === 1 ? 'cliente este mês' : 'clientes este mês';
+  const pct = alvo > 0 ? Math.min(100, Math.round((realHoje / alvo) * 100)) : 0;
 
   return (
     <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <Flame className="w-4 h-4 text-fyness-primary" />
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Meta do mes · {planMonthLong(planRow.m)}</h3>
-        </div>
-        <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-[12px] font-semibold">
-          {[['clientes', 'Clientes'], ['mrr', 'MRR']].map(([m, lbl]) => (
-            <button
-              key={m}
-              onClick={() => setMetric(m)}
-              className={`px-3 py-1.5 transition-colors ${metric === m ? 'bg-fyness-primary text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-            >
-              {lbl}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center gap-2 mb-4">
+        <Flame className="w-4 h-4 text-fyness-primary" />
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Alvo do mês · {planMonthLong(planRow.m)}</h3>
       </div>
 
       <MetaMiniCard
-        label={isMrr ? 'MRR a fechar este mês' : 'Vendas necessárias este mês'}
-        hint={`alvo: ${fmt(metaAlvo)} ${alvoUnit} · ${fmt(realHoje)} hoje`}>
-        <span className="text-2xl font-bold text-slate-900 dark:text-white">{fmt(necessario)}</span>
+        label="Faltam pro alvo do mês"
+        hint={`alvo: ${Math.round(alvo)} clientes ativos · ${Math.round(realHoje)} hoje`}>
+        <span className="text-2xl font-bold text-slate-900 dark:text-white">{Math.round(necessario)}</span>
         <span className="text-xs text-slate-500 dark:text-slate-400 ml-1">{unitNec}</span>
         {/* Barra de progresso real rumo ao alvo fixo */}
         <div className="mt-2.5 h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
@@ -111,59 +88,6 @@ function MetaMensalPanel({ planRow, currentReal }) {
         </div>
       </MetaMiniCard>
     </section>
-  );
-}
-
-// ---------- Curva de MRR ----------
-function MrrChart({ real }) {
-  const currentM = real.currentM;
-  const realMrrNow = currentM ? real.byMonth[currentM]?.mrrAccum ?? null : null;
-  // Reajusta a trajetoria futura a partir da posicao REAL de agora — "como
-  // se o plano reiniciasse do zero" hoje — preservando o formato original
-  // ate a MESMA meta final. Meses ja decorridos ficam intocados.
-  const previstoPorMes = currentM != null && realMrrNow != null
-    ? reajustarTrajetoriaMrr(PLAN_MONTHS, currentM, realMrrNow, PLAN_GOAL_MRR)
-    : PLAN_MONTHS.map(p => p.mrr);
-  const reajustou = currentM != null && realMrrNow != null && Math.round(realMrrNow) !== Math.round(PLAN_MONTHS.find(p => p.m === currentM)?.mrr ?? 0);
-
-  const data = [
-    { label: 'hoje', prev: PLAN_POSITION.mrr, real: PLAN_POSITION.mrr },
-    ...PLAN_MONTHS.map((p, i) => ({
-      label: planMonthLabel(p.m),
-      prev: previstoPorMes[i],
-      real: real.byMonth[p.m] ? real.byMonth[p.m].mrrAccum : null,
-    })),
-  ];
-  return (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Trajetoria de MRR</h3>
-        <span className="text-[12px] text-slate-500 dark:text-slate-400">{fmtBRL(PLAN_POSITION.mrr)} → {fmtK(PLAN_GOAL_MRR)} (meta)</span>
-      </div>
-      {reajustou && (
-        <p className="text-[12px] text-fyness-primary font-medium mb-2">
-          Previsto reajustado a partir de agora ({fmtBRL(realMrrNow)}) — mesma meta final, novo ritmo daqui pra frente.
-        </p>
-      )}
-      <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={data} margin={{ top: 10, right: 8, left: -8, bottom: 0 }}>
-          <CartesianGrid className="stroke-slate-200 dark:stroke-slate-700" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#94a3b8" />
-          <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} tick={{ fontSize: 10 }} stroke="#94a3b8" />
-          <Tooltip
-            formatter={(v) => (v == null ? '—' : fmtBRL(v))}
-            contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
-          />
-          <ReferenceLine y={PLAN_GOAL_MRR} stroke="#f43f5e" strokeDasharray="4 4" label={{ value: 'Meta R$100k', position: 'insideTopRight', fontSize: 10, fill: '#f43f5e' }} />
-          <Line type="monotone" dataKey="prev" name="Previsto" stroke="#3b82f6" strokeWidth={2} strokeDasharray="5 4" dot={false} />
-          <Line type="monotone" dataKey="real" name="Real" stroke="#10b981" strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} />
-        </LineChart>
-      </ResponsiveContainer>
-      <div className="flex items-center gap-4 mt-1 text-[12px]">
-        <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400"><span className="w-3 border-t-2 border-dashed border-blue-500" /> Previsto</span>
-        <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400"><span className="w-3 border-t-2 border-emerald-500" /> Real</span>
-      </div>
-    </div>
   );
 }
 
@@ -211,67 +135,6 @@ function MonthlyTable({ real }) {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-// ---------- Funil unitario (o que custa 1 venda) ----------
-/**
- * Cascata reversa: quantos leads o topo precisa entregar pra sair 1 venda.
- *
- * Mesmas taxas do plano (FUNIL_UNITARIO_RATES alimenta PREMISSAS e os volumes de
- * PLAN_MONTHS), entao este card e a leitura unitaria do card ao lado — nao uma
- * segunda visao concorrente.
- */
-function FunilUnitario() {
-  const steps = unitFunnelSteps(1);
-  // Tudo inteiro e pra CIMA: nao existe 3,3 reuniao nem 27,8 lead. Cada etapa e
-  // um MINIMO — arredondar pra baixo em qualquer uma nao entrega a venda.
-  // Efeito colateral aceito: os inteiros exibidos nao se multiplicam exatamente
-  // pelas taxas ao lado (5 x 80% = 4, mas 7 x 60% = 4,2 -> 5).
-  const fmtQtd = n => Math.ceil(n);
-
-  return (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
-      <div className="flex items-start justify-between gap-3 mb-1">
-        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">O que custa 1 venda</h3>
-      </div>
-      <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-3">
-        Minimo por etapa, de tras pra frente, a partir de 1 cliente fechado.
-      </p>
-
-      <div className="space-y-1">
-        {steps.map((s, i) => (
-          <div key={s.key}>
-            <div className={`flex items-center justify-between rounded-lg px-2.5 py-2 ${
-              s.key === 'venda'
-                ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20'
-                : 'bg-slate-50 dark:bg-slate-800/60'
-            }`}>
-              <div className="min-w-0">
-                <div className={`text-xs font-medium ${s.key === 'venda' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                  {s.label}
-                </div>
-                <div className="text-[12px] text-slate-500 dark:text-slate-400">{s.sub}</div>
-              </div>
-              <span className={`text-sm font-bold tabular-nums shrink-0 ${s.key === 'venda' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-100'}`}>
-                {fmtQtd(s.qtd)}
-              </span>
-            </div>
-            {/* Taxa que leva pra proxima etapa (a ultima nao tem proxima). */}
-            {i < steps.length - 1 && (
-              <div className="flex items-center gap-1.5 pl-2.5 py-0.5 text-[12px] text-slate-500 dark:text-slate-400">
-                <ArrowDown className="w-3 h-3 shrink-0" />
-                <span className="tabular-nums font-medium">{Math.round(s.pct * 100)}%</span>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-3">
-        Taxas proprias — o plano do card ao lado segue com as premissas originais.
-      </p>
     </div>
   );
 }
@@ -343,8 +206,8 @@ function DealsDrawer({ title, subtitle, deals = [], isLoading, onClose }) {
  * coorte que o funil conta (negócios criados no mês que ALCANÇARAM a etapa) —
  * por isso a lista sempre casa com o número exibido.
  */
-function FunnelDrillDrawer({ step, range, onClose }) {
-  const { data: deals = [], isLoading } = useFunnelStageDeals(range, 'sales', step?.key);
+function FunnelDrillDrawer({ step, range, ownerId, onClose }) {
+  const { data: deals = [], isLoading } = useFunnelStageDeals(range, 'sales', step?.key, ownerId);
   if (!step) return null;
   const total = deals.reduce((s, d) => s + (d.value || 0), 0);
   return (
@@ -358,11 +221,15 @@ function FunnelDrillDrawer({ step, range, onClose }) {
   );
 }
 
-function FunnelCompare({ period }) {
+function FunnelCompare({ period, ownerId, setOwnerId, vendedores = [] }) {
   const [drillStep, setDrillStep] = useState(null); // { key, label } — etapa clicada
+  // O filtro de vendedor (ownerId) sobe pra pagina e vale pro lado REAL do funil,
+  // pras Taxas de conversao aqui, e pro placar do Time. So o PREVISTO/meta fica
+  // do time — a meta de volume nao se divide por pessoa.
 
-  // REAL do periodo escolhido (nao do mes do plano) — mesma engine do funil.
-  const { data: f } = useSalesFunnel(period?.range, 'sales');
+  // REAL do periodo, filtrado pelo vendedor (ownerId; "Todos" = time todo).
+  // Alimenta o lado REAL do funil E as taxas. O previsto vem do plano (prev).
+  const { data: f } = useSalesFunnel(period?.range, 'sales', ownerId);
   // PREVISTO prorrateado pelos dias uteis do periodo (soma a fatia de cada mes).
   const prev = useMemo(
     () => proratedPlanForPeriod(period?.start, period?.end),
@@ -373,6 +240,7 @@ function FunnelCompare({ period }) {
   // Sem estagio de "reuniao realizada" na pipeline, acontecidas cai pros ganhos:
   // as duas taxas que dependem dela virariam tautologia (fechamento = 100% fixo).
   // Nesse caso ficam indisponiveis (null -> "—") em vez de mostrar numero falso.
+  // Real filtrado pelo vendedor (f); o previsto/meta vem do plano.
   const heldTracked = !!f?.meetingHeldTracked;
   const premReal = {
     qualif: pctOf(f?.qualified || 0, f?.lead || 0),
@@ -409,58 +277,79 @@ function FunnelCompare({ period }) {
         onStepClick={period ? (key, label) => setDrillStep({ key, label }) : undefined}
       />
 
+      {/* Taxas de conversao — grafico idiota-proof: barra = real, risco preto =
+          meta do plano. Barra passou do risco = bateu (verde). Substituiu a
+          antiga lista de texto "Conversoes". */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
-        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">Conversoes · previsto vs real</h3>
-        <div className="space-y-2.5">
-          {PREMISSAS.map(prem => {
-            // Reativacao nunca sai de null — nao e uma metrica ao vivo como as
-            // outras 3, entao ganha um tratamento visivelmente diferente (nao
-            // pode competir em peso visual com numero real).
-            if (prem.key === 'reativacao') {
-              return (
-                <div key={prem.key} className="flex items-center justify-between border border-dashed border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 opacity-60">
-                  <div>
-                    <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{prem.label}</div>
-                    <div className="text-[12px] text-slate-500 dark:text-slate-400">{prem.sub}</div>
-                  </div>
-                  <span className="text-[12px] font-medium text-slate-500 dark:text-slate-400 italic">em breve</span>
-                </div>
-              );
-            }
-            const realPct = premReal[prem.key];
-            const Icon = realPct == null ? null : gapIcon(realPct, prem.pct);
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Taxas de conversão</h3>
+          {/* Filtro de vendedor — so afeta as taxas (o funil de volume fica do time). */}
+          <select
+            value={ownerId || ''}
+            onChange={e => setOwnerId(e.target.value || null)}
+            title="Ver as taxas de um vendedor ou do time todo"
+            className="shrink-0 text-[12px] font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-fyness-primary"
+          >
+            <option value="">Todos</option>
+            {vendedores.map(m => (
+              <option key={m.id} value={m.authUserId}>{m.name}</option>
+            ))}
+          </select>
+        </div>
+        <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4">
+          Quanto de cada etapa passou pra próxima. O <strong>risco preto</strong> é a meta — a barra passou dele = você bateu.
+        </p>
+        <div className="space-y-4">
+          {PREMISSAS.filter(prem => prem.key !== 'reativacao').map(prem => {
+            const real = premReal[prem.key]; // 0-100, ou null quando ainda nao da pra medir
+            const meta = prem.pct;           // 0-100 (plano)
+            const bateu = real != null && real >= meta;
             return (
-              <div key={prem.key} className="flex items-center justify-between border-b border-slate-50 dark:border-slate-700/40 pb-2 last:border-0">
-                <div>
-                  <div className="text-xs font-medium text-slate-700 dark:text-slate-200">{prem.label}</div>
-                  <div className="text-[12px] text-slate-500 dark:text-slate-400">{prem.sub}</div>
+              <div key={prem.key}>
+                <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                  <div className="min-w-0">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{prem.label}</span>
+                    <span className="text-[12px] text-slate-500 dark:text-slate-400 ml-1.5">{prem.sub}</span>
+                  </div>
+                  <div className="text-right shrink-0 tabular-nums leading-tight">
+                    {real == null ? (
+                      <span className="text-[12px] text-slate-400 dark:text-slate-500 italic">sem dados ainda</span>
+                    ) : (
+                      <span className={`text-sm font-bold inline-flex items-center gap-1 justify-end ${gapTone(real, meta)}`}>
+                        {bateu && <Check className="w-3.5 h-3.5" />}
+                        {real}%
+                      </span>
+                    )}
+                    <span className="block text-[11px] text-slate-400 dark:text-slate-500">meta {meta}%</span>
+                  </div>
                 </div>
-                <div className="text-right tabular-nums">
-                  <span className={`text-sm font-bold inline-flex items-center gap-1 justify-end ${realPct == null ? 'text-slate-300 dark:text-slate-600' : gapTone(realPct, prem.pct)}`}>
-                    {Icon && <Icon className="w-3.5 h-3.5" />}
-                    {realPct == null ? '—' : `${realPct}%`}
-                  </span>
-                  <span className="text-[12px] text-slate-500 dark:text-slate-400"> / {prem.pct}%</span>
+                {/* Trilho: preenchimento = real; risco vertical = meta do plano */}
+                <div className="relative h-3.5 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
+                  {real != null && (
+                    <div className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${barTone(real, meta)}`}
+                      style={{ width: `${Math.min(100, real)}%` }} />
+                  )}
+                  <div className="absolute inset-y-0 w-[3px] rounded bg-slate-900/70 dark:bg-white/80"
+                    style={{ left: `calc(${Math.min(100, meta)}% - 1.5px)` }} title={`meta ${meta}%`} />
                 </div>
               </div>
             );
           })}
         </div>
-        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-3">Reativacao nao e rastreada direto no funil. Churn fora do escopo.</p>
+        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-4">
+          Comparecimento e fechamento só entram quando o funil marca que a reunião aconteceu. Reativação e churn ficam fora.
+        </p>
       </div>
 
-      {/* Funil unitario: nao depende do periodo nem do real — e o custo teorico
-          de 1 venda com as taxas conservadoras. */}
-      <FunilUnitario />
     </div>
 
     {/* Leads por tras do numero da etapa clicada (mesmo recorte do funil) */}
-    <FunnelDrillDrawer step={drillStep} range={period?.range} onClose={() => setDrillStep(null)} />
+    <FunnelDrillDrawer step={drillStep} range={period?.range} ownerId={ownerId} onClose={() => setDrillStep(null)} />
     </>
   );
 }
 
-// ---------- Ritmo diario de leads (dias uteis) ----------
+// ---------- Helpers de data (periodo de analise) ----------
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const toDateKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -470,150 +359,6 @@ const parseDateKey = (s) => {
   if (!y || !m || !d) return null;
   return new Date(y, m - 1, d);
 };
-const DOW_ABBR = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
-
-/**
- * Ritmo diario: quantos leads novos era pra gerar em cada DIA UTIL (meta do mes
- * do plano diluida nos dias uteis) vs quantos entraram de fato. Fim de semana
- * nao tem meta — ela se concentra nos dias uteis.
- *
- * Busca os leads do periodo UMA vez (mesma fonte do funil, step 'lead') e agrupa
- * por dia no cliente; clicar num dia so filtra a lista ja carregada.
- */
-function DailyLeadsPace({ period }) {
-  const [drillDay, setDrillDay] = useState(null); // { key, label }
-  const { data: leads = [], isLoading } = useFunnelStageDeals(period?.range, 'sales', 'lead');
-
-  // Leads reais agrupados pelo DIA de criacao (data local).
-  const realByDay = useMemo(() => {
-    const m = new Map();
-    for (const l of leads) {
-      if (!l.createdAt) continue;
-      const k = toDateKey(new Date(l.createdAt));
-      m.set(k, (m.get(k) || 0) + 1);
-    }
-    return m;
-  }, [leads]);
-
-  const rows = useMemo(() => {
-    const s = period?.start;
-    const e = period?.end;
-    if (!s || !e || e < s) return [];
-    const out = [];
-    const cur = new Date(s.getFullYear(), s.getMonth(), s.getDate());
-    let guard = 0;
-    while (cur <= e && guard < 400) {
-      const d = new Date(cur);
-      const key = toDateKey(d);
-      out.push({
-        key,
-        date: d,
-        util: isBusinessDay(d),
-        meta: dailyLeadTarget(d),
-        real: realByDay.get(key) || 0,
-      });
-      cur.setDate(cur.getDate() + 1);
-      guard++;
-    }
-    return out.reverse(); // mais recente primeiro
-  }, [period?.start, period?.end, realByDay]);
-
-  const totalMeta = rows.reduce((s, r) => s + r.meta, 0);
-  const totalReal = rows.reduce((s, r) => s + r.real, 0);
-  const uteis = rows.filter(r => r.util).length;
-
-  const dayDeals = useMemo(() => (
-    drillDay ? leads.filter(l => l.createdAt && toDateKey(new Date(l.createdAt)) === drillDay.key) : []
-  ), [drillDay, leads]);
-
-  return (
-    <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
-      <div className="mb-3">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="w-4 h-4 text-fyness-primary" />
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Ritmo diario de leads</h3>
-        </div>
-        <p className="text-[12px] text-slate-500 dark:text-slate-400">
-          Meta do mes diluida nos <strong>dias uteis</strong> · fim de semana nao tem meta
-        </p>
-      </div>
-
-      {/* Resumo do periodo */}
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
-          <div className="text-[12px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Dias uteis</div>
-          <div className="text-lg font-bold text-slate-800 dark:text-slate-100 tabular-nums">{uteis}</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
-          <div className="text-[12px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Previsto</div>
-          <div className="text-lg font-bold text-slate-500 dark:text-slate-400 tabular-nums">{Math.round(totalMeta)}</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2">
-          <div className="text-[12px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Real</div>
-          <div className={`text-lg font-bold tabular-nums ${gapTone(totalReal, totalMeta)}`}>{totalReal}</div>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-8">
-          <div className="w-5 h-5 border-2 border-fyness-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : rows.length === 0 ? (
-        <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-6">Periodo invalido — o fim precisa ser depois do inicio.</p>
-      ) : (
-        <div className="max-h-[280px] overflow-y-auto -mx-1 px-1">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-white dark:bg-slate-800">
-              <tr className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700/60">
-                <th className="py-1.5 text-left">Dia</th>
-                <th className="py-1.5 text-right">Meta</th>
-                <th className="py-1.5 text-right">Real</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => {
-                const clickable = r.real > 0;
-                const Icon = r.util ? gapIcon(r.real, r.meta) : null;
-                return (
-                  <tr
-                    key={r.key}
-                    onClick={clickable ? () => setDrillDay({ key: r.key, label: `Leads de ${pad2(r.date.getDate())}/${pad2(r.date.getMonth() + 1)}` }) : undefined}
-                    className={`border-b border-slate-50 dark:border-slate-700/40 ${r.util ? '' : 'opacity-40'} ${clickable ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30' : ''}`}
-                    title={clickable ? 'Ver os leads deste dia' : undefined}
-                  >
-                    <td className="py-1.5 text-left text-slate-600 dark:text-slate-300">
-                      <span className="capitalize">{DOW_ABBR[r.date.getDay()]}</span>{' '}
-                      <span className="tabular-nums">{pad2(r.date.getDate())}/{pad2(r.date.getMonth() + 1)}</span>
-                      {!r.util && <span className="ml-1 text-[12px] text-slate-400">fim de semana</span>}
-                    </td>
-                    <td className="py-1.5 text-right tabular-nums text-slate-500 dark:text-slate-400">
-                      {r.util ? r.meta.toFixed(1) : '—'}
-                    </td>
-                    <td className={`py-1.5 text-right tabular-nums font-semibold ${r.util ? gapTone(r.real, r.meta) : 'text-slate-500 dark:text-slate-400'}`}>
-                      <span className="inline-flex items-center gap-1 justify-end">
-                        {Icon && r.real > 0 && <Icon className="w-3 h-3" />}
-                        {r.real}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {drillDay && (
-        <DealsDrawer
-          title={drillDay.label}
-          subtitle={`${dayDeals.length} ${dayDeals.length === 1 ? 'lead novo' : 'leads novos'}`}
-          deals={dayDeals}
-          onClose={() => setDrillDay(null)}
-        />
-      )}
-    </section>
-  );
-}
 
 // ---------- Plano de acao · checklist (5W1H) ----------
 function CheckIcon() {
@@ -752,6 +497,159 @@ function PlanChecklist() {
   );
 }
 
+// ---------- Ciclo de vendas · tempo medio por etapa ----------
+function SalesCycleChart() {
+  const { data, isLoading } = useSalesCycle('sales');
+  const stages = data?.stages || [];
+  const maxDays = stages.reduce((m, s) => Math.max(m, s.avgDays), 0);
+  // Etapa mais lenta = gargalo de tempo (so destaca se houver mais de uma).
+  const slowest = stages.length > 1
+    ? stages.reduce((mx, s) => (!mx || s.avgDays > mx.avgDays ? s : mx), null)
+    : null;
+
+  const fmtDays = (d) => {
+    if (d == null) return '—';
+    if (d < 1) return '< 1 dia';
+    const n = Math.round(d);
+    return `${n} ${n === 1 ? 'dia' : 'dias'}`;
+  };
+
+  return (
+    <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Clock className="w-4 h-4 text-fyness-primary" />
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Ciclo de vendas · tempo por etapa</h3>
+      </div>
+      <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4">
+        Quanto tempo um negócio fica parado em cada etapa antes de avançar. Barra maior = trava mais.
+      </p>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="w-5 h-5 border-2 border-fyness-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : stages.length === 0 ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-6">
+          Ainda não há histórico suficiente pra medir o ciclo. Conforme os negócios avançam de etapa, o tempo aparece aqui.
+        </p>
+      ) : (
+        <div className="space-y-3.5">
+          {stages.map(s => {
+            const isSlow = slowest && s.stageId === slowest.stageId;
+            const w = maxDays > 0 ? Math.max(4, Math.round((s.avgDays / maxDays) * 100)) : 0;
+            return (
+              <div key={s.stageId}>
+                <div className="flex items-baseline justify-between gap-2 mb-1">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{s.name}</span>
+                  <span className="shrink-0 tabular-nums">
+                    <span className={`text-sm font-bold ${isSlow ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-100'}`}>{fmtDays(s.avgDays)}</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-1" title={`baseado em ${s.sample} ${s.sample === 1 ? 'negócio' : 'negócios'}`}>({s.sample})</span>
+                  </span>
+                </div>
+                <div className="h-3.5 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-500 ${isSlow ? 'bg-rose-500' : 'bg-fyness-primary'}`} style={{ width: `${w}%` }} />
+                </div>
+                {isSlow && <div className="mt-1 text-[11px] font-medium text-rose-500">é aqui que mais trava</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {data?.overallDays != null && (
+        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-4">
+          Do primeiro contato ao fechado: <strong className="text-slate-700 dark:text-slate-200">{fmtDays(data.overallDays)}</strong> em média.
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ---------- Peso do time por etapa (quem carrega o que) ----------
+const PESO_ETAPAS = [
+  { key: 'calls', label: 'Ligações' },
+  { key: 'messages', label: 'Mensagens' },
+  { key: 'meetings', label: 'Reuniões' },
+  { key: 'contracts', label: 'Fechamentos' },
+];
+
+/**
+ * Peso por etapa: a divisao de trabalho do time. Pra cada etapa (ligacoes,
+ * mensagens, reunioes, fechamentos), uma barra empilhada = 100% do time,
+ * segmentada por pessoa (cor do membro). Mostra quem CARREGA cada degrau —
+ * "Kaynan gerou 90% das reunioes, Lorena fechou 100%".
+ *
+ * Sempre do TIME TODO (ownerId null) — o peso e sobre a divisao entre todos,
+ * independente do filtro de vendedor la de cima. Fechamento e atribuido ao dono
+ * do negocio (closer); reuniao/ligacao/mensagem a quem fez.
+ */
+function PesoPorEtapa({ range }) {
+  const { data, isLoading } = useDailyScoreboard(range?.start || null, range?.end || null, null);
+  const sellers = (data?.sellers || []).filter(s => s.name && s.name !== 'Sem dono');
+
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
+      <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Peso por etapa · quem carrega o quê</h3>
+      <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4">
+        Quanto cada pessoa fez de cada etapa no período. A barra cheia = 100% do time.
+      </p>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="w-5 h-5 border-2 border-fyness-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : sellers.length === 0 ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-6">Sem atividade no período pra dividir.</p>
+      ) : (
+        <>
+          {/* Legenda de pessoas */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-4">
+            {sellers.map(s => (
+              <span key={s.uid} className="inline-flex items-center gap-1.5 text-[12px] text-slate-600 dark:text-slate-300">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                {s.name.split(' ')[0]}
+              </span>
+            ))}
+          </div>
+
+          <div className="space-y-3.5">
+            {PESO_ETAPAS.map(etapa => {
+              const total = sellers.reduce((sum, s) => sum + (s[etapa.key] || 0), 0);
+              return (
+                <div key={etapa.key}>
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{etapa.label}</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">{total} no total</span>
+                  </div>
+                  <div className="flex h-4 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700/60">
+                    {total === 0 ? (
+                      <div className="flex-1 flex items-center justify-center text-[10px] text-slate-400 dark:text-slate-500">sem dados</div>
+                    ) : (
+                      sellers.filter(s => (s[etapa.key] || 0) > 0).map(s => {
+                        const pct = (s[etapa.key] / total) * 100;
+                        return (
+                          <div
+                            key={s.uid}
+                            className="h-full flex items-center justify-center text-[10px] font-bold text-white overflow-hidden transition-all duration-500"
+                            style={{ width: `${pct}%`, background: s.color }}
+                            title={`${s.name}: ${s[etapa.key]} (${Math.round(pct)}%)`}
+                          >
+                            {pct >= 14 ? `${Math.round(pct)}%` : ''}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ComparativoPage() {
   const { data: real, isLoading } = useQuery({
     queryKey: ['commercialPlanReal'],
@@ -766,6 +664,12 @@ export default function ComparativoPage() {
     return toDateKey(new Date(t.getFullYear(), t.getMonth(), 1));
   });
   const [periodEnd, setPeriodEnd] = useState(() => toDateKey(new Date()));
+
+  // Filtro de vendedor (null = time todo), COMPARTILHADO entre as Taxas de
+  // conversao e o placar do Time — por isso vive aqui na pagina. Hooks antes do
+  // early return de loading (regras dos hooks).
+  const [ownerId, setOwnerId] = useState(null);
+  const { data: members = [] } = useTeamMembers();
 
   const period = useMemo(() => {
     const s = parseDateKey(periodStart);
@@ -793,6 +697,8 @@ export default function ComparativoPage() {
   const currentM = real.currentM || 1;
   const planRow = PLAN_MONTHS.find(p => p.m === currentM) || PLAN_MONTHS[0];
   const currentReal = real.byMonth[currentM] || null;
+  const vendedores = members.filter(m => m.authUserId);
+  const ownerName = ownerId ? (vendedores.find(m => m.authUserId === ownerId)?.name || null) : null;
 
   return (
     <div className="max-w-7xl mx-auto space-y-5">
@@ -844,10 +750,26 @@ export default function ComparativoPage() {
         </div>
       </div>
 
-      <FunnelCompare period={period} />
-      <DailyLeadsPace period={period} />
+      <FunnelCompare period={period} ownerId={ownerId} setOwnerId={setOwnerId} vendedores={vendedores} />
+
+      {/* Time · performance — SUBIU pra logo abaixo do funil/taxas: o filtro de
+          vendedor (no card de Taxas) vale tambem pro placar aqui — ligacoes,
+          mensagens, reunioes, contratos. O Ciclo de vendas DESCEU pra baixo. */}
+      <div className="flex items-center gap-2 pt-1">
+        <Users className="w-5 h-5 text-fyness-primary" />
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Time · performance</h2>
+      </div>
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
+        <TeamDailyBriefing range={period?.range} periodLabel={period?.label} ownerId={ownerId} ownerName={ownerName} />
+      </div>
+      <PesoPorEtapa range={period?.range} />
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
+        <TeamActivitiesTable range={period?.range} />
+      </div>
+
+      <SalesCycleChart />
+
       <MetaMensalPanel planRow={planRow} currentReal={currentReal} />
-      <MrrChart real={real} />
       <MonthlyTable real={real} />
       <PlanChecklist />
 

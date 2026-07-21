@@ -1850,7 +1850,9 @@ export function CrmPipelinePage() {
             <option value="all">Vendedor: todos</option>
             {myMemberId && <option value="_mine">Meus leads</option>}
             <option value="_none">Sem vendedor</option>
-            {crmMembers.map(m => (
+            {/* Tira o proprio usuario da lista nomeada — "Meus leads" ja e ele
+                (selecionar o proprio nome daria o mesmo resultado, virava dupla). */}
+            {crmMembers.filter(m => m.id !== myMemberId).map(m => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
@@ -1968,8 +1970,8 @@ export function CrmPipelinePage() {
         open={!!lostModalDealId}
         onClose={() => setLostModalDealId(null)}
         isPending={lostMutation.isPending}
-        onConfirm={(reason) => {
-          lostMutation.mutate({ dealId: lostModalDealId, reason }, {
+        onConfirm={(reason, resgatavel) => {
+          lostMutation.mutate({ dealId: lostModalDealId, reason, resgatavel }, {
             onSuccess: () => setLostModalDealId(null),
           });
         }}

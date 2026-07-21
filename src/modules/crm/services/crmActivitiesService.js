@@ -77,7 +77,7 @@ const activityService = createCRUDService({
 // ==================== FUNCOES EXPORTADAS ====================
 
 export async function getCrmActivities(filters = {}) {
-  const { search, type, contactId, dealId, completed, page, perPage = 25, sortBy, sortOrder } = filters;
+  const { search, type, contactId, dealId, completed, page, perPage = 25, sortBy, sortOrder, dateFrom, dateTo } = filters;
 
   let query = supabase
     .from('crm_activities')
@@ -98,6 +98,14 @@ export async function getCrmActivities(filters = {}) {
   }
   if (completed !== undefined && completed !== null) {
     query = query.eq('completed', completed);
+  }
+  // Recorte por data em start_date — a secao Time do Comparativo passa o periodo
+  // do filtro do topo da pagina. Opcional: sem eles, lista sem recorte de data.
+  if (dateFrom) {
+    query = query.gte('start_date', dateFrom);
+  }
+  if (dateTo) {
+    query = query.lte('start_date', dateTo);
   }
 
   // Whitelist camelCase (UI) -> coluna real; chave desconhecida cai no default

@@ -663,8 +663,8 @@ export function CrmDealDetailPage() {
         open={lostModalOpen}
         onClose={() => setLostModalOpen(false)}
         isPending={lostMutation.isPending}
-        onConfirm={(reason) => {
-          lostMutation.mutate({ dealId: deal.id, reason }, {
+        onConfirm={(reason, resgatavel) => {
+          lostMutation.mutate({ dealId: deal.id, reason, resgatavel }, {
             onSuccess: () => setLostModalOpen(false),
           });
         }}

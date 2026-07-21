@@ -105,7 +105,7 @@ function App() {
                     acesso — renderizar direto no index burlaria o bloqueio. */}
                 <Route index element={<Navigate to="/crm/pipeline" replace />} />
                 {/* Daily virou a aba "Time" da Agenda — mantem o link antigo funcionando. */}
-                <Route path="daily" element={<Navigate to="/crm/agenda?visao=team" replace />} />
+                <Route path="daily" element={<Navigate to="/crm/comparativo" replace />} />
                 <Route path="pipeline" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="pipeline/:pipelineId" element={<ErrorBoundary><CrmPipelinePage /></ErrorBoundary>} />
                 <Route path="deals" element={<ErrorBoundary><CrmDealsPage /></ErrorBoundary>} />
@@ -116,7 +116,7 @@ function App() {
                 <Route path="companies" element={<ErrorBoundary><CrmCompaniesPage /></ErrorBoundary>} />
                 <Route path="companies/:id" element={<ErrorBoundary><CrmCompanyDetailPage /></ErrorBoundary>} />
                 {/* Atividades virou a tabela da aba "Time" da Agenda — mantem o link antigo funcionando. */}
-                <Route path="activities" element={<Navigate to="/crm/agenda?visao=team" replace />} />
+                <Route path="activities" element={<Navigate to="/crm/comparativo" replace />} />
                 <Route path="agenda" element={<ErrorBoundary><CrmAgendaPage /></ErrorBoundary>} />
                 {/* O discador saiu: o operacional inteiro e a Agenda. Rotas
                     antigas redirecionam pra la em vez de dar 404 — link salvo,

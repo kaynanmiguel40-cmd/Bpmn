@@ -17,19 +17,18 @@
 
 import { useMemo, useState } from 'react';
 import {
-  UserPlus, BadgeCheck, CalendarPlus, CalendarCheck, Crown, ArrowRight, TrendingUp, TrendingDown, Gauge, Eye, EyeOff,
+  UserPlus, BadgeCheck, CalendarPlus, CalendarCheck, Crown, ArrowRight, Check, TrendingDown, Eye, EyeOff,
 } from 'lucide-react';
 import { stageProgress } from '../lib/funnelGoals';
 
 const fmtInt = (v) => new Intl.NumberFormat('pt-BR').format(Math.round(v) || 0);
-const fmtPct = (v) => `${Math.round(v * 100)}%`;
 
 const STEP_META = {
-  lead:             { label: 'Leads',                icon: UserPlus,      from: '#60a5fa', to: '#3b82f6' },
-  qualified:        { label: 'Qualificados',         icon: BadgeCheck,    from: '#818cf8', to: '#6366f1' },
-  meetingScheduled: { label: 'Reuniões agendadas',   icon: CalendarPlus,  from: '#fbbf24', to: '#f59e0b' },
-  meetingHeld:      { label: 'Reuniões acontecidas', icon: CalendarCheck, from: '#f59e0b', to: '#d97706' },
-  closing:          { label: 'Fechamentos',          icon: Crown,         from: '#34d399', to: '#10b981' },
+  lead:             { label: 'Leads',             icon: UserPlus,      from: '#60a5fa', to: '#3b82f6' },
+  qualified:        { label: 'Qualificados',      icon: BadgeCheck,    from: '#818cf8', to: '#6366f1' },
+  meetingScheduled: { label: 'Reuniões marcadas', icon: CalendarPlus,  from: '#fbbf24', to: '#f59e0b' },
+  meetingHeld:      { label: 'Reuniões feitas',   icon: CalendarCheck, from: '#f59e0b', to: '#d97706' },
+  closing:          { label: 'Fechados',          icon: Crown,         from: '#34d399', to: '#10b981' },
 };
 const ORDER = ['lead', 'qualified', 'meetingScheduled', 'meetingHeld', 'closing'];
 
@@ -52,10 +51,12 @@ function computeWidths(counts) {
 const clipOf = (topW, botW) =>
   `polygon(${(50 - topW / 2).toFixed(2)}% 0%, ${(50 + topW / 2).toFixed(2)}% 0%, ${(50 + botW / 2).toFixed(2)}% 100%, ${(50 - botW / 2).toFixed(2)}% 100%)`;
 
+// Idiota-proof: verde = bateu a meta (>=100%), amarelo = quase la (>=70%),
+// vermelho = longe. So estados obvios (verde = bom, quente = ruim), sem
+// velocimetro/azul intermediario que exigiria legenda pra alguem entender.
 function goalTone(percent, hit) {
-  if (hit) return { text: 'text-emerald-600 dark:text-emerald-400', Icon: TrendingUp };
-  if (percent >= 70) return { text: 'text-blue-600 dark:text-blue-400', Icon: Gauge };
-  if (percent >= 40) return { text: 'text-amber-600 dark:text-amber-400', Icon: TrendingDown };
+  if (hit) return { text: 'text-emerald-600 dark:text-emerald-400', Icon: Check };
+  if (percent >= 70) return { text: 'text-amber-600 dark:text-amber-400', Icon: TrendingDown };
   return { text: 'text-rose-600 dark:text-rose-400', Icon: TrendingDown };
 }
 
@@ -100,8 +101,8 @@ function ComparativoRow({ stepKey, previstoCount, realCount, goal, pTopW, pBotW,
       title={onStepClick ? `Ver os leads em ${meta.label}` : undefined}
     >
       {/* Rótulo — uma vez só por linha */}
-      <div className="w-[84px] sm:w-28 flex items-center justify-end gap-1.5 pr-2.5 text-right shrink-0">
-        <span className="text-[12px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">{meta.label}</span>
+      <div className="w-[88px] sm:w-32 flex items-center justify-end gap-1.5 pr-2.5 text-right shrink-0">
+        <span className="text-[12px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 leading-tight">{meta.label}</span>
         <span className="w-6 h-6 rounded-md hidden sm:flex items-center justify-center shrink-0 text-white"
           style={{ background: `linear-gradient(135deg, ${meta.from}, ${meta.to})` }}>
           <Icon size={12} />
@@ -164,7 +165,7 @@ export function FunnelPrevistoReal({ previsto, real, monthLabel, subtitle, onSte
     const fromLabel = STEP_META[ORDER[bottleneck.i]].label;
     const toLabel = STEP_META[ORDER[bottleneck.i + 1]].label;
     return {
-      text: `Gargalo do mês: conversão ${fromLabel} → ${toLabel} real está em ${fmtPct(bottleneck.realRate)} (previsto: ${fmtPct(bottleneck.plannedRate)}).`,
+      text: `Onde você mais perdeu: de ${fromLabel} para ${toLabel}.`,
     };
   }, [bottleneck]);
 
@@ -175,7 +176,7 @@ export function FunnelPrevistoReal({ previsto, real, monthLabel, subtitle, onSte
       <div className="flex items-start justify-between gap-2 mb-3">
         <div>
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-            Funil · {monthLabel || 'este mês'} {showPrevisto ? '· Previsto × Real' : '· Real'}
+            Funil · {monthLabel || 'este mês'} {showPrevisto ? '· Meta × Real' : '· Real'}
           </h3>
           <p className="text-[12px] text-slate-500 dark:text-slate-400">
             {subtitle || 'plano comercial (fixo)'}
@@ -185,18 +186,18 @@ export function FunnelPrevistoReal({ previsto, real, monthLabel, subtitle, onSte
         <button
           type="button"
           onClick={() => setShowPrevisto(v => !v)}
-          title={showPrevisto ? 'Ocultar o previsto (ver só o real)' : 'Mostrar o previsto'}
+          title={showPrevisto ? 'Ocultar a meta (ver só o real)' : 'Mostrar a meta'}
           className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[12px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
         >
           {showPrevisto ? <EyeOff size={13} /> : <Eye size={13} />}
-          Previsto
+          Meta
         </button>
       </div>
 
       {/* Cabeçalho das colunas — aparece uma vez, não por linha */}
       <div className="flex items-stretch mb-1.5">
-        <div className="w-[84px] sm:w-28 shrink-0" />
-        {showPrevisto && <div className="flex-1 text-center text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Previsto</div>}
+        <div className="w-[88px] sm:w-32 shrink-0" />
+        {showPrevisto && <div className="flex-1 text-center text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Meta</div>}
         {showPrevisto && <div className="w-[46px] sm:w-[54px] shrink-0" />}
         <div className={`text-center text-[12px] font-semibold uppercase tracking-wider text-fyness-primary ${showPrevisto ? 'flex-1' : 'flex-1 max-w-[280px] mx-auto'}`}>Real</div>
       </div>
