@@ -1563,22 +1563,6 @@ export function useAgendarRetorno() {
 }
 
 /**
- * Lead pediu pra ligar depois: cria o retorno e re-ancora a cadencia. Invalida
- * agenda + fila — a cadencia inteira do lead muda de data.
- */
-export function useAgendarRetorno() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (args) => agendarRetornoEReancorar(args),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
-    },
-  });
-}
-
-/**
  * Gera um lead NOVO ligado ao atual ("2 leads em 1"). Invalida pipeline + fila:
  * o lead novo aparece no funil e a cadencia dele na fila.
  */
