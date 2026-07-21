@@ -40,6 +40,9 @@ import { namesMatch } from '../../../lib/kpiUtils';
 import { useUrlState } from '../../../hooks/useUrlState';
 import { useTeamMembers } from '../../../hooks/queries';
 import { useCrmAccess } from '../hooks/useCrmAccess';
+// Import proprio (nao junto ao react la em cima) pra ficar num trecho separado:
+// aquele bloco de import esta sendo editado por outra frente ao mesmo tempo.
+import { useEffect } from 'react';
 
 const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -103,6 +106,10 @@ function MyDayCalendar() {
   const linkedDealId = searchParams.get('dealId');
   const linkedContactId = searchParams.get('contactId');
   const linkedDate = searchParams.get('date');
+  // Deep-link vindo da ficha do lead: abrir DIRETO a execucao desta tarefa.
+  // Clicar numa tarefa la significa "vou fazer isso agora" — cair na Agenda e
+  // ter que caca-la no dia perderia o gesto.
+  const linkedActivityId = searchParams.get('activityId');
 
   // view/data/dono-visto/toggle do Google via URL — sem isso, trocar pra aba
   // "Time" e voltar descartava tudo (MyDayCalendar desmonta ao trocar de aba).
@@ -195,6 +202,18 @@ function MyDayCalendar() {
     for (const a of crmActivities) m.set(a.id, a);
     return m;
   }, [crmActivities]);
+
+  // Abre a execucao da tarefa apontada por ?activityId (deep-link da ficha do
+  // lead). Espera a atividade carregar — o ?date ja levou pro dia dela, entao
+  // ela entra no recorte. Apagar o param depois de abrir E a trava: no render
+  // seguinte linkedActivityId some e o efeito nao reabre o modal.
+  useEffect(() => {
+    if (!linkedActivityId) return;
+    const alvo = activitiesById.get(linkedActivityId);
+    if (!alvo) return; // ainda carregando o dia
+    setCompletingTask({ id: alvo.id, title: alvo.title, type: alvo.type });
+    setSearchParams((sp) => { sp.delete('activityId'); return sp; }, { replace: true });
+  }, [linkedActivityId, activitiesById, setSearchParams]);
 
   // ===== EXECUÇÃO DA TAREFA =====
   // A Agenda é o nível de execução: o pipeline só acompanha, o check é aqui.

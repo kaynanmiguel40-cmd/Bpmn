@@ -196,16 +196,25 @@ export function DealProcessChecklist({ deal }) {
   const objetivo = deal?.stage?.objetivo || '';
   const exitCriteria = deal?.stage?.exitCriteria || '';
 
-  // Proxima tarefa pendente: e pra ela que o botao "Executar na Agenda" leva
-  // (abre a Agenda no dia certo, com o lead em foco). Sem data, cai no hoje.
-  const nextDue = steps
-    .filter(s => !doneIds.has(s.id) && dueByStep[s.id])
-    .map(s => dueByStep[s.id])
-    .sort((a, b) => new Date(a) - new Date(b))[0] || null;
+  // Proxima tarefa pendente: e pra ela que o botao "Executar na Agenda" leva —
+  // abre a Agenda no dia certo, com o lead em foco, e ja ABRE a execucao dessa
+  // tarefa (activityId). Precisa da atividade inteira, nao so da data, pra ter
+  // o id. Sem data, cai no hoje sem abrir nada.
+  const atividadePorPasso = {};
+  activities.forEach(a => {
+    if (a.stageStepId && !a.completed && !atividadePorPasso[a.stageStepId]) atividadePorPasso[a.stageStepId] = a;
+  });
+  const nextDueAct = steps
+    .filter(s => !doneIds.has(s.id) && atividadePorPasso[s.id])
+    .map(s => atividadePorPasso[s.id])
+    .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))[0] || null;
 
   const goToAgenda = () => {
     const params = new URLSearchParams({ dealId: deal.id, view: 'day' });
-    if (nextDue) params.set('date', new Date(nextDue).toISOString());
+    if (nextDueAct) {
+      params.set('date', new Date(nextDueAct.startDate).toISOString());
+      params.set('activityId', nextDueAct.id);
+    }
     navigate(`/crm/agenda?${params.toString()}`);
   };
 

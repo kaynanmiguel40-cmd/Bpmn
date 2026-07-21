@@ -497,9 +497,14 @@ export function CrmDealDetailPage() {
                               <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center shrink-0 z-10 ring-2 ring-white dark:ring-slate-950 -ml-[19px] bg-blue-100 dark:bg-blue-900/30">
                                 <Icon size={12} className="text-blue-600 dark:text-blue-400" />
                               </div>
+                              {/* Clicar na tarefa abre a EXECUCAO dela na Agenda —
+                                  a Agenda e o nivel de execucao, e clicar aqui
+                                  significa "vou fazer isso agora". Editar (a
+                                  antiga acao do clique) virou o lapis ao lado. */}
                               <button
                                 type="button"
-                                onClick={() => { setEditActivity(act); setActivityFormOpen(true); }}
+                                onClick={() => navigate(`/crm/agenda?dealId=${dealId}&date=${encodeURIComponent(act.startDate)}&activityId=${act.id}`)}
+                                title="Abrir esta tarefa na Agenda"
                                 className="flex-1 min-w-0 text-left crm-glass rounded-2xl px-4 py-3 hover:ring-1 hover:ring-fyness-primary/30 transition-shadow"
                               >
                                 <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -516,11 +521,11 @@ export function CrmDealDetailPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); navigate(`/crm/agenda?dealId=${dealId}&date=${encodeURIComponent(act.startDate)}`); }}
-                                title="Ver esta tarefa na Agenda"
+                                onClick={(e) => { e.stopPropagation(); setEditActivity(act); setActivityFormOpen(true); }}
+                                title="Editar tarefa"
                                 className="shrink-0 self-center text-slate-500 dark:text-slate-400 hover:text-fyness-primary transition-colors"
                               >
-                                <CalendarDays size={18} />
+                                <Pencil size={16} />
                               </button>
                               <button
                                 type="button"
