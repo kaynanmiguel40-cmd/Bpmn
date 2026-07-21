@@ -341,7 +341,7 @@ async function runBackfillAvatars(supabase: SupabaseClient) {
       checked++
       // ja re-hospedado no Storage? pula.
       if (r.avatar_url && String(r.avatar_url).includes('/storage/v1/')) continue
-      const phone = String(r.phone).replace(/\D/g, '')
+      const phone = toBrPhone(String(r.phone))
       if (phone.length < 8) continue
       const raw = await evolutionFetchProfilePicture(instance, phone)
       if (!raw) continue
@@ -383,6 +383,22 @@ function mapConnectionState(raw: unknown): string | null {
  * rede seria trocar uma mentira por outra — e essa alarmaria falso, que treina
  * o vendedor a ignorar o banner.
  */
+/**
+ * Numero BR pro formato E.164 que a Evolution resolve (digitos com DDI 55).
+ *
+ * Os CONTATOS guardam o telefone em formato nacional — "3599907375",
+ * "(35) 8426-5854" — sem o 55. A busca de foto de perfil, com numero de 10-11
+ * digitos que nao comeca em 55, trata como @lid e nao resolve: era por isso que
+ * os 153 contatos ficaram TODOS sem avatar, enquanto os prospects (que guardam
+ * "553599907375") tinham. Mesma logica do toBrazilE164 do front.
+ */
+function toBrPhone(raw: string): string {
+  const d = String(raw || '').replace(/\D/g, '')
+  if (d.length >= 12 && d.length <= 13 && d.startsWith('55')) return d
+  if (d.length === 10 || d.length === 11) return `55${d}`
+  return d
+}
+
 async function reconcileInstances(supabase: SupabaseClient) {
   if (!EVOLUTION_URL || !EVOLUTION_API_KEY) {
     return { ok: false, error: 'EVOLUTION_URL/EVOLUTION_API_KEY ausentes no ambiente da function' }
