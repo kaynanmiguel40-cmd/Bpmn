@@ -78,6 +78,10 @@ export async function getCrmPipelineWithDeals(pipelineId) {
     .eq('pipeline_id', pipelineId)
     .in('status', ['open', 'lost', 'won'])
     .is('deleted_at', null)
+    // Lead GERADO a partir de outro (origin_deal_id) nao vira card proprio no
+    // quadro: ele mora DENTRO do lead pai. Aparece na ficha do pai e no historico
+    // compartilhado, e a cadencia dele segue na Fila — so nao polui a pipeline.
+    .is('origin_deal_id', null)
     .order('created_at', { ascending: false });
 
   if (dError) {
