@@ -13,7 +13,7 @@
 
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
-import { planSteps, dayKey, SLOT_MINUTES, stepChannel, horarioLembrete } from './crmScheduling';
+import { planSteps, dayKey, SLOT_MINUTES, stepChannel, horarioLembrete, findFreeSlot, atMinutes } from './crmScheduling';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -390,23 +390,25 @@ export async function agendarRetornoEReancorar({
     offsetAtual = st?.day_offset || 0;
   }
 
-  // 1) PRA TRAS = toque de cadencia pendente ja atrasado. Cancela (menos a atual).
+  // 1) PRA TRAS = pendente do lead ja atrasado. Cadencia E MANUAL (antes so
+  //    cadencia): o lead atendeu, entao o que ficou pra tras — seja toque da
+  //    cadencia ou tarefa que voce marcou na mao — nao vale mais antes do retorno.
   let cancelQ = supabase
     .from('crm_activities')
     .update({ deleted_at: agora.toISOString() })
     .eq('deal_id', dealId).eq('completed', false).is('deleted_at', null)
-    .not('stage_step_id', 'is', null)
     .lt('start_date', agora.toISOString());
   if (excludeActivityId) cancelQ = cancelQ.neq('id', excludeActivityId);
   const { data: canceladas } = await cancelQ.select('id');
 
-  // 2) O RETORNO no horario escolhido.
+  // 2) O RETORNO no horario escolhido. Guarda o id pra nao se cancelar/mover a si
+  //    mesmo na resolucao de colisao logo abaixo.
   const fimRetorno = new Date(callback.getTime() + SLOT_MINUTES * 60000);
-  await supabase.from('crm_activities').insert({
+  const { data: retorno } = await supabase.from('crm_activities').insert({
     title: titulo, type: tipo, deal_id: dealId, contact_id: deal.contact_id || null,
     start_date: callback.toISOString(), end_date: fimRetorno.toISOString(), completed: false,
     assigned_to: assignee, assigned_to_name: assigneeName,
-  });
+  }).select('id').single();
 
   // 3) RE-ANCORA o resto (futuros, nao atrasados) a partir do retorno.
   let futQ = supabase
@@ -454,6 +456,60 @@ export async function agendarRetornoEReancorar({
         .update({ start_date: novo.toISOString(), end_date: fim.toISOString() })
         .eq('id', s.id);
       if (!error) reancoradas++;
+    }
+  }
+
+  // Janela do slot do retorno: qualquer coisa que COMECE dentro dela colide.
+  const janelaIni = new Date(callback.getTime() - SLOT_MINUTES * 60000 + 60000).toISOString();
+  const janelaFim = fimRetorno.toISOString();
+
+  // 4) COLISAO DO MESMO LEAD: tarefa pendente deste lead no slot do retorno (ex: a
+  //    ligacao manual que voce ja tinha marcado pra essa hora) sai — duas coisas
+  //    do mesmo lead no mesmo horario e duplicidade.
+  let colMesmo = supabase.from('crm_activities')
+    .update({ deleted_at: agora.toISOString() })
+    .eq('deal_id', dealId).eq('completed', false).is('deleted_at', null)
+    .gt('start_date', janelaIni).lt('start_date', janelaFim);
+  if (retorno?.id) colMesmo = colMesmo.neq('id', retorno.id);
+  if (excludeActivityId) colMesmo = colMesmo.neq('id', excludeActivityId);
+  await colMesmo;
+
+  // 5) COLISAO DE OUTRO LEAD: toque FLEXIVEL (nao compromisso) de outro lead no
+  //    mesmo slot e remanejado pra frente. O retorno tem hora combinada COM O
+  //    LEAD; o toque da fila e que se move, nao o contrario.
+  const HORA_MARCADA = ['meeting', 'visit', 'lunch'];
+  let colOutroQ = supabase.from('crm_activities')
+    .select('id, type')
+    .eq('completed', false).is('deleted_at', null)
+    .neq('deal_id', dealId)
+    .gt('start_date', janelaIni).lt('start_date', janelaFim);
+  if (assignee) colOutroQ = colOutroQ.eq('assigned_to', assignee);
+  const { data: colisoes } = await colOutroQ;
+  const flex = (colisoes || []).filter(c => !HORA_MARCADA.includes(c.type) && c.id !== retorno?.id);
+
+  if (flex.length > 0) {
+    // Agenda do dia do retorno (ja inclui o retorno) pra achar slot livre depois.
+    const diaIni = new Date(callback.getFullYear(), callback.getMonth(), callback.getDate()).toISOString();
+    const diaFim = new Date(callback.getFullYear(), callback.getMonth(), callback.getDate(), 23, 59, 59).toISOString();
+    let dq = supabase.from('crm_activities').select('start_date, end_date')
+      .eq('completed', false).is('deleted_at', null)
+      .gte('start_date', diaIni).lte('start_date', diaFim);
+    if (assignee) dq = dq.eq('assigned_to', assignee);
+    const { data: doDia } = await dq;
+    const busy = (doDia || []).map(r => ({ start: r.start_date, end: r.end_date || null }));
+
+    // A partir do fim do retorno: o toque deslocado vai pra DEPOIS dele.
+    let apos = callback.getHours() * 60 + callback.getMinutes();
+    for (const c of flex) {
+      const slot = findFreeSlot(busy, apos);
+      if (slot === null) continue; // dia lotado — deixa onde esta (raro)
+      const novo = atMinutes(callback, slot);
+      const fim = new Date(novo.getTime() + SLOT_MINUTES * 60000);
+      await supabase.from('crm_activities')
+        .update({ start_date: novo.toISOString(), end_date: fim.toISOString() })
+        .eq('id', c.id);
+      busy.push({ start: novo.toISOString(), end: fim.toISOString() });
+      apos = slot; // o proximo deslocado cai depois deste
     }
   }
 
