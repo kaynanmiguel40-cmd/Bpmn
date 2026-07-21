@@ -30,6 +30,9 @@ export function dbToStage(row) {
     position: row.position,
     color: row.color || '#6366f1',
     isWinStage: row.is_win_stage || false,
+    // Mover um lead pra ca abre o modal de marcar a reuniao (dia+hora) em vez de
+    // agendar cadencia direto.
+    isMeetingStage: row.is_meeting_stage || false,
     // Playbook da etapa (080): por que ela existe e quando mover o lead.
     // Os passos com script vivem em crm_stage_steps (ver crmPlaybookService).
     objetivo: row.objetivo || '',

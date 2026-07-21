@@ -13,7 +13,7 @@
 
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
-import { planSteps, dayKey, SLOT_MINUTES, stepChannel } from './crmScheduling';
+import { planSteps, dayKey, SLOT_MINUTES, stepChannel, horarioLembrete } from './crmScheduling';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -254,8 +254,12 @@ export async function scheduleStepsForDeal(dealId, stageId) {
 
   const { data: stepRows } = await supabase
     .from('crm_stage_steps')
-    .select('id, title, position, source_tag, day_offset, period')
+    .select('id, title, position, source_tag, day_offset, period, agendavel')
+    // agendavel=false e roteiro (SPIN, metodologia): aparece na ficha mas nunca
+    // vira tarefa. Filtrar aqui, no unico ponto que cria tarefa de etapa, e o
+    // que garante que a metodologia nao vaza pra Agenda.
     .eq('stage_id', stageId)
+    .neq('agendavel', false)
     .order('position', { ascending: true });
 
   // So os passos que valem pra ORIGEM deste lead (mesma regra do checklist).
@@ -326,6 +330,123 @@ export async function scheduleStepsForDeal(dealId, stageId) {
     return 0;
   }
   return rows.length;
+}
+
+/**
+ * Resolve o dono do negocio no par (auth_user_id, nome) que a Agenda entende.
+ *
+ * PEGADINHA repetida: crm_deals.owner_id -> team_members.id, mas
+ * crm_activities.assigned_to -> auth_user_id. Sem traduzir, a tarefa existe no
+ * banco e some da Agenda (que filtra pelo usuario logado).
+ */
+async function resolverDono(dealOwnerId) {
+  if (!dealOwnerId) return { assignee: null, assigneeName: null };
+  const { data: member } = await supabase
+    .from('team_members')
+    .select('auth_user_id, name')
+    .eq('id', dealOwnerId)
+    .maybeSingle();
+  return { assignee: member?.auth_user_id || null, assigneeName: member?.name || null };
+}
+
+/**
+ * Marca a reuniao de um lead e cria os lembretes ancorados nela.
+ *
+ * Chamado quando o lead entra numa etapa `is_meeting_stage`, com o horario que a
+ * pessoa escolheu no modal. Faz duas coisas:
+ *
+ *  1. Cria o COMPROMISSO da reuniao (type='meeting') no horario, com o contato
+ *     e o dono. Vai pro Google Calendar (via createCrmActivity) porque reuniao
+ *     e o unico toque com hora combinada COM O LEAD — o convite tem que sair.
+ *
+ *  2. Cria os LEMBRETES: um por passo da etapa com meeting_offset_minutes, no
+ *     horario da reuniao + offset. Estes NAO vao pro Calendar — sao tarefa
+ *     interna do vendedor (confirmar vespera, mandar link 1h antes, checar
+ *     no-show). O script do passo vira o "o que fazer" do lembrete.
+ *
+ * Idempotente pela reuniao: se ja existe meeting nao-concluida deste lead nesta
+ * etapa, remarca (move) em vez de duplicar — reagendar e o caso comum.
+ *
+ * @param {string} dealId
+ * @param {string} stageId       a etapa de reuniao
+ * @param {string} meetingStartISO  horario escolhido
+ * @param {number} [durationMin=60]
+ * @returns {Promise<{meetingId:string|null, lembretes:number}>}
+ */
+export async function scheduleMeetingForDeal(dealId, stageId, meetingStartISO, durationMin = 60) {
+  if (!dealId || !stageId || !meetingStartISO) return { meetingId: null, lembretes: 0 };
+
+  const { data: deal } = await supabase
+    .from('crm_deals')
+    .select('owner_id, contact_id, title')
+    .eq('id', dealId)
+    .maybeSingle();
+  if (!deal) return { meetingId: null, lembretes: 0 };
+
+  const { assignee, assigneeName } = await resolverDono(deal.owner_id);
+  const start = new Date(meetingStartISO);
+  const end = new Date(start.getTime() + durationMin * 60000);
+  const nome = deal.title || 'lead';
+
+  // Remarcacao: some com a reuniao pendente anterior desta etapa antes de criar
+  // a nova, pra nao ficarem duas. Os lembretes velhos (stage_step_id da etapa)
+  // saem junto via cancelPendingStepsForDeal, chamado pelo fluxo de mover.
+  await supabase
+    .from('crm_activities')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('deal_id', dealId)
+    .eq('type', 'meeting')
+    .eq('completed', false)
+    .is('deleted_at', null);
+
+  const { createCrmActivity } = await import('./crmActivitiesService');
+  const meeting = await createCrmActivity({
+    title: `Reunião — ${nome}`,
+    type: 'meeting',
+    dealId,
+    contactId: deal.contact_id || null,
+    startDate: start.toISOString(),
+    endDate: end.toISOString(),
+    assignedTo: assignee,
+    assignedToName: assigneeName,
+  });
+
+  // Lembretes: passos da etapa com offset. Insert direto (sem GCal): sao tarefas
+  // internas, nao eventos pra mandar convite.
+  const { data: stepRows } = await supabase
+    .from('crm_stage_steps')
+    .select('id, title, meeting_offset_minutes')
+    .eq('stage_id', stageId)
+    .not('meeting_offset_minutes', 'is', null)
+    .order('position', { ascending: true });
+
+  const agora = Date.now();
+  const lembretes = [];
+  for (const s of stepRows || []) {
+    const t = horarioLembrete(start, s.meeting_offset_minutes);
+    // Lembrete que ja passou nao nasce: reuniao marcada pra daqui a 30 min nao
+    // deve criar a "vespera" no passado.
+    if (t.getTime() <= agora) continue;
+    lembretes.push({
+      title: s.title,
+      type: guessType(s.title),
+      deal_id: dealId,
+      contact_id: deal.contact_id || null,
+      start_date: t.toISOString(),
+      end_date: new Date(t.getTime() + SLOT_MINUTES * 60000).toISOString(),
+      completed: false,
+      assigned_to: assignee,
+      assigned_to_name: assigneeName,
+      stage_step_id: s.id,
+    });
+  }
+
+  if (lembretes.length > 0) {
+    const { error } = await supabase.from('crm_activities').insert(lembretes);
+    if (error) console.error('[scheduleMeetingForDeal] lembretes', error.message);
+  }
+
+  return { meetingId: meeting?.id || null, lembretes: lembretes.length };
 }
 
 /**

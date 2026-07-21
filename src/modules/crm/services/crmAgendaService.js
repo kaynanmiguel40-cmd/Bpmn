@@ -123,6 +123,45 @@ export async function getCrmCalendarActivities({ start, end } = {}) {
 // ==================== TIMELINE DO LEAD ====================
 
 /**
+ * Janelas ocupadas do DONO de um negocio, pra desenhar os horarios livres no
+ * modal de marcar reuniao.
+ *
+ * Recebe o owner_id (team_members.id) e traduz pra auth_user_id — a mesma
+ * pegadinha do resto do CRM: assigned_to guarda o usuario de auth, nao o
+ * team_member. Sem a traducao, a busca de "ocupado" viria vazia e o modal
+ * ofereceria horarios que ja tem compromisso.
+ *
+ * @returns {Promise<Array<{start:string,end:string|null}>>}
+ */
+export async function getOwnerBusyWindows({ ownerId = null, fromISO, toISO } = {}) {
+  if (!fromISO || !toISO) return [];
+
+  let assignee = null;
+  if (ownerId) {
+    const { data: member } = await supabase
+      .from('team_members')
+      .select('auth_user_id')
+      .eq('id', ownerId)
+      .maybeSingle();
+    assignee = member?.auth_user_id || null;
+  }
+
+  let q = supabase
+    .from('crm_activities')
+    .select('start_date, end_date')
+    .is('deleted_at', null)
+    .gte('start_date', fromISO)
+    .lte('start_date', toISO);
+  // Sem dono resolvido, olha a agenda inteira: melhor um horario a mais marcado
+  // como ocupado do que oferecer um que colide.
+  if (assignee) q = q.eq('assigned_to', assignee);
+
+  const { data, error } = await q;
+  if (error) { console.warn('[getOwnerBusyWindows]', error.message); return []; }
+  return (data || []).map(r => ({ start: r.start_date, end: r.end_date || null }));
+}
+
+/**
  * Resolve o "lead" (deal ou, na falta dele, o contato) e monta o filtro OR
  * pra casar deal_id/contact_id nas tabelas transacionais. Compartilhado por
  * getLeadTimeline e getLeadActivityHistory pra manter a mesma âncora.

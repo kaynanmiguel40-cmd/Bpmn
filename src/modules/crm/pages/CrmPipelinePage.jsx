@@ -9,7 +9,9 @@ import { useNavigate } from 'react-router-dom';
 import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
-import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useUpdateCrmDeal, useEnsureGeneralPipeline, useStagePlaybook, fetchStageWork } from '../hooks/useCrmQueries';
+import { useCrmPipelines, useCrmPipelineWithDeals, useMoveCrmDeal, useMarkDealLost, useLearnedProbabilities, useCreateCrmPipeline, useUpdateCrmPipeline, useDeleteCrmPipeline, useDeleteCrmDeal, useCreateCrmDeal, useUpdateCrmDeal, useEnsureGeneralPipeline, useStagePlaybook, fetchStageWork, useScheduleMeeting } from '../hooks/useCrmQueries';
+import { MeetingSchedulerModal } from '../components/MeetingSchedulerModal';
+import { toast } from '../../../contexts/ToastContext';
 import { getDealLeadInfo } from '../services/crmDealsService';
 import { detectFunnelStagePositions } from '../services/crmDashboardService';
 import { useTeamMembers } from '../../../hooks/queries';
@@ -1386,6 +1388,9 @@ export function CrmPipelinePage() {
     [pipelineData?.stages],
   );
   const moveMutation = useMoveCrmDeal();
+  const scheduleMeetingMutation = useScheduleMeeting();
+  // Modal de marcar reuniao: { dealId, stageId, deal, stageName } enquanto aberto.
+  const [meetingSchedule, setMeetingSchedule] = useState(null);
   const [confirmMove, setConfirmMove] = useState(null); // avanco sem tarefa concluida
   const lostMutation = useMarkDealLost();
   const deleteDealMutation = useDeleteCrmDeal();
@@ -1580,6 +1585,38 @@ export function CrmPipelinePage() {
   }, [moveMutation]);
 
   /**
+   * Confirmou o horario no modal: move o lead E marca a reuniao.
+   *
+   * Ordem importa. Mover PRIMEIRO faz a etapa de reuniao virar a atual e limpa a
+   * cadencia da etapa anterior (a de reuniao nao tem passo agendavel, entao nao
+   * cria lixo). So depois marca o compromisso + lembretes — se marcasse antes, o
+   * cancelPendingSteps do move poderia varrer os lembretes recem-criados.
+   */
+  const confirmarReuniao = useCallback((meetingStartISO) => {
+    const alvo = meetingSchedule;
+    if (!alvo || !meetingStartISO) return;
+    moveMutation.mutate({ dealId: alvo.dealId, stageId: alvo.stageId }, {
+      onSuccess: () => {
+        scheduleMeetingMutation.mutate(
+          { dealId: alvo.dealId, stageId: alvo.stageId, meetingStartISO, durationMin: 60 },
+          {
+            onSuccess: (r) => {
+              setMeetingSchedule(null);
+              const extra = r?.lembretes ? ` · ${r.lembretes} lembrete${r.lembretes > 1 ? 's' : ''}` : '';
+              toast(`Reunião marcada${extra}`, 'success');
+            },
+            onError: () => {
+              // O lead ja moveu; so a reuniao falhou. Nao fecha o modal calado.
+              toast('O lead moveu, mas a reunião não foi marcada. Tente de novo.', 'error');
+            },
+          },
+        );
+      },
+      onError: () => toast('Não consegui mover o lead. Tente de novo.', 'error'),
+    });
+  }, [meetingSchedule, moveMutation, scheduleMeetingMutation]);
+
+  /**
    * Antes de mover, checa se ALGUMA tarefa da etapa atual foi concluida.
    *
    * Mover apaga as tarefas pendentes da etapa que fica pra tras — entao avancar
@@ -1595,6 +1632,21 @@ export function CrmPipelinePage() {
     const stageAtual = origem?.id || null;
     // Sem etapa de origem (ou movendo pra mesma) nao ha o que perder.
     if (!stageAtual || stageAtual === newStageId) return moverAgora(dealId, newStageId);
+
+    // Etapa de reuniao: em vez de mover direto, abre o modal pra marcar dia/hora.
+    // Nao passa pelo aviso de "avancar sem nada concluido": marcar reuniao e um
+    // gesto de alta intencao (ninguem agenda reuniao sem querer), e o proprio
+    // modal ja e a confirmacao — cancelar nele NAO move o lead.
+    const stageNovo = etapas.find(st => st.id === newStageId);
+    if (stageNovo?.isMeetingStage) {
+      setMeetingSchedule({
+        dealId,
+        stageId: newStageId,
+        deal,
+        stageName: stageNovo.name,
+      });
+      return;
+    }
 
     let resumo;
     try {
@@ -2001,6 +2053,17 @@ export function CrmPipelinePage() {
         confirmLabel="Mover mesmo assim"
         variant="warning"
         loading={moveMutation.isPending}
+      />
+
+      {/* Marcar reuniao: abre ao mover o lead pra uma etapa is_meeting_stage.
+          Cancelar aqui NAO move o lead — o move so acontece no confirmar. */}
+      <MeetingSchedulerModal
+        open={!!meetingSchedule}
+        onClose={() => setMeetingSchedule(null)}
+        deal={meetingSchedule?.deal}
+        stageName={meetingSchedule?.stageName}
+        onConfirm={confirmarReuniao}
+        isSaving={moveMutation.isPending || scheduleMeetingMutation.isPending}
       />
 
     </div>

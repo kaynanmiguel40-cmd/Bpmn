@@ -15,7 +15,8 @@ import { getCrmProspects, getCrmProspectById, updateCrmProspect, softDeleteCrmPr
 import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsProgress } from '../services/crmGoalsService';
 import { getSalesReport, getLearnedProbabilities } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
-import { getCrmCalendarActivities, getLeadTimeline } from '../services/crmAgendaService';
+import { getCrmCalendarActivities, getLeadTimeline, getOwnerBusyWindows } from '../services/crmAgendaService';
+import { scheduleMeetingForDeal } from '../services/crmPlaybookService';
 import { getStageWorkSummary } from '../services/crmQueueService';
 import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
@@ -1539,6 +1540,36 @@ export function useCreateCrmWhatsAppInstance() {
     mutationFn: createCrmWhatsAppInstance,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.whatsappInstances });
+    },
+  });
+}
+
+/**
+ * Agenda ocupada do dono do negocio, pra o modal desenhar os horarios livres.
+ * `enabled` desligado sem janela evita buscar antes do modal abrir.
+ */
+export function useOwnerBusyWindows({ ownerId, fromISO, toISO, enabled = true } = {}) {
+  return useQuery({
+    queryKey: ['crm', 'ownerBusy', ownerId || 'todos', fromISO, toISO],
+    queryFn: () => getOwnerBusyWindows({ ownerId, fromISO, toISO }),
+    enabled: enabled && !!fromISO && !!toISO,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Marca a reuniao de um lead no horario escolhido e cria os lembretes.
+ * Invalida agenda + fila: a reuniao e os lembretes tem que aparecer nas duas.
+ */
+export function useScheduleMeeting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dealId, stageId, meetingStartISO, durationMin }) =>
+      scheduleMeetingForDeal(dealId, stageId, meetingStartISO, durationMin),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'ownerBusy'] });
     },
   });
 }

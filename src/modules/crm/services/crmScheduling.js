@@ -84,6 +84,59 @@ export function findFreeSlot(busy = [], afterMinutes = -1, period = null) {
   return null;
 }
 
+/**
+ * Slots livres pra um compromisso de `durationMin` num dia.
+ *
+ * Diferente de daySlots/findFreeSlot (que pensam em toques de 30 min): uma
+ * reuniao ocupa um BLOCO. Um slot de 60 min comecando 10:30 invadiria o almoco
+ * (10:30-11:30 pega as 11:00), e comecando 17:30 passaria das 18h. Aqui o bloco
+ * inteiro tem que caber — dentro do expediente, fora do almoco, sem colidir com
+ * o que ja existe na agenda.
+ *
+ * @param {Array<{start:string,end?:string}>} busy  compromissos ja no dia
+ * @param {number} durationMin  duracao do bloco
+ * @returns {number[]} minutos de inicio possiveis, em ordem
+ */
+export function meetingSlots(busy = [], durationMin = 60) {
+  const taken = (busy || []).map(b => {
+    const s = toMinutes(b.start);
+    const e = b.end ? toMinutes(b.end) : s + SLOT_MINUTES;
+    return [s, e > s ? e : s + SLOT_MINUTES];
+  });
+  const lunchS = LUNCH_START_HOUR * 60;
+  const lunchE = LUNCH_END_HOUR * 60;
+  const out = [];
+  for (let m = WORK_START_HOUR * 60; m + durationMin <= WORK_END_HOUR * 60; m += SLOT_MINUTES) {
+    const end = m + durationMin;
+    if (end > lunchS && m < lunchE) continue;                 // invade o almoco
+    if (taken.some(([s, e]) => m < e && end > s)) continue;   // colide com algo
+    out.push(m);
+  }
+  return out;
+}
+
+/**
+ * Horario de um lembrete ancorado numa reuniao.
+ *
+ * `offsetMin` = minutos relativos ao inicio da reuniao (negativo = antes).
+ *
+ * SNAP DA VESPERA: um lembrete que cai em OUTRO dia antes da reuniao vira 9h da
+ * manha daquele dia. "Confirmar presenca na vespera" e tarefa de manha, nao 24h
+ * cravadas antes de uma reuniao das 15h (que cairia 15h da vespera). Lembrete do
+ * MESMO dia (1h antes, na hora) fica no ponto exato.
+ *
+ * @returns {Date}
+ */
+export function horarioLembrete(meetingStart, offsetMin) {
+  const base = new Date(meetingStart);
+  const t = new Date(base.getTime() + offsetMin * 60000);
+  const outroDia = t.toDateString() !== base.toDateString();
+  if (outroDia && t < base) {
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 9, 0, 0);
+  }
+  return t;
+}
+
 /** Data com o horario cravado no minuto do dia (local). */
 export function atMinutes(date, minutes) {
   const d = new Date(date);
