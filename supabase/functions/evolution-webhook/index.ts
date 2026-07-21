@@ -1400,7 +1400,18 @@ async function handleMessagesUpsert(
       media_mime:           mediaMime,
       media_caption:        mediaCaption,
       evolution_message_id: evolutionMessageId,
-      status:               direction === 'inbound' ? 'received' : 'sent',
+      // Backfill de mensagem ANTIGA nasce lida: o vendedor ja viu no celular ha
+      // dias. Sem isto, recuperar historico enchia o inbox de "nao lidas"
+      // fantasma — um badge de centenas que nao dava pra zerar clicando conversa
+      // por conversa, porque a pessoa nunca "leu no sistema" o que ja tinha lido
+      // no telefone. So no modo backfill (existingOnly) e so pra inbound com mais
+      // de 12h: mensagem recente recuperada pode ser genuinamente nao lida.
+      status:               direction !== 'inbound' ? 'sent'
+                          : (existingOnly && (Date.now() - new Date(timestamp).getTime()) > 12 * 3600_000)
+                              ? 'read' : 'received',
+      read_at:              (existingOnly && direction === 'inbound'
+                              && (Date.now() - new Date(timestamp).getTime()) > 12 * 3600_000)
+                              ? new Date().toISOString() : null,
       sent_at:              timestamp,
       source:               direction === 'inbound' ? 'reply' : 'manual',
     }).select('id').single()
