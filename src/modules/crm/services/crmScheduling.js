@@ -173,10 +173,18 @@ export function planSteps(steps, busyByDay = {}, from = new Date()) {
   const hojeKey = dayKey(from);
   const agoraMin = from.getHours() * 60 + from.getMinutes() + 15; // 15min de folga
 
+  // Piso de DIA: um passo nunca cai antes do passo anterior. Sem isso, quando a
+  // agenda esta cheia, o D2 rola pra frente atravessando os dias lotados e cai
+  // depois do D9 (que achou vaga antes) — a cadencia sai fora de ordem. Os
+  // passos ja vem em ordem de dayOffset, entao basta impedir retroceder.
+  let pisoDia = null;
+
   for (const step of steps) {
     let target = nextBusinessDay(
       atMinutes(new Date(from.getFullYear(), from.getMonth(), from.getDate() + (step.dayOffset || 0)), 0),
     );
+    // Nao deixa o alvo ser antes do dia do passo anterior.
+    if (pisoDia && target.getTime() < pisoDia.getTime()) target = new Date(pisoDia);
 
     // Dia cheio EMPURRA pra frente em vez de descartar a tarefa: com varios
     // leads na mesma etapa o dia alvo lota rapido (16 slots uteis por dia) e
@@ -196,6 +204,8 @@ export function planSteps(steps, busyByDay = {}, from = new Date()) {
 
     const start = atMinutes(target, slot);
     out.push({ stepId: step.id, start });
+    // O proximo passo nao pode cair antes deste dia.
+    pisoDia = new Date(target.getFullYear(), target.getMonth(), target.getDate());
     (busy[key] = busy[key] || []).push({
       start: start.toISOString(),
       end: new Date(start.getTime() + SLOT_MINUTES * 60000).toISOString(),

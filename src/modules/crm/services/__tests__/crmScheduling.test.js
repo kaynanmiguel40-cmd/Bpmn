@@ -129,6 +129,42 @@ describe('planSteps', () => {
     expect(d.getDay()).not.toBe(6);
     expect(dayKey(d)).toBe('2026-07-27');
   });
+
+  /**
+   * O bug que motivou isto: com a agenda cheia, o D2 rolava pra frente
+   * atravessando os dias lotados e caia DEPOIS do D9 (que achou vaga antes) — a
+   * cadencia saia fora de ordem no checklist. A regra: passo nunca cai antes do
+   * anterior.
+   */
+  it('as datas nunca retrocedem — offset menor nunca cai depois de offset maior', () => {
+    // D0 lotado nos primeiros dias forca rollover; D2 nao pode acabar antes do D0.
+    const busy = {
+      '2026-07-20': [{ start: at(9, 0), end: at(18, 0) }],
+      '2026-07-21': [{ start: at(9, 0), end: at(18, 0) }],
+      '2026-07-22': [{ start: at(9, 0), end: at(18, 0) }],
+    };
+    const plan = planSteps([
+      { id: 'd0', dayOffset: 0 },
+      { id: 'd2', dayOffset: 2 },
+      { id: 'd9', dayOffset: 9 },
+    ], busy, from);
+    const dias = plan.map(p => p.start.getTime());
+    // Cada um >= o anterior. Sem o piso, d2 cairia antes por causa do rollover.
+    expect(dias[1]).toBeGreaterThanOrEqual(dias[0]);
+    expect(dias[2]).toBeGreaterThanOrEqual(dias[1]);
+  });
+
+  it('sem compromisso real, cada offset cai no seu proprio dia (nao empurra)', () => {
+    // Sem busy: D0->20, D2->22, D3->23. Nada rola, nada estica.
+    const plan = planSteps([
+      { id: 'd0', dayOffset: 0 },
+      { id: 'd2', dayOffset: 2 },
+      { id: 'd3', dayOffset: 3 },
+    ], {}, from);
+    expect(dayKey(plan[0].start)).toBe('2026-07-20');
+    expect(dayKey(plan[1].start)).toBe('2026-07-22');
+    expect(dayKey(plan[2].start)).toBe('2026-07-23');
+  });
 });
 
 describe('nextBusinessDay', () => {

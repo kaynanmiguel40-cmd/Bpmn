@@ -283,7 +283,16 @@ export async function scheduleStepsForDeal(dealId, stageId) {
   const pending = steps.filter(s => !already.has(s.id));
   if (pending.length === 0) return 0;
 
-  // Agenda ja ocupada do dono, na janela que vamos preencher.
+  // Ocupado do dono na janela — mas SO compromisso REAL (reuniao/visita/almoco),
+  // nao outra tarefa de cadencia.
+  //
+  // A Fila e uma fila de PRIORIDADE, nao um calendario de hora marcada. Um toque
+  // de "ligar" e "mandar WhatsApp" nao precisa de 30min exclusivos: varios podem
+  // vencer no mesmo dia, e a Fila ordena por prioridade. Tratar cada toque como
+  // bloqueio fazia a agenda entupir — com dezenas de leads, os toques disputavam
+  // 16 slots/dia e a cadencia esticava por SEMANAS, fora de ordem. Evitando so o
+  // que tem hora combinada COM O LEAD, os toques caem no dia certo do offset.
+  const HORA_MARCADA = ['meeting', 'visit', 'lunch'];
   const maxOffset = Math.max(...pending.map(s => s.dayOffset || 0), 0);
   const from = new Date();
   const until = new Date();
@@ -292,6 +301,7 @@ export async function scheduleStepsForDeal(dealId, stageId) {
     .from('crm_activities')
     .select('start_date, end_date, assigned_to')
     .is('deleted_at', null)
+    .in('type', HORA_MARCADA)
     .gte('start_date', new Date(from.getFullYear(), from.getMonth(), from.getDate()).toISOString())
     .lte('start_date', until.toISOString());
   if (assignee) busyQuery = busyQuery.eq('assigned_to', assignee);
