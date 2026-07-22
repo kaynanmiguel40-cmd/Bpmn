@@ -19,7 +19,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   Phone, MessageCircle, CheckCircle2, CornerDownRight, ArrowRight,
-  ExternalLink, Clock, CalendarClock, Check,
+  ExternalLink, Clock, CalendarClock, Check, RotateCcw, Trash2,
 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
@@ -101,6 +101,8 @@ export function ExecuteTaskModal({
   onAdvance,     // (stage) => void
   onDismissAdvance,
   advancing,
+  onUncomplete,  // () => void — desmarca a tarefa concluida (volta a pendente)
+  onDelete,      // () => void — exclui a tarefa
   isPending,
   justDone,      // true logo apos concluir — troca o corpo pela confirmacao
 }) {
@@ -329,6 +331,21 @@ export function ExecuteTaskModal({
       size="md"
       footer={
         <>
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              disabled={isPending}
+              title="Excluir esta tarefa"
+              className={`${BTN_SECONDARY} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
+            >
+              <Trash2 size={15} /> Excluir
+            </button>
+          )}
+          {isEditing && onUncomplete && (
+            <button onClick={onUncomplete} disabled={isPending} title="Desmarcar — volta a tarefa pra pendente" className={BTN_SECONDARY}>
+              <RotateCcw size={15} /> Desmarcar
+            </button>
+          )}
           <button onClick={onClose} disabled={isPending} className={BTN_SECONDARY}>
             Cancelar
           </button>

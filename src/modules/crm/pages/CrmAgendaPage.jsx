@@ -499,6 +499,17 @@ function MyDayCalendar() {
           step={completingStep}
           nextActivity={nextActivity}
           justDone={justDoneId === completingActivity.id}
+          onUncomplete={() => {
+            updateActivityMutation.mutate(
+              { id: completingActivity.id, updates: { completed: false, completedAt: null } },
+              { onSuccess: closeExecute },
+            );
+          }}
+          onDelete={() => {
+            const t = completingActivity;
+            closeExecute();
+            setDeleteActivityTarget({ activityId: t.id, title: t.title });
+          }}
           isPending={completeMutation.isPending || updateActivityMutation.isPending}
           onOpenLead={(id) => { closeExecute(); navigate(`/crm/deals/${id}`); }}
           // O historico continua a UM clique: clicar na tarefa agora abre a
@@ -532,6 +543,17 @@ function MyDayCalendar() {
           onOpenHistory={(act) => {
             setCompletingTask(null);
             setSelected({ dealId: act.dealId || null, contactId: act.contactId || null });
+          }}
+          onUncomplete={() => {
+            updateActivityMutation.mutate(
+              { id: completingTask.id, updates: { completed: false, completedAt: null } },
+              { onSuccess: () => setCompletingTask(null) },
+            );
+          }}
+          onDelete={() => {
+            const t = completingTask;
+            setCompletingTask(null);
+            setDeleteActivityTarget({ activityId: t.id, title: t.title });
           }}
           isPending={completeMutation.isPending || updateActivityMutation.isPending}
           onSubmit={({ input, output }) => {

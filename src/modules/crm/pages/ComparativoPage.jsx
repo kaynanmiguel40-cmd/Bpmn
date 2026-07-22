@@ -10,12 +10,12 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  Target, Check, Clock, Users, Flame, X,
+  Target, Check, Clock, Users, ArrowDown, Flame, X,
 } from 'lucide-react';
 import {
   PLAN_MONTHS, PREMISSAS, PLAN_GOAL_MRR, PLAN_POSITION, COMPARECIMENTO_RATE,
   planMonthLabel, planMonthLong,
-  proratedPlanForPeriod,
+  proratedPlanForPeriod, unitFunnelSteps,
 } from '../../../lib/commercialPlan';
 import { getCommercialPlanReal } from '../../../lib/commercialPlanReal';
 import {
@@ -221,6 +221,65 @@ function FunnelDrillDrawer({ step, range, ownerId, onClose }) {
   );
 }
 
+// ---------- Funil unitario (o que custa 1 venda) ----------
+/**
+ * Cascata reversa: quantos leads o topo precisa entregar pra sair 1 venda.
+ *
+ * Mesmas taxas do plano (FUNIL_UNITARIO_RATES alimenta PREMISSAS e os volumes de
+ * PLAN_MONTHS), entao este card e a leitura unitaria do card ao lado — nao uma
+ * segunda visao concorrente.
+ */
+function FunilUnitario() {
+  const steps = unitFunnelSteps(1);
+  // Tudo inteiro e pra CIMA: nao existe 3,3 reuniao nem 27,8 lead. Cada etapa e
+  // um MINIMO — arredondar pra baixo em qualquer uma nao entrega a venda.
+  const fmtQtd = n => Math.ceil(n);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5">
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">O que custa 1 venda</h3>
+      </div>
+      <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-3">
+        Minimo por etapa, de tras pra frente, a partir de 1 cliente fechado.
+      </p>
+
+      <div className="space-y-1">
+        {steps.map((s, i) => (
+          <div key={s.key}>
+            <div className={`flex items-center justify-between rounded-lg px-2.5 py-2 ${
+              s.key === 'venda'
+                ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20'
+                : 'bg-slate-50 dark:bg-slate-800/60'
+            }`}>
+              <div className="min-w-0">
+                <div className={`text-xs font-medium ${s.key === 'venda' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
+                  {s.label}
+                </div>
+                <div className="text-[12px] text-slate-500 dark:text-slate-400">{s.sub}</div>
+              </div>
+              <span className={`text-sm font-bold tabular-nums shrink-0 ${s.key === 'venda' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-100'}`}>
+                {fmtQtd(s.qtd)}
+              </span>
+            </div>
+            {/* Taxa que leva pra proxima etapa (a ultima nao tem proxima). */}
+            {i < steps.length - 1 && (
+              <div className="flex items-center gap-1.5 pl-2.5 py-0.5 text-[12px] text-slate-500 dark:text-slate-400">
+                <ArrowDown className="w-3 h-3 shrink-0" />
+                <span className="tabular-nums font-medium">{Math.round(s.pct * 100)}%</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-3">
+        Taxas proprias — o plano do card ao lado segue com as premissas originais.
+      </p>
+    </div>
+  );
+}
+
 function FunnelCompare({ period, ownerId, setOwnerId, vendedores = [] }) {
   const [drillStep, setDrillStep] = useState(null); // { key, label } — etapa clicada
   // O filtro de vendedor (ownerId) sobe pra pagina e vale pro lado REAL do funil,
@@ -341,6 +400,9 @@ function FunnelCompare({ period, ownerId, setOwnerId, vendedores = [] }) {
         </p>
       </div>
 
+      {/* Funil unitario: nao depende do periodo nem do real — e o custo teorico
+          de 1 venda com as taxas conservadoras. */}
+      <FunilUnitario />
     </div>
 
     {/* Leads por tras do numero da etapa clicada (mesmo recorte do funil) */}

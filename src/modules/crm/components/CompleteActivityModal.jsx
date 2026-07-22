@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Trash2 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { fieldClass } from './ui/formFieldClass';
 
@@ -32,6 +32,8 @@ export function CompleteActivityModal({
   activity,     // { title, type, completed?, deliveryInput?, deliveryReport? }
   onSubmit,     // ({ input, output }) => void
   onOpenHistory,// (activity) => void — opcional; o historico do lead
+  onUncomplete, // () => void — opcional; desmarca a tarefa concluida (volta a pendente)
+  onDelete,     // () => void — opcional; exclui a tarefa
   isPending,
 }) {
   const isEditing = !!activity?.completed;
@@ -82,6 +84,26 @@ export function CompleteActivityModal({
       size="md"
       footer={
         <>
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              disabled={isPending}
+              title="Excluir esta tarefa"
+              className={`${SECONDARY_BTN} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
+            >
+              <Trash2 size={15} /> Excluir
+            </button>
+          )}
+          {isEditing && onUncomplete && (
+            <button
+              onClick={onUncomplete}
+              disabled={isPending}
+              title="Desmarcar — volta a tarefa pra pendente"
+              className={SECONDARY_BTN}
+            >
+              <RotateCcw size={15} /> Desmarcar
+            </button>
+          )}
           <button
             onClick={onClose}
             disabled={isPending}
