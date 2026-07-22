@@ -208,6 +208,9 @@ export function ExecuteTaskModal({
       originDealId: activity.dealId,
       nome: novoNome.trim(),
       telefone: novoTelefone.trim() || null,
+      // A tarefa atual e concluida pelo onSubmit — nao pode ser cancelada junto
+      // com a cadencia do pai (senao vira concluida E apagada).
+      excludeActivityId: activity.id,
     });
     if (!novo?.id) { toast('Não consegui gerar o lead. Tente de novo.', 'error'); return; }
     toast(`Lead "${novoNome.trim()}" gerado e ligado a este`, 'success');
@@ -734,7 +737,8 @@ export function ExecuteTaskModal({
                     </div>
                     <p className="text-[12px] text-sky-700 dark:text-sky-300">
                       Cria um lead novo <strong>ligado a este</strong> (mesma história),
-                      no Primeiro contato, já com a cadência dele começando.
+                      no Primeiro contato. A cadência <strong>passa pra ele</strong> —
+                      a deste lead para, pra você não perseguir os dois.
                     </p>
                   </>
                 )}

@@ -296,8 +296,8 @@ export async function createCrmDeal(data: Record<string, unknown>): Promise<CrmD
  * @returns o negocio criado, ou null.
  */
 export async function gerarLeadLigado(
-  { originDealId, nome, telefone = null }:
-  { originDealId: string; nome: string; telefone?: string | null },
+  { originDealId, nome, telefone = null, excludeActivityId = null }:
+  { originDealId: string; nome: string; telefone?: string | null; excludeActivityId?: string | null },
 ): Promise<CrmDeal | null> {
   if (!originDealId || !nome?.trim()) return null;
 
@@ -348,6 +348,20 @@ export async function gerarLeadLigado(
   // createCrmDeal so grava o negocio — a cadencia e agendada ao ENTRAR na etapa.
   // Aqui a entrada e a propria criacao, entao dispara na mao (idempotente).
   if (deal?.id) scheduleStepsForDeal(deal.id, alvo.id).catch(console.warn);
+
+  // A cadencia MUDA de lead: o atendimento passou pra pessoa nova, entao a
+  // cadencia do PAI para. Nao pode ficar rodando nos dois — seria o vendedor
+  // perseguindo duas pontas do mesmo negocio. A do lead novo (acima) continua.
+  //
+  // Exclui a tarefa ATUAL (de onde a pessoa gerou o lead): ela foi EXECUTADA e
+  // o modal a conclui — cancelar junto a mandaria pro limbo (concluida E apagada).
+  let cancelPai = supabase
+    .from('crm_activities')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('deal_id', originDealId).eq('completed', false).is('deleted_at', null)
+    .not('stage_step_id', 'is', null);
+  if (excludeActivityId) cancelPai = cancelPai.neq('id', excludeActivityId);
+  await cancelPai;
 
   return deal;
 }
