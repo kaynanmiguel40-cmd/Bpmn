@@ -911,6 +911,10 @@ export function useCreateCrmActivity() {
       // A /agenda de rotina puxa a camada comercial por query própria — só o
       // create esquecia de invalidar; update/delete/complete já invalidam.
       qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      // A Fila (aba padrão da Agenda) lê crm_activities por query própria
+      // (['crm','workQueue', ...]) — sem isto a tarefa recém-criada só aparece no
+      // próximo refetch. O emergencial já invalidava; o create normal esquecia.
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       toast('Atividade criada com sucesso', 'success');
     },
   });
@@ -932,6 +936,8 @@ export function useUpdateCrmActivity() {
       // O dashboard conta reuniões/ligações agendadas por data — mover a data de
       // uma atividade tem que refletir nos contadores (simétrico com create/delete).
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      // A Fila lê as mesmas linhas — adiar/editar hora tem que refletir nela.
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
     },
   });
 }
@@ -948,6 +954,9 @@ export function useDeleteCrmActivity() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       qc.invalidateQueries({ queryKey: ['agendaEvents'] });
       qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      // Sem isto a tarefa excluída fica fantasma na Fila (staleTime 30s) e concluí-la
+      // grava completed=true numa linha já com deleted_at.
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       toast('Atividade excluida', 'success');
     },
   });
@@ -1587,7 +1596,9 @@ export function useScheduleMeeting() {
     mutationFn: ({ dealId, stageId, meetingStartISO, durationMin }) =>
       scheduleMeetingForDeal(dealId, stageId, meetingStartISO, durationMin),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+      // ['crm','calendar'] não casa com query nenhuma — a real é calendarActivities.
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'nextActivity'] });
       qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       qc.invalidateQueries({ queryKey: ['crm', 'ownerBusy'] });
     },
@@ -1603,7 +1614,8 @@ export function useAgendarRetorno() {
   return useMutation({
     mutationFn: (args) => agendarRetornoEReancorar(args),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'nextActivity'] });
       qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
     },
@@ -1621,7 +1633,11 @@ export function useGerarLeadLigado() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      // O "Próximo contato" da tela pós-conclusão vem daqui — gerarLeadLigado
+      // acabou de apagar a cadência do pai, então essa query tem que recarregar,
+      // senão mostra um toque que já está com deleted_at.
+      qc.invalidateQueries({ queryKey: ['crm', 'nextActivity'] });
     },
   });
 }
@@ -1639,7 +1655,7 @@ export function useAgendarEmergencia() {
       qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
       qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
       qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
-      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'nextActivity'] });
       qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });

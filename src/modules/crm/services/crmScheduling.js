@@ -68,7 +68,7 @@ const toMinutes = (iso) => {
  *   varias tarefas do mesmo dia sem repetir horario)
  * @returns {number|null} minuto de inicio, ou null se o dia lotou
  */
-export function findFreeSlot(busy = [], afterMinutes = -1, period = null) {
+export function findFreeSlot(busy = [], afterMinutes = -1, period = null, durationMin = SLOT_MINUTES) {
   const taken = (busy || []).map(b => {
     const start = toMinutes(b.start);
     const end = b.end ? toMinutes(b.end) : start + SLOT_MINUTES;
@@ -77,7 +77,13 @@ export function findFreeSlot(busy = [], afterMinutes = -1, period = null) {
 
   for (const slot of daySlots(period)) {
     if (slot <= afterMinutes) continue;
-    const slotEnd = slot + SLOT_MINUTES;
+    const slotEnd = slot + durationMin;
+    // O BLOCO INTEIRO tem que caber: um compromisso de 1h+ nao pode passar das
+    // 18h nem invadir o almoco so porque o slot de INICIO (30min) coube. daySlots
+    // ja garante isso pra 30min; pra blocos maiores a checagem vem aqui — senao a
+    // cauda da tarefa longa atropela o proximo compromisso ou vaza do expediente.
+    if (slotEnd > WORK_END_HOUR * 60) continue;
+    if (slotEnd > LUNCH_START_HOUR * 60 && slot < LUNCH_END_HOUR * 60) continue;
     const conflita = taken.some(([s, e]) => slot < e && slotEnd > s);
     if (!conflita) return slot;
   }
@@ -397,8 +403,29 @@ export function empurrarFila(mover, fixosByDay = {}, desde) {
     const orig = t.start;
     const dur = t.durMin || SLOT_MINUTES;
 
-    // Comeca a busca no dia da tarefa (ou no dia do ultimo colocado, se for
-    // depois — a cascata nunca volta pra um dia ja passado).
+    // FAST-PATH: se a posicao ORIGINAL nao colide com nada ja reservado (o bloco,
+    // hora marcada, ou tarefas ja recolocadas), a tarefa NAO foi atropelada — fica
+    // exatamente onde esta, mesmo fora da grade canonica (18:30, 11:30). Sem isto,
+    // toda tarefa era forcada pra grade 9-18 e uma que ja estava fora pulava de dia
+    // sem ter colidido com ninguem — contrariando "so desce quem foi atropelado".
+    const origKey = dayKey(orig);
+    const os = orig.getTime();
+    const oe = os + dur * 60000;
+    const colideOrig = (busy[origKey] || []).some(b => {
+      const bs = new Date(b.start).getTime();
+      const be = b.end ? new Date(b.end).getTime() : bs + SLOT_MINUTES * 60000;
+      return os < be && oe > bs;
+    });
+    if (!colideOrig) {
+      (busy[origKey] = busy[origKey] || []).push({ start: orig.toISOString(), end: new Date(oe).toISOString() });
+      ultimo = orig;
+      saida.push({ id: t.id, start: orig, movida: false });
+      continue;
+    }
+
+    // Colidiu: desce pro primeiro slot livre a partir do proprio horario. Comeca a
+    // busca no dia da tarefa (ou no dia do ultimo colocado, se for depois — a
+    // cascata nunca volta pra um dia ja passado).
     let base = inicioDoDia(orig);
     if (ultimo && inicioDoDia(ultimo) > base) base = inicioDoDia(ultimo);
     let dia = nextBusinessDay(base);
@@ -417,7 +444,9 @@ export function empurrarFila(mover, fixosByDay = {}, desde) {
       if (ultimo && dayKey(ultimo) === key) X = Math.max(X, minutosDe(ultimo) + 1);
       const piso = X === -Infinity ? -1 : X - 1;
 
-      slot = findFreeSlot(busy[key] || [], piso, t.period || null);
+      // Duracao real: o slot tem que caber o bloco INTEIRO (senao a tarefa longa
+      // atravessa a hora marcada seguinte ou vaza das 18h).
+      slot = findFreeSlot(busy[key] || [], piso, t.period || null, dur);
       if (slot !== null) break;
       dia = nextBusinessDay(new Date(dia.getFullYear(), dia.getMonth(), dia.getDate() + 1));
     }

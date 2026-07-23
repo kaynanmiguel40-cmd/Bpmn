@@ -390,37 +390,54 @@ export async function agendarRetornoEReancorar({
     offsetAtual = st?.day_offset || 0;
   }
 
-  // 1) PRA TRAS = pendente do lead ja atrasado. Cadencia E MANUAL (antes so
-  //    cadencia): o lead atendeu, entao o que ficou pra tras — seja toque da
-  //    cadencia ou tarefa que voce marcou na mao — nao vale mais antes do retorno.
-  let cancelQ = supabase
-    .from('crm_activities')
-    .update({ deleted_at: agora.toISOString() })
-    .eq('deal_id', dealId).eq('completed', false).is('deleted_at', null)
-    .lt('start_date', agora.toISOString());
-  if (excludeActivityId) cancelQ = cancelQ.neq('id', excludeActivityId);
-  const { data: canceladas } = await cancelQ.select('id');
-
-  // 2) O RETORNO no horario escolhido. Guarda o id pra nao se cancelar/mover a si
-  //    mesmo na resolucao de colisao logo abaixo.
+  // 1) O RETORNO no horario escolhido — o PASSO CONSTRUTIVO da funcao, feito ANTES
+  //    de qualquer cancelamento. Se o insert falhar, aborta sem ter apagado nada:
+  //    cancelar os atrasados e re-ancorar em torno de um callback que nao existe
+  //    deixaria o lead pior do que estava, reportando "sucesso". Guarda o id pra
+  //    nao se cancelar/mover a si mesmo na resolucao de colisao logo abaixo.
   const fimRetorno = new Date(callback.getTime() + SLOT_MINUTES * 60000);
-  const { data: retorno } = await supabase.from('crm_activities').insert({
+  const { data: retorno, error: retornoErr } = await supabase.from('crm_activities').insert({
     title: titulo, type: tipo, deal_id: dealId, contact_id: deal.contact_id || null,
     start_date: callback.toISOString(), end_date: fimRetorno.toISOString(), completed: false,
     assigned_to: assignee, assigned_to_name: assigneeName,
   }).select('id').single();
+  if (retornoErr || !retorno?.id) {
+    console.error('[agendarRetornoEReancorar] insert do retorno', retornoErr?.message);
+    return { ok: false, canceladas: 0, reancoradas: 0 };
+  }
 
-  // 3) RE-ANCORA o resto (futuros, nao atrasados) a partir do retorno.
+  // 2) PRA TRAS = pendente do lead ja atrasado. Cadencia E MANUAL: o lead atendeu,
+  //    entao o que ficou pra tras — toque da cadencia ou tarefa manual — nao vale
+  //    mais antes do retorno. HORA_MARCADA (reuniao/visita/almoco) fica DE FORA: um
+  //    compromisso com hora combinada nao e "toque atrasado" que se apaga — e, por
+  //    ser UPDATE cru, o evento dele no Google sobreviveria orfao de qualquer jeito.
+  let cancelQ = supabase
+    .from('crm_activities')
+    .update({ deleted_at: agora.toISOString() })
+    .eq('deal_id', dealId).eq('completed', false).is('deleted_at', null)
+    .not('type', 'in', '(meeting,visit,lunch)')
+    .neq('id', retorno.id)
+    .lt('start_date', agora.toISOString());
+  if (excludeActivityId) cancelQ = cancelQ.neq('id', excludeActivityId);
+  const { data: canceladas } = await cancelQ.select('id');
+
+  // 3) RE-ANCORA o resto (futuros, nao atrasados) a partir do retorno. Exclui os
+  //    LEMBRETES DE REUNIAO (meeting_offset_minutes): eles sao ancorados NA reuniao
+  //    (day_offset=0), nao na cadencia — re-planeja-los pro dia do callback soltaria
+  //    o "1h antes"/"confirmar vespera" da reuniao, que continua parada onde estava.
   let futQ = supabase
     .from('crm_activities')
-    .select('id, stage_step_id, crm_stage_steps(day_offset, period)')
+    .select('id, stage_step_id, crm_stage_steps(day_offset, period, meeting_offset_minutes)')
     .eq('deal_id', dealId).eq('completed', false).is('deleted_at', null)
     .not('stage_step_id', 'is', null)
+    .neq('id', retorno.id)
     .gte('start_date', agora.toISOString());
   if (excludeActivityId) futQ = futQ.neq('id', excludeActivityId);
   const { data: futuras } = await futQ;
 
   const steps = (futuras || [])
+    // Fora os lembretes da reuniao — eles vivem ancorados na reuniao, nao na fila.
+    .filter(r => r.crm_stage_steps?.meeting_offset_minutes == null)
     .map(r => ({
       id: r.id,
       off: r.crm_stage_steps?.day_offset || 0,
@@ -549,21 +566,33 @@ export async function agendarEmergencia(payload) {
   const durBloco = payload.endDate
     ? Math.max(SLOT_MINUTES, Math.round((new Date(payload.endDate) - desde) / 60000))
     : SLOT_MINUTES;
-  const assignee = payload.assignedTo || null;
+
+  // DONO do empurrao: a emergencia reorganiza a agenda DE UMA PESSOA. Sem
+  // responsavel explicito no payload (o modal deixou "— Selecionar —", ou a lista
+  // de owners nao carregou a tempo), cai pra quem esta criando — a emergencia e
+  // dele. Se nem sessao houver, PARA aqui: sem filtro de dono a query varreria as
+  // tarefas pendentes de TODOS os vendedores e o empurrao remanejaria (e arrastaria
+  // o Google Calendar de) a agenda do time inteiro. A tarefa ja foi criada; so o
+  // empurrao e que nao roda sem um dono definido.
+  let assignee = payload.assignedTo || null;
+  if (!assignee) {
+    const { data: sess } = await supabase.auth.getSession();
+    assignee = sess?.session?.user?.id || null;
+  }
+  if (!assignee) return { activity, movidas: 0 };
 
   // 2) Agenda pendente do dono a partir do dia do bloco (folga de ~9 semanas pro
   //    rollover de dia lotado). So o dono tem o dia reorganizado — e o dia dele.
   const diaIni = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate()).toISOString();
   const until = new Date(desde);
   until.setDate(until.getDate() + 67);
-  let q = supabase
+  const { data: rows } = await supabase
     .from('crm_activities')
     .select('id, type, start_date, end_date')
     .eq('completed', false).is('deleted_at', null)
     .neq('id', activity.id)
+    .eq('assigned_to', assignee)
     .gte('start_date', diaIni).lte('start_date', until.toISOString());
-  if (assignee) q = q.eq('assigned_to', assignee);
-  const { data: rows } = await q;
 
   // 3) Separa MOVEL (flexivel, a partir do bloco) de FIXO (hora marcada, passado,
   //    ou dia futuro). O bloco emergencial tambem entra como fixo — ocupa e nao sai.

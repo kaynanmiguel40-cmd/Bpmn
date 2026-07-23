@@ -284,4 +284,34 @@ describe('empurrarFila — bloco emergencial empurra o resto do dia', () => {
     const by = Object.fromEntries(out.map(o => [o.id, o]));
     expect(by.a.start.getTime()).toBeLessThan(by.b.start.getTime());
   });
+
+  // #3: tarefa longa (>30min) nao pode ser encaixada num buraco de 30min por cima
+  // de uma reuniao intransponivel nem vazar do expediente.
+  it('tarefa longa respeita a duracao — nao atravessa a reuniao seguinte', () => {
+    const desde14 = new Date(2026, 6, 20, 14, 0);
+    const fixos = {
+      '2026-07-20': [
+        { start: desde14.toISOString(), end: new Date(2026, 6, 20, 14, 30).toISOString() }, // bloco
+        { start: new Date(2026, 6, 20, 15, 0).toISOString(), end: new Date(2026, 6, 20, 16, 0).toISOString() }, // reuniao
+      ],
+    };
+    const mover = [{ id: 'longa', start: new Date(2026, 6, 20, 14, 0), durMin: 120 }];
+    const out = empurrarFila(mover, fixos, desde14);
+    const s = out[0].start;
+    const e = new Date(s.getTime() + 120 * 60000);
+    // Nao invade a reuniao 15:00-16:00.
+    const rS = new Date(2026, 6, 20, 15, 0), rE = new Date(2026, 6, 20, 16, 0);
+    expect(s < rE && e > rS).toBe(false);
+    // Nem passa das 18h (no mesmo dia) — se rolou pro dia seguinte, tudo bem.
+    if (e.getDate() === 20) expect(e.getHours() * 60 + e.getMinutes()).toBeLessThanOrEqual(18 * 60);
+  });
+
+  // #18: tarefa fora da grade canonica (18:30, 11:30) que nao colide com o bloco
+  // nao pode ser arrastada pra grade — ela nao foi atropelada.
+  it('tarefa fora da grade que nao colide fica exatamente onde esta', () => {
+    const mover = [{ id: 'noite', start: new Date(2026, 6, 20, 18, 30) }];
+    const out = empurrarFila(mover, bloco, desde);
+    expect(out[0].movida).toBe(false);
+    expect(hora(out[0].start)).toBe('18:30');
+  });
 });

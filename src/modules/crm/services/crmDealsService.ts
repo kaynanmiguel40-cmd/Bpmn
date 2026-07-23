@@ -345,23 +345,36 @@ export async function gerarLeadLigado(
     status: 'open',
   });
 
-  // createCrmDeal so grava o negocio — a cadencia e agendada ao ENTRAR na etapa.
-  // Aqui a entrada e a propria criacao, entao dispara na mao (idempotente).
-  if (deal?.id) scheduleStepsForDeal(deal.id, alvo.id).catch(console.warn);
+  if (!deal?.id) return null;
 
-  // A cadencia MUDA de lead: o atendimento passou pra pessoa nova, entao a
-  // cadencia do PAI para. Nao pode ficar rodando nos dois — seria o vendedor
-  // perseguindo duas pontas do mesmo negocio. A do lead novo (acima) continua.
+  // O createCrmDeal cai num FALLBACK OFFLINE (id UUID local, indistinguivel de um
+  // real) quando o insert falha — coluna origin_deal_id ausente, RLS, constraint.
+  // Confiar no id truthy cancelaria a cadencia do PAI deixando o lead sem filho E
+  // sem cadencia, com o modal reportando sucesso. Um SELECT do proprio id confirma
+  // que a linha existe mesmo no banco.
+  const { data: gravado } = await supabase
+    .from('crm_deals').select('id').eq('id', deal.id).maybeSingle();
+  if (!gravado) return deal; // nao persistiu: NAO mexe na cadencia do pai
+
+  // A cadencia MUDA de lead: agenda a do FILHO (idempotente) e SO ENTAO para a do
+  // pai — nesta ordem, e com await. So cancela o pai depois que o filho de fato
+  // assumiu (>=1 toque criado); se o filho nao recebeu cadencia nenhuma, o pai
+  // mantem a dele, melhor que deixar a cadeia inteira sem cadencia.
   //
-  // Exclui a tarefa ATUAL (de onde a pessoa gerou o lead): ela foi EXECUTADA e
-  // o modal a conclui — cancelar junto a mandaria pro limbo (concluida E apagada).
-  let cancelPai = supabase
-    .from('crm_activities')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('deal_id', originDealId).eq('completed', false).is('deleted_at', null)
-    .not('stage_step_id', 'is', null);
-  if (excludeActivityId) cancelPai = cancelPai.neq('id', excludeActivityId);
-  await cancelPai;
+  // Exclui a tarefa ATUAL (de onde a pessoa gerou o lead): ela foi EXECUTADA e o
+  // modal a conclui — cancelar junto a mandaria pro limbo (concluida E apagada).
+  let criadas = 0;
+  try { criadas = await scheduleStepsForDeal(deal.id, alvo.id); } catch (e) { console.warn(e); }
+
+  if (criadas > 0) {
+    let cancelPai = supabase
+      .from('crm_activities')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('deal_id', originDealId).eq('completed', false).is('deleted_at', null)
+      .not('stage_step_id', 'is', null);
+    if (excludeActivityId) cancelPai = cancelPai.neq('id', excludeActivityId);
+    await cancelPai;
+  }
 
   return deal;
 }
