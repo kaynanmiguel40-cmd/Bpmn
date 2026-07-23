@@ -343,3 +343,94 @@ export function rebalanceQueue(tarefas, { from = new Date(), busyByDay = {} } = 
 
   return saida;
 }
+
+// ==================== EMPURRAO POR EMERGENCIA ====================
+
+/**
+ * Insere um bloco EMERGENCIAL ("faz agora") e empurra as tarefas flexiveis do
+ * dia pra frente, em cascata.
+ *
+ * Diferente do rebalanceamento por prioridade: aqui NAO reordena nada por
+ * estrela nem por rank. Mantem a ordem cronologica que ja existe e so DESCE quem
+ * foi atropelado — cada tarefa cai no primeiro slot livre a partir do SEU proprio
+ * horario original (nunca anda pra tras). Isso preenche buraco de proposito: se o
+ * slot original da tarefa continua livre, ela nao se mexe; a cascata para quando
+ * o primeiro buraco a absorve.
+ *
+ * `fixosByDay` = intransponiveis: o proprio bloco emergencial, a hora marcada
+ * (reuniao/visita/almoco) e o que estiver em dias futuros. Eles ocupam slot mas
+ * nunca sao movidos — tarefa flexivel que esbarra num deles pula por cima. Dia
+ * lotado rola pro proximo dia util (MAX_ROLLOVER_DAYS), igual a cadencia.
+ *
+ * Puro de proposito (sem banco, sem relogio): `desde` entra por parametro pra o
+ * teste fixar o instante do bloco.
+ *
+ * @param {Array<{id:string,start:Date|string,durMin?:number,period?:string}>} mover
+ *   as tarefas flexiveis candidatas a descer (a partir de `desde`)
+ * @param {Object} fixosByDay  { 'YYYY-MM-DD': [{start,end}] } imoveis
+ * @param {Date} desde  inicio do bloco emergencial — piso global, nada cai antes
+ * @returns {Array<{id:string,start:Date,movida:boolean}>}
+ */
+export function empurrarFila(mover, fixosByDay = {}, desde) {
+  const lista = (mover || [])
+    .filter(t => t?.id && t.start)
+    .map(t => ({ ...t, start: new Date(t.start) }))
+    // A partir do bloco: o que ja passou de manha nao entra no empurrao.
+    .filter(t => t.start.getTime() >= desde.getTime())
+    .sort((a, b) => a.start - b.start);
+  if (lista.length === 0) return [];
+
+  // Copia do ocupado — o algoritmo reserva slot conforme decide e nao pode sujar
+  // a entrada.
+  const busy = {};
+  Object.entries(fixosByDay).forEach(([k, v]) => { busy[k] = [...(v || [])]; });
+
+  const inicioDoDia = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const minutosDe = (d) => d.getHours() * 60 + d.getMinutes();
+  const desdeKey = dayKey(desde);
+  const desdeMin = minutosDe(desde);
+
+  const saida = [];
+  let ultimo = null; // ultimo slot dado — mantem a cascata em ordem
+
+  for (const t of lista) {
+    const orig = t.start;
+    const dur = t.durMin || SLOT_MINUTES;
+
+    // Comeca a busca no dia da tarefa (ou no dia do ultimo colocado, se for
+    // depois — a cascata nunca volta pra um dia ja passado).
+    let base = inicioDoDia(orig);
+    if (ultimo && inicioDoDia(ultimo) > base) base = inicioDoDia(ultimo);
+    let dia = nextBusinessDay(base);
+
+    let slot = null;
+    let key = dayKey(dia);
+    for (let i = 0; i <= MAX_ROLLOVER_DAYS; i++) {
+      key = dayKey(dia);
+      // Piso de horario do dia. So vale no dia certo:
+      //  - dia original: nao anda pra tras do proprio horario;
+      //  - dia do bloco: nao cai antes do bloco emergencial;
+      //  - dia do ultimo colocado: cai depois dele (ordem da cascata).
+      let X = -Infinity;
+      if (key === dayKey(orig)) X = Math.max(X, minutosDe(orig));
+      if (key === desdeKey) X = Math.max(X, desdeMin);
+      if (ultimo && dayKey(ultimo) === key) X = Math.max(X, minutosDe(ultimo) + 1);
+      const piso = X === -Infinity ? -1 : X - 1;
+
+      slot = findFreeSlot(busy[key] || [], piso, t.period || null);
+      if (slot !== null) break;
+      dia = nextBusinessDay(new Date(dia.getFullYear(), dia.getMonth(), dia.getDate() + 1));
+    }
+    if (slot === null) continue; // nao coube em 60 dias uteis: fica onde esta
+
+    const start = atMinutes(dia, slot);
+    (busy[key] = busy[key] || []).push({
+      start: start.toISOString(),
+      end: new Date(start.getTime() + dur * 60000).toISOString(),
+    });
+    ultimo = start;
+    saida.push({ id: t.id, start, movida: orig.getTime() !== start.getTime() });
+  }
+
+  return saida;
+}

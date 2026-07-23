@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { daySlots, findFreeSlot, planSteps, dayKey, nextBusinessDay, WORK_START_HOUR } from '../crmScheduling';
+import { daySlots, findFreeSlot, planSteps, dayKey, nextBusinessDay, WORK_START_HOUR, empurrarFila } from '../crmScheduling';
 
 const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 // Helper: ISO de um horario num dia fixo (2026-07-20 = segunda-feira)
@@ -199,5 +199,89 @@ describe('planSteps — piso do agora', () => {
     expect(plan).toHaveLength(1);
     expect(plan[0].start.getDate()).toBe(21);
     expect(plan[0].start.getHours()).toBe(WORK_START_HOUR);
+  });
+});
+
+// Emergencial: entra "agora" e empurra o resto do dia pra frente, sem reordenar
+// por prioridade. So desce quem foi atropelado; hora marcada fica cravada.
+describe('empurrarFila — bloco emergencial empurra o resto do dia', () => {
+  // 2026-07-20 = segunda. Bloco emergencial as 9h (ocupa 9:00-9:30).
+  const desde = new Date(2026, 6, 20, 9, 0);
+  const bloco = { '2026-07-20': [{ start: desde.toISOString(), end: new Date(2026, 6, 20, 9, 30).toISOString() }] };
+  const hora = (start) => `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
+
+  it('a tarefa que estava no slot do bloco desce pro proximo livre', () => {
+    const mover = [{ id: 'a', start: new Date(2026, 6, 20, 9, 0) }]; // colidia com o bloco
+    const out = empurrarFila(mover, bloco, desde);
+    expect(out).toHaveLength(1);
+    expect(out[0].movida).toBe(true);
+    expect(hora(out[0].start)).toBe('09:30');
+  });
+
+  it('cascata: 9:00 e 9:30 encostados descem os dois; o 11:00 (com buraco) fica', () => {
+    const mover = [
+      { id: 'a', start: new Date(2026, 6, 20, 9, 0) },
+      { id: 'b', start: new Date(2026, 6, 20, 9, 30) },
+      { id: 'c', start: new Date(2026, 6, 20, 12, 0) }, // depois do almoco, buraco antes
+    ];
+    const out = empurrarFila(mover, bloco, desde);
+    const by = Object.fromEntries(out.map(o => [o.id, o]));
+    expect(hora(by.a.start)).toBe('09:30');
+    expect(hora(by.b.start)).toBe('10:00');
+    // 'c' as 12:00 nao colide com nada — buraco das 10:30 absorveu a cascata.
+    expect(by.c.movida).toBe(false);
+    expect(hora(by.c.start)).toBe('12:00');
+  });
+
+  it('buraco fecha: tarefa cujo slot continua livre nao se mexe', () => {
+    // Bloco as 9h, tarefa as 10h. 9:30-10:00 fica livre, entao a de 10h nao anda.
+    const mover = [{ id: 'a', start: new Date(2026, 6, 20, 10, 0) }];
+    const out = empurrarFila(mover, bloco, desde);
+    expect(out[0].movida).toBe(false);
+    expect(hora(out[0].start)).toBe('10:00');
+  });
+
+  it('hora marcada nao entra na fila — quem a chama filtra reuniao/visita/almoco', () => {
+    // O motor so recebe flexiveis; a reuniao entra como fixo e a flexivel pula.
+    const reuniao = new Date(2026, 6, 20, 9, 30);
+    const fixos = {
+      '2026-07-20': [
+        ...bloco['2026-07-20'],
+        { start: reuniao.toISOString(), end: new Date(2026, 6, 20, 10, 30).toISOString() },
+      ],
+    };
+    const mover = [{ id: 'a', start: new Date(2026, 6, 20, 9, 0) }];
+    const out = empurrarFila(mover, fixos, desde);
+    // 9:00 (bloco) e 9:30-10:30 (reuniao) ocupados -> cai as 10:30.
+    expect(hora(out[0].start)).toBe('10:30');
+  });
+
+  it('dia lotado rola pro proximo dia util', () => {
+    // Preenche a tarde toda de segunda com fixos; a flexivel da tarde rola.
+    const cheios = [...bloco['2026-07-20']];
+    for (let h = 12; h < 18; h++) {
+      for (const m of [0, 30]) {
+        cheios.push({ start: new Date(2026, 6, 20, h, m).toISOString(), end: new Date(2026, 6, 20, h, m + 30).toISOString() });
+      }
+    }
+    // Tambem lota a manha (9:30-11:00) — so sobra... nada em segunda.
+    cheios.push({ start: new Date(2026, 6, 20, 9, 30).toISOString(), end: new Date(2026, 6, 20, 11, 0).toISOString() });
+    cheios.push({ start: new Date(2026, 6, 20, 10, 0).toISOString(), end: new Date(2026, 6, 20, 10, 30).toISOString() });
+    cheios.push({ start: new Date(2026, 6, 20, 10, 30).toISOString(), end: new Date(2026, 6, 20, 11, 0).toISOString() });
+    const fixos = { '2026-07-20': cheios };
+    const mover = [{ id: 'a', start: new Date(2026, 6, 20, 12, 0) }];
+    const out = empurrarFila(mover, fixos, desde);
+    expect(out[0].start.getDate()).toBe(21); // terca
+    expect(out[0].start.getHours()).toBe(WORK_START_HOUR);
+  });
+
+  it('mantem a ordem cronologica: b (mais tarde) nunca cai antes de a', () => {
+    const mover = [
+      { id: 'a', start: new Date(2026, 6, 20, 9, 0) },
+      { id: 'b', start: new Date(2026, 6, 20, 9, 30) },
+    ];
+    const out = empurrarFila(mover, bloco, desde);
+    const by = Object.fromEntries(out.map(o => [o.id, o]));
+    expect(by.a.start.getTime()).toBeLessThan(by.b.start.getTime());
   });
 });

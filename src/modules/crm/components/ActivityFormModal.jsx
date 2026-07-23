@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus, Trash2, CheckCircle2 } from 'lucide-react';
+import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus, Trash2, CheckCircle2, Siren } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { fieldClass as sharedFieldClass } from './ui/formFieldClass';
 import { CrmConfirmDialog } from './ui/CrmConfirmDialog';
@@ -34,6 +34,7 @@ import {
   useUpdateCrmActivity,
   useDeleteCrmActivity,
   useReportOwners,
+  useAgendarEmergencia,
 } from '../hooks/useCrmQueries';
 import { getActivityAttendees } from '../services/crmActivitiesService';
 
@@ -169,8 +170,11 @@ export function ActivityFormModal({
   const createMutation = useCreateCrmActivity();
   const updateMutation = useUpdateCrmActivity();
   const deleteMutation = useDeleteCrmActivity();
-  const isPending = createMutation.isPending || updateMutation.isPending;
+  const emergenciaMutation = useAgendarEmergencia();
+  const isPending = createMutation.isPending || updateMutation.isPending || emergenciaMutation.isPending;
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  // Modo emergencial (só tarefa NOVA): entra agora e empurra o resto do dia.
+  const [emergencial, setEmergencial] = useState(false);
   // Entrega (input/output) da tarefa concluída — editável aqui pra quem
   // concluiu pulando os detalhes voltar e preencher. Fica fora do
   // react-hook-form/schema (que valida só o agendamento da tarefa).
@@ -209,6 +213,7 @@ export function ActivityFormModal({
       setDeliveryInput(activity.deliveryInput || '');
       setDeliveryReport(activity.deliveryReport || '');
     } else if (open) {
+      setEmergencial(false); // toda tarefa nova comeca normal
       // Default: agora, arredondado pra proxima meia-hora, duracao 30min
       const now = new Date();
       now.setMinutes(now.getMinutes() + (30 - (now.getMinutes() % 30 || 30)), 0, 0);
@@ -280,6 +285,9 @@ export function ActivityFormModal({
     }
     if (isEdit) {
       await updateMutation.mutateAsync({ id: activity.id, updates: payload });
+    } else if (emergencial) {
+      // Entra agora e empurra o resto do dia (o motor cuida da cascata).
+      await emergenciaMutation.mutateAsync(payload);
     } else {
       await createMutation.mutateAsync(payload);
     }
@@ -314,13 +322,53 @@ export function ActivityFormModal({
           <button type="button" onClick={onClose} disabled={isPending} className={BTN_SECONDARY}>
             Cancelar
           </button>
-          <button type="submit" form="activity-form" disabled={isPending} className={BTN_PRIMARY}>
+          <button type="submit" form="activity-form" disabled={isPending}
+            className={emergencial && !isEdit
+              ? BTN_PRIMARY.replace('bg-fyness-primary hover:bg-fyness-secondary', 'bg-rose-500 hover:bg-rose-600')
+              : BTN_PRIMARY}>
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {isPending ? (isEdit ? 'Salvando…' : 'Criando…') : (isEdit ? 'Salvar' : 'Criar tarefa')}
+            {isPending
+              ? (isEdit ? 'Salvando…' : (emergencial ? 'Empurrando o dia…' : 'Criando…'))
+              : (isEdit ? 'Salvar' : (emergencial ? 'Criar emergencial' : 'Criar tarefa'))}
           </button>
         </>
       }>
       <form id="activity-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {/* Emergencial — só pra tarefa nova. Ligado, a tarefa entra no horário
+            marcado (default: agora) e empurra o resto do dia pra frente. */}
+        {!isEdit && (
+          <button
+            type="button"
+            onClick={() => setEmergencial(v => !v)}
+            aria-pressed={emergencial}
+            className={`w-full flex items-start gap-3 p-3 rounded-xl border text-left transition-colors ${
+              emergencial
+                ? 'border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/20'
+                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+            }`}
+          >
+            <span className={`mt-0.5 flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${
+              emergencial ? 'bg-rose-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+            }`}>
+              <Siren size={18} />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="flex items-center gap-2">
+                <span className={`text-sm font-semibold ${emergencial ? 'text-rose-700 dark:text-rose-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                  Emergencial
+                </span>
+                {/* Switch visual */}
+                <span className={`ml-auto relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${emergencial ? 'bg-rose-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${emergencial ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </span>
+              </span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Entra no horário marcado e empurra o resto do dia pra frente. Reunião, visita e almoço ficam no lugar.
+              </span>
+            </span>
+          </button>
+        )}
+
         {/* Tipo da atividade */}
         <div>
           <p className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tipo</p>

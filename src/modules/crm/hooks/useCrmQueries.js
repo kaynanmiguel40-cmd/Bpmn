@@ -16,7 +16,7 @@ import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsP
 import { getSalesReport, getLearnedProbabilities } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
 import { getCrmCalendarActivities, getLeadTimeline, getOwnerBusyWindows } from '../services/crmAgendaService';
-import { scheduleMeetingForDeal, agendarRetornoEReancorar } from '../services/crmPlaybookService';
+import { scheduleMeetingForDeal, agendarRetornoEReancorar, agendarEmergencia } from '../services/crmPlaybookService';
 import { getStageWorkSummary } from '../services/crmQueueService';
 import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
@@ -1622,6 +1622,35 @@ export function useGerarLeadLigado() {
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+    },
+  });
+}
+
+/**
+ * Tarefa EMERGENCIAL: cria o bloco "faz agora" e empurra o resto do dia. Invalida
+ * o mesmo conjunto do create (a tarefa nova) MAIS o do reagendamento (as movidas)
+ * — varias tarefas mudaram de horario de uma vez.
+ */
+export function useAgendarEmergencia() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload) => agendarEmergencia(payload),
+    onSuccess: ({ movidas } = {}) => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['crm', 'dealActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendar'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'leadTimeline'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      qc.invalidateQueries({ queryKey: ['agendaEvents'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      toast(
+        movidas > 0
+          ? `Tarefa emergencial criada — ${movidas} tarefa${movidas > 1 ? 's' : ''} do dia empurrada${movidas > 1 ? 's' : ''}`
+          : 'Tarefa emergencial criada',
+        'success',
+      );
     },
   });
 }

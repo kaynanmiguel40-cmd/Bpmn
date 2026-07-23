@@ -13,7 +13,7 @@
 
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
-import { planSteps, dayKey, SLOT_MINUTES, stepChannel, horarioLembrete, findFreeSlot, atMinutes } from './crmScheduling';
+import { planSteps, dayKey, SLOT_MINUTES, stepChannel, horarioLembrete, findFreeSlot, atMinutes, empurrarFila } from './crmScheduling';
 
 // ==================== TRANSFORMADORES ====================
 
@@ -476,8 +476,7 @@ export async function agendarRetornoEReancorar({
 
   // 5) COLISAO DE OUTRO LEAD: toque FLEXIVEL (nao compromisso) de outro lead no
   //    mesmo slot e remanejado pra frente. O retorno tem hora combinada COM O
-  //    LEAD; o toque da fila e que se move, nao o contrario.
-  const HORA_MARCADA = ['meeting', 'visit', 'lunch'];
+  //    LEAD; o toque da fila e que se move, nao o contrario. HORA_MARCADA no topo.
   let colOutroQ = supabase.from('crm_activities')
     .select('id, type')
     .eq('completed', false).is('deleted_at', null)
@@ -514,6 +513,95 @@ export async function agendarRetornoEReancorar({
   }
 
   return { ok: true, canceladas: (canceladas || []).length, reancoradas };
+}
+
+// Tipos com hora combinada COM alguem: nao entram no empurrao — sao intransponiveis.
+const HORA_MARCADA = ['meeting', 'visit', 'lunch'];
+
+/**
+ * Cria uma tarefa EMERGENCIAL ("faz agora") e empurra o resto do dia pra frente.
+ *
+ * O bloco entra no horario pedido (default do modal: agora) e as tarefas
+ * FLEXIVEIS do dono, a partir dali, descem em cascata pro proximo slot livre.
+ * Hora marcada (reuniao/visita/almoco) fica cravada; se uma flexivel esbarra
+ * nela, pula por cima. Dia lotado rola pro proximo dia util. Tarefa que ja passou
+ * (antes do bloco) nao mexe.
+ *
+ * Quem decide as novas posicoes e o motor puro `empurrarFila`; aqui so carrego a
+ * agenda do dono, separo movel de fixo e persisto o que mudou. Uso
+ * `updateCrmActivity` (nao update cru) pra as tarefas manuais que tem evento no
+ * Google Calendar arrastarem o horario junto — cadencia (insert direto, sem
+ * evento) so atualiza a linha.
+ *
+ * @param {Object} payload  os mesmos campos de createCrmActivity (title, type,
+ *   startDate, endDate, dealId, contactId, assignedTo, ...)
+ * @returns {Promise<{ activity: object|null, movidas: number }>}
+ */
+export async function agendarEmergencia(payload) {
+  const { createCrmActivity, updateCrmActivity } = await import('./crmActivitiesService');
+
+  // 1) O bloco em si — vira tarefa real (e evento no Calendar, como toda tarefa
+  //    manual). E o "faz agora" que aparece no topo do dia.
+  const activity = await createCrmActivity(payload);
+  if (!activity?.id) return { activity: null, movidas: 0 };
+
+  const desde = new Date(payload.startDate);
+  const durBloco = payload.endDate
+    ? Math.max(SLOT_MINUTES, Math.round((new Date(payload.endDate) - desde) / 60000))
+    : SLOT_MINUTES;
+  const assignee = payload.assignedTo || null;
+
+  // 2) Agenda pendente do dono a partir do dia do bloco (folga de ~9 semanas pro
+  //    rollover de dia lotado). So o dono tem o dia reorganizado — e o dia dele.
+  const diaIni = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate()).toISOString();
+  const until = new Date(desde);
+  until.setDate(until.getDate() + 67);
+  let q = supabase
+    .from('crm_activities')
+    .select('id, type, start_date, end_date')
+    .eq('completed', false).is('deleted_at', null)
+    .neq('id', activity.id)
+    .gte('start_date', diaIni).lte('start_date', until.toISOString());
+  if (assignee) q = q.eq('assigned_to', assignee);
+  const { data: rows } = await q;
+
+  // 3) Separa MOVEL (flexivel, a partir do bloco) de FIXO (hora marcada, passado,
+  //    ou dia futuro). O bloco emergencial tambem entra como fixo — ocupa e nao sai.
+  const durDe = (r) => (r.end_date
+    ? Math.max(SLOT_MINUTES, Math.round((new Date(r.end_date) - new Date(r.start_date)) / 60000))
+    : SLOT_MINUTES);
+  const mover = [];
+  const fixosByDay = {};
+  const reservar = (startISO, endISO) => {
+    const k = dayKey(new Date(startISO));
+    (fixosByDay[k] = fixosByDay[k] || []).push({ start: startISO, end: endISO || null });
+  };
+  reservar(desde.toISOString(), new Date(desde.getTime() + durBloco * 60000).toISOString());
+
+  for (const r of rows || []) {
+    const flexivel = !HORA_MARCADA.includes(r.type);
+    const depois = new Date(r.start_date).getTime() >= desde.getTime();
+    if (flexivel && depois) {
+      mover.push({ id: r.id, start: new Date(r.start_date), durMin: durDe(r) });
+    } else {
+      reservar(r.start_date, r.end_date);
+    }
+  }
+
+  // 4) O motor decide; persisto so o que mudou de lugar.
+  const plano = empurrarFila(mover, fixosByDay, desde).filter(p => p.movida);
+  const durById = Object.fromEntries(mover.map(m => [m.id, m.durMin]));
+  let movidas = 0;
+  for (const p of plano) {
+    const fim = new Date(p.start.getTime() + (durById[p.id] || SLOT_MINUTES) * 60000);
+    const res = await updateCrmActivity(p.id, {
+      startDate: p.start.toISOString(),
+      endDate: fim.toISOString(),
+    });
+    if (res) movidas++;
+  }
+
+  return { activity, movidas };
 }
 
 /**
