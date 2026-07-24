@@ -217,6 +217,35 @@ export async function saveStageGoal(stageId, { objetivo, exitCriteria }) {
 const guessType = stepChannel;
 
 /**
+ * FILA DE AGENDAMENTO — serializa as chamadas de agendamento.
+ *
+ * agendarPassos LE a agenda ocupada e so DEPOIS insere. Duas chamadas
+ * simultaneas leem o MESMO "ocupado" e escolhem os MESMOS horarios: foi assim que
+ * a agenda de uma vendedora ficou com 15 tarefas no mesmo minuto e 274
+ * sobrepostas. E o estrago nao para no empilhamento — o dia passa a parecer cheio
+ * (16 slots, 72 tarefas), o rollover empurra pro dia seguinte e o piso de dia
+ * cascateia o resto: tarefa de day_offset=0 ("hoje") foi cair 7 semanas depois.
+ *
+ * Os dois caminhos que mais disparam isso (moveDealToStage e o move em lote)
+ * chamam sem await, entao N leads movidos juntos viravam N leituras simultaneas.
+ * Enfileirar aqui — e nao em cada chamador — garante que cada agendamento enxergue
+ * o que o anterior acabou de gravar, venha de onde vier.
+ */
+/** @type {Promise<unknown>} */
+let filaAgendamento = Promise.resolve();
+/**
+ * @template T
+ * @param {() => Promise<T>} tarefa
+ * @returns {Promise<T>}
+ */
+function enfileirar(tarefa) {
+  const resultado = filaAgendamento.then(tarefa, tarefa);
+  // A fila nao pode travar por causa de um erro: o proximo da fila segue.
+  filaAgendamento = resultado.then(() => {}, () => {});
+  return resultado;
+}
+
+/**
  * Agenda as tarefas do processo de uma etapa na AGENDA do dono do negocio.
  *
  * Cada passo vira uma atividade real, no primeiro horario livre do seu dia
@@ -225,8 +254,15 @@ const guessType = stepChannel;
  *
  * Idempotente: passo que ja tem atividade pra este negocio e pulado — mover o
  * lead pra fora e de volta nao duplica a agenda.
+ *
+ * Serializada (ver `enfileirar`): o par ler-ocupado + inserir tem que ser
+ * indivisivel, senao chamadas concorrentes escolhem o mesmo horario.
  */
 export async function scheduleStepsForDeal(dealId, stageId) {
+  return enfileirar(() => agendarPassos(dealId, stageId));
+}
+
+async function agendarPassos(dealId, stageId) {
   if (!dealId || !stageId) return 0;
 
   const { data: deal } = await supabase
