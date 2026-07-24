@@ -7,13 +7,19 @@ import { tentativasDaTarefa, autorDaLigacao } from '../lib/ligacoes';
 // enviados, reunioes e tarefas concluidas) + KPIs de contexto do mes.
 // Pensado pra reuniao de manha (daily): abrir e apresentar.
 //
-// Fontes contaveis por vendedor + timestamp:
-//   crm_calls       (created_by, started_at, outcome)
-//   crm_messages    (created_by, sent_at, direction='outbound')
-//   crm_activities  (created_by, start_date / completed_at, type)
+// A UNIDADE E A TAREFA CONCLUIDA, nao o registro bruto do canal. Ligacao,
+// mensagem e reuniao saem de crm_activities (type + completed_at); o autor sai de
+// completed_by > assigned_to > created_by, porque a tarefa de cadencia nasce de um
+// insert do sistema sem created_by. Uma tarefa pode valer mais de um toque quando
+// o titulo declara ("Ligação (3 tentativas)" = 3) — ver lib/ligacoes.
 //
-// NAO contavel hoje: email manual (nao registrado) e whatsapp inbound
-// (nao vincula ao vendedor que atendeu).
+// Por que NAO os registros brutos: crm_messages tem ~2100 outbound, mas isso e
+// volume de conversa (cada balao de ida e volta), nao trabalho executado — uma
+// conversa de 40 mensagens com um lead nao sao 40 toques de cadencia. crm_calls e
+// o registro pos-call OPCIONAL: contava 8 ligacoes contra 88 tarefas feitas.
+//
+// crm_calls sobra so pras ATENDIDAS (outcome): a conclusao da tarefa nao grava
+// desfecho. NAO contavel: e-mail manual e whatsapp inbound.
 
 // Outcomes de ligacao considerados "conexao" (alguem atendeu/avancou)
 const CONNECTED_OUTCOMES = ['answered', 'meeting_scheduled', 'deal_advanced', 'callback_scheduled'];
@@ -42,25 +48,31 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
         .select('created_by, outcome')
         .gte('started_at', dayStartISO).lt('started_at', dayEndISO)
         .is('deleted_at', null)),
-      byOwner(supabase.from('crm_messages')
-        .select('created_by')
-        .eq('direction', 'outbound')
-        .gte('sent_at', dayStartISO).lt('sent_at', dayEndISO)
-        .is('deleted_at', null)),
-      byOwner(supabase.from('crm_activities')
-        .select('created_by')
+      // MENSAGEM ENVIADA = tarefa de Mensagem CONCLUIDA — a mesma regra da
+      // ligacao: a unidade e o TRABALHO EXECUTADO, nao o trafego do WhatsApp.
+      // crm_messages tem 2106 outbound, mas isso e volume de conversa (cada balao
+      // de ida e volta): uma conversa de 40 mensagens com um lead nao sao 40
+      // toques de cadencia. Mesmo recorte de dono na agregacao (a tarefa de
+      // cadencia nasce sem created_by).
+      supabase.from('crm_activities')
+        .select('title, completed_by, assigned_to, created_by')
+        .eq('type', 'message').eq('completed', true)
+        .gte('completed_at', dayStartISO).lt('completed_at', dayEndISO)
+        .is('deleted_at', null),
+      supabase.from('crm_activities')
+        .select('completed_by, assigned_to, created_by')
         .eq('type', 'meeting')
         .gte('start_date', dayStartISO).lt('start_date', dayEndISO)
-        .is('deleted_at', null)),
-      byOwner(supabase.from('crm_activities')
-        .select('created_by')
+        .is('deleted_at', null),
+      supabase.from('crm_activities')
+        .select('completed_by, assigned_to, created_by')
         .eq('completed', true)
-        // Buckets disjuntos: reunioes ja contam em 'meetings' e ligacoes em
-        // crm_calls (espelhadas como activity type='call'). Sem este filtro o
-        // total contava em dobro quem registra ligacao/reuniao.
-        .not('type', 'in', '("meeting","call")')
+        // Buckets disjuntos: reuniao conta em 'meetings', ligacao em 'calls' e
+        // mensagem em 'messages' — os tres saem da propria tarefa concluida. Sem
+        // este filtro o mesmo card entraria duas vezes no total.
+        .not('type', 'in', '("meeting","call","message")')
         .gte('completed_at', dayStartISO).lt('completed_at', dayEndISO)
-        .is('deleted_at', null)),
+        .is('deleted_at', null),
       supabase.from('team_members').select('id, name, color, auth_user_id'),
       // Contratos fechados no periodo — owner_id (o closer) + created_by, pra
       // atribuir o fechamento por pessoa no "peso por etapa".
@@ -87,29 +99,45 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
       if (m.id && m.auth_user_id) authByMemberId[m.id] = m.auth_user_id;
     });
 
-    // Agregar por vendedor (created_by)
+    // Agregar por vendedor (completed_by > assigned_to > created_by)
     const board = {};
     const ensure = (uid) => {
       if (!board[uid]) board[uid] = { uid, calls: 0, connectedCalls: 0, messages: 0, meetings: 0, tasks: 0, contracts: 0 };
       return board[uid];
     };
 
-    // Total de ligacoes: a tarefa concluida manda, com o peso das tentativas.
-    (callActsRes.data || []).forEach(r => {
-      const uid = autorDaLigacao(r);
-      if (!uid) return;
-      if (ownerId && uid !== ownerId) return; // recorte por vendedor (feito aqui)
-      ensure(uid).calls += tentativasDaTarefa(r.title);
-    });
+    // Trabalho SEM autor nenhum nao pode sumir do placar: 240 das 308 tarefas de
+    // mensagem concluidas nao tem completed_by/assigned_to/created_by (foram
+    // fechadas pelo checklist do playbook, que nao carimbava quem concluiu).
+    // Descartar zeraria o total do time; entao vao pro balde "Sem dono" — que
+    // aparece no board e denuncia o buraco de atribuicao em vez de escondê-lo.
+    const SEM_DONO = '__sem_dono__';
+    // `ownerId` recorta por vendedor aqui (nao na query): a tarefa de cadencia
+    // nasce sem created_by, entao filtrar no banco por ele jogaria fora justamente
+    // as tarefas de cadencia. Sem dono nunca casa um vendedor especifico.
+    const doVendedor = (uid) => !ownerId || uid === ownerId;
+
+    const somar = (rows, campo, peso) => {
+      (rows || []).forEach(r => {
+        const uid = autorDaLigacao(r) || SEM_DONO;
+        if (!doVendedor(uid)) return;
+        ensure(uid)[campo] += peso ? tentativasDaTarefa(r.title) : 1;
+      });
+    };
+
+    // Ligacao e mensagem: a tarefa concluida manda, com o peso das tentativas do
+    // titulo. Reuniao e tarefa: uma por card.
+    somar(callActsRes.data, 'calls', true);
+    somar(msgsRes.data, 'messages', true);
+    somar(meetingsRes.data, 'meetings', false);
+    somar(tasksRes.data, 'tasks', false);
+
     // Atendidas: so o registro pos-call sabe se alguem atendeu (a conclusao da
     // tarefa nao grava desfecho).
     (callsRes.data || []).forEach(r => {
       if (!r.created_by) return;
       if (CONNECTED_OUTCOMES.includes(r.outcome)) ensure(r.created_by).connectedCalls++;
     });
-    (msgsRes.data || []).forEach(r => { if (r.created_by) ensure(r.created_by).messages++; });
-    (meetingsRes.data || []).forEach(r => { if (r.created_by) ensure(r.created_by).meetings++; });
-    (tasksRes.data || []).forEach(r => { if (r.created_by) ensure(r.created_by).tasks++; });
     // Fechamentos atribuidos ao DONO do negocio (owner_id -> auth_user_id;
     // fallback pro criador se nao houver dono). E o "quem fechou".
     (dayWonRes.data || []).forEach(r => {
@@ -137,10 +165,10 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
     // PREVISTO (agendado na agenda) de ligacoes/mensagens no periodo.
     const scheduled = { calls: 0, messages: 0 };
     (schedRes.data || []).forEach(r => {
-      const uid = autorDaLigacao(r);
-      if (ownerId && uid !== ownerId) return;
+      const uid = autorDaLigacao(r) || SEM_DONO;
+      if (!doVendedor(uid)) return;
       if (r.type === 'call') scheduled.calls += tentativasDaTarefa(r.title);
-      else if (r.type === 'message') scheduled.messages++;
+      else if (r.type === 'message') scheduled.messages += tentativasDaTarefa(r.title);
     });
 
     return {

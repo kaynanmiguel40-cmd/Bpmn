@@ -881,13 +881,21 @@ export async function toggleDealStep(dealId, stepId, done, memberId = null, outc
   // PONTE COM A AGENDA: marcar no checklist conclui a atividade gerada pra esse
   // passo, levando o que o lead respondeu. Assim a tarefa some do "a fazer" da
   // Agenda em vez de ficar pendente pra sempre.
+  //
+  // completed_by e obrigatorio aqui: o placar do dia atribui ligacao/mensagem por
+  // completed_by, e este caminho (checklist) nao carimbava ninguem — foi assim que
+  // 240 das 308 tarefas de mensagem concluidas ficaram sem autor e cairiam no
+  // balde "Sem dono".
   const nowIso = new Date().toISOString();
+  const sessao = await supabase.auth.getSession();
+  const quemConcluiu = sessao.data?.session?.user?.id || null;
   await supabase
     .from('crm_activities')
     .update({
       completed: true,
       completed_at: nowIso,
       updated_at: nowIso,
+      ...(quemConcluiu ? { completed_by: quemConcluiu } : {}),
       ...(clean ? { delivery_report: clean } : {}),
     })
     .eq('deal_id', dealId)

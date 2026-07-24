@@ -32,7 +32,14 @@ vi.mock('../../../../lib/supabase', () => {
     };
     return q;
   };
-  return { supabase: { from: (table) => builder(table) } };
+  // auth: toggleDealStep carimba completed_by (quem concluiu) na atividade —
+  // e por completed_by que o placar do dia atribui a ligacao/mensagem ao vendedor.
+  return {
+    supabase: {
+      from: (table) => builder(table),
+      auth: { getSession: async () => ({ data: { session: { user: { id: 'user-teste' } } } }) },
+    },
+  };
 });
 
 vi.mock('../../../../contexts/ToastContext', () => ({ toast: vi.fn() }));
