@@ -54,6 +54,51 @@ describe('contarLigacoes', () => {
   });
 });
 
+// Modelo de desfecho do placar (crmDailyService): num toque de N tentativas o
+// vendedor responde UMA vez se falou. A invariante que sustenta o numero:
+//   atendidas + naoAtendidas + semDesfecho === total de ligacoes
+describe('desfecho x tentativas — a conta tem que fechar', () => {
+  const desfecho = (rows) => rows.reduce((acc, r) => {
+    const n = tentativasDaTarefa(r.title);
+    if (r.contacted === true) { acc.atendidas += 1; acc.naoAtendidas += n - 1; }
+    else if (r.contacted === false) { acc.naoAtendidas += n; }
+    else { acc.semDesfecho += n; }
+    acc.calls += n;
+    return acc;
+  }, { calls: 0, atendidas: 0, naoAtendidas: 0, semDesfecho: 0 });
+
+  it('falou num toque de 3 tentativas: 1 atendida, 2 nao (nao se fala 3x com a mesma pessoa)', () => {
+    const r = desfecho([{ title: 'D0 manhã — Ligação (3 tentativas)', contacted: true }]);
+    expect(r).toMatchObject({ calls: 3, atendidas: 1, naoAtendidas: 2, semDesfecho: 0 });
+  });
+
+  it('nao falou: as 3 tentativas queimaram', () => {
+    const r = desfecho([{ title: 'D0 manhã — Ligação (3 tentativas)', contacted: false }]);
+    expect(r).toMatchObject({ calls: 3, atendidas: 0, naoAtendidas: 3, semDesfecho: 0 });
+  });
+
+  it('sem informar: fica fora da conta, nem sucesso nem fracasso', () => {
+    const r = desfecho([{ title: 'D0 manhã — Ligação (3 tentativas)', contacted: null }]);
+    expect(r).toMatchObject({ calls: 3, atendidas: 0, naoAtendidas: 0, semDesfecho: 3 });
+  });
+
+  it('ligacao simples que atendeu nao gera "nao atendida" negativa', () => {
+    const r = desfecho([{ title: 'Ligação', contacted: true }]);
+    expect(r).toMatchObject({ calls: 1, atendidas: 1, naoAtendidas: 0 });
+  });
+
+  it('a invariante fecha numa mistura real', () => {
+    const r = desfecho([
+      { title: 'D0 manhã — Ligação (3 tentativas)', contacted: true },
+      { title: 'D2 tarde — Ligação (3 tentativas)', contacted: false },
+      { title: 'Ligação', contacted: null },
+      { title: 'Ligar 2 vezes', contacted: true },
+    ]);
+    expect(r.atendidas + r.naoAtendidas + r.semDesfecho).toBe(r.calls);
+    expect(r.calls).toBe(9); // 3 + 3 + 1 + 2
+  });
+});
+
 describe('autorDaLigacao — quem concluiu vem primeiro', () => {
   it('prefere completed_by', () => {
     expect(autorDaLigacao({ completed_by: 'a', assigned_to: 'b', created_by: 'c' })).toBe('a');

@@ -37,7 +37,7 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
       // autor sai de completed_by/assigned_to (autorDaLigacao) e o recorte por
       // vendedor acontece na agregacao abaixo.
       supabase.from('crm_activities')
-        .select('title, completed_by, assigned_to, created_by')
+        .select('title, contacted, completed_by, assigned_to, created_by')
         .eq('type', 'call').eq('completed', true)
         .gte('completed_at', dayStartISO).lt('completed_at', dayEndISO)
         .is('deleted_at', null),
@@ -102,7 +102,7 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
     // Agregar por vendedor (completed_by > assigned_to > created_by)
     const board = {};
     const ensure = (uid) => {
-      if (!board[uid]) board[uid] = { uid, calls: 0, connectedCalls: 0, messages: 0, meetings: 0, tasks: 0, contracts: 0 };
+      if (!board[uid]) board[uid] = { uid, calls: 0, connectedCalls: 0, atendidas: 0, naoAtendidas: 0, semDesfecho: 0, messages: 0, meetings: 0, tasks: 0, contracts: 0 };
       return board[uid];
     };
 
@@ -129,6 +129,25 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
     // titulo. Reuniao e tarefa: uma por card.
     somar(callActsRes.data, 'calls', true);
     somar(msgsRes.data, 'messages', true);
+
+    // DESFECHO das ligacoes, mantendo a invariante atendidas + naoAtendidas +
+    // semDesfecho = calls (senao os numeros nao fecham e ninguem confia neles).
+    //
+    // Num toque de N tentativas ("Ligação (3 tentativas)") o vendedor responde UMA
+    // vez se falou ou nao — e uma resposta so pro card inteiro. A leitura honesta:
+    //   falou      -> UMA discada conectou, as outras N-1 nao (ele para quando
+    //                 alguem atende; nao existe falar 3 vezes com a mesma pessoa);
+    //   nao falou  -> as N tentativas queimaram sem ninguem atender;
+    //   sem info   -> as N ficam fora da conta, nem como sucesso nem como fracasso.
+    (callActsRes.data || []).forEach(r => {
+      const uid = autorDaLigacao(r) || SEM_DONO;
+      if (!doVendedor(uid)) return;
+      const n = tentativasDaTarefa(r.title);
+      const b = ensure(uid);
+      if (r.contacted === true) { b.atendidas += 1; b.naoAtendidas += n - 1; }
+      else if (r.contacted === false) { b.naoAtendidas += n; }
+      else { b.semDesfecho += n; }
+    });
     somar(meetingsRes.data, 'meetings', false);
     somar(tasksRes.data, 'tasks', false);
 
@@ -156,11 +175,14 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
 
     const totals = sellers.reduce((acc, s) => ({
       calls: acc.calls + s.calls,
+      atendidas: acc.atendidas + s.atendidas,
+      naoAtendidas: acc.naoAtendidas + s.naoAtendidas,
+      semDesfecho: acc.semDesfecho + s.semDesfecho,
       messages: acc.messages + s.messages,
       meetings: acc.meetings + s.meetings,
       tasks: acc.tasks + s.tasks,
       total: acc.total + s.total,
-    }), { calls: 0, messages: 0, meetings: 0, tasks: 0, total: 0 });
+    }), { calls: 0, atendidas: 0, naoAtendidas: 0, semDesfecho: 0, messages: 0, meetings: 0, tasks: 0, total: 0 });
 
     // PREVISTO (agendado na agenda) de ligacoes/mensagens no periodo.
     const scheduled = { calls: 0, messages: 0 };

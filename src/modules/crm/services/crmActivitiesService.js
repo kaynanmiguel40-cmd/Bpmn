@@ -423,6 +423,11 @@ export async function completeCrmActivity(id, { input = '', output = '', contact
       completed_by: completedBy,
       delivery_input: input.trim() || null,
       delivery_report: output.trim() || null,
+      // DESFECHO: falou (true) ou tentou e nao atendeu (false). Quem chama sem a
+      // flag deixa null — "nao informado" e um estado real (telas antigas, tarefa
+      // que nao e ligacao), diferente de "nao atendeu". Sem isto o modal ja
+      // perguntava e a resposta se perdia: nao dava pra dizer quantas atenderam.
+      contacted: typeof contacted === 'boolean' ? contacted : null,
       updated_at: now,
     })
     .eq('id', id)
