@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
+import { tentativasDaTarefa, autorDaLigacao } from '../lib/ligacoes';
 
 // ==================== PLACAR DIARIO DO TIME ====================
 // Conta volume de atividade por vendedor num dia (ligacoes, whatsapp
@@ -23,7 +24,20 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
     // dele contam.
     const byOwner = (q) => (ownerId ? q.eq('created_by', ownerId) : q);
 
-    const [callsRes, msgsRes, meetingsRes, tasksRes, membersRes, dayWonRes, schedRes] = await Promise.all([
+    const [callActsRes, callsRes, msgsRes, meetingsRes, tasksRes, membersRes, dayWonRes, schedRes] = await Promise.all([
+      // LIGACAO REALIZADA = tarefa de Ligacao CONCLUIDA, cada uma valendo as
+      // tentativas do titulo ("Ligação (3 tentativas)" = 3). Sem filtro de dono na
+      // query de proposito: a tarefa de cadencia nasce sem created_by, entao o
+      // autor sai de completed_by/assigned_to (autorDaLigacao) e o recorte por
+      // vendedor acontece na agregacao abaixo.
+      supabase.from('crm_activities')
+        .select('title, completed_by, assigned_to, created_by')
+        .eq('type', 'call').eq('completed', true)
+        .gte('completed_at', dayStartISO).lt('completed_at', dayEndISO)
+        .is('deleted_at', null),
+      // crm_calls agora serve so pras ATENDIDAS (outcome). O total vem da tarefa:
+      // toda ligacao registrada tambem cria a atividade-espelho, entao somar as
+      // duas fontes contaria em dobro.
       byOwner(supabase.from('crm_calls')
         .select('created_by, outcome')
         .gte('started_at', dayStartISO).lt('started_at', dayEndISO)
@@ -56,12 +70,14 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
         .gte('closed_at', dayStartISO).lt('closed_at', dayEndISO)
         .is('deleted_at', null)),
       // PREVISTO de ligacoes/mensagens = o que esta AGENDADO na agenda no periodo
-      // (atividades tipo call/message por start_date, feitas ou nao).
-      byOwner(supabase.from('crm_activities')
-        .select('type')
+      // (atividades tipo call/message por start_date, feitas ou nao). Mesmo peso
+      // por tentativas do realizado — senao previsto e realizado nao sao
+      // comparaveis (o previsto sairia 3x menor).
+      supabase.from('crm_activities')
+        .select('type, title, completed_by, assigned_to, created_by')
         .in('type', ['call', 'message'])
         .gte('start_date', dayStartISO).lt('start_date', dayEndISO)
-        .is('deleted_at', null)),
+        .is('deleted_at', null),
     ]);
 
     const memberMap = {};       // auth_user_id -> { name, color }
@@ -78,11 +94,18 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
       return board[uid];
     };
 
+    // Total de ligacoes: a tarefa concluida manda, com o peso das tentativas.
+    (callActsRes.data || []).forEach(r => {
+      const uid = autorDaLigacao(r);
+      if (!uid) return;
+      if (ownerId && uid !== ownerId) return; // recorte por vendedor (feito aqui)
+      ensure(uid).calls += tentativasDaTarefa(r.title);
+    });
+    // Atendidas: so o registro pos-call sabe se alguem atendeu (a conclusao da
+    // tarefa nao grava desfecho).
     (callsRes.data || []).forEach(r => {
       if (!r.created_by) return;
-      const b = ensure(r.created_by);
-      b.calls++;
-      if (CONNECTED_OUTCOMES.includes(r.outcome)) b.connectedCalls++;
+      if (CONNECTED_OUTCOMES.includes(r.outcome)) ensure(r.created_by).connectedCalls++;
     });
     (msgsRes.data || []).forEach(r => { if (r.created_by) ensure(r.created_by).messages++; });
     (meetingsRes.data || []).forEach(r => { if (r.created_by) ensure(r.created_by).meetings++; });
@@ -114,7 +137,9 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
     // PREVISTO (agendado na agenda) de ligacoes/mensagens no periodo.
     const scheduled = { calls: 0, messages: 0 };
     (schedRes.data || []).forEach(r => {
-      if (r.type === 'call') scheduled.calls++;
+      const uid = autorDaLigacao(r);
+      if (ownerId && uid !== ownerId) return;
+      if (r.type === 'call') scheduled.calls += tentativasDaTarefa(r.title);
       else if (r.type === 'message') scheduled.messages++;
     });
 

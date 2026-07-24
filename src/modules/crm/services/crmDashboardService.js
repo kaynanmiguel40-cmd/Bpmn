@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
+import { contarLigacoes } from '../lib/ligacoes';
 
 /**
  * Retorna KPIs consolidados para o Dashboard do CRM.
@@ -211,17 +212,23 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
         .lte('start_date', endOfWeek)
         .is('deleted_at', null),
 
-      // Ritmo do time: ligacoes feitas hoje (todas, nao so do usuario logado)
-      supabase.from('crm_calls')
-        .select('id', { count: 'exact', head: true })
+      // Ritmo do time: ligacoes feitas hoje (todas, nao so do usuario logado).
+      // LIGACAO REALIZADA = tarefa de Ligacao CONCLUIDA, com o peso das tentativas
+      // do titulo. Vinha de crm_calls (registro pos-call, OPCIONAL), que ignorava
+      // a maioria esmagadora das ligacoes de verdade. Traz o titulo em vez de
+      // count(*) porque a soma e ponderada.
+      supabase.from('crm_activities')
+        .select('title')
+        .eq('type', 'call').eq('completed', true)
         .is('deleted_at', null)
-        .gte('started_at', startOfToday),
+        .gte('completed_at', startOfToday),
 
-      // Ritmo do time: ligacoes feitas nos ultimos 7 dias
-      supabase.from('crm_calls')
-        .select('id', { count: 'exact', head: true })
+      // Ritmo do time: ligacoes feitas nos ultimos 7 dias (mesma regra)
+      supabase.from('crm_activities')
+        .select('title')
+        .eq('type', 'call').eq('completed', true)
         .is('deleted_at', null)
-        .gte('started_at', last7dStart),
+        .gte('completed_at', last7dStart),
 
       // Clientes ativos: negocios GANHOS sem churn (situacao atual, sem filtro de periodo) — so vendas
       supabase.from('crm_deals')
@@ -507,8 +514,9 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       nurturingValue,
       meetingsToday: meetingsTodayRes.count || 0,
       meetingsWeek: meetingsWeekRes.count || 0,
-      callsToday: callsTodayRes.count || 0,
-      callsWeek: callsWeekRes.count || 0,
+      // Soma ponderada: cada tarefa vale as tentativas declaradas no titulo.
+      callsToday: contarLigacoes(callsTodayRes.data),
+      callsWeek: contarLigacoes(callsWeekRes.data),
       conversionRate,
       trends,
       pendingActivities: pendingActivitiesRes.count || 0,
