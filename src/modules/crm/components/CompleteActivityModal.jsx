@@ -37,8 +37,13 @@ export function CompleteActivityModal({
   isPending,
 }) {
   const isEditing = !!activity?.completed;
+  // Ligação PRECISA de desfecho: falou (true) ou tentou e não atendeu (false).
+  // Sem isso, concluir por esta tela deixava a ligação "sem desfecho" e a taxa de
+  // atendimento do placar mentia — só a execução principal da Agenda perguntava.
+  const isCall = activity?.type === 'call';
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
+  const [contacted, setContacted] = useState(null);
   const handleConfirmRef = useRef(null);
 
   useEffect(() => {
@@ -46,7 +51,8 @@ export function CompleteActivityModal({
     // Editando entrega de tarefa concluída → pré-preenche com o que já tem.
     setInput(activity?.deliveryInput || '');
     setOutput(activity?.deliveryReport || '');
-  }, [open, activity?.id, activity?.deliveryInput, activity?.deliveryReport]);
+    setContacted(typeof activity?.contacted === 'boolean' ? activity.contacted : null);
+  }, [open, activity?.id, activity?.deliveryInput, activity?.deliveryReport, activity?.contacted]);
 
   useEffect(() => {
     if (!open) return;
@@ -60,11 +66,20 @@ export function CompleteActivityModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const canSubmit = useMemo(() => !isPending, [isPending]);
+  // Concluir uma ligação exige dizer se atendeu (menos em edição, onde o desfecho
+  // já foi decidido). Trava o Concluir E o Pular — o desfecho não é "detalhe".
+  const faltaDesfecho = isCall && !isEditing && contacted === null;
+  const canSubmit = useMemo(() => !isPending && !faltaDesfecho, [isPending, faltaDesfecho]);
+
+  // Não atendeu e sem relato: grava "Não atendeu" (mesmo texto que a execução
+  // principal usa), pra a tarefa não ficar concluída muda sobre o desfecho.
+  const outputFinal = () =>
+    output.trim() || (isCall && contacted === false ? 'Não atendeu' : '');
+  const contactedFinal = () => (isCall ? contacted : undefined);
 
   const handleConfirm = () => {
     if (!canSubmit) return;
-    onSubmit?.({ input: input.trim(), output: output.trim() });
+    onSubmit?.({ input: input.trim(), output: outputFinal(), contacted: contactedFinal() });
   };
   handleConfirmRef.current = handleConfirm;
 
@@ -73,7 +88,7 @@ export function CompleteActivityModal({
   // ainda conclui a atividade — quem quer desistir de vez usa "Cancelar".
   const handleSkipDetails = () => {
     if (!canSubmit) return;
-    onSubmit?.({ input: '', output: '' });
+    onSubmit?.({ input: '', output: outputFinal(), contacted: contactedFinal() });
   };
 
   return (
@@ -162,7 +177,44 @@ export function CompleteActivityModal({
           </div>
         )}
 
-        {/* Input em cima: o que o vendedor fez/disse */}
+        {/* Ligação: atendeu ou não? Obrigatório antes de concluir (menos edição).
+            É o que alimenta atendidas × não atendidas no placar. */}
+        {isCall && !isEditing && (
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+              Conseguiu falar com o lead?
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setContacted(true)}
+                className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  contacted === true
+                    ? 'bg-emerald-500 text-white border-emerald-500'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400'
+                }`}
+              >
+                Falei com ele
+              </button>
+              <button
+                type="button"
+                onClick={() => setContacted(false)}
+                className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  contacted === false
+                    ? 'bg-rose-500 text-white border-rose-500'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-rose-400'
+                }`}
+              >
+                Não atendeu
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Input em cima: o que o vendedor fez/disse. Some no "não atendeu": não
+            houve conversa a relatar — só o desfecho importa. */}
+        {!(isCall && contacted === false) && (
+        <>
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
             O que você fez/disse
@@ -190,6 +242,8 @@ export function CompleteActivityModal({
             className={fieldClass(false, 'resize-none')}
           />
         </div>
+        </>
+        )}
       </div>
     </CrmModal>
   );

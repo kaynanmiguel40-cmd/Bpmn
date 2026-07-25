@@ -556,7 +556,7 @@ function MyDayCalendar() {
             setDeleteActivityTarget({ activityId: t.id, title: t.title });
           }}
           isPending={completeMutation.isPending || updateActivityMutation.isPending}
-          onSubmit={({ input, output }) => {
+          onSubmit={({ input, output, contacted }) => {
             if (completingTask.completed) {
               // Editando entrega de tarefa já concluída — só atualiza os campos.
               updateActivityMutation.mutate(
@@ -564,7 +564,7 @@ function MyDayCalendar() {
                 { onSuccess: () => setCompletingTask(null) }
               );
             } else {
-              completeMutation.mutate({ id: completingTask.id, input, output }, {
+              completeMutation.mutate({ id: completingTask.id, input, output, contacted }, {
                 onSuccess: () => setCompletingTask(null),
               });
             }

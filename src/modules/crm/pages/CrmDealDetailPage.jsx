@@ -651,8 +651,8 @@ export function CrmDealDetailPage() {
         onClose={() => setCompletingTask(null)}
         activity={completingTask}
         isPending={completeMutation.isPending}
-        onSubmit={({ input, output }) => {
-          completeMutation.mutate({ id: completingTask.id, input, output }, {
+        onSubmit={({ input, output, contacted }) => {
+          completeMutation.mutate({ id: completingTask.id, input, output, contacted }, {
             onSuccess: () => setCompletingTask(null),
           });
         }}
