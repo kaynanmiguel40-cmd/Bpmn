@@ -64,9 +64,17 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
         .eq('type', 'email').eq('completed', true)
         .gte('completed_at', dayStartISO).lt('completed_at', dayEndISO)
         .is('deleted_at', null),
+      // REUNIAO AGENDADA = compromisso real COM UM LEAD. Dois filtros contra a
+      // inflacao: (a) stage_step_id IS NULL exclui PASSO de cadencia que so
+      // menciona "reuniao" no titulo ("Proponha a reunião", "Mesmo dia da reunião —
+      // mande a proposta") — o tipo 'meeting' e chutado pelo titulo, mas e tarefa,
+      // nao reuniao; (b) deal_id NOT NULL exclui reuniao interna do time
+      // ("Reunião de alinhamento", "Reunião com Robert"), que nao e output de venda.
       supabase.from('crm_activities')
         .select('completed_by, assigned_to, created_by')
         .eq('type', 'meeting')
+        .is('stage_step_id', null)
+        .not('deal_id', 'is', null)
         .gte('start_date', dayStartISO).lt('start_date', dayEndISO)
         .is('deleted_at', null),
       supabase.from('crm_activities')
