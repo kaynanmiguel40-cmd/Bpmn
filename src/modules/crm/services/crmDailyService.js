@@ -30,12 +30,11 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
     // dele contam.
     const byOwner = (q) => (ownerId ? q.eq('created_by', ownerId) : q);
 
-    const [callActsRes, callsRes, msgsRes, meetingsRes, tasksRes, membersRes, dayWonRes, schedRes] = await Promise.all([
-      // LIGACAO REALIZADA = tarefa de Ligacao CONCLUIDA, cada uma valendo as
-      // tentativas do titulo ("Ligação (3 tentativas)" = 3). Sem filtro de dono na
-      // query de proposito: a tarefa de cadencia nasce sem created_by, entao o
-      // autor sai de completed_by/assigned_to (autorDaLigacao) e o recorte por
-      // vendedor acontece na agregacao abaixo.
+    const [callActsRes, callsRes, msgsRes, emailActsRes, meetingsRes, tasksRes, membersRes, dayWonRes, schedRes] = await Promise.all([
+      // LIGACAO REALIZADA = tarefa de Ligacao CONCLUIDA (1 por tarefa). Sem filtro
+      // de dono na query de proposito: a tarefa de cadencia nasce sem created_by,
+      // entao o autor sai de completed_by/assigned_to (autorDaLigacao) e o recorte
+      // por vendedor acontece na agregacao abaixo.
       supabase.from('crm_activities')
         .select('title, contacted, completed_by, assigned_to, created_by')
         .eq('type', 'call').eq('completed', true)
@@ -59,6 +58,12 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
         .eq('type', 'message').eq('completed', true)
         .gte('completed_at', dayStartISO).lt('completed_at', dayEndISO)
         .is('deleted_at', null),
+      // E-MAIL ENVIADO = tarefa de E-mail CONCLUIDA (1 por tarefa), mesma regra.
+      supabase.from('crm_activities')
+        .select('completed_by, assigned_to, created_by')
+        .eq('type', 'email').eq('completed', true)
+        .gte('completed_at', dayStartISO).lt('completed_at', dayEndISO)
+        .is('deleted_at', null),
       supabase.from('crm_activities')
         .select('completed_by, assigned_to, created_by')
         .eq('type', 'meeting')
@@ -67,10 +72,10 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
       supabase.from('crm_activities')
         .select('completed_by, assigned_to, created_by')
         .eq('completed', true)
-        // Buckets disjuntos: reuniao conta em 'meetings', ligacao em 'calls' e
-        // mensagem em 'messages' — os tres saem da propria tarefa concluida. Sem
-        // este filtro o mesmo card entraria duas vezes no total.
-        .not('type', 'in', '("meeting","call","message")')
+        // Buckets disjuntos: reuniao->meetings, ligacao->calls, mensagem->messages,
+        // e-mail->emails — todos saem da propria tarefa concluida. Sem este filtro
+        // o mesmo card entraria duas vezes no total.
+        .not('type', 'in', '("meeting","call","message","email")')
         .gte('completed_at', dayStartISO).lt('completed_at', dayEndISO)
         .is('deleted_at', null),
       supabase.from('team_members').select('id, name, color, auth_user_id'),
@@ -87,7 +92,7 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
       // comparaveis (o previsto sairia 3x menor).
       supabase.from('crm_activities')
         .select('type, title, completed_by, assigned_to, created_by')
-        .in('type', ['call', 'message'])
+        .in('type', ['call', 'message', 'email'])
         .gte('start_date', dayStartISO).lt('start_date', dayEndISO)
         .is('deleted_at', null),
     ]);
@@ -102,7 +107,7 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
     // Agregar por vendedor (completed_by > assigned_to > created_by)
     const board = {};
     const ensure = (uid) => {
-      if (!board[uid]) board[uid] = { uid, calls: 0, connectedCalls: 0, atendidas: 0, naoAtendidas: 0, semDesfecho: 0, messages: 0, meetings: 0, tasks: 0, contracts: 0 };
+      if (!board[uid]) board[uid] = { uid, calls: 0, connectedCalls: 0, atendidas: 0, naoAtendidas: 0, semDesfecho: 0, messages: 0, emails: 0, meetings: 0, tasks: 0, contracts: 0 };
       return board[uid];
     };
 
@@ -132,6 +137,7 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
 
     somar(callActsRes.data, 'calls');
     somar(msgsRes.data, 'messages');
+    somar(emailActsRes.data, 'emails');
 
     // DESFECHO das ligacoes. Cada tarefa cai INTEIRA num balde — a invariante
     // atendidas + naoAtendidas + semDesfecho = calls sai de graca.
@@ -164,7 +170,7 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
         ...b,
         name: memberMap[b.uid]?.name || 'Sem dono',
         color: memberMap[b.uid]?.color || '#94a3b8',
-        total: b.calls + b.messages + b.meetings + b.tasks,
+        total: b.calls + b.messages + b.emails + b.meetings + b.tasks,
       }))
       .sort((a, b) => b.total - a.total);
 
@@ -174,19 +180,21 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
       naoAtendidas: acc.naoAtendidas + s.naoAtendidas,
       semDesfecho: acc.semDesfecho + s.semDesfecho,
       messages: acc.messages + s.messages,
+      emails: acc.emails + s.emails,
       meetings: acc.meetings + s.meetings,
       tasks: acc.tasks + s.tasks,
       total: acc.total + s.total,
-    }), { calls: 0, atendidas: 0, naoAtendidas: 0, semDesfecho: 0, messages: 0, meetings: 0, tasks: 0, total: 0 });
+    }), { calls: 0, atendidas: 0, naoAtendidas: 0, semDesfecho: 0, messages: 0, emails: 0, meetings: 0, tasks: 0, total: 0 });
 
-    // PREVISTO (agendado na agenda) de ligacoes/mensagens no periodo.
-    const scheduled = { calls: 0, messages: 0 };
+    // PREVISTO (agendado na agenda) de ligacoes/mensagens/e-mails no periodo.
+    const scheduled = { calls: 0, messages: 0, emails: 0 };
     (schedRes.data || []).forEach(r => {
       const uid = autorDaLigacao(r) || SEM_DONO;
       if (!doVendedor(uid)) return;
       // 1 por tarefa, igual ao realizado — senao previsto e real nao comparam.
       if (r.type === 'call') scheduled.calls += 1;
       else if (r.type === 'message') scheduled.messages += 1;
+      else if (r.type === 'email') scheduled.emails += 1;
     });
 
     return {

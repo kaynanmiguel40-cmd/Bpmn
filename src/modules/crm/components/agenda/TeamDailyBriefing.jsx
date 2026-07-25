@@ -2,15 +2,15 @@
  * TeamDailyBriefing - Placar de atividade do time no PERIODO selecionado.
  *
  * Vive no Comparativo, dentro da secao "Time". Mostra quantas ligacoes,
- * mensagens, reunioes e contratos o time fez no periodo escolhido no filtro de
+ * mensagens, e-mails e reunioes o time fez no periodo escolhido no filtro de
  * data do topo da pagina — nao tem mais toggle ontem/hoje, segue o periodo.
  *
  * Fonte dos numeros: crmDailyService.getDailyScoreboard (agrega qualquer range).
- * Obs: email manual nao entra (nao e registrado hoje).
+ * Cada card = tarefa do tipo CONCLUIDA (1 por tarefa).
  */
 
 import {
-  Phone, MessageCircle, Calendar, CheckCircle2, RefreshCw,
+  Phone, MessageCircle, Mail, Calendar, RefreshCw,
 } from 'lucide-react';
 import { CrmKpiCard } from '../ui';
 import { useDailyScoreboard } from '../../hooks/useCrmQueries';
@@ -41,8 +41,8 @@ export function TeamDailyBriefing({ range, periodLabel, ownerId = null, ownerNam
   const cards = {
     calls: totals.calls,
     messages: totals.messages,
+    emails: totals.emails,
     meetings: totals.meetings,
-    contracts: data?.day?.wonCount || 0,
   };
 
   return (
@@ -67,8 +67,8 @@ export function TeamDailyBriefing({ range, periodLabel, ownerId = null, ownerNam
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <CrmKpiCard title="Ligações" rawValue={cards.calls} icon={Phone} color="amber" loading={isLoading} {...goalProps(cards.calls, scheduled.calls)} />
         <CrmKpiCard title="Mensagens enviadas" rawValue={cards.messages} icon={MessageCircle} color="emerald" loading={isLoading} {...goalProps(cards.messages, scheduled.messages)} />
+        <CrmKpiCard title="E-mails enviados" rawValue={cards.emails} icon={Mail} color="violet" loading={isLoading} {...goalProps(cards.emails, scheduled.emails)} />
         <CrmKpiCard title="Reuniões agendadas" rawValue={cards.meetings} icon={Calendar} color="blue" loading={isLoading} />
-        <CrmKpiCard title="Contratos fechados" rawValue={cards.contracts} icon={CheckCircle2} color="green" loading={isLoading} />
       </div>
 
       {/* Desfecho das ligações. Quebra o total do card acima: atendidas +
