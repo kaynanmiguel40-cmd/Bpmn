@@ -1,6 +1,5 @@
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
-import { contarLigacoes } from '../lib/ligacoes';
 
 /**
  * Retorna KPIs consolidados para o Dashboard do CRM.
@@ -213,19 +212,19 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
         .is('deleted_at', null),
 
       // Ritmo do time: ligacoes feitas hoje (todas, nao so do usuario logado).
-      // LIGACAO REALIZADA = tarefa de Ligacao CONCLUIDA, com o peso das tentativas
-      // do titulo. Vinha de crm_calls (registro pos-call, OPCIONAL), que ignorava
-      // a maioria esmagadora das ligacoes de verdade. Traz o titulo em vez de
-      // count(*) porque a soma e ponderada.
+      // LIGACAO REALIZADA = tarefa de Ligacao CONCLUIDA, UMA por tarefa. Vinha de
+      // crm_calls (registro pos-call, OPCIONAL), que ignorava a maioria das
+      // ligacoes de verdade. Nao multiplica pelo "(3 tentativas)" do titulo: o "3"
+      // e teto, nao realizado (o vendedor para quando o lead atende).
       supabase.from('crm_activities')
-        .select('title')
+        .select('id', { count: 'exact', head: true })
         .eq('type', 'call').eq('completed', true)
         .is('deleted_at', null)
         .gte('completed_at', startOfToday),
 
       // Ritmo do time: ligacoes feitas nos ultimos 7 dias (mesma regra)
       supabase.from('crm_activities')
-        .select('title')
+        .select('id', { count: 'exact', head: true })
         .eq('type', 'call').eq('completed', true)
         .is('deleted_at', null)
         .gte('completed_at', last7dStart),
@@ -514,9 +513,9 @@ export async function getCrmDashboardKPIs(range = {}, scope = 'sales') {
       nurturingValue,
       meetingsToday: meetingsTodayRes.count || 0,
       meetingsWeek: meetingsWeekRes.count || 0,
-      // Soma ponderada: cada tarefa vale as tentativas declaradas no titulo.
-      callsToday: contarLigacoes(callsTodayRes.data),
-      callsWeek: contarLigacoes(callsWeekRes.data),
+      // 1 por tarefa de ligacao concluida.
+      callsToday: callsTodayRes.count || 0,
+      callsWeek: callsWeekRes.count || 0,
       conversionRate,
       trends,
       pendingActivities: pendingActivitiesRes.count || 0,

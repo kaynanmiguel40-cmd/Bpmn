@@ -1,6 +1,6 @@
 import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
-import { tentativasDaTarefa, autorDaLigacao } from '../lib/ligacoes';
+import { autorDaLigacao } from '../lib/ligacoes';
 
 // ==================== PLACAR DIARIO DO TIME ====================
 // Conta volume de atividade por vendedor num dia (ligacoes, whatsapp
@@ -117,39 +117,34 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
     // as tarefas de cadencia. Sem dono nunca casa um vendedor especifico.
     const doVendedor = (uid) => !ownerId || uid === ownerId;
 
-    const somar = (rows, campo, peso) => {
+    // UMA TAREFA = UM TOQUE. Nao multiplica pelo "(3 tentativas)" do titulo: o "3"
+    // e um TETO ("tente ate 3 vezes"), nao um realizado — o vendedor para quando
+    // o lead atende. Contar 3 inflaria justamente as atendidas (a que deu certo na
+    // 1a discada viraria 3), e a contagem real de discadas nao e registrada. O
+    // toque trabalhado e a unidade honesta.
+    const somar = (rows, campo) => {
       (rows || []).forEach(r => {
         const uid = autorDaLigacao(r) || SEM_DONO;
         if (!doVendedor(uid)) return;
-        ensure(uid)[campo] += peso ? tentativasDaTarefa(r.title) : 1;
+        ensure(uid)[campo] += 1;
       });
     };
 
-    // Ligacao e mensagem: a tarefa concluida manda, com o peso das tentativas do
-    // titulo. Reuniao e tarefa: uma por card.
-    somar(callActsRes.data, 'calls', true);
-    somar(msgsRes.data, 'messages', true);
+    somar(callActsRes.data, 'calls');
+    somar(msgsRes.data, 'messages');
 
-    // DESFECHO das ligacoes, mantendo a invariante atendidas + naoAtendidas +
-    // semDesfecho = calls (senao os numeros nao fecham e ninguem confia neles).
-    //
-    // Num toque de N tentativas ("Ligação (3 tentativas)") o vendedor responde UMA
-    // vez se falou ou nao — e uma resposta so pro card inteiro. A leitura honesta:
-    //   falou      -> UMA discada conectou, as outras N-1 nao (ele para quando
-    //                 alguem atende; nao existe falar 3 vezes com a mesma pessoa);
-    //   nao falou  -> as N tentativas queimaram sem ninguem atender;
-    //   sem info   -> as N ficam fora da conta, nem como sucesso nem como fracasso.
+    // DESFECHO das ligacoes. Cada tarefa cai INTEIRA num balde — a invariante
+    // atendidas + naoAtendidas + semDesfecho = calls sai de graca.
     (callActsRes.data || []).forEach(r => {
       const uid = autorDaLigacao(r) || SEM_DONO;
       if (!doVendedor(uid)) return;
-      const n = tentativasDaTarefa(r.title);
       const b = ensure(uid);
-      if (r.contacted === true) { b.atendidas += 1; b.naoAtendidas += n - 1; }
-      else if (r.contacted === false) { b.naoAtendidas += n; }
-      else { b.semDesfecho += n; }
+      if (r.contacted === true) b.atendidas += 1;
+      else if (r.contacted === false) b.naoAtendidas += 1;
+      else b.semDesfecho += 1;
     });
-    somar(meetingsRes.data, 'meetings', false);
-    somar(tasksRes.data, 'tasks', false);
+    somar(meetingsRes.data, 'meetings');
+    somar(tasksRes.data, 'tasks');
 
     // Atendidas: so o registro pos-call sabe se alguem atendeu (a conclusao da
     // tarefa nao grava desfecho).
@@ -189,8 +184,9 @@ export async function getDailyScoreboard(dayStartISO, dayEndISO, ownerId = null)
     (schedRes.data || []).forEach(r => {
       const uid = autorDaLigacao(r) || SEM_DONO;
       if (!doVendedor(uid)) return;
-      if (r.type === 'call') scheduled.calls += tentativasDaTarefa(r.title);
-      else if (r.type === 'message') scheduled.messages += tentativasDaTarefa(r.title);
+      // 1 por tarefa, igual ao realizado — senao previsto e real nao comparam.
+      if (r.type === 'call') scheduled.calls += 1;
+      else if (r.type === 'message') scheduled.messages += 1;
     });
 
     return {
