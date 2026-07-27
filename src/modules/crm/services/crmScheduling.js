@@ -33,6 +33,11 @@ export const LUNCH_END_HOUR = 12;
 export const SLOT_MINUTES = 30;
 // Ate quantos dias uteis empurrar quando o dia alvo lota.
 export const MAX_ROLLOVER_DAYS = 60;
+// Folga MINIMA (inicio-a-inicio) entre dois toques DO MESMO LEAD no mesmo dia.
+// 60min = um slot vago entre eles, que outro lead preenche (interleaving). Sem
+// isso, quando a agenda enche e varios offsets colapsam num dia, o lead ganha
+// 3-4 tarefas coladas ("Paulo 12:00, Paulo 12:30, Paulo 13:00").
+export const GAP_MESMO_LEAD = 60;
 
 /**
  * Todos os inicios de slot possiveis num dia, em minutos desde 00:00.
@@ -184,6 +189,7 @@ export function planSteps(steps, busyByDay = {}, from = new Date()) {
   // depois do D9 (que achou vaga antes) — a cadencia sai fora de ordem. Os
   // passos ja vem em ordem de dayOffset, entao basta impedir retroceder.
   let pisoDia = null;
+  let ultimoStart = null; // ultimo toque JA colocado deste lead
 
   for (const step of steps) {
     let target = nextBusinessDay(
@@ -201,7 +207,13 @@ export function planSteps(steps, busyByDay = {}, from = new Date()) {
       key = dayKey(target);
       // So o dia de HOJE tem piso de horario; nos dias seguintes o expediente
       // comeca as 9h normalmente.
-      const piso = key === hojeKey ? agoraMin : -1;
+      let piso = key === hojeKey ? agoraMin : -1;
+      // Nao encosta dois toques do MESMO LEAD: se este passo cair no mesmo dia do
+      // anterior, ele fica a pelo menos GAP do anterior (deixa vao pra outro lead).
+      if (ultimoStart && dayKey(ultimoStart) === key) {
+        const ultimoMin = ultimoStart.getHours() * 60 + ultimoStart.getMinutes();
+        piso = Math.max(piso, ultimoMin + GAP_MESMO_LEAD - 1);
+      }
       slot = findFreeSlot(busy[key] || [], piso, step.period || null);
       if (slot !== null) break;
       target = nextBusinessDay(new Date(target.getFullYear(), target.getMonth(), target.getDate() + 1));
@@ -212,6 +224,7 @@ export function planSteps(steps, busyByDay = {}, from = new Date()) {
     out.push({ stepId: step.id, start });
     // O proximo passo nao pode cair antes deste dia.
     pisoDia = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+    ultimoStart = start;
     (busy[key] = busy[key] || []).push({
       start: start.toISOString(),
       end: new Date(start.getTime() + SLOT_MINUTES * 60000).toISOString(),

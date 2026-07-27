@@ -89,7 +89,7 @@ describe('findFreeSlot', () => {
 describe('planSteps', () => {
   const from = new Date(2026, 6, 20); // segunda
 
-  it('duas tarefas no mesmo dia NAO caem no mesmo horario', () => {
+  it('duas tarefas no mesmo dia NAO caem no mesmo horario (e nao encostam)', () => {
     const plan = planSteps([
       { id: 'a', dayOffset: 0 },
       { id: 'b', dayOffset: 0 },
@@ -97,8 +97,11 @@ describe('planSteps', () => {
     expect(plan).toHaveLength(2);
     expect(plan[0].start.getTime()).not.toBe(plan[1].start.getTime());
     expect(plan[0].start.getHours()).toBe(9);
-    expect(plan[1].start.getHours()).toBe(9);
-    expect(plan[1].start.getMinutes()).toBe(30);
+    expect(plan[0].start.getMinutes()).toBe(0);
+    // Folga do mesmo lead: b cai 60min depois de a (10:00), deixando 09:30 livre
+    // pra outro lead — nao mais colado em 09:30.
+    expect(plan[1].start.getHours()).toBe(10);
+    expect(plan[1].start.getMinutes()).toBe(0);
   });
 
   it('respeita o dayOffset', () => {
@@ -199,6 +202,41 @@ describe('planSteps — piso do agora', () => {
     expect(plan).toHaveLength(1);
     expect(plan[0].start.getDate()).toBe(21);
     expect(plan[0].start.getHours()).toBe(WORK_START_HOUR);
+  });
+});
+
+// Mesmo lead nao pode ganhar toques colados: quando a agenda enche e varios
+// offsets colapsam num dia, sem folga o lead virava "12:00, 12:30, 13:00".
+describe('planSteps — folga entre toques do mesmo lead', () => {
+  const minutosDe = (d) => d.getHours() * 60 + d.getMinutes();
+
+  it('dois passos no mesmo dia ficam a pelo menos 60min um do outro', () => {
+    const from = new Date(2026, 6, 20, 9, 0); // segunda 9h
+    // Dois passos que caem no MESMO dia (offset 0), sem period.
+    const plan = planSteps([{ id: 'a', dayOffset: 0 }, { id: 'b', dayOffset: 0 }], {}, from);
+    expect(plan).toHaveLength(2);
+    const [a, b] = plan;
+    expect(a.start.getDate()).toBe(20);
+    expect(b.start.getDate()).toBe(20);
+    expect(minutosDe(b.start) - minutosDe(a.start)).toBeGreaterThanOrEqual(60);
+  });
+
+  it('deixa um vao no meio (nao encosta), pra outro lead interleavar', () => {
+    // Sabado 18/07 -> os passos caem na segunda 20/07 LIMPA (sem o piso do "agora",
+    // que so vale pro dia de hoje), entao os horarios sao exatos.
+    const from = new Date(2026, 6, 18, 9, 0);
+    const plan = planSteps([{ id: 'a', dayOffset: 0 }, { id: 'b', dayOffset: 0 }], {}, from);
+    // a=09:00, b=10:00 -> 09:30 fica livre no meio.
+    expect(minutosDe(plan[0].start)).toBe(9 * 60);
+    expect(minutosDe(plan[1].start)).toBe(10 * 60);
+  });
+
+  it('offsets diferentes em dias diferentes nao sofrem a folga (dia limpo)', () => {
+    const from = new Date(2026, 6, 20, 9, 0);
+    const plan = planSteps([{ id: 'a', dayOffset: 0 }, { id: 'b', dayOffset: 2 }], {}, from);
+    // dias distintos: cada um comeca as 9h, sem empurrao.
+    expect(plan[0].start.getDate()).not.toBe(plan[1].start.getDate());
+    expect(plan[1].start.getHours()).toBe(WORK_START_HOUR);
   });
 });
 
