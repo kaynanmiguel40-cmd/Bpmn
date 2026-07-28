@@ -17,6 +17,22 @@ import { orIlike } from '../lib/searchFilters';
 
 // ==================== TRANSFORMADOR ====================
 
+/** Resumo curto de uma mensagem, pro balao de citacao (responder). */
+export function messagePreview(msg) {
+  if (!msg) return '';
+  const t = (msg.content || msg.mediaCaption || '').trim();
+  if (t) return t.slice(0, 140);
+  switch (msg.mediaType) {
+    case 'image':    return '📷 Foto';
+    case 'video':    return '🎥 Vídeo';
+    case 'audio':    return '🎤 Áudio';
+    case 'document': return `📄 ${msg.mediaFilename || 'Documento'}`;
+    case 'sticker':  return 'Figurinha';
+    case 'location': return '📍 Localização';
+    default:         return 'Mensagem';
+  }
+}
+
 export function dbToCrmMessage(row) {
   if (!row) return null;
   return {
@@ -35,6 +51,10 @@ export function dbToCrmMessage(row) {
     mediaFilename: row.media_filename || null,
     mediaCaption: row.media_caption || null,
     mediaDurationSeconds: row.media_duration_seconds || null,
+    // Resposta (citacao): a mensagem que esta responde.
+    replyToId: row.reply_to_id || null,
+    replyToPreview: row.reply_to_preview || null,
+    replyToFromMe: typeof row.reply_to_from_me === 'boolean' ? row.reply_to_from_me : null,
     evolutionMessageId: row.evolution_message_id || null,
     status: row.status,
     errorMessage: row.error_message || null,
@@ -441,6 +461,13 @@ export async function sendCrmMessage(payload) {
       automationId: payload.automationId,
       source:       payload.source || 'manual',
       createdBy:    user?.id || null,
+      // Resposta (citacao): quotedId amarra no WhatsApp; os replyTo* sao
+      // desnormalizados pra tela mostrar a citada sem join.
+      quotedId:       payload.replyTo?.evolutionMessageId || null,
+      quotedText:     payload.replyTo?.preview || null,
+      replyToId:      payload.replyTo?.id || null,
+      replyToPreview: payload.replyTo?.preview || null,
+      replyToFromMe:  payload.replyTo ? !!payload.replyTo.fromMe : null,
     },
   });
 

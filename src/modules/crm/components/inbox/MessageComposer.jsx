@@ -5,8 +5,20 @@ import {
 } from 'lucide-react';
 import { useSendCrmMessage } from '../../hooks/useCrmQueries';
 import { uploadCrmMedia, detectMediaType } from '../../lib/uploadCrmMedia';
+import { messagePreview } from '../../services/crmMessagesService';
 import { toast } from '../../../../contexts/ToastContext';
 import { EmojiPicker } from './EmojiPicker';
+
+// Constroi o objeto de citacao que o envio entende, a partir da mensagem-alvo.
+function buildReplyPayload(msg) {
+  if (!msg) return null;
+  return {
+    id: msg.id,
+    evolutionMessageId: msg.evolutionMessageId || null,
+    preview: messagePreview(msg),
+    fromMe: msg.direction === 'outbound',
+  };
+}
 
 /**
  * MessageComposer - Barra de envio estilo WhatsApp.
@@ -53,7 +65,7 @@ function mediaSizeLimitFor(mediaType) {
   return MEDIA_SIZE_LIMITS[mediaType] ?? MEDIA_SIZE_LIMITS.document;
 }
 
-export function MessageComposer({ conversation, instanceName, disabled, placeholder = 'Mensagem' }) {
+export function MessageComposer({ conversation, instanceName, disabled, placeholder = 'Mensagem', replyTo = null, onCancelReply }) {
   const [text, setText] = useState('');
   const [attachment, setAttachment] = useState(null); // { file, preview, mediaType }
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
@@ -166,6 +178,11 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
     return () => window.removeEventListener('paste', onPaste);
   }, [disabled, conversation?.otherPhone, stageFile]);
 
+  // Ao escolher "Responder", joga o foco na caixa pra ja digitar.
+  useEffect(() => {
+    if (replyTo) textareaRef.current?.focus();
+  }, [replyTo]);
+
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -251,10 +268,13 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
       prospectId:   conversation.prospectId || null,
       dealId:       conversation.dealId || null,
       source:       'manual',
+      replyTo:      buildReplyPayload(replyTo),
     });
     // sendCrmMessage devolve { ok:false } em vez de lançar — sem isto o envio
     // "falha em silencio" e a UI nao saberia que nao foi.
-    return res?.ok === true;
+    const ok = res?.ok === true;
+    if (ok) onCancelReply?.(); // enviou com a citacao -> limpa o banner
+    return ok;
   }
 
   const handleSend = async () => {
@@ -284,9 +304,10 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
       prospectId: conversation.prospectId || null,
       dealId:     conversation.dealId || null,
       source:     'manual',
+      replyTo:    buildReplyPayload(replyTo),
     });
     // Limpa o texto so apos confirmar — em falha o usuario nao reescreve do zero.
-    if (res?.ok) setText('');
+    if (res?.ok) { setText(''); onCancelReply?.(); }
     textareaRef.current?.focus();
   };
 
@@ -308,6 +329,27 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
       {emojiOpen && !recording && !audioSending && (
         <div className="absolute bottom-[60px] left-3 z-30">
           <EmojiPicker onPick={insertEmoji} />
+        </div>
+      )}
+
+      {/* respondendo a (citacao) — estilo WhatsApp: quem + preview + cancelar */}
+      {replyTo && !recording && !audioSending && (
+        <div className="mb-2 flex items-stretch gap-2 bg-white dark:bg-[#2a3942] rounded-lg overflow-hidden border border-black/5 dark:border-white/10">
+          <span className="w-1 shrink-0" style={{ backgroundColor: replyTo.direction === 'outbound' ? '#1da57a' : '#00a884' }} />
+          <div className="flex-1 min-w-0 py-1.5 pr-1">
+            <p className="text-[12px] font-semibold" style={{ color: replyTo.direction === 'outbound' ? '#1da57a' : '#00a884' }}>
+              {replyTo.direction === 'outbound' ? 'Você' : (conversation?.otherName || 'Contato')}
+            </p>
+            <p className="text-[13px] text-slate-600 dark:text-slate-300 truncate">{messagePreview(replyTo)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onCancelReply?.()}
+            title="Cancelar resposta"
+            className="px-2 shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
 

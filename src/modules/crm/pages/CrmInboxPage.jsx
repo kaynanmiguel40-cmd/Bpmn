@@ -5,7 +5,7 @@
  * Estado da conversa ativa fica em URL (?contact= | ?prospect=) pra deep-link.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ConversationList } from '../components/inbox/ConversationList';
 import { MessageThread } from '../components/inbox/MessageThread';
@@ -96,6 +96,11 @@ export function CrmInboxPage() {
       + `:${activeConversation.instanceId || '-'}`
     : null;
 
+  // Mensagem sendo respondida (citacao). Vive aqui porque os baloes (no
+  // MessageThread) a escolhem e o composer a exibe/envia. Troca de conversa limpa.
+  const [replyTo, setReplyTo] = useState(null);
+  useEffect(() => { setReplyTo(null); }, [activeKey]);
+
   const handleSelect = useCallback(
     (conv) => {
       const next = new URLSearchParams();
@@ -125,12 +130,14 @@ export function CrmInboxPage() {
       <WhatsAppStatusBanner />
       <div className="flex-1 flex min-h-0">
         <ConversationList activeKey={activeKey} onSelect={handleSelect} />
-        <MessageThread conversation={activeConversation}>
+        <MessageThread conversation={activeConversation} onReply={setReplyTo}>
           {activeConversation && (
             <MessageComposer
               conversation={activeConversation}
               instanceName={activeInstance?.instanceName}
               disabled={composerDisabled}
+              replyTo={replyTo}
+              onCancelReply={() => setReplyTo(null)}
             />
           )}
         </MessageThread>

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, CheckCheck, AlertCircle, FileText, Play, Pause, Download, Mic, MapPin, UserRound } from 'lucide-react';
+import { Check, CheckCheck, AlertCircle, FileText, Play, Pause, Download, Mic, MapPin, UserRound, Reply } from 'lucide-react';
 import { AudioMessage } from './AudioMessage';
 
 /**
@@ -201,7 +201,7 @@ function MediaContent({ message, isOut }) {
   );
 }
 
-export function MessageBubble({ message }) {
+export function MessageBubble({ message, onReply }) {
   const isOut = message.direction === 'outbound';
   const hasMedia = !!message.mediaUrl && message.status !== 'failed';
   const isSticker = hasMedia && message.mediaType === 'sticker';
@@ -221,7 +221,7 @@ export function MessageBubble({ message }) {
   const timeMt = isSticker ? 'mt-0.5' : (hasMedia && !showCaption ? '-mt-0.5' : 'mt-0.5');
 
   return (
-    <div className={`flex ${isOut ? 'justify-end' : 'justify-start'} mb-1`}>
+    <div className={`group flex ${isOut ? 'justify-end' : 'justify-start'} mb-1`}>
       <div
         className={
           isSticker
@@ -235,6 +235,33 @@ export function MessageBubble({ message }) {
               ].join(' ')
         }
       >
+        {/* Responder: aparece no hover, ao lado da bolha (estilo WhatsApp). */}
+        {onReply && (
+          <button
+            type="button"
+            onClick={() => onReply(message)}
+            title="Responder"
+            className={`absolute top-1 ${isOut ? '-left-9' : '-right-9'} opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-full bg-white dark:bg-slate-700 shadow text-slate-500 hover:text-slate-700 dark:text-slate-200`}
+          >
+            <Reply size={15} />
+          </button>
+        )}
+
+        {/* Mensagem citada (respondendo a). Desnormalizado — nao precisa de join. */}
+        {message.replyToPreview && (
+          <div
+            className={`mb-1 rounded px-2 py-1 border-l-[3px] ${isOut ? 'bg-black/5 dark:bg-black/25' : 'bg-black/[0.03] dark:bg-white/5'}`}
+            style={{ borderLeftColor: message.replyToFromMe ? '#1da57a' : '#00a884' }}
+          >
+            <span className="block text-[11px] font-semibold" style={{ color: message.replyToFromMe ? '#1da57a' : '#06a37f' }}>
+              {message.replyToFromMe ? 'Você' : 'Contato'}
+            </span>
+            <span className="block text-[13px] text-slate-600 dark:text-slate-300 truncate">
+              {message.replyToPreview}
+            </span>
+          </div>
+        )}
+
         {hasMedia && <MediaContent message={message} isOut={isOut} />}
 
         {showCaption && (

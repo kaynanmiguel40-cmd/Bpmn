@@ -924,12 +924,30 @@ interface Extracted {
   /** Duracao em segundos (audio/video) — o WhatsApp manda em `seconds`. Deixa o
    *  player mostrar a duracao antes de tocar. */
   mediaDurationSeconds: number | null
+  /** Resposta (citacao): id (stanza) da mensagem citada + preview do conteudo
+   *  dela. O reply_to_id/from_me sao resolvidos no insert cruzando o stanza id. */
+  replyToStanzaId: string | null
+  replyToPreview: string | null
   /** Preenchido quando o evento NAO e mensagem de conversa (reacao, revogacao,
    *  ack). Vai pro dead-letter em vez de poluir a thread. */
   meta: string | null
   /** Tipo que nao sabemos ler. Entra na thread como placeholder E vai pro
    *  dead-letter — melhor uma linha feia que um buraco silencioso. */
   unknown: boolean
+}
+
+/** Resumo curto da mensagem CITADA, pro balao de resposta (sem baixar midia). */
+function quotedPreview(qm: any): string | null {
+  if (!qm || typeof qm !== 'object') return null
+  const txt = qm.conversation || qm.extendedTextMessage?.text
+  if (txt) return String(txt).slice(0, 140)
+  if (qm.imageMessage)    return qm.imageMessage.caption ? `📷 ${String(qm.imageMessage.caption).slice(0, 120)}` : '📷 Foto'
+  if (qm.videoMessage || qm.ptvMessage) return '🎥 Vídeo'
+  if (qm.audioMessage)    return '🎤 Áudio'
+  if (qm.documentMessage) return `📄 ${qm.documentMessage.fileName || 'Documento'}`
+  if (qm.stickerMessage)  return 'Figurinha'
+  if (qm.locationMessage) return '📍 Localização'
+  return 'Mensagem'
 }
 
 /**
@@ -943,9 +961,22 @@ function extractContent(msg: any): Extracted {
   const out: Extracted = {
     content: null, mediaUrl: null, mediaType: null,
     mediaCaption: null, mediaMime: null, mediaDurationSeconds: null,
+    replyToStanzaId: null, replyToPreview: null,
     meta: null, unknown: false,
   }
   if (!msg || typeof msg !== 'object') { out.unknown = true; return out }
+
+  // Citacao (esta mensagem responde outra): o contextInfo mora dentro do no do
+  // tipo (extendedText/image/...). stanzaId = id da citada; quotedMessage = o
+  // conteudo dela, que vira o preview do balao citado.
+  const ctxNode = [msg.extendedTextMessage, msg.imageMessage, msg.videoMessage,
+    msg.audioMessage, msg.documentMessage, msg.stickerMessage, msg.ptvMessage]
+    .find((n: any) => n?.contextInfo?.stanzaId)
+  const ctx = (ctxNode as any)?.contextInfo
+  if (ctx?.stanzaId) {
+    out.replyToStanzaId = String(ctx.stanzaId)
+    out.replyToPreview = quotedPreview(ctx.quotedMessage)
+  }
 
   // --- texto ---
   if (msg.conversation) {
@@ -1226,6 +1257,27 @@ async function handleMessagesUpsert(
     const mediaMime  = ext.mediaMime
     const mediaDurationSeconds = ext.mediaDurationSeconds
 
+    // Resposta: resolve a mensagem citada pelo stanza id (o id do WhatsApp que a
+    // gente guarda em evolution_message_id). Se achar, a citacao vira clicavel e
+    // sabemos de quem era; se nao (citou algo anterior ao nosso historico), fica
+    // so o preview.
+    let replyToId: string | null = null
+    let replyToFromMe: boolean | null = null
+    const replyToPreview = ext.replyToPreview
+    if (ext.replyToStanzaId) {
+      const { data: quotedRow } = await supabase
+        .from('crm_messages')
+        .select('id, direction')
+        .eq('evolution_message_id', ext.replyToStanzaId)
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle()
+      if (quotedRow) {
+        replyToId = quotedRow.id
+        replyToFromMe = quotedRow.direction === 'outbound'
+      }
+    }
+
     // Reacao / evento de protocolo: nao e mensagem de conversa. Guarda no
     // dead-letter (o dado nao se perde) mas nao polui a thread.
     if (ext.meta) {
@@ -1424,6 +1476,9 @@ async function handleMessagesUpsert(
       media_mime:           mediaMime,
       media_caption:        mediaCaption,
       media_duration_seconds: mediaDurationSeconds,
+      reply_to_id:          replyToId,
+      reply_to_preview:     replyToPreview,
+      reply_to_from_me:     replyToFromMe,
       evolution_message_id: evolutionMessageId,
       // Backfill de mensagem ANTIGA nasce lida: o vendedor ja viu no celular ha
       // dias. Sem isto, recuperar historico enchia o inbox de "nao lidas"

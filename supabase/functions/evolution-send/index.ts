@@ -182,9 +182,18 @@ async function evolutionSend(
   mediaUrl: string | undefined,
   mediaType: string | undefined,
   mediaCaption: string | undefined,
+  quotedId?: string | null,
+  quotedText?: string | null,
 ) {
   const number = evolutionResolveNumber(phone)
   const headers = { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY }
+
+  // Citacao (responder mensagem): a v2 aceita `quoted` com a KEY da mensagem
+  // original. O id (stanza) e o que WhatsApp usa pra amarrar a resposta; o texto
+  // e so o preview que aparece no balao citado.
+  const quoted = quotedId
+    ? { key: { id: quotedId }, message: { conversation: quotedText || '' } }
+    : undefined
 
   let endpoint: string
   let payload: Record<string, unknown>
@@ -192,7 +201,7 @@ async function evolutionSend(
   if (mediaUrl && mediaType === 'audio') {
     // Audio (voz) tem endpoint proprio na v2.
     endpoint = `${EVOLUTION_URL}/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`
-    payload = { number, audio: mediaUrl, delay: 0 }
+    payload = { number, audio: mediaUrl, delay: 0, ...(quoted ? { quoted } : {}) }
   } else if (mediaUrl) {
     // Imagem / video / documento. v2 = payload plano com mimetype + fileName.
     const { mime, fileName } = guessMimeAndName(mediaUrl, mediaType || 'document')
@@ -205,11 +214,12 @@ async function evolutionSend(
       caption:   mediaCaption || content || '',
       fileName,
       delay:     0,
+      ...(quoted ? { quoted } : {}),
     }
   } else {
     // Texto. v2 = { number, text } plano (v1 usava textMessage.text aninhado).
     endpoint = `${EVOLUTION_URL}/message/sendText/${encodeURIComponent(instanceName)}`
-    payload = { number, text: content || '', delay: 0 }
+    payload = { number, text: content || '', delay: 0, ...(quoted ? { quoted } : {}) }
   }
 
   const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) })
@@ -234,6 +244,13 @@ serve(async (req) => {
   }
 
   const { instanceName, phone, content, mediaUrl, mediaType, mediaCaption } = body
+  // Citacao (responder mensagem): quotedId = id (stanza) da mensagem citada pra
+  // amarrar no WhatsApp; os replyTo* sao desnormalizados pra tela.
+  const quotedId       = (body as Record<string, unknown>).quotedId as string | null | undefined
+  const quotedText     = (body as Record<string, unknown>).quotedText as string | null | undefined
+  const replyToId      = (body as Record<string, unknown>).replyToId as string | null | undefined
+  const replyToPreview = (body as Record<string, unknown>).replyToPreview as string | null | undefined
+  const replyToFromMe  = (body as Record<string, unknown>).replyToFromMe as boolean | null | undefined
   // instanceName e OPCIONAL: quando ausente (ex: automacoes), caimos no
   // fallback abaixo que resolve a primeira instance 'connected'. So `phone`
   // e realmente obrigatorio aqui.
@@ -315,6 +332,9 @@ serve(async (req) => {
       source:         body.source       || 'manual',
       automation_id:  body.automationId || null,
       created_by:     body.createdBy    || null,
+      reply_to_id:      replyToId      || null,
+      reply_to_preview: replyToPreview || null,
+      reply_to_from_me: typeof replyToFromMe === 'boolean' ? replyToFromMe : null,
     })
     .select('id')
     .single()
@@ -346,7 +366,7 @@ serve(async (req) => {
       }
     } else {
       // Evolution API (v2) — resposta { key: { id }, ... }
-      const result = await evolutionSend(effectiveInstanceName, phone, content, mediaUrl, mediaType, mediaCaption)
+      const result = await evolutionSend(effectiveInstanceName, phone, content, mediaUrl, mediaType, mediaCaption, quotedId, quotedText)
       if (!result.ok) {
         errorMessage = result.data?.message || `HTTP ${result.status}`
       } else {
