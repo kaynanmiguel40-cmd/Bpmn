@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Paperclip, Loader2, Image as ImageIcon, FileText, X,
   Mic, Trash2, Smile,
@@ -117,19 +117,59 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
   const canSendNow = !disabled && !isSending && !!conversation?.otherPhone;
 
   // ---- anexos (foto/vídeo/documento) ----
-  const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  // Prepara um File como anexo pendente (valida tamanho, gera preview). Fonte
+  // unica pro seletor de arquivo E pro colar (Ctrl+V). Substitui um anexo anterior
+  // revogando o preview velho pra nao vazar object URL.
+  const stageFile = useCallback((file) => {
+    if (!file) return false;
     const mediaType = detectMediaType(file.type);
     const limit = mediaSizeLimitFor(mediaType);
     if (file.size > limit) {
       toast(`Arquivo maior que o limite do WhatsApp pra esse tipo (${(limit / (1024 * 1024)).toFixed(0)}MB)`, 'error');
-      return;
+      return false;
     }
     const preview = (mediaType === 'image' || mediaType === 'video') ? URL.createObjectURL(file) : null;
-    setAttachment({ file, preview, mediaType });
-    setAttachMenuOpen(false);
+    setAttachment((prev) => {
+      if (prev?.preview) URL.revokeObjectURL(prev.preview);
+      return { file, preview, mediaType };
+    });
+    return true;
+  }, []);
+
+  // Colar imagem (Ctrl+V), estilo WhatsApp: um print no clipboard vira anexo
+  // pendente. Escuta no window pra funcionar mesmo sem clicar na caixa antes; so
+  // sequestra o paste quando HA imagem no clipboard — colar texto segue normal.
+  useEffect(() => {
+    if (disabled || !conversation?.otherPhone) return undefined;
+    const onPaste = (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const it of items) {
+        if (it.kind === 'file' && it.type.startsWith('image/')) {
+          const blob = it.getAsFile();
+          if (!blob) continue;
+          e.preventDefault();
+          // Print do clipboard costuma vir sem nome; da um pra o upload/preview.
+          const ext = (blob.type.split('/')[1] || 'png').split('+')[0];
+          const named = new File([blob], `print-${Date.now()}.${ext}`, { type: blob.type });
+          if (stageFile(named)) {
+            setAttachMenuOpen(false);
+            setEmojiOpen(false);
+            toast('Imagem colada — Enter pra enviar', 'success');
+            textareaRef.current?.focus();
+          }
+          return;
+        }
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [disabled, conversation?.otherPhone, stageFile]);
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (stageFile(file)) setAttachMenuOpen(false);
   };
 
   const removeAttachment = () => {
