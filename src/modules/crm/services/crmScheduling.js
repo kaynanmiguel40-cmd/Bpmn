@@ -34,10 +34,13 @@ export const SLOT_MINUTES = 30;
 // Ate quantos dias uteis empurrar quando o dia alvo lota.
 export const MAX_ROLLOVER_DAYS = 60;
 // Folga MINIMA (inicio-a-inicio) entre dois toques DO MESMO LEAD no mesmo dia.
-// 60min = um slot vago entre eles, que outro lead preenche (interleaving). Sem
-// isso, quando a agenda enche e varios offsets colapsam num dia, o lead ganha
+// 3h ESPALHA pelo dia em vez de so descolar: comecando 9h, os toques caem 9:00,
+// 12:00, 15:00 — manha / meio-dia / tarde ("cafe da manha, almoco, cafe da
+// tarde", nas palavras da vendedora). O 4o do dia estoura as 18h e rola pro dia
+// seguinte, entao um lead ganha no maximo ~3 toques/dia, bem distribuidos. Sem
+// isso, quando a agenda enche e varios offsets colapsam num dia, o lead ganhava
 // 3-4 tarefas coladas ("Paulo 12:00, Paulo 12:30, Paulo 13:00").
-export const GAP_MESMO_LEAD = 60;
+export const GAP_MESMO_LEAD = 180;
 
 /**
  * Todos os inicios de slot possiveis num dia, em minutos desde 00:00.

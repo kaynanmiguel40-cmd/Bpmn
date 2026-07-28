@@ -89,7 +89,7 @@ describe('findFreeSlot', () => {
 describe('planSteps', () => {
   const from = new Date(2026, 6, 20); // segunda
 
-  it('duas tarefas no mesmo dia NAO caem no mesmo horario (e nao encostam)', () => {
+  it('duas tarefas no mesmo dia NAO caem no mesmo horario (espalha pelo dia)', () => {
     const plan = planSteps([
       { id: 'a', dayOffset: 0 },
       { id: 'b', dayOffset: 0 },
@@ -98,9 +98,8 @@ describe('planSteps', () => {
     expect(plan[0].start.getTime()).not.toBe(plan[1].start.getTime());
     expect(plan[0].start.getHours()).toBe(9);
     expect(plan[0].start.getMinutes()).toBe(0);
-    // Folga do mesmo lead: b cai 60min depois de a (10:00), deixando 09:30 livre
-    // pra outro lead — nao mais colado em 09:30.
-    expect(plan[1].start.getHours()).toBe(10);
+    // Folga do mesmo lead: 3h. a=09:00 -> b=12:00 (manha -> meio-dia).
+    expect(plan[1].start.getHours()).toBe(12);
     expect(plan[1].start.getMinutes()).toBe(0);
   });
 
@@ -210,7 +209,7 @@ describe('planSteps — piso do agora', () => {
 describe('planSteps — folga entre toques do mesmo lead', () => {
   const minutosDe = (d) => d.getHours() * 60 + d.getMinutes();
 
-  it('dois passos no mesmo dia ficam a pelo menos 60min um do outro', () => {
+  it('dois passos no mesmo dia ficam a pelo menos 3h um do outro', () => {
     const from = new Date(2026, 6, 20, 9, 0); // segunda 9h
     // Dois passos que caem no MESMO dia (offset 0), sem period.
     const plan = planSteps([{ id: 'a', dayOffset: 0 }, { id: 'b', dayOffset: 0 }], {}, from);
@@ -218,17 +217,32 @@ describe('planSteps — folga entre toques do mesmo lead', () => {
     const [a, b] = plan;
     expect(a.start.getDate()).toBe(20);
     expect(b.start.getDate()).toBe(20);
-    expect(minutosDe(b.start) - minutosDe(a.start)).toBeGreaterThanOrEqual(60);
+    expect(minutosDe(b.start) - minutosDe(a.start)).toBeGreaterThanOrEqual(180);
   });
 
-  it('deixa um vao no meio (nao encosta), pra outro lead interleavar', () => {
-    // Sabado 18/07 -> os passos caem na segunda 20/07 LIMPA (sem o piso do "agora",
-    // que so vale pro dia de hoje), entao os horarios sao exatos.
+  it('espalha pelo dia: 9:00 -> 12:00 -> 15:00 (manha, meio-dia, tarde)', () => {
+    // Sabado 18/07 -> os passos caem na segunda 20/07 LIMPA (sem o piso do "agora"),
+    // entao os horarios sao exatos.
     const from = new Date(2026, 6, 18, 9, 0);
-    const plan = planSteps([{ id: 'a', dayOffset: 0 }, { id: 'b', dayOffset: 0 }], {}, from);
-    // a=09:00, b=10:00 -> 09:30 fica livre no meio.
-    expect(minutosDe(plan[0].start)).toBe(9 * 60);
-    expect(minutosDe(plan[1].start)).toBe(10 * 60);
+    const plan = planSteps([
+      { id: 'a', dayOffset: 0 }, { id: 'b', dayOffset: 0 }, { id: 'c', dayOffset: 0 },
+    ], {}, from);
+    expect(minutosDe(plan[0].start)).toBe(9 * 60);   // 09:00
+    expect(minutosDe(plan[1].start)).toBe(12 * 60);  // 12:00 (pula o almoco 11-12)
+    expect(minutosDe(plan[2].start)).toBe(15 * 60);  // 15:00
+    // os tres no mesmo dia (segunda 20)
+    expect(new Set(plan.map(p => p.start.getDate()))).toEqual(new Set([20]));
+  });
+
+  it('4o toque do dia estoura as 18h e rola pro proximo dia util', () => {
+    const from = new Date(2026, 6, 18, 9, 0); // -> segunda 20 limpa
+    const plan = planSteps([
+      { id: 'a', dayOffset: 0 }, { id: 'b', dayOffset: 0 },
+      { id: 'c', dayOffset: 0 }, { id: 'd', dayOffset: 0 },
+    ], {}, from);
+    // a/b/c em 9/12/15 na segunda; d (15:00+3h=18:00, sem slot) vai pra terca 21.
+    expect(plan[3].start.getDate()).toBe(21);
+    expect(plan[3].start.getHours()).toBe(WORK_START_HOUR);
   });
 
   it('offsets diferentes em dias diferentes nao sofrem a folga (dia limpo)', () => {
