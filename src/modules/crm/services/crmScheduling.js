@@ -30,14 +30,18 @@ export const WORK_START_HOUR = 9;
 export const WORK_END_HOUR = 18;
 export const LUNCH_START_HOUR = 11;
 export const LUNCH_END_HOUR = 12;
-// Tamanho do slot = duracao de UM toque de cadencia (ligacao/mensagem/e-mail) E o
-// passo da grade. 5min porque um toque agendado e a TENTATIVA (discar 3x sem
-// atender leva isso); quando o lead atende vira conversa e estoura, mas isso e
-// ad-hoc. Grade de 5min = ate 96 toques/dia (era 16 a 30min) — e o que encolhe o
-// backlog sem tirar lead da fila. Reuniao/visita/almoco NAO usam isto: tem
-// duracao propria (scheduleMeetingForDeal passa 60min) e o findFreeSlot ciente de
-// duracao reserva o bloco inteiro.
-export const SLOT_MINUTES = 5;
+// Tamanho do slot = duracao de UM toque de cadencia E o passo da grade.
+//
+// Ja foi 5min (pra encolher o backlog), mas ai o dia empacotava ~90 toques e o
+// CALENDARIO nao conseguia desenhar isso sem empilhar/espremer — virava uma parede
+// de colunas minusculas. 30min NAO e o tempo da ligacao (que sao ~5min); e o
+// espaco que a grade do calendario precisa pra desenhar uma tarefa embaixo da
+// outra sem conflito visual (altura minima de 20px por bloco). E o preco de um
+// calendario legivel: ~16 toques/dia, backlog mais longo. Quem quer densidade
+// trabalha pela Fila (lista), nao pelo grid. Reuniao/visita/almoco tem duracao
+// propria (scheduleMeetingForDeal passa 60min); o findFreeSlot ciente de duracao
+// reserva o bloco inteiro.
+export const SLOT_MINUTES = 30;
 // Ate quantos dias uteis empurrar quando o dia alvo lota.
 export const MAX_ROLLOVER_DAYS = 60;
 // Folga MINIMA (inicio-a-inicio) entre dois toques DO MESMO LEAD no mesmo dia.

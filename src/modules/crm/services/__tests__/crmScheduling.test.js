@@ -285,9 +285,9 @@ describe('empurrarFila — bloco emergencial empurra o resto do dia', () => {
     ];
     const out = empurrarFila(mover, bloco, desde);
     const by = Object.fromEntries(out.map(o => [o.id, o]));
-    // Bloco ocupa 9:00-9:30; 'a' cai no 1o livre (9:30), 'b' logo depois (9:35).
+    // Bloco ocupa 9:00-9:30; 'a' cai no 1o slot livre (9:30), 'b' no seguinte (10:00).
     expect(hora(by.a.start)).toBe('09:30');
-    expect(hora(by.b.start)).toBe('09:35');
+    expect(hora(by.b.start)).toBe('10:00');
     // 'c' as 12:00 nao colide com nada — o buraco absorveu a cascata.
     expect(by.c.movida).toBe(false);
     expect(hora(by.c.start)).toBe('12:00');
