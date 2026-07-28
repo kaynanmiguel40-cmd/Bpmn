@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Check, CheckCheck, AlertCircle, FileText, Play, Pause, Download, Mic, MapPin, UserRound } from 'lucide-react';
+import { AudioMessage } from './AudioMessage';
 
 /**
  * MessageBubble - Mensagem no thread, estilo WhatsApp.
@@ -180,13 +181,9 @@ function MediaContent({ message, isOut }) {
     );
   }
   if (type === 'audio' || m.startsWith('audio/')) {
-    // <audio> nativo: o browser cuida de carregar/decodificar; preload="none"
-    // evita carregar metadata do webm no render (gatilho do crash). Robusto.
-    return (
-      <audio controls preload="none" src={url} className="max-w-full mb-1" style={{ minWidth: 220, height: 40 }}>
-        Áudio
-      </audio>
-    );
+    // Player que toca ogg/opus em qualquer navegador — nativo onde da, WASM no
+    // iPhone (onde nenhum navegador toca ogg/opus), download como ultimo fallback.
+    return <AudioMessage url={url} isOut={isOut} />;
   }
 
   // documento real (pdf, planilha, etc) / outro

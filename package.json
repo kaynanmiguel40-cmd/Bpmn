@@ -36,6 +36,7 @@
     "dompurify": "^3.3.1",
     "jspdf": "^4.1.0",
     "lucide-react": "^0.575.0",
+    "ogg-opus-decoder": "^1.7.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.71.2",
