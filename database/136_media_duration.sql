@@ -1,0 +1,11 @@
+-- 136: DURACAO DA MIDIA (audio/video) NA MENSAGEM
+--
+-- O player mostrava 0s ate dar play porque o navegador so descobre a duracao
+-- carregando o arquivo. O WhatsApp ja MANDA a duracao no webhook
+-- (audioMessage.seconds), mas a gente descartava. Guardar aqui deixa o player
+-- mostrar a duracao ANTES de tocar, em qualquer aparelho (inclusive iPhone, onde
+-- o audio e decodificado por WASM so no play) e sem baixar o arquivo.
+--
+-- So vale pras mensagens NOVAS (as antigas nao tem o campo guardado; seguem
+-- mostrando a duracao ao tocar).
+ALTER TABLE crm_messages ADD COLUMN IF NOT EXISTS media_duration_seconds int;

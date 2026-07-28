@@ -34,6 +34,7 @@ export function dbToCrmMessage(row) {
     mediaMime: row.media_mime || null,
     mediaFilename: row.media_filename || null,
     mediaCaption: row.media_caption || null,
+    mediaDurationSeconds: row.media_duration_seconds || null,
     evolutionMessageId: row.evolution_message_id || null,
     status: row.status,
     errorMessage: row.error_message || null,

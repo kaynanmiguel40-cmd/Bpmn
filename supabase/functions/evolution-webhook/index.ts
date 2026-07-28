@@ -921,6 +921,9 @@ interface Extracted {
   mediaType: string | null
   mediaCaption: string | null
   mediaMime: string | null
+  /** Duracao em segundos (audio/video) — o WhatsApp manda em `seconds`. Deixa o
+   *  player mostrar a duracao antes de tocar. */
+  mediaDurationSeconds: number | null
   /** Preenchido quando o evento NAO e mensagem de conversa (reacao, revogacao,
    *  ack). Vai pro dead-letter em vez de poluir a thread. */
   meta: string | null
@@ -939,7 +942,8 @@ interface Extracted {
 function extractContent(msg: any): Extracted {
   const out: Extracted = {
     content: null, mediaUrl: null, mediaType: null,
-    mediaCaption: null, mediaMime: null, meta: null, unknown: false,
+    mediaCaption: null, mediaMime: null, mediaDurationSeconds: null,
+    meta: null, unknown: false,
   }
   if (!msg || typeof msg !== 'object') { out.unknown = true; return out }
 
@@ -969,6 +973,9 @@ function extractContent(msg: any): Extracted {
     out.mediaUrl     = node.url || null
     out.mediaMime    = node.mimetype || null
     out.mediaCaption = node.caption || node.fileName || null
+    // `seconds` vem em audio (nota de voz) e video; ignora se nao for numero valido.
+    out.mediaDurationSeconds = Number.isFinite(node.seconds) && node.seconds > 0
+      ? Math.round(node.seconds) : null
     out.content      = out.mediaCaption
     return out
   }
@@ -1217,6 +1224,7 @@ async function handleMessagesUpsert(
     const mediaType  = ext.mediaType
     const mediaCaption = ext.mediaCaption
     const mediaMime  = ext.mediaMime
+    const mediaDurationSeconds = ext.mediaDurationSeconds
 
     // Reacao / evento de protocolo: nao e mensagem de conversa. Guarda no
     // dead-letter (o dado nao se perde) mas nao polui a thread.
@@ -1415,6 +1423,7 @@ async function handleMessagesUpsert(
       media_type:           mediaType,
       media_mime:           mediaMime,
       media_caption:        mediaCaption,
+      media_duration_seconds: mediaDurationSeconds,
       evolution_message_id: evolutionMessageId,
       // Backfill de mensagem ANTIGA nasce lida: o vendedor ja viu no celular ha
       // dias. Sem isto, recuperar historico enchia o inbox de "nao lidas"

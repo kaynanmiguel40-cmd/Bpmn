@@ -183,7 +183,7 @@ function MediaContent({ message, isOut }) {
   if (type === 'audio' || m.startsWith('audio/')) {
     // Player que toca ogg/opus em qualquer navegador — nativo onde da, WASM no
     // iPhone (onde nenhum navegador toca ogg/opus), download como ultimo fallback.
-    return <AudioMessage url={url} isOut={isOut} />;
+    return <AudioMessage url={url} isOut={isOut} durationSeconds={message.mediaDurationSeconds} />;
   }
 
   // documento real (pdf, planilha, etc) / outro

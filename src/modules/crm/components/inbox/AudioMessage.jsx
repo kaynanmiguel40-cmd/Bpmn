@@ -33,7 +33,7 @@ function fmtClock(s) {
   return `${m}:${String(ss).padStart(2, '0')}`;
 }
 
-export function AudioMessage({ url, isOut }) {
+export function AudioMessage({ url, isOut, durationSeconds = null }) {
   // Decidido UMA vez: a capacidade do navegador nao muda em runtime.
   const canNative = useMemo(nativeSuportaOggOpus, []);
   const [nativeFailed, setNativeFailed] = useState(false);
@@ -42,7 +42,9 @@ export function AudioMessage({ url, isOut }) {
     return (
       <audio
         controls
-        preload="none"
+        // metadata (nao none): carrega so a duracao — assim o player ja mostra o
+        // tempo antes de tocar, em vez de 0:00. E um range pequeno, nao o arquivo.
+        preload="metadata"
         src={url}
         onError={() => setNativeFailed(true)}
         className="max-w-full mb-1"
@@ -52,16 +54,18 @@ export function AudioMessage({ url, isOut }) {
       </audio>
     );
   }
-  return <DecodedAudio url={url} isOut={isOut} />;
+  return <DecodedAudio url={url} isOut={isOut} durationSeconds={durationSeconds} />;
 }
 
 // Player pra quem nao tem codec nativo: baixa o ogg, decodifica por WASM e toca
 // pela Web Audio API, com barra de progresso e play/pause.
-function DecodedAudio({ url, isOut }) {
+function DecodedAudio({ url, isOut, durationSeconds = null }) {
   const [phase, setPhase] = useState('idle'); // idle | loading | error
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
-  const [dur, setDur] = useState(0);
+  // Duracao ja conhecida (o WhatsApp manda em `seconds`) mostra o tempo ANTES de
+  // decodificar/tocar; a decodificacao no play corrige se divergir.
+  const [dur, setDur] = useState(durationSeconds > 0 ? durationSeconds : 0);
 
   const ctxRef = useRef(null);
   const bufRef = useRef(null);
