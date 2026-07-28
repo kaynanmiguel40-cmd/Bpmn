@@ -246,6 +246,12 @@ const GRID_MIN_PX = GRID_HOUR_PX / 60;
 const GRID_DEFAULT_START_H = 8; // topo da grade — só sobe pra mais cedo se tiver evento antes das 8h
 const GRID_DEFAULT_END_H = 22;
 const GRID_MIN_BLOCK_MIN = 28; // altura mínima (em "minutos equivalentes") pra tarefa curta/pontual não virar um traço
+// Piso de duração pro cálculo de sobreposição: tem que casar com a ALTURA MÍNIMA
+// visual do bloco (20px na GridEventBlock). Toque de 5min ocupa ~4,7px de tempo
+// mas é desenhado com 20px (~21min); se o layout achar que ele dura só 5 (ou 15)
+// min, não detecta a sobreposição visual e as tarefas caem UMA EM CIMA DA OUTRA.
+// Casando os dois, elas viram colunas lado a lado.
+const MIN_BLOCK_MINUTES = Math.ceil(20 / GRID_MIN_PX);
 
 const minutesOfDay = (iso) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); };
 
@@ -275,7 +281,7 @@ function layoutOverlaps(dayEvents) {
     .filter(ev => !ev.isAllDay && ev.startDate)
     .map(ev => {
       const startMin = minutesOfDay(ev.startDate);
-      const endMin = ev.endDate ? Math.max(minutesOfDay(ev.endDate), startMin + 15) : startMin + GRID_MIN_BLOCK_MIN;
+      const endMin = ev.endDate ? Math.max(minutesOfDay(ev.endDate), startMin + MIN_BLOCK_MINUTES) : startMin + GRID_MIN_BLOCK_MIN;
       return { ev, startMin, endMin, col: 0, cols: 1, colspan: 1 };
     })
     // Ordem ESTÁVEL (início, depois fim, depois id): sem o id de desempate,
