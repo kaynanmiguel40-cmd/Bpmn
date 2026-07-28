@@ -241,17 +241,22 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
 // e fim"). Agora é uma grade de verdade: posição vertical = horário,
 // altura do bloco = duração — igual Google Calendar/Outlook.
 
-const GRID_HOUR_PX = 56; // altura de 1h na grade
+// Altura de 1h na grade. 108px (era 56) pra um toque de 10min ocupar ~18px — o
+// minimo legivel — deixando cada tarefa na sua LINHA sem encavalar. Grade baixa +
+// slot de 10min faziam os blocos (altura minima) cairem um sobre o outro.
+const GRID_HOUR_PX = 108;
 const GRID_MIN_PX = GRID_HOUR_PX / 60;
+// Altura minima de um bloco em px (tarefa curta nao vira um traco ilegivel).
+const MIN_BLOCK_PX = 16;
 const GRID_DEFAULT_START_H = 8; // topo da grade — só sobe pra mais cedo se tiver evento antes das 8h
 const GRID_DEFAULT_END_H = 22;
 const GRID_MIN_BLOCK_MIN = 28; // altura mínima (em "minutos equivalentes") pra tarefa curta/pontual não virar um traço
-// Piso de duração pro cálculo de sobreposição: tem que casar com a ALTURA MÍNIMA
-// visual do bloco (20px na GridEventBlock). Toque de 5min ocupa ~4,7px de tempo
-// mas é desenhado com 20px (~21min); se o layout achar que ele dura só 5 (ou 15)
-// min, não detecta a sobreposição visual e as tarefas caem UMA EM CIMA DA OUTRA.
-// Casando os dois, elas viram colunas lado a lado.
-const MIN_BLOCK_MINUTES = Math.ceil(20 / GRID_MIN_PX);
+// Piso de duração pro cálculo de sobreposição: casa com a ALTURA MÍNIMA visual do
+// bloco (MIN_BLOCK_PX). Se o layout achar que a tarefa dura menos do que ela
+// OCUPA na tela, não detecta a sobreposição visual e elas caem uma sobre a outra.
+// Com a grade em 108px/h e slot de 10min (18px > 16px min), toque de 10min já cabe
+// inteiro na sua linha — o layout so vira coluna quando ha sobreposicao real.
+const MIN_BLOCK_MINUTES = Math.ceil(MIN_BLOCK_PX / GRID_MIN_PX);
 
 const minutesOfDay = (iso) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); };
 
@@ -351,7 +356,7 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
   const isCrm = ev.source === 'crm';
   const Icon = iconFor(ev);
   const top = (startMin - startH * 60) * GRID_MIN_PX;
-  const height = Math.max(20, (endMin - startMin) * GRID_MIN_PX - 2);
+  const height = Math.max(MIN_BLOCK_PX, (endMin - startMin) * GRID_MIN_PX - 2);
   const short = height < 34;
   const GAP = 2;
   const unit = 100 / cols;
