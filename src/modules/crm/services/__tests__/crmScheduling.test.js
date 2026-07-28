@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { daySlots, findFreeSlot, planSteps, dayKey, nextBusinessDay, WORK_START_HOUR, empurrarFila } from '../crmScheduling';
+import { daySlots, findFreeSlot, planSteps, dayKey, nextBusinessDay, WORK_START_HOUR, SLOT_MINUTES, empurrarFila } from '../crmScheduling';
+
+// Ultimo slot do dia: o expediente vai ate 18h, entao o ultimo toque comeca a
+// 18h menos a duracao de um slot (17:55 com slots de 5min, 17:30 com 30min).
+const ULTIMO = `17:${String(60 - SLOT_MINUTES).padStart(2, '0')}`;
+// Ultimo slot da manha: antes do almoco (11h) menos a duracao do slot.
+const ULTIMO_MANHA = `10:${String(60 - SLOT_MINUTES).padStart(2, '0')}`;
 
 const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 // Helper: ISO de um horario num dia fixo (2026-07-20 = segunda-feira)
@@ -9,15 +15,15 @@ describe('daySlots — expediente 9-18 com almoco 11-12', () => {
   const slots = daySlots();
   it('comeca as 9h e o ultimo termina as 18h', () => {
     expect(hhmm(slots[0])).toBe('09:00');
-    expect(hhmm(slots[slots.length - 1])).toBe('17:30');
+    expect(hhmm(slots[slots.length - 1])).toBe(ULTIMO);
   });
   it('nao agenda nada dentro do almoco', () => {
-    const dentro = slots.filter(s => hhmm(s) === '11:00' || hhmm(s) === '11:30');
+    const dentro = slots.filter(s => s >= 11 * 60 && s < 12 * 60);
     expect(dentro).toHaveLength(0);
   });
-  it('nao deixa slot INVADIR o almoco (10:45 terminaria 11:15)', () => {
-    // Todos os slots devem terminar ate 11:00 ou comecar 12:00+
-    const invade = slots.filter(s => s + 30 > 11 * 60 && s < 12 * 60);
+  it('nao deixa slot INVADIR o almoco (o bloco inteiro termina ate 11h)', () => {
+    // Nenhum slot pode terminar depois das 11h e comecar antes das 12h.
+    const invade = slots.filter(s => s + SLOT_MINUTES > 11 * 60 && s < 12 * 60);
     expect(invade).toHaveLength(0);
   });
   it('retoma as 12h depois do almoco', () => {
@@ -30,13 +36,13 @@ describe('turno (manha/tarde) — "sempre ligar de manha e a tarde"', () => {
   it('manha vai das 9h ate antes do almoco', () => {
     const s = daySlots('manha').map(hhmm);
     expect(s[0]).toBe('09:00');
-    expect(s[s.length - 1]).toBe('10:30'); // 10:30+30 = 11:00, encosta no almoco
+    expect(s[s.length - 1]).toBe(ULTIMO_MANHA); // ultimo bloco termina 11:00
     expect(s).not.toContain('12:00');
   });
   it('tarde comeca depois do almoco', () => {
     const s = daySlots('tarde').map(hhmm);
     expect(s[0]).toBe('12:00');
-    expect(s[s.length - 1]).toBe('17:30');
+    expect(s[s.length - 1]).toBe(ULTIMO);
     expect(s).not.toContain('09:00');
   });
   it('sem turno = dia inteiro', () => {
@@ -73,12 +79,13 @@ describe('findFreeSlot', () => {
     const busy = [{ start: at(9, 0), end: at(11, 0) }];
     expect(hhmm(findFreeSlot(busy))).toBe('12:00');
   });
-  it('atividade sem fim ocupa 30 min', () => {
+  it('atividade sem fim ocupa um slot (SLOT_MINUTES)', () => {
     const busy = [{ start: at(9, 0) }];
-    expect(hhmm(findFreeSlot(busy))).toBe('09:30');
+    // Sem end, o ocupado dura SLOT_MINUTES; o proximo livre e logo depois.
+    expect(hhmm(findFreeSlot(busy))).toBe(hhmm(9 * 60 + SLOT_MINUTES));
   });
   it('respeita afterMinutes (empilhar no mesmo dia)', () => {
-    expect(hhmm(findFreeSlot([], 9 * 60))).toBe('09:30');
+    expect(hhmm(findFreeSlot([], 9 * 60))).toBe(hhmm(9 * 60 + SLOT_MINUTES));
   });
   it('dia lotado -> null (nao fura a regra)', () => {
     const busy = [{ start: at(9, 0), end: at(18, 0) }];
@@ -270,17 +277,18 @@ describe('empurrarFila — bloco emergencial empurra o resto do dia', () => {
     expect(hora(out[0].start)).toBe('09:30');
   });
 
-  it('cascata: 9:00 e 9:30 encostados descem os dois; o 11:00 (com buraco) fica', () => {
+  it('cascata: quem colide com o bloco desce; quem tem buraco antes fica', () => {
     const mover = [
-      { id: 'a', start: new Date(2026, 6, 20, 9, 0) },
-      { id: 'b', start: new Date(2026, 6, 20, 9, 30) },
-      { id: 'c', start: new Date(2026, 6, 20, 12, 0) }, // depois do almoco, buraco antes
+      { id: 'a', start: new Date(2026, 6, 20, 9, 0) },   // colide com o bloco 9:00-9:30
+      { id: 'b', start: new Date(2026, 6, 20, 9, 30) },  // colide com 'a' recolocada
+      { id: 'c', start: new Date(2026, 6, 20, 12, 0) },  // buraco enorme antes -> fica
     ];
     const out = empurrarFila(mover, bloco, desde);
     const by = Object.fromEntries(out.map(o => [o.id, o]));
+    // Bloco ocupa 9:00-9:30; 'a' cai no 1o livre (9:30), 'b' logo depois (9:35).
     expect(hora(by.a.start)).toBe('09:30');
-    expect(hora(by.b.start)).toBe('10:00');
-    // 'c' as 12:00 nao colide com nada — buraco das 10:30 absorveu a cascata.
+    expect(hora(by.b.start)).toBe('09:35');
+    // 'c' as 12:00 nao colide com nada — o buraco absorveu a cascata.
     expect(by.c.movida).toBe(false);
     expect(hora(by.c.start)).toBe('12:00');
   });

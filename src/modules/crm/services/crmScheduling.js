@@ -30,7 +30,14 @@ export const WORK_START_HOUR = 9;
 export const WORK_END_HOUR = 18;
 export const LUNCH_START_HOUR = 11;
 export const LUNCH_END_HOUR = 12;
-export const SLOT_MINUTES = 30;
+// Tamanho do slot = duracao de UM toque de cadencia (ligacao/mensagem/e-mail) E o
+// passo da grade. 5min porque um toque agendado e a TENTATIVA (discar 3x sem
+// atender leva isso); quando o lead atende vira conversa e estoura, mas isso e
+// ad-hoc. Grade de 5min = ate 96 toques/dia (era 16 a 30min) — e o que encolhe o
+// backlog sem tirar lead da fila. Reuniao/visita/almoco NAO usam isto: tem
+// duracao propria (scheduleMeetingForDeal passa 60min) e o findFreeSlot ciente de
+// duracao reserva o bloco inteiro.
+export const SLOT_MINUTES = 5;
 // Ate quantos dias uteis empurrar quando o dia alvo lota.
 export const MAX_ROLLOVER_DAYS = 60;
 // Folga MINIMA (inicio-a-inicio) entre dois toques DO MESMO LEAD no mesmo dia.
