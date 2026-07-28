@@ -241,211 +241,6 @@ function MonthView({ current, eventsByDay, onSelectEvent, onSelectSlot, onShowDa
 // e fim"). Agora é uma grade de verdade: posição vertical = horário,
 // altura do bloco = duração — igual Google Calendar/Outlook.
 
-// Altura de 1h na grade. 108px (era 56) pra um toque de 10min ocupar ~18px — o
-// minimo legivel — deixando cada tarefa na sua LINHA sem encavalar. Grade baixa +
-// slot de 10min faziam os blocos (altura minima) cairem um sobre o outro.
-const GRID_HOUR_PX = 108;
-const GRID_MIN_PX = GRID_HOUR_PX / 60;
-// Altura minima de um bloco em px (tarefa curta nao vira um traco ilegivel).
-const MIN_BLOCK_PX = 16;
-const GRID_DEFAULT_START_H = 8; // topo da grade — só sobe pra mais cedo se tiver evento antes das 8h
-const GRID_DEFAULT_END_H = 22;
-const GRID_MIN_BLOCK_MIN = 28; // altura mínima (em "minutos equivalentes") pra tarefa curta/pontual não virar um traço
-// Piso de duração pro cálculo de sobreposição: casa com a ALTURA MÍNIMA visual do
-// bloco (MIN_BLOCK_PX). Se o layout achar que a tarefa dura menos do que ela
-// OCUPA na tela, não detecta a sobreposição visual e elas caem uma sobre a outra.
-// Com a grade em 108px/h e slot de 10min (18px > 16px min), toque de 10min já cabe
-// inteiro na sua linha — o layout so vira coluna quando ha sobreposicao real.
-const MIN_BLOCK_MINUTES = Math.ceil(MIN_BLOCK_PX / GRID_MIN_PX);
-
-const minutesOfDay = (iso) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); };
-
-/** Intervalo de horas a desenhar: cobre 6h-22h, mas se estica se algum evento cair fora disso. */
-function computeGridHours(dayGroups) {
-  let startH = GRID_DEFAULT_START_H;
-  let endH = GRID_DEFAULT_END_H;
-  for (const evs of dayGroups) {
-    for (const ev of evs) {
-      if (ev.isAllDay || !ev.startDate) continue;
-      const startMin = minutesOfDay(ev.startDate);
-      const endMin = ev.endDate ? minutesOfDay(ev.endDate) : startMin + GRID_MIN_BLOCK_MIN;
-      startH = Math.min(startH, Math.floor(startMin / 60));
-      endH = Math.max(endH, Math.ceil(endMin / 60));
-    }
-  }
-  return { startH, endH };
-}
-
-/**
- * Agrupa eventos que se sobrepõem em "clusters" e, dentro de cada um,
- * atribui coluna (coloração gulosa de grafo de intervalo) — pra tarefas no
- * mesmo horário ficarem lado a lado em vez de uma em cima da outra.
- */
-function layoutOverlaps(dayEvents) {
-  const items = dayEvents
-    .filter(ev => !ev.isAllDay && ev.startDate)
-    .map(ev => {
-      const startMin = minutesOfDay(ev.startDate);
-      const endMin = ev.endDate ? Math.max(minutesOfDay(ev.endDate), startMin + MIN_BLOCK_MINUTES) : startMin + GRID_MIN_BLOCK_MIN;
-      return { ev, startMin, endMin, col: 0, cols: 1, colspan: 1 };
-    })
-    // Ordem ESTÁVEL (início, depois fim, depois id): sem o id de desempate,
-    // eventos no mesmo horário trocavam de coluna a cada render/arrasto.
-    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin || String(a.ev.id).localeCompare(String(b.ev.id)));
-
-  // Fecha um cluster de eventos que se cruzam: atribui coluna (guloso) e depois
-  // EXPANDE cada evento pra direita enquanto as colunas seguintes estiverem
-  // livres no intervalo dele — assim ele usa a largura sobrando em vez de ficar
-  // sempre em 1/N (antes 2 eventos que mal se tocavam já viravam 2 tiras finas).
-  const finalize = (cluster) => {
-    const colEnds = [];
-    for (const item of cluster) {
-      let c = colEnds.findIndex(end => item.startMin >= end);
-      if (c === -1) { c = colEnds.length; colEnds.push(item.endMin); }
-      else colEnds[c] = item.endMin;
-      item.col = c;
-    }
-    const totalCols = colEnds.length;
-    for (const item of cluster) {
-      item.cols = totalCols;
-      let span = 1;
-      for (let c = item.col + 1; c < totalCols; c++) {
-        const blocked = cluster.some(o => o !== item && o.col === c && o.startMin < item.endMin && o.endMin > item.startMin);
-        if (blocked) break;
-        span++;
-      }
-      item.colspan = span;
-    }
-  };
-
-  let clusterStart = 0;
-  for (let i = 0; i < items.length; i++) {
-    const clusterSoFar = items.slice(clusterStart, i + 1);
-    const clusterEnd = Math.max(...clusterSoFar.map(x => x.endMin));
-    const isLast = i === items.length - 1;
-    if (isLast || items[i + 1].startMin >= clusterEnd) {
-      finalize(clusterSoFar);
-      clusterStart = i + 1;
-    }
-  }
-  return items;
-}
-
-// Linha vermelha marcando "agora" — só no dia de hoje, só dentro do range visível.
-function NowLine({ startH, endH }) {
-  const [, forceTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => forceTick(n => n + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
-  const now = new Date();
-  const min = now.getHours() * 60 + now.getMinutes();
-  if (min < startH * 60 || min > endH * 60) return null;
-  const top = (min - startH * 60) * GRID_MIN_PX;
-  return (
-    <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center" style={{ top }}>
-      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 -ml-[3px]" />
-      <div className="flex-1 h-px bg-rose-500/70" />
-    </div>
-  );
-}
-
-function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner, startH, dnd }) {
-  const { ev, startMin, endMin, col, cols, colspan = 1 } = item;
-  const isGoogle = ev.source === 'google';
-  const isCrm = ev.source === 'crm';
-  const Icon = iconFor(ev);
-  const top = (startMin - startH * 60) * GRID_MIN_PX;
-  const height = Math.max(MIN_BLOCK_PX, (endMin - startMin) * GRID_MIN_PX - 2);
-  const short = height < 34;
-  const GAP = 2;
-  const unit = 100 / cols;
-  const leftPct = col * unit;
-  const widthPct = colspan * unit;
-  const draggable = dnd ? dnd.canDrag(ev) : false;
-  const beingDragged = !!ev._dragging;
-
-  return (
-    <button
-      type="button"
-      onPointerDown={draggable ? (e) => dnd.onPointerDown(ev, e) : undefined}
-      onClick={(e) => { e.stopPropagation(); onClick?.(ev); }}
-      title={`${fmtRange(ev.startDate, ev.endDate)} · ${ev.title}${ev.leadName ? ` — ${ev.leadName}` : ''}${isGoogle ? ' (Google Agenda)' : ''}`}
-      className={`group/blk absolute text-left rounded-md px-1.5 overflow-hidden transition-[top,height,left,width] duration-75
-        ${short ? 'py-0.5 flex items-center gap-1' : 'py-1'}
-        ${draggable && !beingDragged ? 'cursor-grab active:cursor-grabbing' : ''}
-        ${beingDragged ? 'ring-2 ring-fyness-primary shadow-2xl opacity-95' : ''}
-        ${dimmed ? 'opacity-30 hover:opacity-100' : ''}
-        ${isGoogle
-          ? 'border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-800/50 hover:border-slate-400'
-          : 'border-l-2 bg-white/95 dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm'}`}
-      style={{
-        top, height,
-        left: `calc(${leftPct}% + ${GAP}px)`,
-        width: `calc(${widthPct}% - ${GAP * 2}px)`,
-        borderLeftColor: isGoogle ? undefined : ev.color,
-        zIndex: beingDragged ? 40 : 10,
-        pointerEvents: beingDragged ? 'none' : undefined,
-        ...(draggable ? { touchAction: dnd?.armedId === ev.id ? 'none' : 'pan-y' } : {}),
-      }}
-    >
-      {short ? (
-        <>
-          {ev.completed
-            ? <Check size={10} className="shrink-0" style={{ color: ev.color }} />
-            : <Icon size={10} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
-          <span className="text-[12px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtTime(ev.startDate)}</span>
-          <span className={`flex-1 min-w-0 truncate text-[12px] ${ev.completed ? 'line-through text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
-            {ev.title}
-          </span>
-        </>
-      ) : (
-        <>
-          <div className="flex items-center gap-1">
-            {ev.completed
-              ? <Check size={11} className="shrink-0" style={{ color: ev.color }} />
-              : <Icon size={11} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
-            <span className="text-[12px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtRange(ev.startDate, ev.endDate)}</span>
-            {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={12} />}
-          </div>
-          <div className={`text-[12px] leading-tight truncate ${ev.completed ? 'line-through text-slate-500 dark:text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-800 dark:text-slate-100 font-medium'}`}>
-            {ev.title}
-          </div>
-          {ev.leadName && !isGoogle && height > 50 && (
-            <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate">{ev.leadName}</div>
-          )}
-        </>
-      )}
-      {isCrm && !ev.completed && (
-        <span
-          role="button"
-          tabIndex={0}
-          data-cal-nodrag=""
-          onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onCompleteTask?.(ev); } }}
-          title="Concluir tarefa"
-          className="flex md:hidden md:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-emerald-500 transition-colors cursor-pointer"
-        >
-          <CheckCircle2 size={12} />
-        </span>
-      )}
-      {isCrm && ev.completed && onEditDelivery && (
-        <span
-          role="button"
-          tabIndex={0}
-          data-cal-nodrag=""
-          onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEditDelivery(ev); } }}
-          title="Editar o que aconteceu"
-          className="flex md:hidden md:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-fyness-primary transition-colors cursor-pointer"
-        >
-          <Pencil size={12} />
-        </span>
-      )}
-    </button>
-  );
-}
-
 // Faixa de eventos "dia inteiro" acima da grade (não têm horário pra plotar).
 function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
   const anyAllDay = days.some(day => (eventsByDay.get(toKey(day)) || []).some(ev => ev.isAllDay));
@@ -474,81 +269,50 @@ function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditD
  * por horário real. onSelectSlot recebe a data JÁ com a hora clicada (em vez
  * de sempre cair em 9h como no clique de célula do Mês).
  */
-function TimeGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner, dnd }) {
+// Semana/Dia = LISTA empilhada por dia (um toque embaixo do outro, em ordem de
+// hora), nao mais grade posicionada pelo relogio. A grade apertava tudo quando o
+// dia tinha muito toque (48/dia de cadencia) e obrigava colunas/encavalamento.
+// Empilhando, a densidade deixa de importar pro visual: cada dia e uma lista
+// rolavel, cada toque na sua linha. Hora marcada (reuniao) aparece com a hora no
+// chip. (Sem arrastar-pra-reagendar aqui — o horario nao vem mais da posicao Y;
+// pra remarcar, clica no toque e edita.)
+function TimeGrid({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
   const today = new Date();
-  const dayGroups = useMemo(() => days.map(d => eventsByDay.get(toKey(d)) || []), [days, eventsByDay]);
-  const { startH, endH } = useMemo(() => computeGridHours(dayGroups), [dayGroups]);
-  const totalHeight = (endH - startH) * GRID_HOUR_PX;
-  const hours = useMemo(() => Array.from({ length: endH - startH + 1 }, (_, i) => startH + i), [startH, endH]);
-
-  const handleColumnClick = (e, day) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const offsetY = Math.max(0, e.clientY - rect.top);
-    const minutesFromStart = offsetY / GRID_MIN_PX;
-    const snapped = Math.round(minutesFromStart / 15) * 15; // encaixa em blocos de 15min
-    const totalMin = startH * 60 + snapped;
-    const d = new Date(day);
-    d.setHours(Math.floor(totalMin / 60), totalMin % 60, 0, 0);
-    onSelectSlot?.(d, true);
-  };
+  const dayGroups = useMemo(() => days.map(d => {
+    const evs = [...(eventsByDay.get(toKey(d)) || [])].filter(e => !e.isAllDay);
+    evs.sort((a, b) => new Date(a.startDate || 0) - new Date(b.startDate || 0));
+    return evs;
+  }), [days, eventsByDay]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-200/70 dark:border-white/10 overflow-hidden">
       <AllDayStrip days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />
-      {/* Cabeçalho dos dias (Semana) — Dia usa 1 coluna só, cabeçalho fica no título do topo do calendário */}
-      {days.length > 1 && (
-        <div className="grid bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/70 dark:border-white/10" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
-          <div />
-          {days.map(day => {
-            const isToday = isSameDay(day, today);
-            return (
-              <div key={toKey(day)} className={`px-2 py-1.5 text-center ${isToday ? 'bg-fyness-primary/10' : ''}`}>
-                <div className="text-[12px] uppercase text-slate-500 dark:text-slate-400">{DOW[day.getDay()]}</div>
-                <div className={`text-sm font-semibold ${isToday ? 'text-fyness-primary' : 'text-slate-700 dark:text-slate-200'}`}>{day.getDate()}</div>
+      <div className="grid flex-1 min-h-0" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+        {days.map((day, i) => {
+          const isToday = isSameDay(day, today);
+          return (
+            <div
+              key={toKey(day)}
+              className={`flex flex-col min-h-0 border-l border-slate-200/60 dark:border-white/5 first:border-l-0 ${isToday ? 'bg-fyness-primary/[0.03]' : ''}`}
+            >
+              {/* Cabecalho do dia (Semana). Dia usa 1 coluna, cabecalho fica no topo do calendario. */}
+              {days.length > 1 && (
+                <div className={`shrink-0 px-2 py-1.5 text-center border-b border-slate-200/70 dark:border-white/10 ${isToday ? 'bg-fyness-primary/10' : 'bg-slate-50/80 dark:bg-slate-800/40'}`}>
+                  <div className="text-[12px] uppercase text-slate-500 dark:text-slate-400">{DOW[day.getDay()]}</div>
+                  <div className={`text-sm font-semibold ${isToday ? 'text-fyness-primary' : 'text-slate-700 dark:text-slate-200'}`}>{day.getDate()}</div>
+                </div>
+              )}
+              <div className="flex-1 min-h-0 overflow-y-auto p-1 space-y-1">
+                {dayGroups[i].length === 0
+                  ? <p className="text-center text-[11px] text-slate-300 dark:text-slate-600 py-3">—</p>
+                  : dayGroups[i].map(ev => (
+                    <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
+                      dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
+                  ))}
               </div>
-            );
-          })}
-        </div>
-      )}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="grid" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
-          {/* Eixo de horas */}
-          <div className="relative" style={{ height: totalHeight }}>
-            {/* Nudge pra baixo (sem centralizar na linha) — centralizar cortava a
-                primeira hora (metade do texto ficava acima do topo da grade). */}
-            {hours.map(h => (
-              <div key={h} className="absolute right-1.5 text-[12px] text-slate-500 dark:text-slate-400 tabular-nums" style={{ top: (h - startH) * GRID_HOUR_PX + 2 }}>
-                {String(h).padStart(2, '0')}:00
-              </div>
-            ))}
-          </div>
-          {/* Colunas por dia */}
-          {days.map((day, i) => {
-            const isToday = isSameDay(day, today);
-            const laidOut = layoutOverlaps(dayGroups[i]);
-            return (
-              <div
-                key={toKey(day)}
-                data-cal-daykey={toKey(day)}
-                data-cal-grid=""
-                data-cal-starth={startH}
-                onClick={(e) => handleColumnClick(e, day)}
-                className={`relative border-l border-slate-200/60 dark:border-white/5 cursor-pointer ${isToday ? 'bg-fyness-primary/[0.03]' : ''}`}
-                style={{ height: totalHeight }}
-              >
-                {/* Linhas de hora (grade de fundo) */}
-                {hours.map(h => (
-                  <div key={h} className="absolute left-0 right-0 border-t border-slate-100 dark:border-white/[0.04]" style={{ top: (h - startH) * GRID_HOUR_PX }} />
-                ))}
-                {isToday && <NowLine startH={startH} endH={endH} />}
-                {laidOut.map(item => (
-                  <GridEventBlock key={item.ev.id} item={item} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
-                    dimmed={!!selectedLeadKey && item.ev.leadKey !== selectedLeadKey} showOwner={showOwner} startH={startH} dnd={dnd} />
-                ))}
-              </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
