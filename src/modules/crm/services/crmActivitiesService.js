@@ -40,6 +40,8 @@ export function dbToCrmActivity(row) {
     // permite a Agenda mostrar o script/cenarios na hora de executar, e o que
     // liga a conclusao de volta ao progresso do lead.
     stageStepId: row.stage_step_id || null,
+    // Grupo de recorrencia (evento repetido). Presente = e uma ocorrencia de serie.
+    recurrenceGroupId: row.recurrence_group_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at || null,
@@ -451,6 +453,32 @@ export async function softDeleteCrmActivity(id) {
   }
 
   return true;
+}
+
+/**
+ * Apaga a SÉRIE INTEIRA de um evento recorrente (todas as ocorrencias com o mesmo
+ * recurrence_group_id). Soft-delete SÓ das PENDENTES (completed=false) — as ja
+ * concluidas ficam como historico (a pessoa de fato almocou naquele dia; apagar
+ * seria mentir sobre o passado). Ocorrencia recorrente nao tem agenda_event_id
+ * (insert em lote, sem Google), entao nao ha sync do Calendar pra propagar.
+ *
+ * @returns {Promise<number>} quantas ocorrencias foram apagadas
+ */
+export async function deleteRecurringSeries(groupId) {
+  if (!groupId) return 0;
+  const { data, error } = await supabase
+    .from('crm_activities')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('recurrence_group_id', groupId)
+    .eq('completed', false)
+    .is('deleted_at', null)
+    .select('id');
+
+  if (error) {
+    toast(`Erro ao apagar a série: ${error.message}`, 'error');
+    return 0;
+  }
+  return data?.length || 0;
 }
 
 /**

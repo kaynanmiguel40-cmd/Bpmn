@@ -7,7 +7,7 @@ import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany,
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
 import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, ensureGeneralPipeline, consolidateSalesPipelinesIntoGeneral, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, markDealAsChurned, reactivateChurnedDeal, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
-import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal, createRecurringCrmActivities } from '../services/crmActivitiesService';
+import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal, createRecurringCrmActivities, deleteRecurringSeries } from '../services/crmActivitiesService';
 import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel, getFunnelStageDeals, getSalesCycleByStage } from '../services/crmDashboardService';
 import { getPlaybookByPipeline, getStepsByIds, saveStageSteps, saveStageGoal, getDealProgress, toggleDealStep } from '../services/crmPlaybookService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
@@ -976,6 +976,25 @@ export function useDeleteCrmActivity() {
       // grava completed=true numa linha já com deleted_at.
       qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       toast('Atividade excluida', 'success');
+    },
+  });
+}
+
+/**
+ * Apaga a SÉRIE inteira de um evento recorrente (pendentes). Mesmas invalidacoes
+ * do delete — todas as ocorrencias somem da agenda/fila de uma vez.
+ */
+export function useDeleteRecurringSeries() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteRecurringSeries,
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
+      toast(count ? `Série apagada — ${count} ocorrências` : 'Nada para apagar na série', 'success');
     },
   });
 }

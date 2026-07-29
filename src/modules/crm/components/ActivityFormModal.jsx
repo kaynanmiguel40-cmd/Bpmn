@@ -37,6 +37,7 @@ import {
   useReportOwners,
   useAgendarEmergencia,
   useCreateRecurringActivity,
+  useDeleteRecurringSeries,
 } from '../hooks/useCrmQueries';
 import { getActivityAttendees } from '../services/crmActivitiesService';
 
@@ -172,8 +173,11 @@ export function ActivityFormModal({
   const createMutation = useCreateCrmActivity();
   const updateMutation = useUpdateCrmActivity();
   const deleteMutation = useDeleteCrmActivity();
+  const seriesMutation = useDeleteRecurringSeries();
   const emergenciaMutation = useAgendarEmergencia();
   const recurringMutation = useCreateRecurringActivity();
+  // A atividade em edicao faz parte de um evento repetido? (habilita "apagar a serie")
+  const isRecurring = !!activity?.recurrenceGroupId;
   const isPending = createMutation.isPending || updateMutation.isPending || emergenciaMutation.isPending || recurringMutation.isPending;
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   // Modo emergencial (só tarefa NOVA): entra agora e empurra o resto do dia.
@@ -565,18 +569,53 @@ export function ActivityFormModal({
         )}
       </form>
     </CrmModal>
-    <CrmConfirmDialog
-      open={confirmDeleteOpen}
-      onClose={() => setConfirmDeleteOpen(false)}
-      onConfirm={() => {
-        deleteMutation.mutate(activity.id, { onSuccess: () => { setConfirmDeleteOpen(false); onClose(); } });
-      }}
-      title="Excluir atividade"
-      message={`Tem certeza que deseja excluir "${activity?.title || 'esta atividade'}"? Esta ação não pode ser desfeita.`}
-      confirmLabel="Excluir"
-      variant="danger"
-      loading={deleteMutation.isPending}
-    />
+    {isRecurring ? (
+      /* Evento repetido: da pra apagar SÓ esta ocorrencia ou a SÉRIE inteira
+         (as pendentes; as ja concluidas ficam como historico). */
+      <CrmModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} title="Apagar evento repetido" size="sm"
+        footer={
+          <>
+            <button type="button" onClick={() => setConfirmDeleteOpen(false)} disabled={deleteMutation.isPending || seriesMutation.isPending}
+              className="min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 w-full sm:w-auto">
+              Cancelar
+            </button>
+            <button type="button" disabled={deleteMutation.isPending || seriesMutation.isPending}
+              onClick={() => deleteMutation.mutate(activity.id, { onSuccess: () => { setConfirmDeleteOpen(false); onClose(); } })}
+              className="min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg bg-slate-700 hover:bg-slate-800 text-white transition-colors disabled:opacity-50 w-full sm:w-auto">
+              Só esta
+            </button>
+            <button type="button" disabled={deleteMutation.isPending || seriesMutation.isPending}
+              onClick={() => seriesMutation.mutate(activity.recurrenceGroupId, { onSuccess: () => { setConfirmDeleteOpen(false); onClose(); } })}
+              className="min-h-[44px] px-4 py-2 text-sm font-medium rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition-colors disabled:opacity-50 w-full sm:w-auto">
+              {seriesMutation.isPending ? 'Aguarde…' : 'A série toda'}
+            </button>
+          </>
+        }>
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center shrink-0">
+            <Trash2 size={20} className="text-rose-600 dark:text-rose-400" />
+          </div>
+          <p className="text-sm text-slate-600 dark:text-slate-400 pt-1">
+            "{activity?.title || 'Este evento'}" faz parte de um evento repetido. Apagar <b>só esta</b> remove
+            apenas este dia. Apagar <b>a série toda</b> remove todas as ocorrências futuras/pendentes (as já
+            concluídas ficam no histórico).
+          </p>
+        </div>
+      </CrmModal>
+    ) : (
+      <CrmConfirmDialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={() => {
+          deleteMutation.mutate(activity.id, { onSuccess: () => { setConfirmDeleteOpen(false); onClose(); } });
+        }}
+        title="Excluir atividade"
+        message={`Tem certeza que deseja excluir "${activity?.title || 'esta atividade'}"? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        variant="danger"
+        loading={deleteMutation.isPending}
+      />
+    )}
     </>
   );
 }
