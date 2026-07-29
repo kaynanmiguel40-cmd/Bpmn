@@ -100,10 +100,10 @@ export function downloadICS(events, filename = 'fyness_agenda.ics') {
   const calendar = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Fyness OS//Agenda//PT',
+    'PRODID:-//Fyness CRM//Agenda//PT',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    'X-WR-CALNAME:Fyness OS Agenda',
+    'X-WR-CALNAME:Fyness CRM Agenda',
     ...eventsArray.map(eventToVEVENT),
     'END:VCALENDAR',
   ].join('\r\n');

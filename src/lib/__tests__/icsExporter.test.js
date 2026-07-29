@@ -55,7 +55,7 @@ describe('downloadICS', () => {
     expect(content).toContain('BEGIN:VCALENDAR');
     expect(content).toContain('END:VCALENDAR');
     expect(content).toContain('VERSION:2.0');
-    expect(content).toContain('PRODID:-//Fyness OS//Agenda//PT');
+    expect(content).toContain('PRODID:-//Fyness CRM//Agenda//PT');
   });
 
   it('inclui VEVENT com dados do evento', () => {

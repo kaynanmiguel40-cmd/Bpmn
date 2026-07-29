@@ -93,7 +93,7 @@ serve(async (req) => {
 
       // Montar resumo textual
       const summary = [
-        `Relatorio Fyness OS - ${schedule.frequency === 'weekly' ? 'Semanal' : 'Mensal'}`,
+        `Relatorio Fyness CRM - ${schedule.frequency === 'weekly' ? 'Semanal' : 'Mensal'}`,
         `Periodo: ${periodStart.toLocaleDateString('pt-BR')} a ${periodEnd.toLocaleDateString('pt-BR')}`,
         memberFilter ? `Colaborador: ${memberFilter}` : 'Toda a equipe',
         '',
@@ -115,7 +115,7 @@ serve(async (req) => {
           body: JSON.stringify({
             from: FROM_EMAIL,
             to: recipients,
-            subject: `[Fyness OS] Relatorio ${schedule.frequency === 'weekly' ? 'Semanal' : 'Mensal'} - ${periodEnd.toLocaleDateString('pt-BR')}`,
+            subject: `[Fyness CRM] Relatorio ${schedule.frequency === 'weekly' ? 'Semanal' : 'Mensal'} - ${periodEnd.toLocaleDateString('pt-BR')}`,
             text: summary,
           }),
         })

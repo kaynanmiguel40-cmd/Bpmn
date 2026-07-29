@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
 // ==================== PUSH NOTIFICATIONS ====================
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'Fyness OS', body: 'Nova notificacao', type: 'info' };
+  let data = { title: 'Fyness CRM', body: 'Nova notificacao', type: 'info' };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch (e) {

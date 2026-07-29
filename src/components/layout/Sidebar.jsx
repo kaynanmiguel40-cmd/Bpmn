@@ -188,7 +188,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }) {
             <>
               <div className="flex items-center gap-2">
                 <img src={logoFyness} alt="Fyness" className="w-8 h-8 object-contain" />
-                <span className="font-bold text-slate-800 dark:text-slate-100">Fyness OS</span>
+                <span className="font-bold text-slate-800 dark:text-slate-100">Fyness CRM</span>
               </div>
               {/* Hide pin on mobile, show close button instead */}
               {mobileOpen ? (

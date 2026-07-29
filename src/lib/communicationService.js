@@ -68,14 +68,14 @@ export function sendWhatsApp(phone, message) {
  */
 export function formatWhatsAppMessage(type, data) {
   const templates = {
-    os_assigned: (d) => `*Fyness OS* - Nova O.S. atribuida\n\n#${d.number} - ${d.title}\nCliente: ${d.client || 'N/A'}\nPrazo: ${d.estimatedEnd ? new Date(d.estimatedEnd).toLocaleDateString('pt-BR') : 'N/A'}`,
-    os_completed: (d) => `*Fyness OS* - O.S. Concluida\n\n#${d.number} - ${d.title}\nConcluida em: ${new Date().toLocaleDateString('pt-BR')}`,
-    os_overdue: (d) => `*Fyness OS* - O.S. Atrasada\n\n#${d.number} - ${d.title}\nPrazo era: ${d.estimatedEnd ? new Date(d.estimatedEnd).toLocaleDateString('pt-BR') : 'N/A'}`,
-    event_reminder: (d) => `*Fyness OS* - Lembrete de Evento\n\n${d.title}\nData: ${d.startDate ? new Date(d.startDate).toLocaleDateString('pt-BR') : 'N/A'}`,
+    os_assigned: (d) => `*Fyness CRM* - Nova O.S. atribuida\n\n#${d.number} - ${d.title}\nCliente: ${d.client || 'N/A'}\nPrazo: ${d.estimatedEnd ? new Date(d.estimatedEnd).toLocaleDateString('pt-BR') : 'N/A'}`,
+    os_completed: (d) => `*Fyness CRM* - O.S. Concluida\n\n#${d.number} - ${d.title}\nConcluida em: ${new Date().toLocaleDateString('pt-BR')}`,
+    os_overdue: (d) => `*Fyness CRM* - O.S. Atrasada\n\n#${d.number} - ${d.title}\nPrazo era: ${d.estimatedEnd ? new Date(d.estimatedEnd).toLocaleDateString('pt-BR') : 'N/A'}`,
+    event_reminder: (d) => `*Fyness CRM* - Lembrete de Evento\n\n${d.title}\nData: ${d.startDate ? new Date(d.startDate).toLocaleDateString('pt-BR') : 'N/A'}`,
   };
 
   const formatter = templates[type];
-  return formatter ? formatter(data) : `*Fyness OS* - ${type}`;
+  return formatter ? formatter(data) : `*Fyness CRM* - ${type}`;
 }
 
 // ==================== EMAIL ====================
@@ -106,25 +106,25 @@ export async function sendEmail({ to, subject, body, html }) {
 export function formatEmailContent(type, data) {
   const templates = {
     os_assigned: (d) => ({
-      subject: `[Fyness OS] Nova O.S. atribuida: #${d.number} - ${d.title}`,
+      subject: `[Fyness CRM] Nova O.S. atribuida: #${d.number} - ${d.title}`,
       body: `Voce recebeu uma nova O.S.:\n\n#${d.number} - ${d.title}\nCliente: ${d.client || 'N/A'}\nPrazo: ${d.estimatedEnd ? new Date(d.estimatedEnd).toLocaleDateString('pt-BR') : 'N/A'}\n\nAcesse o sistema para mais detalhes.`,
     }),
     os_completed: (d) => ({
-      subject: `[Fyness OS] O.S. Concluida: #${d.number} - ${d.title}`,
+      subject: `[Fyness CRM] O.S. Concluida: #${d.number} - ${d.title}`,
       body: `A O.S. #${d.number} - ${d.title} foi concluida.\n\nData de conclusao: ${new Date().toLocaleDateString('pt-BR')}`,
     }),
     os_overdue: (d) => ({
-      subject: `[Fyness OS] O.S. Atrasada: #${d.number} - ${d.title}`,
+      subject: `[Fyness CRM] O.S. Atrasada: #${d.number} - ${d.title}`,
       body: `Atencao! A O.S. #${d.number} - ${d.title} esta atrasada.\n\nPrazo original: ${d.estimatedEnd ? new Date(d.estimatedEnd).toLocaleDateString('pt-BR') : 'N/A'}`,
     }),
     event_reminder: (d) => ({
-      subject: `[Fyness OS] Lembrete: ${d.title}`,
+      subject: `[Fyness CRM] Lembrete: ${d.title}`,
       body: `Lembrete de evento: ${d.title}\n\nData: ${d.startDate ? new Date(d.startDate).toLocaleDateString('pt-BR') : 'N/A'}`,
     }),
   };
 
   const formatter = templates[type];
-  return formatter ? formatter(data) : { subject: `[Fyness OS] ${type}`, body: '' };
+  return formatter ? formatter(data) : { subject: `[Fyness CRM] ${type}`, body: '' };
 }
 
 // ==================== DISPATCH ====================

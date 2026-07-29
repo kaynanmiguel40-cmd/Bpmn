@@ -15,7 +15,7 @@ export function exportOSToExcel(orders, members, period = '') {
   const emergency = orders.filter(o => o.type === 'emergency').length;
 
   const resumeData = [
-    ['FYNESS OS - Relatorio de Ordens de Servico'],
+    ['FYNESS CRM - Relatorio de Ordens de Servico'],
     ['Periodo', period || 'Todos'],
     [''],
     ['Indicador', 'Valor'],
@@ -106,7 +106,7 @@ export function exportKPIsToExcel(orders, members, events, period = '') {
   });
 
   const ws = XLSX.utils.aoa_to_sheet([
-    ['FYNESS OS - KPIs da Equipe'],
+    ['FYNESS CRM - KPIs da Equipe'],
     ['Periodo', period || 'Todos'],
     [''],
     headers,

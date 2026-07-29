@@ -59,7 +59,7 @@ function addPageHeader(doc, title) {
   // Fyness marca
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text('Fyness OS', PAGE_W - MARGIN, 11.5, { align: 'right' });
+  doc.text('Fyness CRM', PAGE_W - MARGIN, 11.5, { align: 'right' });
 }
 
 function addFooter(doc, currentPage, totalPages) {
@@ -72,7 +72,7 @@ function addFooter(doc, currentPage, totalPages) {
   setColor(doc, COLORS.medium);
   doc.setFont('helvetica', 'normal');
   doc.text(
-    `Fyness OS · Relatorio gerado em ${formatDateBR(new Date().toISOString())} · Pagina ${currentPage} de ${totalPages}`,
+    `Fyness CRM · Relatorio gerado em ${formatDateBR(new Date().toISOString())} · Pagina ${currentPage} de ${totalPages}`,
     PAGE_W / 2, PAGE_H - 10, { align: 'center' }
   );
 }
@@ -321,7 +321,7 @@ function drawCoverPage(doc, startDate, endDate, memberLabel, totalPages) {
   doc.setFontSize(13);
   doc.setFont('helvetica', 'normal');
   setColor(doc, [219, 234, 254]); // blue-100
-  doc.text('Fyness OS · Sistema de Gestao', PAGE_W / 2, 94, { align: 'center' });
+  doc.text('Fyness CRM · Sistema de Gestao', PAGE_W / 2, 94, { align: 'center' });
 
   // Faixa escura com mes
   doc.setFontSize(16);

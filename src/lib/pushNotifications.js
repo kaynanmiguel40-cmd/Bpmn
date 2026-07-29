@@ -1,5 +1,5 @@
 /**
- * Push Notifications nativas para o Fyness OS.
+ * Push Notifications nativas para o Fyness CRM.
  * Usa a Notification API do browser para mostrar notificacoes no PC/celular,
  * mesmo quando o app esta minimizado.
  *
@@ -56,7 +56,7 @@ export async function showLocalNotification({ title, body, type = 'info', entity
   if ('serviceWorker' in navigator) {
     try {
       const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(title || 'Fyness OS', {
+      await reg.showNotification(title || 'Fyness CRM', {
         body: body || '',
         icon,
         badge: icon,
@@ -72,7 +72,7 @@ export async function showLocalNotification({ title, body, type = 'info', entity
 
   // Fallback: Notification API direto (precisa app aberto)
   try {
-    new Notification(title || 'Fyness OS', {
+    new Notification(title || 'Fyness CRM', {
       body: body || '',
       icon,
       tag: tag || `fyness-${type}-${Date.now()}`,

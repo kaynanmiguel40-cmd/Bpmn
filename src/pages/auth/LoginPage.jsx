@@ -60,7 +60,7 @@ export function LoginPage() {
             <div aria-hidden className="absolute inset-0 rounded-2xl bg-fyness-primary/40 blur-2xl" />
             <img src={logoFyness} alt="Fyness" className="relative w-16 h-16 object-contain drop-shadow-lg" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Fyness OS</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white">Fyness CRM</h1>
           <p className="mt-1.5 text-sm text-slate-400">Sistema Operacional da Empresa</p>
         </div>
 

@@ -47,7 +47,7 @@ export function InstallPrompt() {
         <div className="flex items-start gap-3">
           <img src={logoFyness} alt="Fyness" className="w-10 h-10 object-contain shrink-0" />
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Instalar Fyness OS?</h3>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Instalar Fyness CRM?</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Acesse rapidamente a partir da tela inicial do seu dispositivo.
             </p>

@@ -1,7 +1,7 @@
 /**
  * CrmSidebar - Sidebar dedicada do modulo CRM
  *
- * Mesmo padrao visual da sidebar principal (Fyness OS).
+ * Mesmo padrao visual da sidebar principal (Fyness CRM).
  * Inclui logo Fyness, hover expand/collapse e botao pin.
  */
 
