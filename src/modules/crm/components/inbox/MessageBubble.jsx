@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, CheckCheck, AlertCircle, FileText, Play, Pause, Download, Mic, MapPin, UserRound, Reply } from 'lucide-react';
+import { Check, CheckCheck, AlertCircle, FileText, Play, Pause, Download, Mic, MapPin, UserRound, Reply, Trash2 } from 'lucide-react';
 import { AudioMessage } from './AudioMessage';
 
 /**
@@ -201,7 +201,7 @@ function MediaContent({ message, isOut }) {
   );
 }
 
-export function MessageBubble({ message, onReply }) {
+export function MessageBubble({ message, onReply, onDelete }) {
   const isOut = message.direction === 'outbound';
   const hasMedia = !!message.mediaUrl && message.status !== 'failed';
   const isSticker = hasMedia && message.mediaType === 'sticker';
@@ -235,16 +235,30 @@ export function MessageBubble({ message, onReply }) {
               ].join(' ')
         }
       >
-        {/* Responder: aparece no hover, ao lado da bolha (estilo WhatsApp). */}
-        {onReply && (
-          <button
-            type="button"
-            onClick={() => onReply(message)}
-            title="Responder"
-            className={`absolute top-1 ${isOut ? '-left-9' : '-right-9'} opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-full bg-white dark:bg-slate-700 shadow text-slate-500 hover:text-slate-700 dark:text-slate-200`}
-          >
-            <Reply size={15} />
-          </button>
+        {/* Acoes no hover, ao lado da bolha (estilo WhatsApp): responder + apagar. */}
+        {(onReply || onDelete) && (
+          <div className={`absolute top-1 ${isOut ? '-left-9' : '-right-9'} flex flex-col gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity`}>
+            {onReply && (
+              <button
+                type="button"
+                onClick={() => onReply(message)}
+                title="Responder"
+                className="p-1.5 rounded-full bg-white dark:bg-slate-700 shadow text-slate-500 hover:text-slate-700 dark:text-slate-200"
+              >
+                <Reply size={15} />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(message)}
+                title="Apagar mensagem"
+                className="p-1.5 rounded-full bg-white dark:bg-slate-700 shadow text-slate-500 hover:text-rose-600 dark:text-slate-200 dark:hover:text-rose-400"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
         )}
 
         {/* Mensagem citada (respondendo a). Desnormalizado — nao precisa de join. */}

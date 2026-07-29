@@ -160,7 +160,7 @@ function ThreadEmpty() {
   );
 }
 
-export function MessageThread({ conversation, children, onReply }) {
+export function MessageThread({ conversation, children, onReply, onDelete }) {
   const scrollRef = useRef(null);
   const markReadMutation = useMarkConversationAsRead();
   const { data: instances = [] } = useCrmWhatsAppInstances();
@@ -279,7 +279,7 @@ export function MessageThread({ conversation, children, onReply }) {
               return (
                 <div key={m.id}>
                   {showDay && <DateChip label={d} />}
-                  <BubbleBoundary><MessageBubble message={m} onReply={onReply} /></BubbleBoundary>
+                  <BubbleBoundary><MessageBubble message={m} onReply={onReply} onDelete={onDelete} /></BubbleBoundary>
                 </div>
               );
             })

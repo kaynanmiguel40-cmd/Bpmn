@@ -21,7 +21,7 @@ import { getStageWorkSummary } from '../services/crmQueueService';
 import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getRecentCallsForContact, createCrmCall, softDeleteCrmCall } from '../services/crmCallsService';
-import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead, markConversationAsRead } from '../services/crmMessagesService';
+import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead, markConversationAsRead, deleteCrmMessage } from '../services/crmMessagesService';
 import { listCrmWhatsAppInstances, getCrmWhatsAppInstanceByName, getDefaultCrmWhatsAppInstance, createCrmWhatsAppInstance } from '../services/crmWhatsAppInstanceService';
 import { getCrmPartners, getLeadsByPartner, createCrmPartner, updateCrmPartner, softDeleteCrmPartner } from '../services/crmPartnersService';
 import { getCrmLeadSources, createCrmLeadSource, deleteCrmLeadSource } from '../services/crmLeadSourcesService';
@@ -1520,6 +1520,23 @@ export function useMarkCrmMessagesAsRead() {
     mutationFn: markCrmMessagesAsRead,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.inbox });
+    },
+  });
+}
+
+/**
+ * Apaga uma mensagem da conversa (soft-delete do nosso lado). Invalida a conversa
+ * (some da thread) e o inbox (ultima mensagem/badge da lista podem mudar).
+ */
+export function useDeleteCrmMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteCrmMessage,
+    onSuccess: (res) => {
+      if (!res?.ok) return;
+      qc.invalidateQueries({ queryKey: ['crm', 'conversation'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.inbox });
+      toast('Mensagem apagada', 'success');
     },
   });
 }

@@ -525,6 +525,25 @@ export async function markConversationAsRead({ contactId, prospectId, instanceId
 }
 
 /**
+ * Apaga uma mensagem DO NOSSO LADO (soft-delete): some da conversa no CRM. NAO
+ * revoga no WhatsApp — o lead continua com ela no telefone dele. Todas as queries
+ * do inbox ja filtram `deleted_at is null`, entao basta marcar a coluna.
+ */
+export async function deleteCrmMessage(id) {
+  if (!id) return { ok: false };
+  const { error } = await supabase
+    .from('crm_messages')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .is('deleted_at', null);
+  if (error) {
+    toast(`Erro ao apagar mensagem: ${error.message}`, 'error');
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+/**
  * Marca mensagens inbound especificas como lidas (por id).
  * Mantida para acoes pontuais na UI; o fluxo de abrir conversa usa
  * `markConversationAsRead`.

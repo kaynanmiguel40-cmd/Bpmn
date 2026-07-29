@@ -11,7 +11,8 @@ import { ConversationList } from '../components/inbox/ConversationList';
 import { MessageThread } from '../components/inbox/MessageThread';
 import { MessageComposer } from '../components/inbox/MessageComposer';
 import { WhatsAppStatusBanner } from '../components/inbox/WhatsAppStatusBanner';
-import { useCrmInboxConversations, useCrmWhatsAppInstances, useCrmContact, useCrmProspect, useCrmConversation } from '../hooks/useCrmQueries';
+import { useCrmInboxConversations, useCrmWhatsAppInstances, useCrmContact, useCrmProspect, useCrmConversation, useDeleteCrmMessage } from '../hooks/useCrmQueries';
+import { CrmConfirmDialog } from '../components/ui/CrmConfirmDialog';
 
 export function CrmInboxPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -101,6 +102,12 @@ export function CrmInboxPage() {
   const [replyTo, setReplyTo] = useState(null);
   useEffect(() => { setReplyTo(null); }, [activeKey]);
 
+  // Apagar mensagem: guarda a mensagem-alvo pra confirmar antes (delete e
+  // irreversivel do lado da tela). Some ao trocar de conversa.
+  const [deletingMessage, setDeletingMessage] = useState(null);
+  useEffect(() => { setDeletingMessage(null); }, [activeKey]);
+  const deleteMsg = useDeleteCrmMessage();
+
   const handleSelect = useCallback(
     (conv) => {
       const next = new URLSearchParams();
@@ -130,7 +137,7 @@ export function CrmInboxPage() {
       <WhatsAppStatusBanner />
       <div className="flex-1 flex min-h-0">
         <ConversationList activeKey={activeKey} onSelect={handleSelect} />
-        <MessageThread conversation={activeConversation} onReply={setReplyTo}>
+        <MessageThread conversation={activeConversation} onReply={setReplyTo} onDelete={setDeletingMessage}>
           {activeConversation && (
             <MessageComposer
               conversation={activeConversation}
@@ -142,6 +149,20 @@ export function CrmInboxPage() {
           )}
         </MessageThread>
       </div>
+
+      <CrmConfirmDialog
+        open={!!deletingMessage}
+        onClose={() => setDeletingMessage(null)}
+        onConfirm={() => {
+          if (deletingMessage) deleteMsg.mutate(deletingMessage.id);
+          setDeletingMessage(null);
+        }}
+        title="Apagar mensagem"
+        message="A mensagem some da conversa aqui no CRM. O lead continua com ela no WhatsApp dele — isto não apaga do telefone dele."
+        confirmLabel="Apagar"
+        variant="danger"
+        loading={deleteMsg.isPending}
+      />
     </div>
   );
 }
