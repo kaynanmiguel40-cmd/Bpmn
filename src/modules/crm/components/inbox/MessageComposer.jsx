@@ -52,11 +52,15 @@ function fmtDuration(s) {
   return `${m}:${sec}`;
 }
 
-// Limites reais do WhatsApp Business API por tipo de midia — bem abaixo do
-// generico de 50MB que so descobria o problema depois de um upload inteiro.
+// Guard de tamanho por tipo de midia — pega o arquivo grande ANTES do upload
+// inteiro (senao so descobria o erro depois). NAO sao os limites da Cloud API da
+// Meta (5/16/16/100): a gente manda pela Evolution/Baileys (protocolo do WhatsApp
+// Web), que aguenta bem mais. Video em 64MB (o app so trima em 16MB pra ECONOMIA
+// do remetente; via Evolution passa maior). Doc ja sobe 100MB pela mesma tubulacao
+// base64 -> edge function, entao 64MB de video e o mesmo patamar de infra.
 const MEDIA_SIZE_LIMITS = {
   image: 5 * 1024 * 1024,
-  video: 16 * 1024 * 1024,
+  video: 64 * 1024 * 1024,
   audio: 16 * 1024 * 1024,
   document: 100 * 1024 * 1024,
 };
