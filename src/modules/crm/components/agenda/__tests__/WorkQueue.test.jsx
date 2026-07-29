@@ -10,7 +10,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { WorkQueue } from '../WorkQueue';
+
+// WorkQueue renderiza o NowCard, que usa useNavigate (botão de WhatsApp abre o
+// Inbox interno) — precisa de contexto de Router.
+const Wrap = ({ children }) => <MemoryRouter>{children}</MemoryRouter>;
 import { useWorkQueue, useStalledLeads, useBatchPostpone, useQueueRebalance } from '../../../hooks/useWorkQueue';
 
 vi.mock('../../../hooks/useWorkQueue', () => ({
@@ -95,7 +100,7 @@ function montar(over = {}, { stalled = [] } = {}) {
     planejar: { mutate: vi.fn(), isPending: false },
     aplicar: { mutate: vi.fn(), isPending: false },
   });
-  return render(<WorkQueue onExecute={vi.fn()} onPostpone={vi.fn()} onOpenLead={vi.fn()} onGoToCalendar={vi.fn()} />);
+  return render(<WorkQueue onExecute={vi.fn()} onPostpone={vi.fn()} onOpenLead={vi.fn()} onGoToCalendar={vi.fn()} />, { wrapper: Wrap });
 }
 
 beforeEach(() => {

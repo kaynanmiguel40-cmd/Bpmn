@@ -6,6 +6,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { inboxPathForLead } from '../utils/inboxLink';
 import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
@@ -278,16 +279,18 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
       {/* Acoes no hover */}
       <div className="absolute right-1.5 top-1.5 flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
         {whatsappLink && (
-          <a
-            href={whatsappLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const p = inboxPathForLead({ contactId: deal.contact?.id || deal.contactId, phone });
+              if (p) navigate(p);
+            }}
             className="p-1 rounded bg-white dark:bg-slate-800 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 shadow-sm border border-slate-200 dark:border-slate-700"
-            title="Abrir WhatsApp"
+            title="Abrir a conversa no Inbox do CRM"
           >
             <MessageCircle size={11} />
-          </a>
+          </button>
         )}
         {deal.status === 'open' && (
           <>

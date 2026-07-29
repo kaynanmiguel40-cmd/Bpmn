@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { inboxPathForLead } from '../utils/inboxLink';
 import {
   ArrowLeft, Pencil, XCircle, Plus, CheckCircle2, CalendarDays,
   Mail, Phone, Smartphone, MessageCircle, Building2, CalendarCheck, Target,
@@ -361,16 +362,18 @@ export function CrmDealDetailPage() {
                       </a>
                     )}
                     {ctPhone && phoneType === 'mobile' && whatsappUrl(ctPhone) && (
-                      <a
-                        href={whatsappUrl(ctPhone)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Abrir conversa no WhatsApp"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const p = inboxPathForLead({ contactId: deal.contactId || deal.contact?.id, phone: ctPhone });
+                          if (p) navigate(p);
+                        }}
+                        title="Abrir a conversa no Inbox do CRM"
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-[#25D366]/10 text-[#1faf52] hover:bg-[#25D366]/20 transition-colors"
                       >
                         <MessageCircle size={12} />
                         WhatsApp
-                      </a>
+                      </button>
                     )}
                     {ctEmail && (
                       <a

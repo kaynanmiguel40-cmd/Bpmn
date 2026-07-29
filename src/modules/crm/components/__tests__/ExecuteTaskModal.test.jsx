@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+// O modal usa useNavigate (botão de mensagem abre o Inbox interno), que exige
+// contexto de Router. rerender herda o wrapper do render inicial.
+const Wrap = ({ children }) => <MemoryRouter>{children}</MemoryRouter>;
 
 // O modal usa hooks de react-query pro "Gerou outra tarefa". Aqui so precisamos
 // que existam sem exigir QueryClientProvider.
@@ -59,6 +64,7 @@ function setup(props = {}) {
       onSubmit={onSubmit}
       {...props}
     />,
+    { wrapper: Wrap },
   );
   return { onSubmit, ...utils };
 }
@@ -267,7 +273,7 @@ describe('ExecuteTaskModal — caminho triste', () => {
   });
 
   it('sem atividade nenhuma o modal não renderiza nada', () => {
-    render(<ExecuteTaskModal open onClose={vi.fn()} activity={null} onSubmit={vi.fn()} />);
+    render(<ExecuteTaskModal open onClose={vi.fn()} activity={null} onSubmit={vi.fn()} />, { wrapper: Wrap });
     expect(screen.queryByText(/Executar tarefa/i)).not.toBeInTheDocument();
   });
 

@@ -7,9 +7,11 @@
  * abrir mais nada.
  */
 
+import { useNavigate } from 'react-router-dom';
 import { Phone, MessageCircle, Mail, AlertTriangle, ExternalLink, CheckSquare } from 'lucide-react';
 import { stepChannel } from '../../services/crmScheduling';
 import { taskHeadline, taskDetail, relativeDayLabel, isOverdue, formatWhen } from '../../utils/stepLabel';
+import { inboxPathForLead } from '../../utils/inboxLink';
 import { PostponeMenu } from './PostponeMenu';
 
 const ICON = { call: Phone, message: MessageCircle, email: Mail };
@@ -30,11 +32,17 @@ function whatsappUrl(val) {
 }
 
 export function NowCard({ task, onExecute, onPostpone, onOpenLead, busy }) {
+  const navigate = useNavigate();
   if (!task) return null;
   const canal = stepChannel(task.title);
   const Icon = ICON[canal] || CheckSquare;
   const atrasada = isOverdue(task);
   const wa = whatsappUrl(task.phone);
+  // Mensagem abre a conversa no Inbox DO CRM, não o wa.me.
+  const abrirInbox = () => {
+    const path = inboxPathForLead({ contactId: task.contactId, phone: task.phone });
+    if (path) navigate(path);
+  };
 
   return (
     <div className="rounded-2xl border-2 border-fyness-primary/30 bg-white dark:bg-slate-800/60 overflow-hidden">
@@ -85,14 +93,14 @@ export function NowCard({ task, onExecute, onPostpone, onOpenLead, busy }) {
                 className="flex items-center justify-center gap-1.5 min-h-[48px] rounded-xl text-sm font-bold bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/40 dark:text-sky-300">
                 <Phone size={16} /> Ligar
               </a>
-              <a href={wa || '#'} target="_blank" rel="noopener noreferrer"
-                aria-disabled={!wa}
+              <button type="button" onClick={abrirInbox} disabled={!wa}
+                title="Abrir a conversa no Inbox do CRM"
                 className={`flex items-center justify-center gap-1.5 min-h-[48px] rounded-xl text-sm font-bold ${
                   wa ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300'
                      : 'bg-slate-100 text-slate-400 pointer-events-none dark:bg-slate-700'
                 }`}>
                 <MessageCircle size={16} /> WhatsApp
-              </a>
+              </button>
             </div>
           </div>
         ) : (

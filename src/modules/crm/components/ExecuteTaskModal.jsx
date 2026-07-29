@@ -21,8 +21,10 @@ import {
   Phone, MessageCircle, CheckCircle2, CornerDownRight, ArrowRight,
   ExternalLink, Clock, CalendarClock, Check, RotateCcw, Trash2,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
+import { inboxPathForLead } from '../utils/inboxLink';
 import { stepChannel } from '../services/crmScheduling';
 import { formatWhen } from '../utils/stepLabel';
 import { preencherScript, dadosDoScript } from '../utils/preencherScript';
@@ -121,6 +123,13 @@ export function ExecuteTaskModal({
   const [novoTelefone, setNovoTelefone] = useState('');
   const agendarRetorno = useAgendarRetorno();
   const gerarLead = useGerarLeadLigado();
+  const navigate = useNavigate();
+  // Botão de mensagem abre a conversa no Inbox DO CRM (não o wa.me): usa o
+  // contato do lead quando há, senão o próprio número.
+  const abrirInbox = () => {
+    const path = inboxPathForLead({ contactId: activity?.contactId, phone: activity?.contactPhone });
+    if (path) navigate(path);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -479,11 +488,11 @@ export function ExecuteTaskModal({
                   tentativas, entao esconder aqui quebraria o passo no momento
                   exato em que ele e usado. */}
               {wa && (
-                <a href={wa} target="_blank" rel="noopener noreferrer"
-                  title="Mandar mensagem — não conta como tentativa de ligação"
+                <button type="button" onClick={abrirInbox}
+                  title="Abrir a conversa no Inbox do CRM — não conta como tentativa de ligação"
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300">
                   <MessageCircle size={12} /> {isCall ? 'Mensagem' : 'WhatsApp'}
-                </a>
+                </button>
               )}
             </div>
           )}
