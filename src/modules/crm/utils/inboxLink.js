@@ -16,3 +16,30 @@ export function inboxPathForLead({ contactId, prospectId } = {}) {
   if (prospectId) return `/crm/inbox?prospect=${encodeURIComponent(prospectId)}`;
   return null;
 }
+
+/**
+ * Abre a conversa do lead no Inbox do CRM. Com contato/prospect, navega direto
+ * (instantâneo). Só com telefone (negócio sem contato vinculado), acha ou cria um
+ * contato pelo número e vincula ao negócio — aí a conversa tem onde threadar e o
+ * botão passa a abrir no CRM em vez do wa.me. Só cai no wa.me externo se não der
+ * pra resolver um contato (sem telefone, ou erro na criação).
+ *
+ * Fire-and-forget: a navegação acontece por dentro; o await é só pra criar o
+ * contato antes de navegar no caminho só-telefone.
+ */
+export async function openLeadInbox(navigate, lead = {}, waFallback = null) {
+  const direto = inboxPathForLead(lead);
+  if (direto) { navigate(direto); return; }
+
+  const temTelefone = String(lead.phone || '').replace(/\D/g, '');
+  if (temTelefone) {
+    try {
+      const { ensureContactForDeal } = await import('../services/crmContactsService');
+      const contactId = await ensureContactForDeal({ dealId: lead.dealId, phone: lead.phone, name: lead.name });
+      if (contactId) { navigate(`/crm/inbox?contact=${encodeURIComponent(contactId)}`); return; }
+    } catch {
+      // cai no fallback externo
+    }
+  }
+  if (waFallback) window.open(waFallback, '_blank', 'noopener,noreferrer');
+}

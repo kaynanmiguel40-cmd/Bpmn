@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { Phone, MessageCircle, Mail, AlertTriangle, ExternalLink, CheckSquare } from 'lucide-react';
 import { stepChannel } from '../../services/crmScheduling';
 import { taskHeadline, taskDetail, relativeDayLabel, isOverdue, formatWhen } from '../../utils/stepLabel';
-import { inboxPathForLead } from '../../utils/inboxLink';
+import { openLeadInbox } from '../../utils/inboxLink';
 import { PostponeMenu } from './PostponeMenu';
 
 const ICON = { call: Phone, message: MessageCircle, email: Mail };
@@ -38,11 +38,14 @@ export function NowCard({ task, onExecute, onPostpone, onOpenLead, busy }) {
   const Icon = ICON[canal] || CheckSquare;
   const atrasada = isOverdue(task);
   const wa = whatsappUrl(task.phone);
-  // Lead com contato -> Inbox do CRM; só com telefone solto -> wa.me externo.
+  // Lead com contato -> Inbox do CRM; só com telefone -> cria/vincula contato pelo
+  // número e abre no CRM; se não der, wa.me externo.
   const abrirInbox = () => {
-    const path = inboxPathForLead({ contactId: task.contactId });
-    if (path) { navigate(path); return; }
-    if (wa) window.open(wa, '_blank', 'noopener,noreferrer');
+    openLeadInbox(
+      navigate,
+      { contactId: task.contactId, phone: task.phone, name: task.leadName, dealId: task.dealId },
+      wa,
+    );
   };
 
   return (

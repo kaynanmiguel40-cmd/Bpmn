@@ -24,7 +24,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
-import { inboxPathForLead } from '../utils/inboxLink';
+import { openLeadInbox } from '../utils/inboxLink';
 import { stepChannel } from '../services/crmScheduling';
 import { formatWhen } from '../utils/stepLabel';
 import { preencherScript, dadosDoScript } from '../utils/preencherScript';
@@ -127,12 +127,13 @@ export function ExecuteTaskModal({
   // Botão de mensagem abre a conversa no Inbox DO CRM (não o wa.me): usa o
   // contato do lead quando há, senão o próprio número.
   const abrirInbox = () => {
-    // Lead com contato -> Inbox do CRM. Só com telefone solto -> wa.me externo
-    // (o inbox precisa de contato/prospect pra threadar e enviar).
-    const path = inboxPathForLead({ contactId: activity?.contactId });
-    if (path) { navigate(path); return; }
-    const externo = whatsappUrl(activity?.contactPhone);
-    if (externo) window.open(externo, '_blank', 'noopener,noreferrer');
+    // Lead com contato -> Inbox do CRM. Só com telefone -> cria/vincula um contato
+    // pelo número e abre no CRM; se não der, cai no wa.me externo.
+    openLeadInbox(
+      navigate,
+      { contactId: activity?.contactId, phone: activity?.contactPhone, name: activity?.leadName, dealId: activity?.dealId },
+      whatsappUrl(activity?.contactPhone),
+    );
   };
 
   useEffect(() => {

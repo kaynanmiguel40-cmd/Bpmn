@@ -10,7 +10,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { inboxPathForLead } from '../utils/inboxLink';
+import { openLeadInbox } from '../utils/inboxLink';
 import {
   ArrowLeft, Pencil, XCircle, Plus, CheckCircle2, CalendarDays,
   Mail, Phone, Smartphone, MessageCircle, Building2, CalendarCheck, Target,
@@ -364,12 +364,11 @@ export function CrmDealDetailPage() {
                     {ctPhone && phoneType === 'mobile' && whatsappUrl(ctPhone) && (
                       <button
                         type="button"
-                        onClick={() => {
-                          const p = inboxPathForLead({ contactId: deal.contactId || deal.contact?.id });
-                          if (p) { navigate(p); return; }
-                          const externo = whatsappUrl(ctPhone);
-                          if (externo) window.open(externo, '_blank', 'noopener,noreferrer');
-                        }}
+                        onClick={() => openLeadInbox(
+                          navigate,
+                          { contactId: deal.contactId || deal.contact?.id, phone: ctPhone, name: deal.contact?.name || deal.title, dealId: deal.id },
+                          whatsappUrl(ctPhone),
+                        )}
                         title="Abrir a conversa no Inbox do CRM"
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-[#25D366]/10 text-[#1faf52] hover:bg-[#25D366]/20 transition-colors"
                       >

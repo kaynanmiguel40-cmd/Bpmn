@@ -6,7 +6,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { inboxPathForLead } from '../utils/inboxLink';
+import { openLeadInbox } from '../utils/inboxLink';
 import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
@@ -283,9 +283,11 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              const p = inboxPathForLead({ contactId: deal.contact?.id || deal.contactId });
-              if (p) { navigate(p); return; }
-              if (whatsappLink) window.open(whatsappLink, '_blank', 'noopener,noreferrer');
+              openLeadInbox(
+                navigate,
+                { contactId: deal.contact?.id || deal.contactId, phone, name: deal.contact?.name || deal.title, dealId: deal.id },
+                whatsappLink,
+              );
             }}
             className="p-1 rounded bg-white dark:bg-slate-800 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 shadow-sm border border-slate-200 dark:border-slate-700"
             title="Abrir a conversa no Inbox do CRM"
