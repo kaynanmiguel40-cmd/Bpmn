@@ -61,7 +61,10 @@ export function useCrmRealtime(options = {}) {
     }
   );
 
-  // Activities — atualiza lista, Dashboard, calendario da Agenda e timeline
+  // Activities — atualiza lista, Dashboard, calendario da Agenda, Fila e timeline.
+  // ['crm','workQueue'] entrou aqui pra sustentar o staleTime longo da Fila: com
+  // cache de 3-5min, e o realtime que a mantem fresca quando uma tarefa muda (o
+  // gate de render da Fila sao overdue+today, ambos sob esta chave).
   useRealtimeSubscription(
     'crm_activities',
     [
@@ -69,6 +72,7 @@ export function useCrmRealtime(options = {}) {
       crmQueryKeys.dashboard,
       ['crm', 'calendarActivities'],
       ['crm', 'leadTimeline'],
+      ['crm', 'workQueue'],
     ],
     {
       enabled,

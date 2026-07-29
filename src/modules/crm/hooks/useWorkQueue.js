@@ -65,20 +65,27 @@ export function useWorkQueue(visao = null) {
     ? null
     : (vendoOutraPessoa ? (visao?.uname || null) : (profile?.name || null));
 
+  // staleTime longo DE PROPOSITO: voltar pra Fila (aba mais aberta do dia) fazia
+  // as 3 queries refazerem toda vez que passavam 30s fora — e como o gate de
+  // render sao 2 delas (overdue+today), cada volta pagava 2 round-trips ao VPS,
+  // com chance real de um pegar um pico de latencia. Com 3-5min de cache, a volta
+  // e instantanea; o frescor vem do REALTIME (useCrmRealtime invalida
+  // ['crm','workQueue'] quando uma crm_activity muda) + da invalidacao das
+  // mutations (concluir/adiar). Ou seja: refaz quando o dado MUDA, nao a cada clique.
   const overdueQ = useQuery({
     queryKey: workQueueKeys.overdue,
     queryFn: () => getOverdueQueue(),
-    staleTime: 30_000,
+    staleTime: 180_000,
   });
   const todayQ = useQuery({
     queryKey: workQueueKeys.today,
     queryFn: () => getTodayQueue(),
-    staleTime: 30_000,
+    staleTime: 180_000,
   });
   const upcomingQ = useQuery({
     queryKey: workQueueKeys.upcoming,
     queryFn: () => getUpcomingCounts(),
-    staleTime: 60_000,
+    staleTime: 300_000,
   });
 
   return useMemo(() => {
