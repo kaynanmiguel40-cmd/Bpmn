@@ -35,6 +35,14 @@ function notifyInboundWhatsApp(msg) {
 export function useCrmRealtime(options = {}) {
   const { enabled = true, onDealChange, onActivityChange } = options;
 
+  // Janela de coalescência maior (10s) para as tabelas que invalidam o `dashboard`
+  // (agregado caro). Mudança de OUTRO usuário aparece em até 10s — imperceptível
+  // pra Kanban/lista colaborativa; a SUA própria ação já invalida na hora via o
+  // onSuccess da mutation, não depende do realtime. Sem isso, 5 subscriptions
+  // refetchavam o dashboard cada uma no seu timer de 4s (pior caso: 5 refetches
+  // pesados por janela sob rajada de deals/tarefas).
+  const DASHBOARD_COALESCE = 10_000;
+
   // Deals — atualiza Kanban, Dashboard e a timeline do lead na Agenda
   useRealtimeSubscription(
     'crm_deals',
@@ -46,6 +54,7 @@ export function useCrmRealtime(options = {}) {
     ],
     {
       enabled,
+      coalesceMs: DASHBOARD_COALESCE,
       onInsert: onDealChange,
       onUpdate: onDealChange,
       onDelete: onDealChange,
@@ -63,6 +72,7 @@ export function useCrmRealtime(options = {}) {
     ],
     {
       enabled,
+      coalesceMs: DASHBOARD_COALESCE,
       onInsert: onActivityChange,
       onUpdate: onActivityChange,
     }
@@ -72,21 +82,21 @@ export function useCrmRealtime(options = {}) {
   useRealtimeSubscription(
     'crm_contacts',
     [crmQueryKeys.contacts, crmQueryKeys.dashboard],
-    { enabled }
+    { enabled, coalesceMs: DASHBOARD_COALESCE }
   );
 
   // Companies — atualiza lista
   useRealtimeSubscription(
     'crm_companies',
     [crmQueryKeys.companies, crmQueryKeys.dashboard],
-    { enabled }
+    { enabled, coalesceMs: DASHBOARD_COALESCE }
   );
 
   // Calls — atualiza discador, historico, dashboard e timeline do lead
   useRealtimeSubscription(
     'crm_calls',
     [crmQueryKeys.calls, ['crm', 'dialerQueue'], ['crm', 'recentCalls'], crmQueryKeys.dialerKPIs, crmQueryKeys.dashboard, ['crm', 'leadTimeline']],
-    { enabled }
+    { enabled, coalesceMs: DASHBOARD_COALESCE }
   );
 
   // Messages — atualiza inbox WhatsApp, conversa aberta e timeline do lead.

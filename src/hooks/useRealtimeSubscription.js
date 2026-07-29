@@ -17,7 +17,10 @@ import { showLocalNotification } from '../lib/pushNotifications';
  */
 export function useRealtimeSubscription(table, queryKeys, options = {}) {
   const queryClient = useQueryClient();
-  const { enabled = true, onInsert, onUpdate, onDelete } = options;
+  // coalesceMs: janela de silêncio da invalidação. 4s serve pro chat (precisa ser
+  // responsivo); tabelas que invalidam agregados pesados (dashboard) passam um
+  // valor maior pra não refetchar o agregado a cada rajada de evento.
+  const { enabled = true, onInsert, onUpdate, onDelete, coalesceMs = 4000 } = options;
 
   // Refs para manter callbacks e queryKeys sempre atualizados sem recriar o canal
   const queryKeysRef = useRef(queryKeys);
@@ -43,10 +46,10 @@ export function useRealtimeSubscription(table, queryKeys, options = {}) {
 
     // EGRESS: cada escrita disparava um refetch da query inteira em TODOS os
     // clientes. Numa rajada (cronômetro, edições seguidas) isso re-baixava a
-    // tabela dezenas de vezes. Throttle: no máximo 1 invalidação a cada 4s.
+    // tabela dezenas de vezes. Throttle: no máximo 1 invalidação a cada `coalesceMs`.
     //
-    // A janela agora tem BORDA DE SUBIDA: o primeiro evento invalida na hora e
-    // só então abre o período de silêncio. Antes todo evento esperava 4s, o que
+    // A janela tem BORDA DE SUBIDA: o primeiro evento invalida na hora e só então
+    // abre o período de silêncio. Antes todo evento esperava a janela, o que
     // atrasava CADA mensagem que chegava no inbox — e a rajada continua custando
     // uma invalidação só, então a economia de egress fica igual.
     let cooldown = null;
@@ -60,11 +63,11 @@ export function useRealtimeSubscription(table, queryKeys, options = {}) {
         if (pendente) {
           pendente = false;
           invalidateNow();
-          cooldown = setTimeout(fim, 4000);
+          cooldown = setTimeout(fim, coalesceMs);
         } else {
           cooldown = null;
         }
-      }, 4000);
+      }, coalesceMs);
     };
 
     // Reconciliação na reconexão. `postgres_changes` NÃO faz replay do que
@@ -112,7 +115,7 @@ export function useRealtimeSubscription(table, queryKeys, options = {}) {
       if (pendente) invalidateNow();
       supabase.removeChannel(channel);
     };
-  }, [table, enabled, queryClient]);
+  }, [table, enabled, queryClient, coalesceMs]);
 }
 
 /**

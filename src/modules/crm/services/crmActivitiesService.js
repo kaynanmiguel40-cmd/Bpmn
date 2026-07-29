@@ -81,9 +81,17 @@ const activityService = createCRUDService({
 export async function getCrmActivities(filters = {}) {
   const { search, type, contactId, dealId, completed, page, perPage = 25, sortBy, sortOrder, dateFrom, dateTo } = filters;
 
+  // `count: 'exact'` força um COUNT full-scan do conjunto filtrado a CADA chamada.
+  // Só a UI paginada usa o total; sem paginação era desperdício puro. Pede o count
+  // apenas quando há paginação.
+  const paginando = !!(page && perPage);
+
   let query = supabase
     .from('crm_activities')
-    .select('*, crm_contacts(id, name, avatar_color), crm_deals(id, title, value)', { count: 'exact' })
+    .select(
+      '*, crm_contacts(id, name, avatar_color), crm_deals(id, title, value)',
+      paginando ? { count: 'exact' } : undefined
+    )
     .is('deleted_at', null);
 
   if (search) {
@@ -114,7 +122,7 @@ export async function getCrmActivities(filters = {}) {
   const SORT_COLUMNS = { title: 'title', startDate: 'start_date', start_date: 'start_date', type: 'type', completed: 'completed' };
   query = query.order(SORT_COLUMNS[sortBy] || 'start_date', { ascending: sortOrder === 'asc' });
 
-  if (page && perPage) {
+  if (paginando) {
     const from = (page - 1) * perPage;
     query = query.range(from, from + perPage - 1);
   }
