@@ -7,7 +7,7 @@ import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany,
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
 import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, ensureGeneralPipeline, consolidateSalesPipelinesIntoGeneral, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, markDealAsChurned, reactivateChurnedDeal, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
-import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal } from '../services/crmActivitiesService';
+import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal, createRecurringCrmActivities } from '../services/crmActivitiesService';
 import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel, getFunnelStageDeals, getSalesCycleByStage } from '../services/crmDashboardService';
 import { getPlaybookByPipeline, getStepsByIds, saveStageSteps, saveStageGoal, getDealProgress, toggleDealStep } from '../services/crmPlaybookService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
@@ -916,6 +916,24 @@ export function useCreateCrmActivity() {
       // próximo refetch. O emergencial já invalidava; o create normal esquecia.
       qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
       toast('Atividade criada com sucesso', 'success');
+    },
+  });
+}
+
+/**
+ * Cria um evento RECORRENTE (varias ocorrencias). Mesmas invalidacoes do create —
+ * as N ocorrencias aparecem na agenda/fila. O toast (com a contagem) sai do service.
+ */
+export function useCreateRecurringActivity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ base, recurrence }) => createRecurringCrmActivities(base, recurrence),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: crmQueryKeys.activities });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
     },
   });
 }

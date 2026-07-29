@@ -8,6 +8,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X, Phone, Mail, Video, FileText, MapPin, UtensilsCrossed, MessageCircle, UserPlus, Trash2, CheckCircle2, Siren } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
+import { toast } from '../../../contexts/ToastContext';
 import { fieldClass as sharedFieldClass } from './ui/formFieldClass';
 import { CrmConfirmDialog } from './ui/CrmConfirmDialog';
 import { z } from 'zod';
@@ -35,6 +36,7 @@ import {
   useDeleteCrmActivity,
   useReportOwners,
   useAgendarEmergencia,
+  useCreateRecurringActivity,
 } from '../hooks/useCrmQueries';
 import { getActivityAttendees } from '../services/crmActivitiesService';
 
@@ -171,10 +173,14 @@ export function ActivityFormModal({
   const updateMutation = useUpdateCrmActivity();
   const deleteMutation = useDeleteCrmActivity();
   const emergenciaMutation = useAgendarEmergencia();
-  const isPending = createMutation.isPending || updateMutation.isPending || emergenciaMutation.isPending;
+  const recurringMutation = useCreateRecurringActivity();
+  const isPending = createMutation.isPending || updateMutation.isPending || emergenciaMutation.isPending || recurringMutation.isPending;
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   // Modo emergencial (só tarefa NOVA): entra agora e empurra o resto do dia.
   const [emergencial, setEmergencial] = useState(false);
+  // Repetir (só evento NOVO): gera varias ocorrencias ate a data escolhida.
+  const [repeatFreq, setRepeatFreq] = useState('none'); // none|daily|weekdays|weekly
+  const [repeatUntil, setRepeatUntil] = useState('');
   // Entrega (input/output) da tarefa concluída — editável aqui pra quem
   // concluiu pulando os detalhes voltar e preencher. Fica fora do
   // react-hook-form/schema (que valida só o agendamento da tarefa).
@@ -214,6 +220,7 @@ export function ActivityFormModal({
       setDeliveryReport(activity.deliveryReport || '');
     } else if (open) {
       setEmergencial(false); // toda tarefa nova comeca normal
+      setRepeatFreq('none'); setRepeatUntil('');
       // Default: agora, arredondado pra proxima meia-hora, duracao 30min
       const now = new Date();
       now.setMinutes(now.getMinutes() + (30 - (now.getMinutes() % 30 || 30)), 0, 0);
@@ -283,8 +290,20 @@ export function ActivityFormModal({
       payload.deliveryInput = deliveryInput.trim();
       payload.deliveryReport = deliveryReport.trim();
     }
+    // Evento recorrente: precisa do "até" pra saber quantas ocorrencias gerar.
+    if (!isEdit && repeatFreq !== 'none' && !repeatUntil) {
+      toast('Escolha até quando o evento se repete.', 'error');
+      return;
+    }
+
     if (isEdit) {
       await updateMutation.mutateAsync({ id: activity.id, updates: payload });
+    } else if (repeatFreq !== 'none') {
+      // Gera uma ocorrencia por data ate o "até" (fim do dia escolhido).
+      await recurringMutation.mutateAsync({
+        base: payload,
+        recurrence: { freq: repeatFreq, until: new Date(`${repeatUntil}T23:59:59`).toISOString() },
+      });
     } else if (emergencial) {
       // Entra agora e empurra o resto do dia (o motor cuida da cascata).
       await emergenciaMutation.mutateAsync(payload);
@@ -417,6 +436,45 @@ export function ActivityFormModal({
             {errors.endDate && <p className="text-xs text-rose-500 mt-0.5">{errors.endDate.message}</p>}
           </div>
         </div>
+
+        {/* Repetir — só evento NOVO. Gera uma ocorrência por data até o "até".
+            Ex.: Almoço, todos os dias / dias úteis. Cada ocorrência é um evento
+            normal (conclui, edita, apaga sozinha). */}
+        {!isEdit && (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Repetir</label>
+                <select
+                  value={repeatFreq}
+                  onChange={(e) => setRepeatFreq(e.target.value)}
+                  className={FIELD_CLASS()}
+                >
+                  <option value="none">Não repete</option>
+                  <option value="daily">Todos os dias</option>
+                  <option value="weekdays">Dias úteis (seg–sex)</option>
+                  <option value="weekly">Toda semana (mesmo dia)</option>
+                </select>
+              </div>
+              {repeatFreq !== 'none' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Repetir até *</label>
+                  <input
+                    type="date"
+                    value={repeatUntil}
+                    onChange={(e) => setRepeatUntil(e.target.value)}
+                    className={FIELD_CLASS()}
+                  />
+                </div>
+              )}
+            </div>
+            {repeatFreq !== 'none' && (
+              <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                Cria uma ocorrência por dia no horário acima, até a data escolhida. O emergencial não se aplica a evento repetido.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Contato + Negocio */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -192,6 +192,68 @@ export async function createCrmActivity(data) {
 }
 
 /**
+ * Cria um EVENTO RECORRENTE: gera uma ocorrencia por data conforme a regra, todas
+ * com o mesmo recurrence_group_id. Insert EM LOTE (sem evento no Google por
+ * ocorrencia — seria uma chamada por dia; recorrente e bloco interno). Cada
+ * ocorrencia e uma tarefa/evento normal (renderiza, conclui, edita, apaga sozinha).
+ *
+ * @param {Object} base  { title, description, type, startDate(ISO), endDate(ISO),
+ *   assignedTo, assignedToName, contactId, dealId }
+ * @param {Object} recurrence  { freq: 'daily'|'weekdays'|'weekly', until(ISO date) }
+ * @returns {Promise<number>} quantas ocorrencias criadas
+ */
+export async function createRecurringCrmActivities(base, recurrence) {
+  const start = new Date(base.startDate);
+  if (isNaN(start.getTime()) || !recurrence?.until) return 0;
+  const durMs = base.endDate ? Math.max(0, new Date(base.endDate) - start) : 60 * 60 * 1000;
+  const until = new Date(recurrence.until);
+  until.setHours(23, 59, 59, 999);
+  const { freq } = recurrence;
+  const startDow = start.getDay();
+
+  // Uma data por ocorrencia. Anda dia a dia (preservando a HORA do start) e inclui
+  // conforme a regra. Teto de 366 pra nao gerar serie infinita por engano.
+  const dates = [];
+  const cursor = new Date(start);
+  while (cursor <= until && dates.length < 366) {
+    const dow = cursor.getDay();
+    const inc = freq === 'daily'
+      || (freq === 'weekdays' && dow >= 1 && dow <= 5)
+      || (freq === 'weekly' && dow === startDow);
+    if (inc) dates.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  if (dates.length === 0) return 0;
+
+  const session = await supabase.auth.getSession();
+  const userId = session.data?.session?.user?.id || null;
+  const groupId = crypto.randomUUID();
+
+  const rows = dates.map((s) => ({
+    title: base.title,
+    description: base.description || null,
+    type: base.type,
+    contact_id: base.contactId || null,
+    deal_id: base.dealId || null,
+    start_date: s.toISOString(),
+    end_date: new Date(s.getTime() + durMs).toISOString(),
+    completed: false,
+    assigned_to: base.assignedTo || null,
+    assigned_to_name: base.assignedToName || null,
+    created_by: userId,
+    recurrence_group_id: groupId,
+  }));
+
+  const { error } = await supabase.from('crm_activities').insert(rows);
+  if (error) {
+    toast(`Erro ao criar evento recorrente: ${error.message}`, 'error');
+    return 0;
+  }
+  toast(`Evento recorrente criado — ${rows.length} ocorrências`, 'success');
+  return rows.length;
+}
+
+/**
  * Convidados de uma atividade. Vivem em agenda_events.attendees ([{email,name}]),
  * nao em crm_activities — nenhum dos SELECTs de atividade traz o campo, entao a
  * leitura precisa desta ida separada. Devolve so os e-mails, que eh a forma que
