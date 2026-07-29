@@ -38,10 +38,11 @@ export function NowCard({ task, onExecute, onPostpone, onOpenLead, busy }) {
   const Icon = ICON[canal] || CheckSquare;
   const atrasada = isOverdue(task);
   const wa = whatsappUrl(task.phone);
-  // Mensagem abre a conversa no Inbox DO CRM, não o wa.me.
+  // Lead com contato -> Inbox do CRM; só com telefone solto -> wa.me externo.
   const abrirInbox = () => {
-    const path = inboxPathForLead({ contactId: task.contactId, phone: task.phone });
-    if (path) navigate(path);
+    const path = inboxPathForLead({ contactId: task.contactId });
+    if (path) { navigate(path); return; }
+    if (wa) window.open(wa, '_blank', 'noopener,noreferrer');
   };
 
   return (

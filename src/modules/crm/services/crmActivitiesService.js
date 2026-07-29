@@ -233,7 +233,12 @@ export async function createRecurringCrmActivities(base, recurrence) {
     if (inc) dates.push(new Date(cursor));
     cursor.setDate(cursor.getDate() + 1);
   }
-  if (dates.length === 0) return 0;
+  if (dates.length === 0) {
+    // Ex.: início no sábado + "dias úteis" até domingo, ou "repetir até" antes do
+    // início. Sem este aviso o modal fechava como sucesso e nada era criado.
+    toast('Nenhuma ocorrência no período — confira a frequência e o "Repetir até".', 'error');
+    return 0;
+  }
 
   const session = await supabase.auth.getSession();
   const userId = session.data?.session?.user?.id || null;

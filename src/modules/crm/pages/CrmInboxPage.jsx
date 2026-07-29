@@ -22,11 +22,6 @@ export function CrmInboxPage() {
   // na URL, recarregar a pagina cairia na thread do outro numero, e o deep-link
   // apontaria pra conversa errada. Ausente = link antigo, mostra tudo junto.
   const instanceParam = searchParams.get('instance');
-  // Deep-link por TELEFONE — os botões "WhatsApp" da Fila/negócio abrem o Inbox
-  // aqui em vez do wa.me. Quando o lead tem contato/prospect, vem por aqueles
-  // params; quando só há o número (negócio sem contato vinculado), vem no `phone`
-  // e casamos com a conversa existente (últimos 8 dígitos) ou abrimos um stub.
-  const phoneParam = searchParams.get('phone');
 
   const { data: conversations = [] } = useCrmInboxConversations();
   const { data: instances = [] } = useCrmWhatsAppInstances();
@@ -90,23 +85,8 @@ export function CrmInboxPage() {
         avatarUrl: stubProspect?.avatarUrl || null,
       };
     }
-    if (phoneParam) {
-      // Casa por número: últimos 8 dígitos (regra BR — ignora 9º dígito e DDI).
-      const alvo = phoneParam.replace(/\D/g, '').slice(-8);
-      const achou = alvo && conversations.find(
-        (c) => casa(c) && (c.otherPhone || '').replace(/\D/g, '').slice(-8) === alvo,
-      );
-      if (achou) return achou;
-      // Sem conversa ainda: stub só com o número — o composer envia por ele, e a
-      // resposta do lead cai na conversa pelo cruzamento normal do inbox.
-      return {
-        instanceId: instanceParam || stubInstanceId,
-        otherName: phoneParam,
-        otherPhone: phoneParam.replace(/\D/g, ''),
-      };
-    }
     return null;
-  }, [conversations, contactParam, prospectParam, phoneParam, instanceParam, stubContact, stubProspect, stubInstanceId]);
+  }, [conversations, contactParam, prospectParam, instanceParam, stubContact, stubProspect, stubInstanceId]);
 
   // Mesmo formato da chave que a RPC devolve ('c:<id>:<instance>'), pra casar
   // com o `key` das linhas da lista e destacar a conversa certa.

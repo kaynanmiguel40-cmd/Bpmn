@@ -283,8 +283,9 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              const p = inboxPathForLead({ contactId: deal.contact?.id || deal.contactId, phone });
-              if (p) navigate(p);
+              const p = inboxPathForLead({ contactId: deal.contact?.id || deal.contactId });
+              if (p) { navigate(p); return; }
+              if (whatsappLink) window.open(whatsappLink, '_blank', 'noopener,noreferrer');
             }}
             className="p-1 rounded bg-white dark:bg-slate-800 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 shadow-sm border border-slate-200 dark:border-slate-700"
             title="Abrir a conversa no Inbox do CRM"

@@ -127,8 +127,12 @@ export function ExecuteTaskModal({
   // Botão de mensagem abre a conversa no Inbox DO CRM (não o wa.me): usa o
   // contato do lead quando há, senão o próprio número.
   const abrirInbox = () => {
-    const path = inboxPathForLead({ contactId: activity?.contactId, phone: activity?.contactPhone });
-    if (path) navigate(path);
+    // Lead com contato -> Inbox do CRM. Só com telefone solto -> wa.me externo
+    // (o inbox precisa de contato/prospect pra threadar e enviar).
+    const path = inboxPathForLead({ contactId: activity?.contactId });
+    if (path) { navigate(path); return; }
+    const externo = whatsappUrl(activity?.contactPhone);
+    if (externo) window.open(externo, '_blank', 'noopener,noreferrer');
   };
 
   useEffect(() => {

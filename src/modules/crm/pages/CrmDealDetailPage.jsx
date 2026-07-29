@@ -365,8 +365,10 @@ export function CrmDealDetailPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          const p = inboxPathForLead({ contactId: deal.contactId || deal.contact?.id, phone: ctPhone });
-                          if (p) navigate(p);
+                          const p = inboxPathForLead({ contactId: deal.contactId || deal.contact?.id });
+                          if (p) { navigate(p); return; }
+                          const externo = whatsappUrl(ctPhone);
+                          if (externo) window.open(externo, '_blank', 'noopener,noreferrer');
                         }}
                         title="Abrir a conversa no Inbox do CRM"
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-[#25D366]/10 text-[#1faf52] hover:bg-[#25D366]/20 transition-colors"

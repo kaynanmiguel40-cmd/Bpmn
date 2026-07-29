@@ -203,6 +203,8 @@ export function ActivityFormModal({
 
   const selectedType = watch('type');
   const assignedTo = watch('assignedTo');
+  // Data do início (só o dia), pra travar o "Repetir até" em datas >= o começo.
+  const startDay = (watch('startDate') || '').slice(0, 10);
   const { data: owners = [] } = useReportOwners();
 
   useEffect(() => {
@@ -304,10 +306,14 @@ export function ActivityFormModal({
       await updateMutation.mutateAsync({ id: activity.id, updates: payload });
     } else if (repeatFreq !== 'none') {
       // Gera uma ocorrencia por data ate o "até" (fim do dia escolhido).
-      await recurringMutation.mutateAsync({
+      const criadas = await recurringMutation.mutateAsync({
         base: payload,
         recurrence: { freq: repeatFreq, until: new Date(`${repeatUntil}T23:59:59`).toISOString() },
       });
+      // 0 = janela vazia (ex.: só dias úteis num fim de semana). O service já
+      // avisou por toast; mantém o modal aberto pra corrigir em vez de fechar
+      // fingindo sucesso.
+      if (!criadas) return;
     } else if (emergencial) {
       // Entra agora e empurra o resto do dia (o motor cuida da cascata).
       await emergenciaMutation.mutateAsync(payload);
@@ -466,6 +472,7 @@ export function ActivityFormModal({
                   <input
                     type="date"
                     value={repeatUntil}
+                    min={startDay || undefined}
                     onChange={(e) => setRepeatUntil(e.target.value)}
                     className={FIELD_CLASS()}
                   />
