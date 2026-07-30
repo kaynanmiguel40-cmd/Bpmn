@@ -42,6 +42,8 @@ export function dbToCrmMessage(row) {
     prospectId: row.prospect_id || null,
     dealId: row.deal_id || null,
     direction: row.direction,
+    // Apagada (soft-delete): o balão vira "🚫 Esta mensagem foi apagada".
+    deleted: !!row.deleted_at,
     fromPhone: row.from_phone || '',
     toPhone: row.to_phone || '',
     content: row.content || '',
@@ -126,11 +128,13 @@ export async function getConversationMessages({ contactId, prospectId, instanceI
   // (mais antigas primeiro) pro scroll natural do chat. Com asc + limit o banco
   // devolvia as N mais ANTIGAS e descartava as recentes — inclusive a ultima
   // mensagem que o vendedor ia responder.
+  // NÃO filtra deleted_at aqui de propósito: a mensagem apagada continua na thread
+  // como "🚫 Esta mensagem foi apagada" (igual ao WhatsApp) — o balão troca o
+  // conteúdo pelo tombstone. Some só das LISTAS (inbox/preview), não da conversa.
   let query = ORDEM_DESC(
     supabase
       .from('crm_messages')
       .select('*')
-      .is('deleted_at', null)
   ).limit(limit);
 
   if (contactId)  query = query.eq('contact_id', contactId);

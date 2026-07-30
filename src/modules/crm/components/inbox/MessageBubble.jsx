@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, CheckCheck, AlertCircle, FileText, Play, Pause, Download, Mic, MapPin, UserRound, Reply, Trash2 } from 'lucide-react';
+import { Check, CheckCheck, AlertCircle, FileText, Play, Pause, Download, Mic, MapPin, UserRound, Reply, Trash2, Ban } from 'lucide-react';
 import { AudioMessage } from './AudioMessage';
 
 /**
@@ -203,7 +203,10 @@ function MediaContent({ message, isOut }) {
 
 export function MessageBubble({ message, onReply, onDelete }) {
   const isOut = message.direction === 'outbound';
-  const hasMedia = !!message.mediaUrl && message.status !== 'failed';
+  // Apagada: o balão mostra só o "🚫 Esta mensagem foi apagada" (igual WhatsApp),
+  // sem mídia/legenda/citação e sem ações de responder/apagar.
+  const isDeleted = !!message.deleted;
+  const hasMedia = !isDeleted && !!message.mediaUrl && message.status !== 'failed';
   const isSticker = hasMedia && message.mediaType === 'sticker';
   // 'location' e 'contact' mostram o texto DENTRO do card (nome do lugar / nome
   // do contato), entao repetir embaixo duplicaria a informacao.
@@ -235,8 +238,9 @@ export function MessageBubble({ message, onReply, onDelete }) {
               ].join(' ')
         }
       >
-        {/* Acoes no hover, ao lado da bolha (estilo WhatsApp): responder + apagar. */}
-        {(onReply || onDelete) && (
+        {/* Acoes no hover, ao lado da bolha (estilo WhatsApp): responder + apagar.
+            Mensagem ja apagada nao oferece nenhuma das duas. */}
+        {!isDeleted && (onReply || onDelete) && (
           <div className={`absolute top-1 ${isOut ? '-left-9' : '-right-9'} flex flex-col gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity`}>
             {onReply && (
               <button
@@ -261,32 +265,41 @@ export function MessageBubble({ message, onReply, onDelete }) {
           </div>
         )}
 
-        {/* Mensagem citada (respondendo a). Desnormalizado — nao precisa de join. */}
-        {message.replyToPreview && (
-          <div
-            className={`mb-1 rounded px-2 py-1 border-l-[3px] ${isOut ? 'bg-black/5 dark:bg-black/25' : 'bg-black/[0.03] dark:bg-white/5'}`}
-            style={{ borderLeftColor: message.replyToFromMe ? '#1da57a' : '#00a884' }}
-          >
-            <span className="block text-[11px] font-semibold" style={{ color: message.replyToFromMe ? '#1da57a' : '#06a37f' }}>
-              {message.replyToFromMe ? 'Você' : 'Contato'}
-            </span>
-            <span className="block text-[13px] text-slate-600 dark:text-slate-300 truncate">
-              {message.replyToPreview}
-            </span>
-          </div>
-        )}
+        {isDeleted ? (
+          <p className="flex items-center gap-1.5 italic text-slate-500 dark:text-slate-300/80 px-1 py-0.5">
+            <Ban size={14} className="shrink-0 opacity-70" />
+            Esta mensagem foi apagada
+          </p>
+        ) : (
+          <>
+            {/* Mensagem citada (respondendo a). Desnormalizado — nao precisa de join. */}
+            {message.replyToPreview && (
+              <div
+                className={`mb-1 rounded px-2 py-1 border-l-[3px] ${isOut ? 'bg-black/5 dark:bg-black/25' : 'bg-black/[0.03] dark:bg-white/5'}`}
+                style={{ borderLeftColor: message.replyToFromMe ? '#1da57a' : '#00a884' }}
+              >
+                <span className="block text-[11px] font-semibold" style={{ color: message.replyToFromMe ? '#1da57a' : '#06a37f' }}>
+                  {message.replyToFromMe ? 'Você' : 'Contato'}
+                </span>
+                <span className="block text-[13px] text-slate-600 dark:text-slate-300 truncate">
+                  {message.replyToPreview}
+                </span>
+              </div>
+            )}
 
-        {hasMedia && <MediaContent message={message} isOut={isOut} />}
+            {hasMedia && <MediaContent message={message} isOut={isOut} />}
 
-        {showCaption && (
-          <p className="whitespace-pre-wrap break-words px-1">{message.content}</p>
+            {showCaption && (
+              <p className="whitespace-pre-wrap break-words px-1">{message.content}</p>
+            )}
+          </>
         )}
 
         <div className={`flex items-center justify-end gap-1 select-none ${timeMt} ${isSticker ? '' : 'pl-2'}`}>
           <span className="text-[12px] text-slate-500 dark:text-slate-300/70 tabular-nums">
             {formatTime(message.sentAt)}
           </span>
-          {isOut && <StatusIcon status={message.status} />}
+          {isOut && !isDeleted && <StatusIcon status={message.status} />}
         </div>
 
         {message.status === 'failed' && (
