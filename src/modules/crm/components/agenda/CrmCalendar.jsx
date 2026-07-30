@@ -276,6 +276,263 @@ function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditD
 // rolavel, cada toque na sua linha. Hora marcada (reuniao) aparece com a hora no
 // chip. (Sem arrastar-pra-reagendar aqui — o horario nao vem mais da posicao Y;
 // pra remarcar, clica no toque e edita.)
+// ==================== GRADE DE HORÁRIO (só a view DIA) ====================
+// A Semana/Mês usam lista/células (a cadência gera dezenas de tarefas/dia e a
+// grade de 7 dias virava uma "zona"). O DIA é 1 coluna só — cabe a grade com
+// eixo de horas, e é onde arrastar-pra-cima/baixo muda a HORA (encaixe 15min).
+const GRID_HOUR_PX = 108;
+const GRID_MIN_PX = GRID_HOUR_PX / 60;
+const MIN_BLOCK_PX = 16;
+const GRID_DEFAULT_START_H = 8; // topo da grade — só sobe pra mais cedo se tiver evento antes das 8h
+const GRID_DEFAULT_END_H = 22;
+const GRID_MIN_BLOCK_MIN = 28;  // altura mínima (em "minutos equivalentes") pra tarefa curta/pontual não virar um traço
+const MIN_BLOCK_MINUTES = Math.ceil(MIN_BLOCK_PX / GRID_MIN_PX);
+
+const minutesOfDay = (iso) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes(); };
+
+/** Intervalo de horas a desenhar: cobre 8h-22h, mas estica se algum evento cair fora. */
+function computeGridHours(dayGroups) {
+  let startH = GRID_DEFAULT_START_H;
+  let endH = GRID_DEFAULT_END_H;
+  for (const evs of dayGroups) {
+    for (const ev of evs) {
+      if (ev.isAllDay || !ev.startDate) continue;
+      const startMin = minutesOfDay(ev.startDate);
+      const endMin = ev.endDate ? minutesOfDay(ev.endDate) : startMin + GRID_MIN_BLOCK_MIN;
+      startH = Math.min(startH, Math.floor(startMin / 60));
+      endH = Math.max(endH, Math.ceil(endMin / 60));
+    }
+  }
+  return { startH, endH };
+}
+
+/** Agrupa eventos que se sobrepõem e dá coluna a cada um (lado a lado). */
+function layoutOverlaps(dayEvents) {
+  const items = dayEvents
+    .filter(ev => !ev.isAllDay && ev.startDate)
+    .map(ev => {
+      const startMin = minutesOfDay(ev.startDate);
+      const endMin = ev.endDate ? Math.max(minutesOfDay(ev.endDate), startMin + MIN_BLOCK_MINUTES) : startMin + GRID_MIN_BLOCK_MIN;
+      return { ev, startMin, endMin, col: 0, cols: 1, colspan: 1 };
+    })
+    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin || String(a.ev.id).localeCompare(String(b.ev.id)));
+
+  const finalize = (cluster) => {
+    const colEnds = [];
+    for (const item of cluster) {
+      let c = colEnds.findIndex(end => item.startMin >= end);
+      if (c === -1) { c = colEnds.length; colEnds.push(item.endMin); }
+      else colEnds[c] = item.endMin;
+      item.col = c;
+    }
+    const totalCols = colEnds.length;
+    for (const item of cluster) {
+      item.cols = totalCols;
+      let span = 1;
+      for (let c = item.col + 1; c < totalCols; c++) {
+        const blocked = cluster.some(o => o !== item && o.col === c && o.startMin < item.endMin && o.endMin > item.startMin);
+        if (blocked) break;
+        span++;
+      }
+      item.colspan = span;
+    }
+  };
+
+  let clusterStart = 0;
+  for (let i = 0; i < items.length; i++) {
+    const clusterSoFar = items.slice(clusterStart, i + 1);
+    const clusterEnd = Math.max(...clusterSoFar.map(x => x.endMin));
+    const isLast = i === items.length - 1;
+    if (isLast || items[i + 1].startMin >= clusterEnd) {
+      finalize(clusterSoFar);
+      clusterStart = i + 1;
+    }
+  }
+  return items;
+}
+
+// Linha vermelha do "agora" — só hoje, só dentro do range visível.
+function NowLine({ startH, endH }) {
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceTick(n => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const now = new Date();
+  const min = now.getHours() * 60 + now.getMinutes();
+  if (min < startH * 60 || min > endH * 60) return null;
+  const top = (min - startH * 60) * GRID_MIN_PX;
+  return (
+    <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center" style={{ top }}>
+      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 -ml-[3px]" />
+      <div className="flex-1 h-px bg-rose-500/70" />
+    </div>
+  );
+}
+
+function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed, showOwner, startH, dnd }) {
+  const { ev, startMin, endMin, col, cols, colspan = 1 } = item;
+  const isGoogle = ev.source === 'google';
+  const isCrm = ev.source === 'crm';
+  const Icon = iconFor(ev);
+  const top = (startMin - startH * 60) * GRID_MIN_PX;
+  const height = Math.max(MIN_BLOCK_PX, (endMin - startMin) * GRID_MIN_PX - 2);
+  const short = height < 34;
+  const GAP = 2;
+  const unit = 100 / cols;
+  const leftPct = col * unit;
+  const widthPct = colspan * unit;
+  const draggable = dnd ? dnd.canDrag(ev) : false;
+  const beingDragged = !!ev._dragging;
+
+  return (
+    <button
+      type="button"
+      onPointerDown={draggable ? (e) => dnd.onPointerDown(ev, e) : undefined}
+      onClick={(e) => { e.stopPropagation(); onClick?.(ev); }}
+      title={`${fmtRange(ev.startDate, ev.endDate)} · ${ev.title}${ev.leadName ? ` — ${ev.leadName}` : ''}${isGoogle ? ' (Google Agenda)' : ''}`}
+      className={`group/blk absolute text-left rounded-md px-1.5 overflow-hidden transition-[top,height,left,width] duration-75
+        ${short ? 'py-0.5 flex items-center gap-1' : 'py-1'}
+        ${draggable && !beingDragged ? 'cursor-grab active:cursor-grabbing' : ''}
+        ${beingDragged ? 'ring-2 ring-fyness-primary shadow-2xl opacity-95' : ''}
+        ${dimmed ? 'opacity-30 hover:opacity-100' : ''}
+        ${isGoogle
+          ? 'border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-800/50 hover:border-slate-400'
+          : 'border-l-2 bg-white/95 dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm'}`}
+      style={{
+        top, height,
+        left: `calc(${leftPct}% + ${GAP}px)`,
+        width: `calc(${widthPct}% - ${GAP * 2}px)`,
+        borderLeftColor: isGoogle ? undefined : ev.color,
+        zIndex: beingDragged ? 40 : 10,
+        pointerEvents: beingDragged ? 'none' : undefined,
+        ...(draggable ? { touchAction: dnd?.armedId === ev.id ? 'none' : 'pan-y' } : {}),
+      }}
+    >
+      {short ? (
+        <>
+          {ev.completed
+            ? <Check size={10} className="shrink-0" style={{ color: ev.color }} />
+            : <Icon size={10} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
+          <span className="text-[12px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtTime(ev.startDate)}</span>
+          <span className={`flex-1 min-w-0 truncate text-[12px] ${ev.completed ? 'line-through text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-700 dark:text-slate-200 font-medium'}`}>
+            {ev.title}
+          </span>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-1">
+            {ev.completed
+              ? <Check size={11} className="shrink-0" style={{ color: ev.color }} />
+              : <Icon size={11} className="shrink-0" style={{ color: isGoogle ? '#94a3b8' : ev.color }} />}
+            <span className="text-[12px] font-medium text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">{fmtRange(ev.startDate, ev.endDate)}</span>
+            {showOwner && isCrm && ev.assignedToName && <OwnerBadge name={ev.assignedToName} color={ev.assignedToColor} size={12} />}
+          </div>
+          <div className={`text-[12px] leading-tight truncate ${ev.completed ? 'line-through text-slate-500 dark:text-slate-400' : isGoogle ? 'text-slate-500 dark:text-slate-400 italic' : 'text-slate-800 dark:text-slate-100 font-medium'}`}>
+            {ev.title}
+          </div>
+          {ev.leadName && !isGoogle && height > 50 && (
+            <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate">{ev.leadName}</div>
+          )}
+        </>
+      )}
+      {isCrm && !ev.completed && (
+        <span
+          role="button"
+          tabIndex={0}
+          data-cal-nodrag=""
+          onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onCompleteTask?.(ev); } }}
+          title="Concluir tarefa"
+          className="flex md:hidden md:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-emerald-500 transition-colors cursor-pointer"
+        >
+          <CheckCircle2 size={12} />
+        </span>
+      )}
+      {isCrm && ev.completed && onEditDelivery && (
+        <span
+          role="button"
+          tabIndex={0}
+          data-cal-nodrag=""
+          onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEditDelivery(ev); } }}
+          title="Editar o que aconteceu"
+          className="flex md:hidden md:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-fyness-primary transition-colors cursor-pointer"
+        >
+          <Pencil size={12} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+/**
+ * Grade de horário — usada SÓ pela view Dia (1 dia). Eixo de horas na esquerda +
+ * coluna com blocos posicionados por horário real. Arrastar um bloco muda a HORA
+ * (o dnd converte o Y em minutos via data-cal-grid/data-cal-starth, encaixe 15min).
+ * Clicar num espaço vazio cria tarefa JÁ na hora clicada.
+ */
+function DayGrid({ days, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner, dnd }) {
+  const today = new Date();
+  const dayGroups = useMemo(() => days.map(d => eventsByDay.get(toKey(d)) || []), [days, eventsByDay]);
+  const { startH, endH } = useMemo(() => computeGridHours(dayGroups), [dayGroups]);
+  const totalHeight = (endH - startH) * GRID_HOUR_PX;
+  const hours = useMemo(() => Array.from({ length: endH - startH + 1 }, (_, i) => startH + i), [startH, endH]);
+
+  const handleColumnClick = (e, day) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = Math.max(0, e.clientY - rect.top);
+    const snapped = Math.round((offsetY / GRID_MIN_PX) / 15) * 15; // encaixa em 15min
+    const totalMin = startH * 60 + snapped;
+    const d = new Date(day);
+    d.setHours(Math.floor(totalMin / 60), totalMin % 60, 0, 0);
+    onSelectSlot?.(d, true);
+  };
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-200/70 dark:border-white/10 overflow-hidden">
+      <AllDayStrip days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="grid" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
+          {/* Eixo de horas */}
+          <div className="relative" style={{ height: totalHeight }}>
+            {hours.map(h => (
+              <div key={h} className="absolute right-1.5 text-[12px] text-slate-500 dark:text-slate-400 tabular-nums" style={{ top: (h - startH) * GRID_HOUR_PX + 2 }}>
+                {String(h).padStart(2, '0')}:00
+              </div>
+            ))}
+          </div>
+          {/* Coluna(s) do dia */}
+          {days.map((day, i) => {
+            const isToday = isSameDay(day, today);
+            const laidOut = layoutOverlaps(dayGroups[i]);
+            return (
+              <div
+                key={toKey(day)}
+                data-cal-daykey={toKey(day)}
+                data-cal-grid=""
+                data-cal-starth={startH}
+                onClick={(e) => handleColumnClick(e, day)}
+                className={`relative border-l border-slate-200/60 dark:border-white/5 cursor-pointer ${isToday ? 'bg-fyness-primary/[0.03]' : ''} ${dnd?.drop?.dayKey === toKey(day) ? 'ring-1 ring-inset ring-fyness-primary/40' : ''}`}
+                style={{ height: totalHeight }}
+              >
+                {hours.map(h => (
+                  <div key={h} className="absolute left-0 right-0 border-t border-slate-100 dark:border-white/[0.04]" style={{ top: (h - startH) * GRID_HOUR_PX }} />
+                ))}
+                {isToday && <NowLine startH={startH} endH={endH} />}
+                {laidOut.map(item => (
+                  <GridEventBlock key={item.ev.id} item={item} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
+                    dimmed={!!selectedLeadKey && item.ev.leadKey !== selectedLeadKey} showOwner={showOwner} startH={startH} dnd={dnd} />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TimeGrid({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner, dnd }) {
   const today = new Date();
   const dayGroups = useMemo(() => days.map(d => {
@@ -327,7 +584,9 @@ function WeekView({ current, eventsByDay, onSelectEvent, onSelectSlot, onComplet
 
 function DayView({ current, eventsByDay, onSelectEvent, onSelectSlot, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner, dnd }) {
   const days = useMemo(() => [startOfDay(current)], [current]);
-  return <TimeGrid days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot}
+  // DIA usa a GRADE de horário (arrastar muda a hora, encaixe 15min). Semana/Mês
+  // seguem na lista/células.
+  return <DayGrid days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot}
     onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />;
 }
 
