@@ -236,7 +236,7 @@ export function AutomationFormModal({ open, onClose, automation }) {
           )}
           {form.channel === 'email' && (
             <p className="mt-1 text-[12px] text-emerald-600 dark:text-emerald-400">
-              Envio ativo via Resend (Edge Function send-email).
+              Envio ativo via SMTP da VPS (Edge Function send-email).
             </p>
           )}
         </div>

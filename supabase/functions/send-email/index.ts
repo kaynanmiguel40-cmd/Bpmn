@@ -1,17 +1,30 @@
 /**
  * Supabase Edge Function: send-email
  *
- * Envia emails usando Resend ou SendGrid.
- * Configure a env var RESEND_API_KEY no painel do Supabase.
+ * Envia e-mails 100% via SMTP DA VPS (sem Resend/SendGrid). Configure os secrets
+ * na edge function: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, e opcionalmente
+ * SMTP_SECURE ('true' = TLS implícito/porta 465; senão STARTTLS na 587/25),
+ * FROM_EMAIL, FROM_NAME, REPLY_TO_EMAIL, UNSUBSCRIBE_EMAIL.
  *
- * Deploy: supabase functions deploy send-email
+ * Contrato (inalterado): POST { to, subject, body, html?, reply_to? }
+ *   -> { success: true } | { success: false, error }
+ *
+ * Deploy: copiar pra /opt/supabase/volumes/functions/send-email e
+ *   docker restart supabase-edge-functions
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'noreply@fyness.app'
-const REPLY_TO_EMAIL = Deno.env.get('REPLY_TO_EMAIL') // se setado, respostas caem aqui
+const SMTP_HOST = Deno.env.get('SMTP_HOST') || ''
+const SMTP_PORT = parseInt(Deno.env.get('SMTP_PORT') || '587', 10)
+const SMTP_USER = Deno.env.get('SMTP_USER') || ''
+const SMTP_PASS = Deno.env.get('SMTP_PASS') || ''
+// TLS implícito só faz sentido na 465. Na 587/25 o denomailer negocia STARTTLS.
+const SMTP_SECURE = (Deno.env.get('SMTP_SECURE') ?? (SMTP_PORT === 465 ? 'true' : 'false')) === 'true'
+const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'noreply@fyness.com.br'
+const FROM_NAME = Deno.env.get('FROM_NAME') || 'Fyness CRM'
+const REPLY_TO_EMAIL = Deno.env.get('REPLY_TO_EMAIL') || undefined
 const UNSUBSCRIBE_EMAIL = Deno.env.get('UNSUBSCRIBE_EMAIL') || REPLY_TO_EMAIL || FROM_EMAIL
 
 const corsHeaders = {
@@ -19,69 +32,60 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
+
 serve(async (req) => {
-  // CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
     const { to, subject, body, html, reply_to } = await req.json()
 
     if (!to || !subject) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields: to, subject' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return json({ error: 'Campos obrigatórios: to, subject', success: false }, 400)
+    }
+    if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+      return json({ error: 'SMTP não configurado (SMTP_HOST/SMTP_USER/SMTP_PASS)', success: false }, 500)
     }
 
-    if (!RESEND_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: 'RESEND_API_KEY not configured', success: false }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    const recipients = Array.isArray(to) ? to : [to]
+    // denomailer exige um corpo: manda o texto; se só veio HTML, um fallback mínimo.
+    const text = body || (html ? ' ' : ' ')
 
-    // Enviar via Resend
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
+    const client = new SMTPClient({
+      connection: {
+        hostname: SMTP_HOST,
+        port: SMTP_PORT,
+        tls: SMTP_SECURE,
+        auth: { username: SMTP_USER, password: SMTP_PASS },
       },
-      body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: Array.isArray(to) ? to : [to],
+    })
+
+    try {
+      await client.send({
+        from: `${FROM_NAME} <${FROM_EMAIL}>`,
+        to: recipients,
         subject,
-        text: body || '',
+        content: text,
         html: html || undefined,
-        reply_to: reply_to || REPLY_TO_EMAIL || undefined,
-        // Headers RFC 2369 / RFC 8058: exigidos por Gmail/Yahoo desde 2024.
-        // Sem isso, Gmail empurra pra spam mesmo com SPF/DKIM/DMARC ok.
+        replyTo: reply_to || REPLY_TO_EMAIL || undefined,
+        // RFC 2369 / 8058: exigidos por Gmail/Yahoo desde 2024. Sem isso vai pra
+        // spam mesmo com SPF/DKIM/DMARC ok.
         headers: {
           'List-Unsubscribe': `<mailto:${UNSUBSCRIBE_EMAIL}?subject=unsubscribe>`,
           'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         },
-      }),
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      return new Response(
-        JSON.stringify({ error: data, success: false }),
-        { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      })
+    } finally {
+      await client.close()
     }
 
-    return new Response(
-      JSON.stringify({ success: true, id: data.id }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return json({ success: true })
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err.message, success: false }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return json({ error: err instanceof Error ? err.message : String(err), success: false }, 500)
   }
 })

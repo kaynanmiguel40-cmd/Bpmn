@@ -229,7 +229,7 @@ function textToHtml(text) {
 // ─── Dispatchers por canal ────────────────────────────────────────────────────
 
 /**
- * Envia e-mail via Edge Function `send-email` (Resend).
+ * Envia e-mail via Edge Function `send-email` (SMTP da VPS).
  * Retorna { ok, error } — nunca lança.
  */
 async function dispatchEmail({ to, subject, body }) {

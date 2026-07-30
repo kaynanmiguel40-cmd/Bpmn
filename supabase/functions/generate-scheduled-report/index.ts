@@ -21,8 +21,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'noreply@fyness.app'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -104,22 +102,20 @@ serve(async (req) => {
         'Para mais detalhes, acesse o sistema e gere o relatorio completo em PDF.',
       ].join('\n')
 
-      // Enviar email
-      if (RESEND_API_KEY) {
-        await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${RESEND_API_KEY}`,
-          },
-          body: JSON.stringify({
-            from: FROM_EMAIL,
-            to: recipients,
-            subject: `[Fyness CRM] Relatorio ${schedule.frequency === 'weekly' ? 'Semanal' : 'Mensal'} - ${periodEnd.toLocaleDateString('pt-BR')}`,
-            text: summary,
-          }),
-        })
-      }
+      // Enviar email pela função send-email (SMTP da VPS) — sem Resend.
+      await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'apikey': SUPABASE_SERVICE_KEY,
+        },
+        body: JSON.stringify({
+          to: recipients,
+          subject: `[Fyness CRM] Relatorio ${schedule.frequency === 'weekly' ? 'Semanal' : 'Mensal'} - ${periodEnd.toLocaleDateString('pt-BR')}`,
+          body: summary,
+        }),
+      })
 
       processed++
     }
