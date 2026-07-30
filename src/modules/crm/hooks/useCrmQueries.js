@@ -22,6 +22,7 @@ import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, ge
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
 import { getCrmCalls, getRecentCallsForContact, createCrmCall, softDeleteCrmCall } from '../services/crmCallsService';
 import { getConversationMessages, getInboxConversations, sendCrmMessage, markCrmMessagesAsRead, markConversationAsRead, deleteCrmMessage } from '../services/crmMessagesService';
+import { getMediaLibrary, addMediaLibraryItem, deleteMediaLibraryItem } from '../services/crmMediaLibraryService';
 import { listCrmWhatsAppInstances, getCrmWhatsAppInstanceByName, getDefaultCrmWhatsAppInstance, createCrmWhatsAppInstance } from '../services/crmWhatsAppInstanceService';
 import { getCrmPartners, getLeadsByPartner, createCrmPartner, updateCrmPartner, softDeleteCrmPartner } from '../services/crmPartnersService';
 import { getCrmLeadSources, createCrmLeadSource, deleteCrmLeadSource } from '../services/crmLeadSourcesService';
@@ -1582,6 +1583,40 @@ export function useDeleteCrmMessage() {
         // Era nossa mas a revogação falhou (fora da janela, erro na Evolution…).
         toast('Apagada no CRM; não consegui remover no WhatsApp', 'warning');
       }
+    },
+  });
+}
+
+// ==================== BIBLIOTECA DE MÍDIAS ====================
+
+export function useMediaLibrary() {
+  return useQuery({
+    queryKey: ['crm', 'mediaLibrary'],
+    queryFn: getMediaLibrary,
+    staleTime: 5 * 60_000, // muda raramente
+  });
+}
+
+export function useAddMediaLibraryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: addMediaLibraryItem,
+    onSuccess: (item) => {
+      if (!item) return;
+      qc.invalidateQueries({ queryKey: ['crm', 'mediaLibrary'] });
+      toast('Adicionado à biblioteca', 'success');
+    },
+  });
+}
+
+export function useDeleteMediaLibraryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteMediaLibraryItem,
+    onSuccess: (ok) => {
+      if (!ok) return;
+      qc.invalidateQueries({ queryKey: ['crm', 'mediaLibrary'] });
+      toast('Removido da biblioteca', 'success');
     },
   });
 }

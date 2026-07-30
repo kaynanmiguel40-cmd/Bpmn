@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Paperclip, Loader2, Image as ImageIcon, FileText, X,
-  Mic, Trash2, Smile,
+  Mic, Trash2, Smile, Images,
 } from 'lucide-react';
 import { useSendCrmMessage } from '../../hooks/useCrmQueries';
 import { uploadCrmMedia, detectMediaType } from '../../lib/uploadCrmMedia';
 import { messagePreview } from '../../services/crmMessagesService';
 import { toast } from '../../../../contexts/ToastContext';
 import { EmojiPicker } from './EmojiPicker';
+import { MediaLibraryModal } from './MediaLibraryModal';
 
 // Constroi o objeto de citacao que o envio entende, a partir da mensagem-alvo.
 function buildReplyPayload(msg) {
@@ -74,6 +75,7 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
   const [attachment, setAttachment] = useState(null); // { file, preview, mediaType }
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false); // biblioteca de mídias
   const [uploading, setUploading] = useState(false);
   const rootRef = useRef(null);
 
@@ -281,6 +283,29 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
     return ok;
   }
 
+  // Envia um item da BIBLIOTECA: a mídia já está no storage, então manda pela
+  // URL direto (sem reupload). O texto do composer vira legenda, se houver.
+  async function sendLibraryItem(item) {
+    if (!item?.mediaUrl || !canSendNow) return;
+    const res = await sendMutation.mutateAsync({
+      instanceName,
+      phone:        conversation.otherPhone,
+      mediaUrl:     item.mediaUrl,
+      mediaType:    item.mediaType,
+      mediaCaption: text.trim() || undefined,
+      contactId:    conversation.contactId || null,
+      prospectId:   conversation.prospectId || null,
+      dealId:       conversation.dealId || null,
+      source:       'manual',
+      replyTo:      buildReplyPayload(replyTo),
+    });
+    if (res?.ok === true) {
+      setLibraryOpen(false);
+      setText('');
+      onCancelReply?.();
+    }
+  }
+
   const handleSend = async () => {
     if (!canSendNow) return;
     setEmojiOpen(false);
@@ -440,6 +465,11 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
             <Paperclip size={22} className={attachMenuOpen ? 'rotate-45 transition-transform' : 'transition-transform'} />
           </button>
 
+          <button type="button" onClick={() => { setLibraryOpen(true); setAttachMenuOpen(false); setEmojiOpen(false); }} disabled={disabled || isSending}
+            title="Biblioteca de mídias" className="p-2 rounded-full text-slate-500 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40 shrink-0">
+            <Images size={22} />
+          </button>
+
           <div className="flex-1 bg-white dark:bg-[#2a3942] rounded-2xl px-3 py-1.5 flex items-end">
             <textarea
               ref={textareaRef}
@@ -465,6 +495,17 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
             </button>
           )}
         </div>
+      )}
+
+      {/* Só monta quando aberto: evita buscar a biblioteca (e rodar os hooks
+          dela) enquanto o botão não foi clicado. */}
+      {libraryOpen && (
+        <MediaLibraryModal
+          open
+          onClose={() => setLibraryOpen(false)}
+          onSelect={sendLibraryItem}
+          sending={isSending}
+        />
       )}
     </div>
   );
