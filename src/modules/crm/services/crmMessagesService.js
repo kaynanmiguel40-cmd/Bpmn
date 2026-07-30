@@ -531,6 +531,21 @@ export async function markConversationAsRead({ contactId, prospectId, instanceId
  */
 export async function deleteCrmMessage(id) {
   if (!id) return { ok: false };
+
+  // 1) Revogar no WhatsApp (best-effort). Só surte efeito em mensagem NOSSA
+  //    (outbound); a do lead o WhatsApp não deixa apagar pra todos. Falha aqui
+  //    não impede o soft-delete do nosso lado.
+  let revoked = false;
+  let revokeReason = null;
+  try {
+    const { data } = await supabase.functions.invoke('evolution-delete', { body: { messageId: id } });
+    revoked = !!data?.revoked;
+    revokeReason = data?.reason || null;
+  } catch (e) {
+    revokeReason = e?.message || 'falha ao chamar a Evolution';
+  }
+
+  // 2) Soft-delete do nosso lado (sempre — some do CRM).
   const { error } = await supabase
     .from('crm_messages')
     .update({ deleted_at: new Date().toISOString() })
@@ -540,7 +555,7 @@ export async function deleteCrmMessage(id) {
     toast(`Erro ao apagar mensagem: ${error.message}`, 'error');
     return { ok: false, error: error.message };
   }
-  return { ok: true };
+  return { ok: true, revoked, revokeReason };
 }
 
 /**

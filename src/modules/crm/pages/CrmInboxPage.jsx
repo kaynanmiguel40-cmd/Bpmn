@@ -158,7 +158,11 @@ export function CrmInboxPage() {
           setDeletingMessage(null);
         }}
         title="Apagar mensagem"
-        message="A mensagem some da conversa aqui no CRM. O lead continua com ela no WhatsApp dele — isto não apaga do telefone dele."
+        message={
+          deletingMessage?.direction === 'outbound'
+            ? 'Apaga aqui e revoga no WhatsApp — o lead passa a ver "Esta mensagem foi apagada". Vale só pras mensagens que você enviou.'
+            : 'Some daqui do CRM. A mensagem que o LEAD enviou não dá pra apagar do WhatsApp dele — continua no telefone dele.'
+        }
         confirmLabel="Apagar"
         variant="danger"
         loading={deleteMsg.isPending}
