@@ -276,7 +276,7 @@ function AllDayStrip({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditD
 // rolavel, cada toque na sua linha. Hora marcada (reuniao) aparece com a hora no
 // chip. (Sem arrastar-pra-reagendar aqui — o horario nao vem mais da posicao Y;
 // pra remarcar, clica no toque e edita.)
-function TimeGrid({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner }) {
+function TimeGrid({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditDelivery, selectedLeadKey, showOwner, dnd }) {
   const today = new Date();
   const dayGroups = useMemo(() => days.map(d => {
     const evs = [...(eventsByDay.get(toKey(d)) || [])].filter(e => !e.isAllDay);
@@ -293,7 +293,8 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditDeli
           return (
             <div
               key={toKey(day)}
-              className={`flex flex-col min-h-0 border-l border-slate-200/60 dark:border-white/5 first:border-l-0 ${isToday ? 'bg-fyness-primary/[0.03]' : ''}`}
+              data-cal-daykey={toKey(day)}
+              className={`flex flex-col min-h-0 border-l border-slate-200/60 dark:border-white/5 first:border-l-0 transition-colors ${isToday ? 'bg-fyness-primary/[0.03]' : ''} ${dnd?.drop?.dayKey === toKey(day) ? 'ring-2 ring-inset ring-fyness-primary/60 bg-fyness-primary/10' : ''}`}
             >
               {/* Cabecalho do dia (Semana). Dia usa 1 coluna, cabecalho fica no topo do calendario. */}
               {days.length > 1 && (
@@ -307,7 +308,7 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditDeli
                   ? <p className="text-center text-[11px] text-slate-300 dark:text-slate-600 py-3">—</p>
                   : dayGroups[i].map(ev => (
                     <EventChip key={ev.id} ev={ev} onClick={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery}
-                      dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} />
+                      dimmed={!!selectedLeadKey && ev.leadKey !== selectedLeadKey} showOwner={showOwner} dnd={dnd} />
                   ))}
               </div>
             </div>
