@@ -647,6 +647,7 @@ export default function CrmCalendar({
   const [armedId, setArmedId] = useState(null);
   const [previewMove, setPreviewMove] = useState(null); // { id, startDate, endDate } — o PRÓPRIO bloco renderizado no destino durante o arrasto
   const [pendingMoves, setPendingMoves] = useState(() => new Map());
+  const [dragCursor, setDragCursor] = useState(null); // {x,y} — pra o selo "onde vai cair" seguir o cursor
   // Reconciliação: mantém o override otimista até os dados FRESCOS refletirem o
   // novo horário (start igual) ou o evento sair do recorte. Antes limpava a cada
   // troca de referência de `events` — e como o mutate re-renderiza o pai
@@ -743,6 +744,7 @@ export default function CrmCalendar({
         document.body.style.cursor = 'grabbing';
         document.body.style.userSelect = 'none';
       }
+      setDragCursor({ x: e.clientX, y: e.clientY });
       const t = hitTest(e.clientX, e.clientY);
       setDrop(prev => {
         const same = (!prev && !t) || (prev && t && prev.dayKey === t.dayKey && prev.minutes === t.minutes);
@@ -775,6 +777,7 @@ export default function CrmCalendar({
       }
       setPreviewMove(null);
       setDrop(null);
+      setDragCursor(null);
       clearBody();
     };
     // Cancela sem reagendar (Esc, troca de aba/janela) — rede de segurança
@@ -786,6 +789,7 @@ export default function CrmCalendar({
       stateRef.current = null;
       setPreviewMove(null);
       setDrop(null);
+      setDragCursor(null);
       clearBody();
     };
     const onKey = (e) => { if (e.key === 'Escape') cancel(); };
@@ -957,6 +961,20 @@ export default function CrmCalendar({
           {view === 'week' && <WeekView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />}
           {view === 'day' && <DayView current={currentDate} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onSelectSlot={onSelectSlot} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} dnd={dnd} />}
         </>
+      )}
+
+      {/* Selo "onde vai cair": segue o cursor durante o arrasto e mostra o destino
+          — HORÁRIO na visão Dia (grade tem hora), DIA na Semana/Mês. Junto com o
+          bloco que já se move pro destino, dá o retorno claro de pra onde vai. */}
+      {previewMove && dragCursor && (
+        <div
+          style={{ position: 'fixed', left: dragCursor.x + 14, top: dragCursor.y - 12, zIndex: 60, pointerEvents: 'none' }}
+          className="px-2 py-0.5 rounded-md bg-fyness-primary text-white text-[12px] font-bold shadow-lg tabular-nums whitespace-nowrap"
+        >
+          {drop?.minutes != null
+            ? fmtTime(previewMove.startDate)
+            : new Date(previewMove.startDate).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+        </div>
       )}
 
       {/* Legenda — explica as cores/ícones e separa CRM de Google */}
