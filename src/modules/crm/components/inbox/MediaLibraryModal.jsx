@@ -10,12 +10,17 @@ import { Search, Plus, Trash2, Play, Image as ImageIcon, Video as VideoIcon, X, 
 import { CrmModal } from '../ui/CrmModal';
 import { useMediaLibrary, useAddMediaLibraryItem, useDeleteMediaLibraryItem } from '../../hooks/useCrmQueries';
 import { useCrmAccess } from '../../hooks/useCrmAccess';
+import { toast } from '../../../../contexts/ToastContext';
 
 const TIPOS = [
   { key: 'all', label: 'Tudo' },
   { key: 'video', label: 'Vídeos' },
   { key: 'image', label: 'Imagens' },
 ];
+
+// Teto do upload — casa com o limite do servidor (nginx + storage = 200MB). Pega
+// o arquivo grande ANTES de subir, com mensagem clara, em vez do 413 no meio.
+const MAX_UPLOAD_MB = 200;
 
 function AddForm({ onDone }) {
   const add = useAddMediaLibraryItem();
@@ -25,6 +30,10 @@ function AddForm({ onDone }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (file && file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      toast(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(0)}MB). Máximo: ${MAX_UPLOAD_MB}MB.`, 'error');
+      return;
+    }
     const item = await add.mutateAsync({ file, title, category });
     if (item) { setFile(null); setTitle(''); setCategory(''); onDone?.(); }
   };
