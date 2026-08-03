@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo, Component } from 'react';
 import { Link } from 'react-router-dom';
-import { Phone, ExternalLink, MessageSquare, Lock, AlertTriangle } from 'lucide-react';
+import { Phone, PhoneCall, ExternalLink, MessageSquare, Lock, AlertTriangle } from 'lucide-react';
+import { registrarTentativaDeLigacao } from '../../services/crmCallsService';
 import { useCrmConversation, useMarkConversationAsRead, useCrmWhatsAppInstances } from '../../hooks/useCrmQueries';
 import { numberIdentity, numberLabel, UNKNOWN_COLOR } from './numberIdentity';
 import { MessageBubble } from './MessageBubble';
@@ -78,6 +79,16 @@ function ThreadHeader({ conversation, numero }) {
   const telHref = conversation.otherPhone ? `tel:+${String(conversation.otherPhone).replace(/\D/g, '')}` : null;
   const semCadastro = !!conversation.prospectId && !conversation.contactId;
 
+  // Ligar via WhatsApp: o inbox (Evolution/Baileys) não FAZ a chamada — abre a
+  // conversa no WhatsApp, onde a pessoa toca no ícone de telefone. Registra a
+  // tentativa como ligação de canal 'whatsapp' (entra no histórico e nas métricas).
+  const waDigits = conversation.otherPhone ? String(conversation.otherPhone).replace(/\D/g, '') : null;
+  const ligarWhatsApp = () => {
+    if (!waDigits) return;
+    registrarTentativaDeLigacao({ contactId: conversation.contactId || null, dealId: conversation.dealId || null, phone: conversation.otherPhone, canal: 'whatsapp' });
+    window.open(`https://wa.me/${waDigits}`, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="relative h-16 bg-[#f0f2f5] dark:bg-[#202c33] px-4 flex items-center justify-between shrink-0 border-b border-black/5 dark:border-white/5">
       {/* Mesma cor da faixa da linha na lista — e o que ensina o codigo sem
@@ -116,8 +127,15 @@ function ThreadHeader({ conversation, numero }) {
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
+        {waDigits && (
+          <button type="button" onClick={ligarWhatsApp}
+            title="Ligar via WhatsApp — abre a conversa; toque no ícone de telefone pra chamar"
+            className="p-2 rounded-full text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10">
+            <PhoneCall size={18} />
+          </button>
+        )}
         {telHref && (
-          <a href={telHref} title="Ligar"
+          <a href={telHref} title="Ligar pelo telefone (discador do aparelho)"
             className="p-2 rounded-full text-slate-500 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/10">
             <Phone size={18} />
           </a>
