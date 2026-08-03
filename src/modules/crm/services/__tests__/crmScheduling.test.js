@@ -11,10 +11,10 @@ const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String
 // Helper: ISO de um horario num dia fixo (2026-07-20 = segunda-feira)
 const at = (h, m = 0) => new Date(2026, 6, 20, h, m).toISOString();
 
-describe('daySlots — expediente 9-18 com almoco 11-12', () => {
+describe('daySlots — expediente 8:10-18 com almoco 11-12', () => {
   const slots = daySlots();
-  it('comeca as 9h e o ultimo termina as 18h', () => {
-    expect(hhmm(slots[0])).toBe('09:00');
+  it('comeca as 8:10 e o ultimo termina as 18h', () => {
+    expect(hhmm(slots[0])).toBe('08:10');
     expect(hhmm(slots[slots.length - 1])).toBe(ULTIMO);
   });
   it('nao agenda nada dentro do almoco', () => {
@@ -33,9 +33,9 @@ describe('daySlots — expediente 9-18 com almoco 11-12', () => {
 });
 
 describe('turno (manha/tarde) — "sempre ligar de manha e a tarde"', () => {
-  it('manha vai das 9h ate antes do almoco', () => {
+  it('manha vai das 8:10 ate antes do almoco', () => {
     const s = daySlots('manha').map(hhmm);
-    expect(s[0]).toBe('09:00');
+    expect(s[0]).toBe('08:10');
     expect(s[s.length - 1]).toBe(ULTIMO_MANHA); // ultimo bloco termina 11:00
     expect(s).not.toContain('12:00');
   });
@@ -59,8 +59,9 @@ describe('turno (manha/tarde) — "sempre ligar de manha e a tarde"', () => {
   });
 
   it('manha lotada NAO joga a ligacao pra tarde — empurra pro dia seguinte', () => {
-    // Sem isto o "ligar de manha" viraria uma ligacao as 17h.
-    const busy = { '2026-07-20': [{ start: at(9, 0), end: at(11, 0) }] };
+    // Sem isto o "ligar de manha" viraria uma ligacao as 17h. Manhã cheia = do
+    // início do expediente (8:10) até o almoço.
+    const busy = { '2026-07-20': [{ start: at(8, 10), end: at(11, 0) }] };
     const plan = planSteps([{ id: 'a', dayOffset: 0, period: 'manha' }], busy, new Date(2026, 6, 20));
     expect(dayKey(plan[0].start)).toBe('2026-07-21');
     expect(plan[0].start.getHours()).toBeLessThan(11);
@@ -68,27 +69,28 @@ describe('turno (manha/tarde) — "sempre ligar de manha e a tarde"', () => {
 });
 
 describe('findFreeSlot', () => {
-  it('dia vazio -> 9h', () => {
-    expect(hhmm(findFreeSlot([]))).toBe('09:00');
+  it('dia vazio -> 8:10', () => {
+    expect(hhmm(findFreeSlot([]))).toBe('08:10');
   });
   it('pula o horario ja ocupado', () => {
-    const busy = [{ start: at(9, 0), end: at(9, 30) }];
-    expect(hhmm(findFreeSlot(busy))).toBe('09:30');
+    // Ocupa o início do expediente (8:10) pra testar o pulo pro próximo livre.
+    const busy = [{ start: at(8, 10), end: at(8, 40) }];
+    expect(hhmm(findFreeSlot(busy))).toBe('08:40');
   });
-  it('pula reuniao longa (9h-11h) e cai depois do almoco', () => {
-    const busy = [{ start: at(9, 0), end: at(11, 0) }];
+  it('pula reuniao longa (8:10-11h) e cai depois do almoco', () => {
+    const busy = [{ start: at(8, 10), end: at(11, 0) }];
     expect(hhmm(findFreeSlot(busy))).toBe('12:00');
   });
   it('atividade sem fim ocupa um slot (SLOT_MINUTES)', () => {
-    const busy = [{ start: at(9, 0) }];
+    const busy = [{ start: at(8, 10) }];
     // Sem end, o ocupado dura SLOT_MINUTES; o proximo livre e logo depois.
-    expect(hhmm(findFreeSlot(busy))).toBe(hhmm(9 * 60 + SLOT_MINUTES));
+    expect(hhmm(findFreeSlot(busy))).toBe(hhmm(8 * 60 + 10 + SLOT_MINUTES));
   });
   it('respeita afterMinutes (empilhar no mesmo dia)', () => {
     expect(hhmm(findFreeSlot([], 9 * 60))).toBe(hhmm(9 * 60 + SLOT_MINUTES));
   });
   it('dia lotado -> null (nao fura a regra)', () => {
-    const busy = [{ start: at(9, 0), end: at(18, 0) }];
+    const busy = [{ start: at(8, 10), end: at(18, 0) }];
     expect(findFreeSlot(busy)).toBeNull();
   });
 });
@@ -103,9 +105,9 @@ describe('planSteps', () => {
     ], {}, from);
     expect(plan).toHaveLength(2);
     expect(plan[0].start.getTime()).not.toBe(plan[1].start.getTime());
-    expect(plan[0].start.getHours()).toBe(9);
-    expect(plan[0].start.getMinutes()).toBe(0);
-    // Folga do mesmo lead: 3h. a=09:00 -> b=12:00 (manha -> meio-dia).
+    expect(plan[0].start.getHours()).toBe(8);
+    expect(plan[0].start.getMinutes()).toBe(10);
+    // Folga do mesmo lead: 3h. a=08:10 -> +3h=11:10 (almoço) -> b=12:00.
     expect(plan[1].start.getHours()).toBe(12);
     expect(plan[1].start.getMinutes()).toBe(0);
   });
@@ -116,18 +118,19 @@ describe('planSteps', () => {
   });
 
   it('desvia de atividade que ja existe na agenda', () => {
-    const busy = { '2026-07-20': [{ start: at(9, 0), end: at(10, 0) }] };
+    // Bloqueia do início do expediente (8:10) até 10h -> o toque cai às 10h.
+    const busy = { '2026-07-20': [{ start: at(8, 10), end: at(10, 0) }] };
     const plan = planSteps([{ id: 'a', dayOffset: 0 }], busy, from);
     expect(plan[0].start.getHours()).toBe(10);
   });
 
   it('dia lotado EMPURRA pro proximo dia util (nao descarta a tarefa)', () => {
-    // 20/07 inteiro ocupado -> a tarefa tem que cair no dia 21, nao sumir.
-    const busy = { '2026-07-20': [{ start: at(9, 0), end: at(18, 0) }] };
+    // 20/07 inteiro ocupado (8:10-18h) -> a tarefa tem que cair no dia 21, nao sumir.
+    const busy = { '2026-07-20': [{ start: at(8, 10), end: at(18, 0) }] };
     const plan = planSteps([{ id: 'a', dayOffset: 0 }], busy, from);
     expect(plan).toHaveLength(1);
     expect(dayKey(plan[0].start)).toBe('2026-07-21');
-    expect(plan[0].start.getHours()).toBe(9);
+    expect(plan[0].start.getHours()).toBe(8);
   });
 
   it('joga pro dia util quando o offset cai no fim de semana', () => {
@@ -227,14 +230,14 @@ describe('planSteps — folga entre toques do mesmo lead', () => {
     expect(minutosDe(b.start) - minutosDe(a.start)).toBeGreaterThanOrEqual(180);
   });
 
-  it('espalha pelo dia: 9:00 -> 12:00 -> 15:00 (manha, meio-dia, tarde)', () => {
+  it('espalha pelo dia: 8:10 -> 12:00 -> 15:00 (manha, meio-dia, tarde)', () => {
     // Sabado 18/07 -> os passos caem na segunda 20/07 LIMPA (sem o piso do "agora"),
     // entao os horarios sao exatos.
     const from = new Date(2026, 6, 18, 9, 0);
     const plan = planSteps([
       { id: 'a', dayOffset: 0 }, { id: 'b', dayOffset: 0 }, { id: 'c', dayOffset: 0 },
     ], {}, from);
-    expect(minutosDe(plan[0].start)).toBe(9 * 60);   // 09:00
+    expect(minutosDe(plan[0].start)).toBe(8 * 60 + 10);   // 08:10
     expect(minutosDe(plan[1].start)).toBe(12 * 60);  // 12:00 (pula o almoco 11-12)
     expect(minutosDe(plan[2].start)).toBe(15 * 60);  // 15:00
     // os tres no mesmo dia (segunda 20)

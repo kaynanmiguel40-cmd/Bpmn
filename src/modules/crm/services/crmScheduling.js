@@ -26,7 +26,11 @@ export function stepChannel(title) {
   return 'task';
 }
 
-export const WORK_START_HOUR = 9;
+export const WORK_START_HOUR = 8;
+// Início REAL do expediente em minutos (8:10). O motor trabalha em minutos, então
+// isso permite começar numa hora "quebrada" — o WORK_START_HOUR fica como a hora
+// cheia (pra checagens/rótulos que só olham a hora).
+export const WORK_START_MIN = 8 * 60 + 10;
 export const WORK_END_HOUR = 18;
 export const LUNCH_START_HOUR = 11;
 export const LUNCH_END_HOUR = 12;
@@ -56,7 +60,7 @@ export const GAP_MESMO_LEAD = 180;
  * — cairiam as duas de manha, porque o agendador so pega o primeiro slot vago.
  */
 export function daySlots(period = null) {
-  const from = period === 'tarde' ? LUNCH_END_HOUR * 60 : WORK_START_HOUR * 60;
+  const from = period === 'tarde' ? LUNCH_END_HOUR * 60 : WORK_START_MIN;
   const to = period === 'manha' ? LUNCH_START_HOUR * 60 : WORK_END_HOUR * 60;
   const slots = [];
   for (let m = from; m + SLOT_MINUTES <= to; m += SLOT_MINUTES) {
@@ -126,7 +130,7 @@ export function meetingSlots(busy = [], durationMin = 60) {
   const lunchS = LUNCH_START_HOUR * 60;
   const lunchE = LUNCH_END_HOUR * 60;
   const out = [];
-  for (let m = WORK_START_HOUR * 60; m + durationMin <= WORK_END_HOUR * 60; m += SLOT_MINUTES) {
+  for (let m = WORK_START_MIN; m + durationMin <= WORK_END_HOUR * 60; m += SLOT_MINUTES) {
     const end = m + durationMin;
     if (end > lunchS && m < lunchE) continue;                 // invade o almoco
     if (taken.some(([s, e]) => m < e && end > s)) continue;   // colide com algo
