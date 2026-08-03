@@ -736,6 +736,10 @@ export default function CrmCalendar({
         }
         if (dist < (st.touch ? TOUCH_THRESHOLD : DRAG_THRESHOLD)) return;
         st.started = true;
+        // Agora sim captura o ponteiro (arrasto de verdade): garante que o
+        // pointerup chegue mesmo soltando fora da janela. No tap isso nunca roda,
+        // então o clique do balão dispara normal.
+        try { st.el?.setPointerCapture?.(st.pointerId); } catch { /* noop */ }
         document.body.style.cursor = 'grabbing';
         document.body.style.userSelect = 'none';
       }
@@ -813,12 +817,13 @@ export default function CrmCalendar({
       // isso, um clique com leve movimento no ✓ virava arrasto e REAGENDAVA a
       // tarefa em vez de concluí-la — parecia "não dá pra confirmar a tarefa".
       if (e.target?.closest?.('[data-cal-nodrag]')) return;
-      // Captura o ponteiro: garante que o pointerup chegue mesmo se soltar fora
-      // da janela — sem isso um arrasto podia "ficar preso" e travar a página.
-      try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+      // NÃO captura o ponteiro aqui: capturar no pointerdown transformava todo
+      // TAP em captura e engolia o onClick do balão (tarefa não abria) — e ainda
+      // atrapalhava o próprio arrasto. A captura passou pro onMove, no instante em
+      // que o arrasto de fato começa (ver `st.started = true`).
       const touch = e.pointerType === 'touch';
       const st = {
-        ev, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
+        ev, pointerId: e.pointerId, el: e.currentTarget, startX: e.clientX, startY: e.clientY,
         started: false, touch, armed: !touch, timer: null,
       };
       // No toque, o arrasto só existe depois de segurar. Antes disso o gesto
