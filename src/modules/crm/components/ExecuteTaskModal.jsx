@@ -21,10 +21,9 @@ import {
   Phone, MessageCircle, CheckCircle2, CornerDownRight, ArrowRight,
   ExternalLink, Clock, CalendarClock, Check, RotateCcw, Trash2,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
-import { openLeadInbox } from '../utils/inboxLink';
+import { useOpenLeadInbox } from '../hooks/useOpenLeadInbox';
 import { stepChannel } from '../services/crmScheduling';
 import { formatWhen } from '../utils/stepLabel';
 import { preencherScript, dadosDoScript } from '../utils/preencherScript';
@@ -123,16 +122,15 @@ export function ExecuteTaskModal({
   const [novoTelefone, setNovoTelefone] = useState('');
   const agendarRetorno = useAgendarRetorno();
   const gerarLead = useGerarLeadLigado();
-  const navigate = useNavigate();
+  const { abrir: abrirLeadInbox, abrindo: abrindoInbox } = useOpenLeadInbox();
   // Botão de mensagem abre a conversa no Inbox DO CRM (não o wa.me): usa o
-  // contato do lead quando há, senão o próprio número.
+  // contato do lead quando há, senão o próprio número. Abre em NOVA ABA pra não
+  // desmontar este modal e perder o relatório já digitado.
   const abrirInbox = () => {
-    // Lead com contato -> Inbox do CRM. Só com telefone -> cria/vincula um contato
-    // pelo número e abre no CRM; se não der, cai no wa.me externo.
-    openLeadInbox(
-      navigate,
+    abrirLeadInbox(
       { contactId: activity?.contactId, phone: activity?.contactPhone, name: activity?.leadName, dealId: activity?.dealId },
       whatsappUrl(activity?.contactPhone),
+      { newTab: true },
     );
   };
 
@@ -493,10 +491,10 @@ export function ExecuteTaskModal({
                   tentativas, entao esconder aqui quebraria o passo no momento
                   exato em que ele e usado. */}
               {wa && (
-                <button type="button" onClick={abrirInbox}
-                  title="Abrir a conversa no Inbox do CRM — não conta como tentativa de ligação"
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300">
-                  <MessageCircle size={12} /> {isCall ? 'Mensagem' : 'WhatsApp'}
+                <button type="button" onClick={abrirInbox} disabled={abrindoInbox}
+                  title="Abrir a conversa no Inbox do CRM (nova aba) — não conta como tentativa de ligação"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-60 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  <MessageCircle size={12} /> {abrindoInbox ? 'Abrindo…' : (isCall ? 'Mensagem' : 'WhatsApp')}
                 </button>
               )}
             </div>

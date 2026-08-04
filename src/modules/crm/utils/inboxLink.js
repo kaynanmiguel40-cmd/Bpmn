@@ -27,16 +27,24 @@ export function inboxPathForLead({ contactId, prospectId } = {}) {
  * Fire-and-forget: a navegação acontece por dentro; o await é só pra criar o
  * contato antes de navegar no caminho só-telefone.
  */
-export async function openLeadInbox(navigate, lead = {}, waFallback = null) {
+export async function openLeadInbox(navigate, lead = {}, waFallback = null, { newTab = false } = {}) {
+  // Com newTab, abre o Inbox numa aba nova em vez de trocar de rota — usado onde a
+  // tela atual tem estado que se perderia ao navegar (ex.: o relatório já digitado
+  // no modal de execução da tarefa).
+  const irPara = (path) => {
+    if (newTab) window.open(path, '_blank', 'noopener,noreferrer');
+    else navigate(path);
+  };
+
   const direto = inboxPathForLead(lead);
-  if (direto) { navigate(direto); return; }
+  if (direto) { irPara(direto); return; }
 
   const temTelefone = String(lead.phone || '').replace(/\D/g, '');
   if (temTelefone) {
     try {
       const { ensureContactForDeal } = await import('../services/crmContactsService');
       const contactId = await ensureContactForDeal({ dealId: lead.dealId, phone: lead.phone, name: lead.name });
-      if (contactId) { navigate(`/crm/inbox?contact=${encodeURIComponent(contactId)}`); return; }
+      if (contactId) { irPara(`/crm/inbox?contact=${encodeURIComponent(contactId)}`); return; }
     } catch {
       // cai no fallback externo
     }

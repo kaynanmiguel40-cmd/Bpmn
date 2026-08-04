@@ -8,9 +8,14 @@
 import { useMemo, useState } from 'react';
 import { Search, Plus, Trash2, Play, Image as ImageIcon, Video as VideoIcon, X, Loader2, Send } from 'lucide-react';
 import { CrmModal } from '../ui/CrmModal';
+import { CrmConfirmDialog } from '../ui/CrmConfirmDialog';
 import { useMediaLibrary, useAddMediaLibraryItem, useDeleteMediaLibraryItem } from '../../hooks/useCrmQueries';
 import { useCrmAccess } from '../../hooks/useCrmAccess';
 import { toast } from '../../../../contexts/ToastContext';
+
+// Faz o <video> mostrar o 1º frame como thumbnail: no iOS/Safari, sem apontar um
+// tempo, o quadro fica preto. O fragmento #t=0.1 força o seek pra 0,1s.
+const videoThumb = (url) => (url && !url.includes('#t=') ? `${url}#t=0.1` : url);
 
 const TIPOS = [
   { key: 'all', label: 'Tudo' },
@@ -86,7 +91,7 @@ function MediaCard({ item, onSelect, onDelete, canDelete, sending }) {
         <div className="relative aspect-video bg-slate-100 dark:bg-slate-900 flex items-center justify-center overflow-hidden">
           {isVideo ? (
             <>
-              <video src={item.mediaUrl} preload="metadata" muted playsInline className="w-full h-full object-cover pointer-events-none" />
+              <video src={videoThumb(item.mediaUrl)} preload="metadata" muted playsInline className="w-full h-full object-cover pointer-events-none" />
               <span className="absolute inset-0 flex items-center justify-center">
                 <span className="w-9 h-9 rounded-full bg-black/55 flex items-center justify-center">
                   <Play size={16} className="text-white ml-0.5" />
@@ -115,7 +120,8 @@ function MediaCard({ item, onSelect, onDelete, canDelete, sending }) {
           type="button"
           onClick={() => onDelete(item)}
           title="Remover da biblioteca"
-          className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-500 hover:text-rose-600 shadow opacity-0 group-hover:opacity-100 transition-opacity"
+          /* Sempre visível no toque (onde não há hover); no desktop revela no hover. */
+          className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-500 hover:text-rose-600 shadow opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
         >
           <Trash2 size={14} />
         </button>
@@ -133,6 +139,9 @@ export function MediaLibraryModal({ open, onClose, onSelect, sending }) {
   const [tipo, setTipo] = useState('all');
   const [cat, setCat] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  // Confirmação antes de mandar (é mensagem real pro cliente) e antes de apagar.
+  const [confirmarEnvio, setConfirmarEnvio] = useState(null);
+  const [confirmarDelete, setConfirmarDelete] = useState(null);
 
   const categorias = useMemo(
     () => [...new Set(items.map((i) => i.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -215,14 +224,35 @@ export function MediaLibraryModal({ open, onClose, onSelect, sending }) {
             <MediaCard
               key={item.id}
               item={item}
-              onSelect={onSelect}
-              onDelete={(it) => del.mutate(it.id)}
+              onSelect={setConfirmarEnvio}
+              onDelete={setConfirmarDelete}
               canDelete={isAdmin}
               sending={sending}
             />
           ))}
         </div>
       )}
+
+      <CrmConfirmDialog
+        open={!!confirmarEnvio}
+        variant="info"
+        title="Enviar mídia"
+        message={`Mandar “${confirmarEnvio?.title || 'esta mídia'}” na conversa agora?`}
+        confirmLabel="Enviar"
+        loading={sending}
+        onCancel={() => setConfirmarEnvio(null)}
+        onConfirm={() => { const it = confirmarEnvio; setConfirmarEnvio(null); onSelect?.(it); }}
+      />
+      <CrmConfirmDialog
+        open={!!confirmarDelete}
+        variant="danger"
+        title="Remover da biblioteca"
+        message={`Remover “${confirmarDelete?.title || 'este item'}” da biblioteca? Isso não apaga mensagens já enviadas.`}
+        confirmLabel="Remover"
+        loading={del.isPending}
+        onCancel={() => setConfirmarDelete(null)}
+        onConfirm={() => { del.mutate(confirmarDelete.id); setConfirmarDelete(null); }}
+      />
     </CrmModal>
   );
 }

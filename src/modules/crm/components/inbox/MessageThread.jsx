@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, Component } from 'react';
 import { Link } from 'react-router-dom';
 import { Phone, PhoneCall, ExternalLink, MessageSquare, Lock, AlertTriangle } from 'lucide-react';
 import { registrarTentativaDeLigacao } from '../../services/crmCallsService';
+import { toBrazilE164 } from '../../services/crmMessagesService';
 import { useCrmConversation, useMarkConversationAsRead, useCrmWhatsAppInstances } from '../../hooks/useCrmQueries';
 import { numberIdentity, numberLabel, UNKNOWN_COLOR } from './numberIdentity';
 import { MessageBubble } from './MessageBubble';
@@ -82,7 +83,15 @@ function ThreadHeader({ conversation, numero }) {
   // Ligar via WhatsApp: o inbox (Evolution/Baileys) não FAZ a chamada — abre a
   // conversa no WhatsApp, onde a pessoa toca no ícone de telefone. Registra a
   // tentativa como ligação de canal 'whatsapp' (entra no histórico e nas métricas).
-  const waDigits = conversation.otherPhone ? String(conversation.otherPhone).replace(/\D/g, '') : null;
+  // Normaliza pro E.164 BR (55+DDD+número) — número em formato local geraria um
+  // wa.me quebrado. @lid (id opaco do WhatsApp) não é discável: aí o botão fica
+  // inativo e NÃO registra tentativa de ligação num link inválido.
+  const waDigits = (() => {
+    const n = conversation.otherPhone ? toBrazilE164(conversation.otherPhone) : '';
+    if (!n || n.includes('@')) return null;
+    const d = n.replace(/\D/g, '');
+    return d.length >= 12 ? d : null;
+  })();
   const ligarWhatsApp = () => {
     if (!waDigits) return;
     registrarTentativaDeLigacao({ contactId: conversation.contactId || null, dealId: conversation.dealId || null, phone: conversation.otherPhone, canal: 'whatsapp' });

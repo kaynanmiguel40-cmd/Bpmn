@@ -324,6 +324,10 @@ export function ActivityFormModal({
   };
 
   const fieldClass = (name) => FIELD_CLASS(!!errors[name]);
+  // Evento repetido e emergencial são mutuamente exclusivos: o onSubmit trata a
+  // recorrência ANTES do emergencial, então quando repetindo o rótulo/ação seguem
+  // a recorrência (senão o botão dizia "Criar emergencial" e criava uma série).
+  const repetindo = !isEdit && repeatFreq !== 'none';
 
   return (
     <>
@@ -352,13 +356,13 @@ export function ActivityFormModal({
             Cancelar
           </button>
           <button type="submit" form="activity-form" disabled={isPending}
-            className={emergencial && !isEdit
+            className={emergencial && !repetindo && !isEdit
               ? BTN_PRIMARY.replace('bg-fyness-primary hover:bg-fyness-secondary', 'bg-rose-500 hover:bg-rose-600')
               : BTN_PRIMARY}>
             {isPending && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             {isPending
-              ? (isEdit ? 'Salvando…' : (emergencial ? 'Empurrando o dia…' : 'Criando…'))
-              : (isEdit ? 'Salvar' : (emergencial ? 'Criar emergencial' : 'Criar tarefa'))}
+              ? (isEdit ? 'Salvando…' : (repetindo ? 'Criando eventos…' : (emergencial ? 'Empurrando o dia…' : 'Criando…')))
+              : (isEdit ? 'Salvar' : (repetindo ? 'Criar eventos' : (emergencial ? 'Criar emergencial' : 'Criar tarefa')))}
           </button>
         </>
       }>
@@ -368,9 +372,13 @@ export function ActivityFormModal({
         {!isEdit && (
           <button
             type="button"
-            onClick={() => setEmergencial(v => !v)}
+            onClick={() => setEmergencial(v => { const nv = !v; if (nv) setRepeatFreq('none'); return nv; })}
             aria-pressed={emergencial}
+            disabled={repetindo}
+            title={repetindo ? 'Não se aplica a evento repetido' : undefined}
             className={`w-full flex items-start gap-3 p-3 rounded-xl border text-left transition-colors ${
+              repetindo ? 'opacity-50 pointer-events-none' : ''
+            } ${
               emergencial
                 ? 'border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/20'
                 : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
@@ -457,7 +465,7 @@ export function ActivityFormModal({
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Repetir</label>
                 <select
                   value={repeatFreq}
-                  onChange={(e) => setRepeatFreq(e.target.value)}
+                  onChange={(e) => { const v = e.target.value; setRepeatFreq(v); if (v !== 'none') setEmergencial(false); }}
                   className={FIELD_CLASS()}
                 >
                   <option value="none">Não repete</option>

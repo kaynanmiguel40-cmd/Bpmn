@@ -8,6 +8,10 @@ import { orIlike } from '../lib/searchFilters';
 
 const AVATAR_COLORS = ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#f97316', '#6366f1'];
 
+const soDigitos = (s) => String(s || '').replace(/\D+/g, '');
+// Trava em memória: dois cliques rápidos no mesmo número não criam 2 contatos.
+const contatosEmCriacao = new Set();
+
 // ==================== TRANSFORMADOR ====================
 
 export function dbToCrmContact(row) {
@@ -180,39 +184,60 @@ export async function updateCrmContact(id, updates) {
  * negócio só tem o telefone digitado, sem contato — o Inbox precisa de um contato
  * pra montar a thread e enviar. Depois de vincular, o próximo clique já é direto.
  */
+// Acha um contato existente pelo telefone comparando SÓ os dígitos normalizados
+// (E.164), então casa qualquer formato salvo — "(35) 99228-5099", "35992285099"
+// ou "5535992285099" batem no mesmo contato. Estreita a busca pelos 4 últimos
+// dígitos (consecutivos em qualquer formatação) e confirma no cliente.
+async function acharContatoPorTelefone(e164) {
+  const alvo = soDigitos(e164);
+  if (!alvo) return null;
+  const last4 = alvo.slice(-4);
+  const { data } = await supabase
+    .from('crm_contacts')
+    .select('id, phone')
+    .ilike('phone', `%${last4}`)
+    .is('deleted_at', null)
+    .limit(50);
+  const hit = (data || []).find((c) => toBrazilE164(c.phone) === e164);
+  return hit ? hit.id : null;
+}
+
 export async function ensureContactForDeal({ dealId = null, phone, name = null } = {}) {
   const raw = String(phone || '').trim();
   if (!raw) return null;
-  const e164 = toBrazilE164(raw);
+  const e164 = toBrazilE164(raw) || raw; // sempre guardamos/comparamos normalizado
 
-  // 1) Achar contato existente por telefone (cru ou normalizado) — evita duplicar.
-  let contactId = null;
-  for (const cand of [...new Set([raw, e164].filter(Boolean))]) {
-    const { data } = await supabase
-      .from('crm_contacts')
-      .select('id')
-      .eq('phone', cand)
-      .is('deleted_at', null)
-      .limit(1);
-    if (data?.length) { contactId = data[0].id; break; }
-  }
+  // 1) Achar contato existente por telefone (qualquer formato) — evita duplicar.
+  let contactId = await acharContatoPorTelefone(e164);
 
-  // 2) Criar se não achou.
+  // 2) Criar se não achou — com trava anti clique-duplo (mesma aba).
   if (!contactId) {
-    const session = await supabase.auth.getSession();
-    const userId = session.data?.session?.user?.id || null;
-    const { data, error } = await supabase
-      .from('crm_contacts')
-      .insert({
-        name: (name && name.trim()) || raw,
-        phone: raw,
-        avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-        created_by: userId,
-      })
-      .select('id')
-      .single();
-    if (error) { toast(`Erro ao criar contato: ${error.message}`, 'error'); return null; }
-    contactId = data.id;
+    if (contatosEmCriacao.has(e164)) {
+      // Outro clique já está criando este número: espera e re-busca em vez de duplicar.
+      await new Promise((r) => setTimeout(r, 500));
+      contactId = await acharContatoPorTelefone(e164);
+    }
+    if (!contactId) {
+      contatosEmCriacao.add(e164);
+      try {
+        const session = await supabase.auth.getSession();
+        const userId = session.data?.session?.user?.id || null;
+        const { data, error } = await supabase
+          .from('crm_contacts')
+          .insert({
+            name: (name && name.trim()) || raw,
+            phone: e164, // normalizado: casa com o formato que a Evolution/inbox usam
+            avatar_color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+            created_by: userId,
+          })
+          .select('id')
+          .single();
+        if (error) { toast(`Erro ao criar contato: ${error.message}`, 'error'); return null; }
+        contactId = data.id;
+      } finally {
+        contatosEmCriacao.delete(e164);
+      }
+    }
   }
 
   // 3) Vincular ao negócio SE ainda não tiver contato (o `is('contact_id', null)`

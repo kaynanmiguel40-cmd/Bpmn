@@ -233,6 +233,9 @@ export async function createRecurringCrmActivities(base, recurrence) {
     if (inc) dates.push(new Date(cursor));
     cursor.setDate(cursor.getDate() + 1);
   }
+  // Bateu no teto antes de chegar no "até": a série foi truncada. Sem avisar, o
+  // toast de sucesso mentiria dizendo que cobriu o período todo.
+  const truncou = dates.length >= 366 && cursor <= until;
   if (dates.length === 0) {
     // Ex.: início no sábado + "dias úteis" até domingo, ou "repetir até" antes do
     // início. Sem este aviso o modal fechava como sucesso e nada era criado.
@@ -264,7 +267,11 @@ export async function createRecurringCrmActivities(base, recurrence) {
     toast(`Erro ao criar evento recorrente: ${error.message}`, 'error');
     return 0;
   }
-  toast(`Evento recorrente criado — ${rows.length} ocorrências`, 'success');
+  if (truncou) {
+    toast(`Criei ${rows.length} ocorrências (o máximo). O período é longo demais — não cheguei na data escolhida.`, 'warning');
+  } else {
+    toast(`Evento recorrente criado — ${rows.length} ocorrências`, 'success');
+  }
   return rows.length;
 }
 

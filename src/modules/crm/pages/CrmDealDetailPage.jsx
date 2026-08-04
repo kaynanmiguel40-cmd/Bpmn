@@ -10,7 +10,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { openLeadInbox } from '../utils/inboxLink';
+import { useOpenLeadInbox } from '../hooks/useOpenLeadInbox';
 import {
   ArrowLeft, Pencil, XCircle, Plus, CheckCircle2, CalendarDays,
   Mail, Phone, Smartphone, MessageCircle, Building2, CalendarCheck, Target,
@@ -99,6 +99,7 @@ const TABS = [
 export function CrmDealDetailPage() {
   const { dealId } = useParams();
   const navigate = useNavigate();
+  const { abrir: abrirInboxLead, abrindo: abrindoInbox } = useOpenLeadInbox();
 
   const { data: deal, isLoading } = useCrmDeal(dealId);
   const { data: activities = [] } = useDealActivities(dealId);
@@ -364,16 +365,16 @@ export function CrmDealDetailPage() {
                     {ctPhone && phoneType === 'mobile' && whatsappUrl(ctPhone) && (
                       <button
                         type="button"
-                        onClick={() => openLeadInbox(
-                          navigate,
+                        disabled={abrindoInbox}
+                        onClick={() => abrirInboxLead(
                           { contactId: deal.contactId || deal.contact?.id, phone: ctPhone, name: deal.contact?.name || deal.title, dealId: deal.id },
                           whatsappUrl(ctPhone),
                         )}
                         title="Abrir a conversa no Inbox do CRM"
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-[#25D366]/10 text-[#1faf52] hover:bg-[#25D366]/20 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-[#25D366]/10 text-[#1faf52] hover:bg-[#25D366]/20 disabled:opacity-60 transition-colors"
                       >
                         <MessageCircle size={12} />
-                        WhatsApp
+                        {abrindoInbox ? 'Abrindo…' : 'WhatsApp'}
                       </button>
                     )}
                     {ctEmail && (

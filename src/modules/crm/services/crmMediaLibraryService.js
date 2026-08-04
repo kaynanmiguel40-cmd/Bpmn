@@ -46,6 +46,14 @@ export async function addMediaLibraryItem({ file, title, category = '', descript
   if (!file) { toast('Escolha um arquivo.', 'error'); return null; }
   if (!title?.trim()) { toast('Dê um título ao item.', 'error'); return null; }
 
+  // Rejeita não-mídia ANTES de subir — senão o arquivo vai pro storage e só depois
+  // é recusado, virando órfão. (O tipo definitivo ainda é confirmado no up.)
+  const mime = file.type || '';
+  if (mime && !mime.startsWith('image/') && !mime.startsWith('video/')) {
+    toast('A biblioteca aceita só imagem ou vídeo.', 'error');
+    return null;
+  }
+
   const up = await uploadCrmMedia(file, { prefix: 'library' });
   if (!up.ok) { toast(`Falha no upload: ${up.error}`, 'error'); return null; }
   if (up.mediaType !== 'image' && up.mediaType !== 'video') {

@@ -1579,6 +1579,10 @@ export function useDeleteCrmMessage() {
       } else if (res.revokeReason && /inbound/i.test(res.revokeReason)) {
         // Mensagem do lead: WhatsApp não deixa apagar do telefone dele.
         toast('Apagada no CRM (a mensagem do lead não dá pra remover do WhatsApp dele)', 'success');
+      } else if (res.revokeReason && /nunca foi pro whatsapp|sem id/i.test(res.revokeReason)) {
+        // Nunca chegou ao WhatsApp (falha no envio / rascunho): não há o que revogar
+        // lá — prometer revogação e depois "falhar" só confundiria.
+        toast('Mensagem apagada', 'success');
       } else {
         // Era nossa mas a revogação falhou (fora da janela, erro na Evolution…).
         toast('Apagada no CRM; não consegui remover no WhatsApp', 'warning');

@@ -375,8 +375,11 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
   const isGoogle = ev.source === 'google';
   const isCrm = ev.source === 'crm';
   const Icon = iconFor(ev);
-  const top = (startMin - startH * 60) * GRID_MIN_PX;
-  const height = Math.max(MIN_BLOCK_PX, (endMin - startMin) * GRID_MIN_PX - 2);
+  const top = Math.max(0, (startMin - startH * 60) * GRID_MIN_PX);
+  // endMin < startMin = evento cruzou a meia-noite: em vez de colapsar/renderizar
+  // fora da grade, estende até o fim do dia visível.
+  const effEndMin = endMin > startMin ? endMin : (startH * 60 + 24 * 60);
+  const height = Math.max(MIN_BLOCK_PX, (effEndMin - startMin) * GRID_MIN_PX - 2);
   const short = height < 34;
   const GAP = 2;
   const unit = 100 / cols;
@@ -765,15 +768,19 @@ export default function CrmCalendar({
       stateRef.current = null;
       if (started) {
         const t = hitTest(e.clientX, e.clientY);
+        let reagendou = false;
         if (t) {
           const mv = resolveMove(st.ev, t);
-          if (!mv.sameAsOrig) commit(st.ev, mv);
+          if (!mv.sameAsOrig) { commit(st.ev, mv); reagendou = true; }
         }
-        // Suprime o "click" que o navegador dispara logo após o arrasto (senão
-        // soltar em cima de um item abriria o histórico dele).
-        const suppress = (ce) => { ce.stopPropagation(); ce.preventDefault(); };
-        window.addEventListener('click', suppress, { capture: true, once: true });
-        setTimeout(() => window.removeEventListener('click', suppress, true), 0);
+        // Só suprime o "click" pós-arrasto quando REALMENTE reagendou. Um clique com
+        // leve tremido (passa do limiar mas cai no mesmo slot) deve abrir a tarefa
+        // como um clique normal, não morrer em silêncio.
+        if (reagendou) {
+          const suppress = (ce) => { ce.stopPropagation(); ce.preventDefault(); };
+          window.addEventListener('click', suppress, { capture: true, once: true });
+          setTimeout(() => window.removeEventListener('click', suppress, true), 0);
+        }
       }
       setPreviewMove(null);
       setDrop(null);
@@ -968,7 +975,14 @@ export default function CrmCalendar({
           bloco que já se move pro destino, dá o retorno claro de pra onde vai. */}
       {previewMove && dragCursor && (
         <div
-          style={{ position: 'fixed', left: dragCursor.x + 14, top: dragCursor.y - 12, zIndex: 60, pointerEvents: 'none' }}
+          /* Clamp nas bordas: sem isso o selo (à direita/acima do cursor) é cortado
+             quando o arrasto chega no canto direito/superior da tela. */
+          style={{
+            position: 'fixed',
+            left: Math.min(dragCursor.x + 14, (typeof window !== 'undefined' ? window.innerWidth : 9999) - 132),
+            top: Math.max(8, dragCursor.y - 12),
+            zIndex: 60, pointerEvents: 'none',
+          }}
           className="px-2 py-0.5 rounded-md bg-fyness-primary text-white text-[12px] font-bold shadow-lg tabular-nums whitespace-nowrap"
         >
           {drop?.minutes != null
