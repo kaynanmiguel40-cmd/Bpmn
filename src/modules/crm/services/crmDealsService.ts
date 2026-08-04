@@ -420,6 +420,11 @@ export async function softDeleteCrmDeal(id: string): Promise<boolean> {
   if (!data || data.length === 0) {
     throw new Error('Nenhum negocio foi excluido — provavel bloqueio por RLS ou ID inexistente.');
   }
+  // O negocio saiu, mas a cadencia dele continuava caindo na Fila/Agenda do
+  // vendedor ("tarefa pra um lead excluido"). Cancela os toques pendentes. O
+  // trigger no banco (migration 144) faz o mesmo como rede de seguranca pra
+  // outros caminhos de exclusao — aqui e explicito e retorna na hora.
+  cancelPendingStepsForDeal(id).catch(console.warn);
   return true;
 }
 

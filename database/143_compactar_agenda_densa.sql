@@ -60,6 +60,9 @@ BEGIN
       AND a.assigned_to IS NOT NULL
       AND a.start_date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date
       AND a.start_date <  (now() AT TIME ZONE 'America/Sao_Paulo')::date + interval '30 days'
+      -- Nunca re-empacota tarefa de negócio EXCLUÍDO (senão a compactação mantinha
+      -- as órfãs vivas e ainda por cima num bloco denso todo dia).
+      AND NOT EXISTS (SELECT 1 FROM crm_deals dd WHERE dd.id = a.deal_id AND dd.deleted_at IS NOT NULL)
   ),
   -- intercala os leads: ordena por (toque, lead) -> número de slot por vendedor
   tarefas AS (
