@@ -907,11 +907,35 @@ export async function softDeleteCrmProspect(id) {
 }
 
 /**
+ * Já existe um NEGÓCIO ativo pra este prospect? Dedup ao converter — casa pela
+ * empresa (company_id de CNPJ já existente) ou pelo título (empresa sem CNPJ).
+ * Sem isso, prospectar a mesma lista de novo criava deals DUPLICADOS que voltavam
+ * a cair na cadência do vendedor (o "converted" do prospect só evita repetir
+ * dentro da mesma lista, não entre listas/rodadas diferentes).
+ */
+async function existeDealAtivoParaProspect({ companyId = null, title = '' }) {
+  if (companyId) {
+    const { data } = await supabase
+      .from('crm_deals').select('id')
+      .eq('company_id', companyId).is('deleted_at', null).limit(1);
+    if (data && data.length) return true;
+  }
+  const t = String(title || '').trim();
+  if (t) {
+    const { data } = await supabase
+      .from('crm_deals').select('id')
+      .ilike('title', t).is('deleted_at', null).limit(1);
+    if (data && data.length) return true;
+  }
+  return false;
+}
+
+/**
  * Envia prospects selecionados para um pipeline do CRM.
  * Recebe os objetos completos (camelCase, em memoria) — eles podem vir da API
  * Casa dos Dados (id `api_*`), do fallback local (id `crm_c_*` / `crm_co_*`)
  * ou de linhas reais persistidas em crm_prospects (id `crm_prs_*`).
- * Para cada um: cria empresa, contato e deal.
+ * Para cada um: cria empresa, contato e deal (pulando os que já estão no CRM).
  */
 export async function sendToPipeline(prospects, pipelineId, stageId, opts = {}) {
   if (!prospects?.length) {
@@ -923,6 +947,7 @@ export async function sendToPipeline(prospects, pipelineId, stageId, opts = {}) 
 
   let success = 0;
   let errors = 0;
+  let duplicados = 0;
 
   for (const p of prospects) {
     // Rastreia o que foi criado neste ciclo para permitir rollback em falha
@@ -975,6 +1000,20 @@ export async function sendToPipeline(prospects, pipelineId, stageId, opts = {}) 
           .is('deleted_at', null)
           .maybeSingle();
         if (existing) companyId = existing.id;
+      }
+
+      // Anti-duplicado: se essa empresa/lead já tem negócio ATIVO no CRM, não cria
+      // outro. Marca o prospect como convertido pra sair da lista e segue.
+      if (await existeDealAtivoParaProspect({ companyId, title: merged.companyName })) {
+        if (typeof p.id === 'string' && p.id.startsWith('crm_prs_')) {
+          await supabase
+            .from('crm_prospects')
+            .update({ status: 'converted', updated_at: new Date().toISOString() })
+            .eq('id', p.id);
+        }
+        if (fromGoogleFirst && p.googlePlaceId) markGooglePlaceConverted(p.googlePlaceId);
+        duplicados++;
+        continue;
       }
 
       // Criar empresa se nao existe (mesclando CD + Google)
@@ -1069,9 +1108,12 @@ export async function sendToPipeline(prospects, pipelineId, stageId, opts = {}) 
   if (success > 0) {
     toast(`${success} prospect${success > 1 ? 's' : ''} convertido${success > 1 ? 's' : ''} com sucesso`, 'success');
   }
+  if (duplicados > 0) {
+    toast(`${duplicados} já ${duplicados > 1 ? 'estavam' : 'estava'} no CRM — não dupliquei`, 'info');
+  }
   if (errors > 0) {
     toast(`${errors} prospect${errors > 1 ? 's' : ''} com erro na conversao`, 'error');
   }
 
-  return { success, errors };
+  return { success, errors, duplicados };
 }
