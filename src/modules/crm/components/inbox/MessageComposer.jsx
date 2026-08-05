@@ -56,14 +56,17 @@ function fmtDuration(s) {
 // Guard de tamanho por tipo de midia — pega o arquivo grande ANTES do upload
 // inteiro (senao so descobria o erro depois). NAO sao os limites da Cloud API da
 // Meta (5/16/16/100): a gente manda pela Evolution/Baileys (protocolo do WhatsApp
-// Web), que aguenta bem mais. Video em 64MB (o app so trima em 16MB pra ECONOMIA
-// do remetente; via Evolution passa maior). Doc ja sobe 100MB pela mesma tubulacao
-// base64 -> edge function, entao 64MB de video e o mesmo patamar de infra.
+// Web), que aguenta bem mais. A midia sobe pro bucket e vai por URL (NAO base64
+// pela edge function), entao o teto e a infra: nginx client_max_body_size 200m +
+// storage 200MB. Video em 180MB deixa margem e cobre video de celular/demo (o app
+// so trima em 16MB pra economia; aqui um video de 33MB ja entrega, entao o WhatsApp
+// aceita bem acima disso). Se um video passar do que o WhatsApp aceita, o envio
+// falha com erro VISIVEL no balao (evolution-send grava a mensagem como 'failed').
 const MEDIA_SIZE_LIMITS = {
   image: 5 * 1024 * 1024,
-  video: 64 * 1024 * 1024,
+  video: 180 * 1024 * 1024,
   audio: 16 * 1024 * 1024,
-  document: 100 * 1024 * 1024,
+  document: 180 * 1024 * 1024,
 };
 
 function mediaSizeLimitFor(mediaType) {
@@ -143,7 +146,14 @@ export function MessageComposer({ conversation, instanceName, disabled, placehol
     const mediaType = detectMediaType(file.type);
     const limit = mediaSizeLimitFor(mediaType);
     if (file.size > limit) {
-      toast(`Arquivo maior que o limite do WhatsApp pra esse tipo (${(limit / (1024 * 1024)).toFixed(0)}MB)`, 'error');
+      const mb = (file.size / (1024 * 1024)).toFixed(0);
+      const limMb = (limit / (1024 * 1024)).toFixed(0);
+      toast(
+        mediaType === 'video'
+          ? `Vídeo de ${mb} MB passa do limite de ${limMb} MB — comprima o vídeo ou mande um link. NÃO foi enviado.`
+          : `Arquivo de ${mb} MB passa do limite de ${limMb} MB pra ${mediaType}. NÃO foi enviado.`,
+        'error',
+      );
       return false;
     }
     const preview = (mediaType === 'image' || mediaType === 'video') ? URL.createObjectURL(file) : null;
