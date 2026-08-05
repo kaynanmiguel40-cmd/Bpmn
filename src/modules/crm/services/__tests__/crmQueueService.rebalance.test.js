@@ -221,9 +221,9 @@ describe('planQueueRebalance — reorganizar a fila por prioridade', () => {
     expect(r.movidas.map(m => m.id)).not.toContain('almoco');
   });
 
-  it('o compromisso ocupa o horario dele: a ligacao do mesmo slot desce', async () => {
+  it('o compromisso ocupa o horario dele: a ligacao sai do slot da reuniao', async () => {
     // Consequencia pratica de virar bloqueio — sem isso o plano marcaria a
-    // ligacao em cima da reuniao.
+    // ligacao em cima da reuniao (ambas caem 9:00 por padrao no `linha`).
     state.handler = () => ({
       data: [
         linha({ id: 'reuniao', type: 'meeting', deal_id: 'd9' }),
@@ -234,7 +234,11 @@ describe('planQueueRebalance — reorganizar a fila por prioridade', () => {
     const { movidas } = await planQueueRebalance({ assignee: 'u1' }, seg);
     const lig = movidas.find(m => m.id === 'ligacao');
     expect(lig).toBeTruthy();
-    expect(lig.start.getHours() * 60 + lig.start.getMinutes()).toBeGreaterThanOrEqual(9 * 60 + 30);
+    // A reuniao ocupa 9:00-9:30 (bloqueio). A ligacao vai pro 1o slot LIVRE — com o
+    // expediente comecando 8:10, isso e antes da reuniao (nao mais "desce" pra depois
+    // como quando o dia comecava 9:00). O que importa: nao cai em cima dela.
+    const ligMin = lig.start.getHours() * 60 + lig.start.getMinutes();
+    expect(ligMin < 9 * 60 || ligMin >= 9 * 60 + 30).toBe(true);
   });
 
   it('tarefa avulsa (fora do playbook) nao e remanejada', async () => {
