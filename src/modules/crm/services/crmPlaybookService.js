@@ -267,7 +267,7 @@ async function agendarPassos(dealId, stageId) {
 
   const { data: deal } = await supabase
     .from('crm_deals')
-    .select('owner_id, contact_id, source')
+    .select('owner_id, contact_id, source, contact_email')
     .eq('id', dealId)
     .maybeSingle();
   if (!deal) return 0;
@@ -299,7 +299,7 @@ async function agendarPassos(dealId, stageId) {
     .order('position', { ascending: true });
 
   // So os passos que valem pra ORIGEM deste lead (mesma regra do checklist).
-  const steps = filterStepsForDeal(
+  let steps = filterStepsForDeal(
     (stepRows || []).map(r => ({
       id: r.id, title: r.title, sourceTag: r.source_tag || null,
       dayOffset: r.day_offset || 0, period: r.period || null,
@@ -307,6 +307,21 @@ async function agendarPassos(dealId, stageId) {
     deal.source,
   );
   if (steps.length === 0) return 0;
+
+  // Sem e-mail no lead, passo de e-mail NAO vira tarefa — o vendedor nao teria o
+  // que mandar (leads de prospeccao quase sempre so tem telefone). O e-mail pode
+  // estar no negocio (contact_email) OU no contato vinculado. So consulta o
+  // contato quando ha de fato um passo de e-mail pra decidir.
+  if (steps.some(s => guessType(s.title) === 'email')) {
+    let temEmail = !!(deal.contact_email && deal.contact_email.trim());
+    if (!temEmail && deal.contact_id) {
+      const { data: ct } = await supabase
+        .from('crm_contacts').select('email').eq('id', deal.contact_id).maybeSingle();
+      temEmail = !!(ct?.email && ct.email.trim());
+    }
+    if (!temEmail) steps = steps.filter(s => guessType(s.title) !== 'email');
+    if (steps.length === 0) return 0;
+  }
 
   // Ja agendados antes? Nao duplica.
   const { data: existing } = await supabase
