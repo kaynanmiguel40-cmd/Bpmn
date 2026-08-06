@@ -215,7 +215,7 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
             em celular/tablet, entao sem isto o kanban vira somente-leitura no
             telefone. No desktop nao aparece (arrastar resolve). */}
         {otherStages.length > 0 && (
-          <div className="relative md:hidden" ref={stagePickerRef}>
+          <div className="relative lg:hidden" ref={stagePickerRef}>
             <button
               onClick={(e) => { e.stopPropagation(); setStagePickerOpen(o => !o); }}
               title="Mover de etapa"
@@ -278,7 +278,7 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
       )}
 
       {/* Acoes no hover */}
-      <div className="absolute right-1.5 top-1.5 flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
+      <div className="absolute right-1.5 top-1.5 flex items-center gap-1 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity z-10">
         {whatsappLink && (
           <button
             type="button"
@@ -730,7 +730,7 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
             <button
               onClick={() => onDrop.soltarOrdem(stage.id, filteredDeals.map(d => d.id))}
               title="Voltar a ordenar pelo score — desfaz o que foi arrastado nesta coluna"
-              className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-fyness-primary transition-colors"
+              className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-fyness-primary transition-colors"
             >
               <Repeat size={13} />
             </button>
@@ -738,7 +738,7 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
           <button
             onClick={() => setQuickAddOpen(true)}
             title="Criar negocio rapido"
-            className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500 transition-colors"
+            className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500 transition-colors"
           >
             <Plus size={13} />
           </button>
@@ -894,7 +894,7 @@ function LostDealCard({ deal, onDelete }) {
         </div>
       )}
 
-      <div className="absolute right-1.5 top-1.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+      <div className="absolute right-1.5 top-1.5 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(deal); }}
           title="Excluir"
@@ -1289,7 +1289,7 @@ function PipelineListView({ pipelineData, filterDeals, onMarkLost, onDelete }) {
                     ) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <div className="flex items-center justify-end gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-end gap-0.5 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                       {deal.status === 'open' && (
                         <button
                           onClick={(e) => { e.stopPropagation(); onMarkLost(deal.id); }}
@@ -1911,7 +1911,7 @@ export function CrmPipelinePage() {
       ) : (
         // O scroll horizontal envolve a faixa E as colunas juntas — senao a
         // faixa fica parada enquanto o kanban rola e desalinha das etapas.
-        <div className="overflow-x-auto pb-2 h-[calc(100vh-210px)]">
+        <div className="overflow-x-auto pb-2 h-[calc(100dvh-210px)]">
           <div className="flex flex-col h-full min-w-max">
             <PhaseBands stages={pipelineData?.stages || []} />
             <div className="flex gap-3 flex-1 min-h-0 crm-stagger">

@@ -285,7 +285,7 @@ export function ConversationList({ activeKey, onSelect }) {
   }, [filtered]);
 
   return (
-    <aside className="w-full max-w-sm flex flex-col bg-white dark:bg-[#111b21] border-r border-black/10 dark:border-white/5">
+    <aside className={`${activeKey ? 'hidden md:flex' : 'flex'} w-full md:max-w-sm flex-col bg-white dark:bg-[#111b21] border-r border-black/10 dark:border-white/5`}>
       {/* O titulo saiu da tela mas nao do documento: ocupava uma faixa inteira
           pra dizer o que a tela ja diz, mas continua sendo o cabecalho que
           nomeia esta regiao pra leitor de tela. */}

@@ -75,7 +75,7 @@ function Avatar({ url, name, color, size = 40 }) {
  * nao existia em lugar nenhum da tela — e com as threads separadas por numero,
  * o mesmo lead aparece duas vezes na lista, entao nao da pra deduzir pelo nome.
  */
-function ThreadHeader({ conversation, numero }) {
+function ThreadHeader({ conversation, numero, onBack }) {
   const detailLink = conversation.contactId ? `/crm/contacts/${conversation.contactId}` : null;
   const telHref = conversation.otherPhone ? `tel:+${String(conversation.otherPhone).replace(/\D/g, '')}` : null;
   const semCadastro = !!conversation.prospectId && !conversation.contactId;
@@ -103,7 +103,14 @@ function ThreadHeader({ conversation, numero }) {
       {/* Mesma cor da faixa da linha na lista — e o que ensina o codigo sem
           precisar de legenda. */}
       <span className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: numero.cor }} />
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-2 md:gap-3 min-w-0">
+        {/* Voltar pra lista — só no celular, onde a thread ocupa a tela toda. */}
+        {onBack && (
+          <button type="button" onClick={onBack} title="Voltar"
+            className="md:hidden -ml-1 p-1.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/5 shrink-0">
+            <ChevronLeft size={22} />
+          </button>
+        )}
         <Avatar url={conversation.avatarUrl} name={conversation.otherName || conversation.otherPhone} color={conversation.avatarColor} size={40} />
         <div className="min-w-0">
           <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 truncate leading-tight flex items-center gap-2">
@@ -187,7 +194,7 @@ function ThreadEmpty() {
   );
 }
 
-export function MessageThread({ conversation, children, onReply, onDelete }) {
+export function MessageThread({ conversation, children, onReply, onDelete, onBack }) {
   const scrollRef = useRef(null);
   const markReadMutation = useMarkConversationAsRead();
   const { data: instances = [] } = useCrmWhatsAppInstances();
@@ -251,14 +258,16 @@ export function MessageThread({ conversation, children, onReply, onDelete }) {
   }, [conversation?.contactId, conversation?.prospectId, ultimaId]);
 
   if (!conversation) {
-    return <main className="flex-1 flex flex-col min-w-0"><ThreadEmpty /></main>;
+    // No celular, sem conversa aberta, a THREAD some e a LISTA ocupa a tela (o
+    // placeholder "selecione uma conversa" só faz sentido no split do desktop).
+    return <main className="hidden md:flex flex-1 flex-col min-w-0"><ThreadEmpty /></main>;
   }
 
   let lastDay = null;
 
   return (
-    <main className="flex-1 flex flex-col min-w-0">
-      <ThreadHeader conversation={conversation} numero={numero} />
+    <main className={`${conversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>
+      <ThreadHeader conversation={conversation} numero={numero} onBack={onBack} />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto relative bg-[#efeae2] dark:bg-[#0b141a]">
         {/* papel de parede sutil */}

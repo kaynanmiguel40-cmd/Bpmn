@@ -212,7 +212,7 @@ export function CrmDashboardPage() {
             {todayStr}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="dash-scope" className="text-xs font-medium text-slate-500 dark:text-slate-400">
             Visao
           </label>
@@ -357,7 +357,7 @@ export function CrmDashboardPage() {
         </CrmPanel>
 
         <CrmPanel title="Pipeline" icon={Target} accent="violet">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <MiniStat
               label="Em negociação"
               value={formatCurrency(kpis?.activeDealsValue)}

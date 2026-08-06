@@ -77,7 +77,16 @@ export function PostponeMenu({ onPick, disabled, compact = false }) {
     // Portal + coordenadas de viewport: a fila fica dentro de `.crm-glass`, que
     // tem backdrop-filter — e isso cria bloco de contencao pra position:fixed,
     // prendendo qualquer dropdown dentro do card.
-    if (r) setPos({ top: r.bottom + 4, left: Math.max(8, r.right - 190) });
+    if (r) {
+      // Se não couber abaixo (botão perto do rodapé), abre PRA CIMA — senão o menu
+      // era cortado fora da tela no celular.
+      const H = 300; // altura estimada do menu de opções
+      const abreAcima = r.bottom + H > window.innerHeight && r.top > H;
+      setPos({
+        top: abreAcima ? Math.max(8, r.top - H - 4) : r.bottom + 4,
+        left: Math.max(8, r.right - 190),
+      });
+    }
     setOpen(true);
   };
 

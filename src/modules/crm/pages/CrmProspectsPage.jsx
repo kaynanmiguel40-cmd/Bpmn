@@ -919,10 +919,12 @@ export function CrmProspectsPage() {
   const selectCls = "w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 focus:outline-none transition-all";
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] gap-0">
+    <div className="flex flex-col lg:flex-row lg:h-[calc(100dvh-7rem)] gap-0">
 
       {/* ==================== SIDEBAR FILTROS (Esquerda) — oculta na aba P.O. ==================== */}
-      <aside className={`w-72 shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700/50 flex flex-col overflow-hidden rounded-l-xl ${activeTab === 'po' ? 'hidden' : ''}`}>
+      {/* No celular/tablet empilha em cima (largura cheia, altura limitada); no
+          desktop volta a ser a coluna de 288px à esquerda. */}
+      <aside className={`w-full lg:w-72 lg:shrink-0 max-h-[55vh] lg:max-h-none bg-white dark:bg-slate-900 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-700/50 flex flex-col overflow-hidden rounded-t-xl lg:rounded-t-none lg:rounded-l-xl ${activeTab === 'po' ? 'hidden' : ''}`}>
         {/* Header sidebar */}
         <div className="px-4 py-3.5 border-b border-slate-200 dark:border-slate-700/50 bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800">
           <div className="flex items-center gap-2">

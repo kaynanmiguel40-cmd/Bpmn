@@ -154,13 +154,13 @@ export function CrmLayout() {
           />
           {/* Drawer */}
           <div className="relative w-64 h-full">
-            <CrmSidebar />
+            <CrmSidebar forceExpanded onNavigate={() => setMobileMenuOpen(false)} />
             <button
               onClick={() => setMobileMenuOpen(false)}
-              className="absolute top-3 right-3 p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700"
+              className="absolute top-2.5 right-2.5 p-2 rounded-md text-slate-400 hover:text-white hover:bg-slate-700"
               aria-label="Fechar menu"
             >
-              <X size={18} />
+              <X size={20} />
             </button>
           </div>
         </div>

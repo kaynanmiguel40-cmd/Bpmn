@@ -449,7 +449,7 @@ export function ExecuteTaskModal({
                     phone,
                   });
                 }}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/40 dark:text-sky-300">
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-[13px] font-semibold bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/40 dark:text-sky-300">
                 <Phone size={12} /> Ligar
               </a>
               {/* Ligar POR WHATSAPP e outro canal, nao outro botao pro mesmo.
@@ -472,7 +472,7 @@ export function ExecuteTaskModal({
                     });
                   }}
                   title="Abre a conversa — toque no ícone de telefone lá dentro pra chamar"
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-[13px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300">
                   <Phone size={12} /> Ligar no WhatsApp
                 </a>
               )}
@@ -493,7 +493,7 @@ export function ExecuteTaskModal({
               {wa && (
                 <button type="button" onClick={abrirInbox} disabled={abrindoInbox}
                   title="Abrir a conversa no Inbox do CRM (nova aba) — não conta como tentativa de ligação"
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-60 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-[13px] font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-60 dark:bg-emerald-900/40 dark:text-emerald-300">
                   <MessageCircle size={12} /> {abrindoInbox ? 'Abrindo…' : (isCall ? 'Mensagem' : 'WhatsApp')}
                 </button>
               )}

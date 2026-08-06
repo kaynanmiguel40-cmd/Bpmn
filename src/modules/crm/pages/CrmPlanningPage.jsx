@@ -256,7 +256,7 @@ export function CrmPlanningPage() {
                   <button type="button" onClick={() => requestRemoveStage(i)}
                     disabled={form.stages.length <= 2}
                     title="Remover etapa"
-                    className="p-2 rounded-lg text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 hover:!text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-opacity shrink-0 disabled:hidden">
+                    className="p-2 rounded-lg text-slate-300 dark:text-slate-600 opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:!text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-opacity shrink-0 disabled:hidden">
                     <X size={15} />
                   </button>
                 </div>

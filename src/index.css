@@ -1335,3 +1335,14 @@ iframe[src*="supabase.io"] {
 .notion-editor-content .editor-details > div { flex: 1 1 auto; min-width: 0; }
 .notion-editor-content .editor-details [data-type="detailsSummary"] { font-weight: 600; }
 .notion-editor-content .editor-details:not(.is-open) [data-type="detailsContent"] { display: none; }
+
+/* Zoom automático do iOS Safari: ao focar um input com fonte < 16px, o Safari dá
+   zoom e desalinha o layout. Garante 16px nos controles em telas pequenas — o
+   text-sm/px-* do desktop continua valendo acima de 640px. */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

@@ -121,6 +121,13 @@ export function CrmInboxPage() {
     [setSearchParams]
   );
 
+  // Voltar pra lista (só faz sentido no celular, onde a thread ocupa a tela toda):
+  // limpa a seleção da URL, o que reesconde a thread e mostra a lista.
+  const handleBack = useCallback(
+    () => setSearchParams(new URLSearchParams(), { replace: true }),
+    [setSearchParams]
+  );
+
   // Instancia da conversa ativa = de qual numero ela veio (pra resposta sair
   // pelo numero certo). Sem conversa/sem historico, cai na 1a conectada.
   const activeInstance = useMemo(() => {
@@ -133,11 +140,11 @@ export function CrmInboxPage() {
   const composerDisabled = !activeInstance || activeInstance.status !== 'connected';
 
   return (
-    <div className="-m-4 md:-m-6 flex flex-col h-[calc(100vh-3.5rem)]">
+    <div className="-m-4 md:-m-6 flex flex-col h-[calc(100dvh-3.5rem)]">
       <WhatsAppStatusBanner />
       <div className="flex-1 flex min-h-0">
         <ConversationList activeKey={activeKey} onSelect={handleSelect} />
-        <MessageThread conversation={activeConversation} onReply={setReplyTo} onDelete={setDeletingMessage}>
+        <MessageThread conversation={activeConversation} onReply={setReplyTo} onDelete={setDeletingMessage} onBack={handleBack}>
           {activeConversation && (
             <MessageComposer
               conversation={activeConversation}

@@ -447,7 +447,7 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
           onClick={(e) => { e.stopPropagation(); onCompleteTask?.(ev); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onCompleteTask?.(ev); } }}
           title="Concluir tarefa"
-          className="flex md:hidden md:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-emerald-500 transition-colors cursor-pointer"
+          className="flex lg:hidden lg:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-emerald-500 transition-colors cursor-pointer"
         >
           <CheckCircle2 size={12} />
         </span>
@@ -460,7 +460,7 @@ function GridEventBlock({ item, onClick, onCompleteTask, onEditDelivery, dimmed,
           onClick={(e) => { e.stopPropagation(); onEditDelivery(ev); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEditDelivery(ev); } }}
           title="Editar o que aconteceu"
-          className="flex md:hidden md:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-fyness-primary transition-colors cursor-pointer"
+          className="flex lg:hidden lg:group-hover/blk:flex absolute top-0.5 right-0.5 text-slate-400 hover:text-fyness-primary transition-colors cursor-pointer"
         >
           <Pencil size={12} />
         </span>
@@ -547,7 +547,7 @@ function TimeGrid({ days, eventsByDay, onSelectEvent, onCompleteTask, onEditDeli
   return (
     <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-200/70 dark:border-white/10 overflow-hidden">
       <AllDayStrip days={days} eventsByDay={eventsByDay} onSelectEvent={onSelectEvent} onCompleteTask={onCompleteTask} onEditDelivery={onEditDelivery} selectedLeadKey={selectedLeadKey} showOwner={showOwner} />
-      <div className="grid flex-1 min-h-0" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+      <div className="grid flex-1 min-h-0 overflow-x-auto" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(${days.length > 1 ? '5rem' : '0px'}, 1fr))` }}>
         {days.map((day, i) => {
           const isToday = isSameDay(day, today);
           return (

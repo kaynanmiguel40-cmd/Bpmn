@@ -83,7 +83,7 @@ function filterNavItems(items, canAccess) {
   });
 }
 
-function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact, showAlertDot }) {
+function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact, showAlertDot, onNavigate }) {
   const location = useLocation();
   const isActive = exact
     ? location.pathname === to
@@ -93,6 +93,7 @@ function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact, showAlertDot })
     <NavLink
       to={to}
       end={exact}
+      onClick={onNavigate}
       aria-current={isActive ? 'page' : undefined}
       aria-label={label}
       className={`
@@ -121,7 +122,7 @@ function CrmNavItem({ to, icon: Icon, label, isCollapsed, exact, showAlertDot })
   );
 }
 
-export function CrmSidebar() {
+export function CrmSidebar({ forceExpanded = false, onNavigate } = {}) {
   const navigate = useNavigate();
   const { canAccess } = useCrmAccess();
   const navItems = useMemo(() => filterNavItems(crmNavItems, canAccess), [canAccess]);
@@ -133,6 +134,9 @@ export function CrmSidebar() {
     try { return localStorage.getItem('crm-sidebar-pinned') === 'true'; } catch { return false; }
   });
   const [isCollapsed, setIsCollapsed] = useState(() => !isPinned);
+  // No drawer mobile a sidebar vem EXPANDIDA (com rótulos), sem depender do hover
+  // do mouse — que o toque não tem.
+  const collapsed = forceExpanded ? false : isCollapsed;
 
   const togglePin = () => {
     const next = !isPinned;
@@ -143,16 +147,16 @@ export function CrmSidebar() {
 
   return (
     <aside
-      onMouseEnter={() => { if (!isPinned) setIsCollapsed(false); }}
-      onMouseLeave={() => { if (!isPinned) setIsCollapsed(true); }}
+      onMouseEnter={() => { if (!isPinned && !forceExpanded) setIsCollapsed(false); }}
+      onMouseLeave={() => { if (!isPinned && !forceExpanded) setIsCollapsed(true); }}
       className={`
         flex flex-col bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border-r border-white/60 dark:border-white/10 transition-[width] duration-200 ease-out h-screen sticky top-0
-        ${isCollapsed ? 'w-14' : 'w-48'}
+        ${forceExpanded ? 'w-full' : collapsed ? 'w-14' : 'w-48'}
       `}
     >
       {/* Logo Header */}
       <div className="h-14 flex items-center justify-between px-3 border-b border-white/60 dark:border-white/10">
-        {isCollapsed ? (
+        {collapsed ? (
           <img src={logoFyness} alt="Fyness" className="w-7 h-7 object-contain mx-auto" />
         ) : (
           <>
@@ -186,7 +190,7 @@ export function CrmSidebar() {
           item.divider ? (
             <div key={`div-${idx}`} className="my-2 border-t border-white/60 dark:border-white/10" />
           ) : item.section ? (
-            !isCollapsed && (
+            !collapsed && (
               <div key={`sec-${idx}`} className="pt-3 pb-1 px-2.5">
                 <span className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   {item.section}
@@ -199,7 +203,8 @@ export function CrmSidebar() {
               to={item.to}
               icon={item.icon}
               label={item.label}
-              isCollapsed={isCollapsed}
+              isCollapsed={collapsed}
+              onNavigate={onNavigate}
               exact={item.exact}
               showAlertDot={item.sectionKey === 'inbox' && whatsappHasProblem}
             />

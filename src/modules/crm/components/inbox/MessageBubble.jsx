@@ -241,7 +241,7 @@ export function MessageBubble({ message, onReply, onDelete }) {
         {/* Acoes no hover, ao lado da bolha (estilo WhatsApp): responder + apagar.
             Mensagem ja apagada nao oferece nenhuma das duas. */}
         {!isDeleted && (onReply || onDelete) && (
-          <div className={`absolute top-1 ${isOut ? '-left-9' : '-right-9'} flex flex-col gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity`}>
+          <div className={`absolute top-1 ${isOut ? '-left-9' : '-right-9'} flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
             {onReply && (
               <button
                 type="button"

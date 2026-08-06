@@ -53,7 +53,7 @@ export function PriorityStars({
               e.preventDefault();
               onChange?.(n === value ? 0 : n);
             }}
-            className="leading-none hover:scale-110 transition-transform"
+            className="p-1 leading-none hover:scale-110 transition-transform"
           >
             {star}
           </button>

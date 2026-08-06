@@ -202,7 +202,7 @@ export function TeamActivitiesTable({ range }) {
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Todas as atividades</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">Tudo que o time tem pra fazer e já fez</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
