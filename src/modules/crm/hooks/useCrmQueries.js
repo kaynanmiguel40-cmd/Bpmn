@@ -16,7 +16,7 @@ import { getCrmGoals, createCrmGoal, updateCrmGoal, softDeleteCrmGoal, getGoalsP
 import { getSalesReport, getLearnedProbabilities } from '../services/crmReportsService';
 import { getDailyScoreboard, getDailyBriefing } from '../services/crmDailyService';
 import { getCrmCalendarActivities, getLeadTimeline, getOwnerBusyWindows } from '../services/crmAgendaService';
-import { scheduleMeetingForDeal, agendarRetornoEReancorar, agendarEmergencia } from '../services/crmPlaybookService';
+import { scheduleMeetingForDeal, agendarRetornoEReancorar, agendarEmergencia, scheduleStepsForDeal } from '../services/crmPlaybookService';
 import { getStageWorkSummary } from '../services/crmQueueService';
 import { getDailyReport, getWeeklyReport, getMonthlyReport, listReportOwners, getOwnerReportIndex } from '../services/crmLeadReportsService';
 import { getAutomations, createAutomation, updateAutomation, deleteAutomation, toggleAutomation, getAutomationLogs, getAutomationLogStats } from '../services/crmAutomationsService';
@@ -505,12 +505,25 @@ export function useCreateCrmDeal() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createCrmDeal,
-    onSuccess: () => {
+    onSuccess: (deal, variables) => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
       qc.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       // Invalidar pipeline-specific queries
       qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
       toast('Negocio criado com sucesso', 'success');
+      // Lead novo já entra na cadência da etapa (igual aos outros caminhos de
+      // criação). Idempotente e no-op se a etapa não tiver passo que case com a
+      // origem do lead. Ao terminar com toques criados, atualiza a Fila/Agenda.
+      if (deal?.id && variables?.stageId) {
+        scheduleStepsForDeal(deal.id, variables.stageId)
+          .then((n) => {
+            if (n > 0) {
+              qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+              qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
+            }
+          })
+          .catch(console.warn);
+      }
     },
   });
 }
