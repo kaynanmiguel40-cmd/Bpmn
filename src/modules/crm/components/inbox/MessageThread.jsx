@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, Component } from 'react';
 import { Link } from 'react-router-dom';
-import { Phone, PhoneCall, ExternalLink, MessageSquare, Lock, AlertTriangle } from 'lucide-react';
+import { Phone, PhoneCall, ExternalLink, MessageSquare, Lock, AlertTriangle, ChevronLeft } from 'lucide-react';
 import { registrarTentativaDeLigacao } from '../../services/crmCallsService';
 import { toBrazilE164 } from '../../services/crmMessagesService';
 import { useCrmConversation, useMarkConversationAsRead, useCrmWhatsAppInstances } from '../../hooks/useCrmQueries';

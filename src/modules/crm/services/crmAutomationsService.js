@@ -377,34 +377,45 @@ export async function triggerAutomationsForDeal(deal, stageId) {
 
   const stageName = deal.stage?.name || '';
 
-  // 3. Para cada automação: renderizar, despachar e gravar log com status real
-  const logs = await Promise.all(matched.map(async (a) => {
+  // 3. Para cada automação: renderizar e ou AGENDAR (delay) ou despachar agora.
+  const logs = (await Promise.all(matched.map(async (a) => {
     const renderedSubject = a.subject ? renderTemplate(a.subject, deal) : a.name;
     const renderedBody    = renderTemplate(a.message_content || '', deal);
+    const contactId       = deal.contactId || deal.contact?.id || null;
+    const recipient = a.channel === 'email'
+      ? (deal.contactEmail || deal.contact?.email || '')
+      : (deal.contactPhone || deal.contact?.phone || '');
 
-    let recipient = '';
-    let result = { ok: false, error: 'Canal não implementado' };
+    // Com delay: NÃO dispara agora — grava um disparo pendente. A edge function
+    // `automation-dispatcher` (cron de 1 min) envia quando `dispatch_at` vencer e
+    // grava o log lá. Sem delay: dispara já, como antes.
+    const delay = Number(a.delay_minutes) || 0;
+    if (delay > 0) {
+      const { error: schedErr } = await supabase.from('crm_scheduled_automations').insert({
+        automation_id: a.id,
+        deal_id:       deal.id,
+        deal_title:    deal.title,
+        stage_name:    stageName,
+        channel:       a.channel,
+        recipient,
+        subject:       renderedSubject,
+        body:          renderedBody,
+        media_url:     a.media_url || null,
+        contact_id:    contactId,
+        dispatch_at:   new Date(Date.now() + delay * 60000).toISOString(),
+      });
+      if (schedErr) console.warn('[triggerAutomationsForDeal] agendar falhou:', schedErr.message);
+      return null; // sem log agora — o dispatcher loga ao enviar
+    }
 
+    let result = { ok: false, error: `Canal ${a.channel} não suportado` };
     if (a.channel === 'email') {
-      recipient = deal.contactEmail || deal.contact?.email || '';
-      result = await dispatchEmail({
-        to:      recipient,
-        subject: renderedSubject,
-        body:    renderedBody,
-      });
+      result = await dispatchEmail({ to: recipient, subject: renderedSubject, body: renderedBody });
     } else if (a.channel === 'whatsapp') {
-      recipient = deal.contactPhone || deal.contact?.phone || '';
       result = await dispatchWhatsApp({
-        phone:        recipient,
-        content:      renderedBody,
-        mediaUrl:     a.media_url || null,
-        contactId:    deal.contactId || deal.contact?.id || null,
-        dealId:       deal.id,
-        automationId: a.id,
+        phone: recipient, content: renderedBody, mediaUrl: a.media_url || null,
+        contactId, dealId: deal.id, automationId: a.id,
       });
-    } else {
-      recipient = deal.contactPhone || deal.contactName || '';
-      result = { ok: false, error: `Canal ${a.channel} não suportado` };
     }
 
     return {
@@ -419,8 +430,10 @@ export async function triggerAutomationsForDeal(deal, stageId) {
       error_message:    result.ok ? null : result.error,
       sent_at:          new Date().toISOString(),
     };
-  }));
+  }))).filter(Boolean);
 
-  const { error } = await supabase.from('crm_automation_logs').insert(logs);
-  if (error) console.warn('[triggerAutomationsForDeal] erro ao gravar logs:', error);
+  if (logs.length) {
+    const { error } = await supabase.from('crm_automation_logs').insert(logs);
+    if (error) console.warn('[triggerAutomationsForDeal] erro ao gravar logs:', error);
+  }
 }
