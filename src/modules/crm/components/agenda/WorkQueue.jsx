@@ -54,7 +54,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
   const [plano, setPlano] = useState(null); // preview do adiar em lote
   const [rebal, setRebal] = useState(null);  // preview da reorganizacao
   const batch = useBatchPostpone();
-  const rebalance = useQueueRebalance();
+  const rebalance = useQueueRebalance(visao);
   // A cor mora em team_members, nao na atividade — a linha so guarda o nome.
   // A lista vem do PAI, que ja a carregou pro seletor: buscar de novo aqui
   // duplicaria a consulta e amarraria esta tela a mais uma fonte de dados.

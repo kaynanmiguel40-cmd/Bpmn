@@ -255,12 +255,18 @@ export function useBatchPostpone() {
  * `planejar` devolve o que MUDA pra ela conferir, `aplicar` grava. Isto mexe na
  * agenda inteira de uma vez; nunca grava sem confirmacao.
  */
-export function useQueueRebalance() {
+export function useQueueRebalance(visao = null) {
   const qc = useQueryClient();
   const { profile } = useProfile();
+  // Reorganiza a fila de QUEM ESTÁ SENDO VISTO — não a do usuário logado. Sem isto,
+  // o admin vendo a fila do Kaua/Lhorena e clicando reorganizava a PRÓPRIA fila
+  // (vazia) e o botão parecia quebrado ("0 tarefas"). `visao.uid` é o auth_user_id,
+  // o mesmo id por que a fila é filtrada (assigned_to). Sem visão, é a minha.
+  const assignee     = visao?.uid   || profile?.id   || null;
+  const assigneeName = visao?.uname || profile?.name || null;
 
   const planejar = useMutation({
-    mutationFn: () => planQueueRebalance({ assignee: profile?.id || null, assigneeName: profile?.name || null }),
+    mutationFn: () => planQueueRebalance({ assignee, assigneeName }),
     onError: (err) => toast(`Não consegui calcular a reorganização: ${err.message}`, 'error'),
   });
 
