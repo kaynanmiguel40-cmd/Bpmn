@@ -406,7 +406,18 @@ export async function updateCrmDeal(id: string, updates: Record<string, unknown>
   } else if (next.status === 'open') {
     next.closedAt = null; // reabrir limpa o fechamento
   }
-  return dealService.update(id, next);
+  const result = await dealService.update(id, next);
+  // E-mail preenchido AGORA: reagenda os passos de e-mail da etapa que foram
+  // pulados por falta de e-mail (agendarPassos ignora passo de e-mail sem e-mail).
+  // scheduleStepsForDeal é idempotente — não duplica os toques já criados. Cobre o
+  // caso "liguei, o lead passou o e-mail, salvei" — antes o follow-up por e-mail
+  // nunca nascia na Agenda.
+  const emailNovo = next.contactEmail as string | undefined;
+  const stageId = (result as { stageId?: string } | null)?.stageId;
+  if (result && emailNovo && String(emailNovo).trim() && stageId) {
+    scheduleStepsForDeal(id, stageId).catch(console.warn);
+  }
+  return result;
 }
 
 export async function softDeleteCrmDeal(id: string): Promise<boolean> {

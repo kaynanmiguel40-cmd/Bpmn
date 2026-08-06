@@ -272,11 +272,20 @@ export function createCRUDService<TDomain = unknown, TRow extends OfflineRow = O
 
     if (error) {
       console.error(`[${table}] CREATE erro:`, error.message, error.code, error.details, error.hint);
+      // Erro do SERVIDOR (RLS, constraint, coluna faltando) TEM código. Não é
+      // offline: mascarar como "Salvo localmente" criava registro fantasma que
+      // nunca sincroniza E ainda fingia sucesso. Propaga pra falhar de verdade
+      // (o mutation cai no onError; loops de import/prospecção já têm try/catch).
+      if (error.code) {
+        toast(`Não foi possível salvar: ${error.message}`, 'error');
+        throw new Error(error.message);
+      }
+      // Sem código = a requisição não completou (rede). Aí sim salva local.
       const localId = generateLocalId(idPrefix);
       const newItem = { id: localId, ...snakeData, created_at: now, updated_at: now } as unknown as TRow;
       await putOffline(table, newItem);
       await markPendingSync(table, newItem.id, 'upsert');
-      toast(`Salvo localmente: ${error.message || 'sem conexao'}`, 'warning');
+      toast('Salvo localmente (sem conexão) — sincroniza quando a internet voltar', 'warning');
       return apply(newItem);
     }
 
@@ -310,17 +319,23 @@ export function createCRUDService<TDomain = unknown, TRow extends OfflineRow = O
 
     if (error) {
       console.error(`[${table}] UPDATE erro:`, error.message, error.code, error.details, error.hint);
+      // Erro do SERVIDOR (RLS/constraint/coluna) TEM código: não mascara como
+      // "salvo localmente" nem finge sucesso — propaga. Só cai no offline quando é
+      // falha de REDE (sem código, a requisição não completou).
+      if (error.code) {
+        toast(`Não foi possível salvar: ${error.message}`, 'error');
+        throw new Error(error.message);
+      }
       const local = await getOffline<TRow>(table);
       const item = local.find(r => r.id === id);
       if (item) {
         const updated = { ...item, ...updateData } as TRow;
         await putOffline(table, updated);
         await markPendingSync(table, id, 'upsert');
+        toast('Salvo localmente (sem conexão) — sincroniza quando a internet voltar', 'warning');
         return apply(updated);
       }
-      // Sem copia local nao ha fallback offline: precisa propagar. Resolvendo
-      // com null aqui o onSuccess das mutations disparava do mesmo jeito e o
-      // usuario via toast de sucesso com a edicao perdida.
+      // Sem copia local nao ha fallback offline: propaga.
       throw error;
     }
 
