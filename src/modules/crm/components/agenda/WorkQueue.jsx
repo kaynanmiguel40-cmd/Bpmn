@@ -25,6 +25,7 @@ import {
 import { QueueTaskRow } from './QueueTaskRow';
 import { NowCard } from './NowCard';
 import { useWorkQueue, useStalledLeads, useBatchPostpone, useQueueRebalance } from '../../hooks/useWorkQueue';
+import { useProfile } from '../../../../hooks/useProfile';
 
 function SectionTitle({ icon: Icon, children, count, tone = 'default', right }) {
   const toneCls = tone === 'danger'
@@ -48,12 +49,18 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
   // Vendo a fila de outra pessoa (ou a de todos), cada linha precisa dizer de
   // QUEM e a tarefa — senao da pra concluir a de outro sem perceber.
   const showOwner = !!(visao?.all || visao?.uid);
-  const { data: stalled = [] } = useStalledLeads(visao?.memberId || null);
+  const { profile } = useProfile();
+  // Leads parados = os de QUEM está sendo visto. Sem visão (minha fila), escopa
+  // pelo MEU team_members.id (dono do negócio) — senão mostrava os parados da
+  // empresa inteira. `visao.all` (todos) fica sem escopo de propósito.
+  const meuMemberId = membros.find((m) => m.authUserId === profile?.id)?.id || null;
+  const stalledMemberId = visao?.all ? null : (visao?.memberId || meuMemberId);
+  const { data: stalled = [] } = useStalledLeads(stalledMemberId);
   const [showAllOverdue, setShowAllOverdue] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [plano, setPlano] = useState(null); // preview do adiar em lote
   const [rebal, setRebal] = useState(null);  // preview da reorganizacao
-  const batch = useBatchPostpone();
+  const batch = useBatchPostpone(visao);
   const rebalance = useQueueRebalance(visao);
   // A cor mora em team_members, nao na atividade — a linha so guarda o nome.
   // A lista vem do PAI, que ja a carregou pro seletor: buscar de novo aqui

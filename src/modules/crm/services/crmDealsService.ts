@@ -470,6 +470,14 @@ export async function moveDealToStage(dealId: string, stageId: string): Promise<
     updatePayload.closed_at = null;
   }
 
+  // Card que muda de coluna entra na nova SEM a fixação manual da antiga — senão
+  // carrega a `position` da coluna anterior e aparece "Fixado" numa etapa onde
+  // ninguém o fixou, sem reordenar pelo score.
+  if ((current as { stage_id?: string } | null)?.stage_id !== stageId) {
+    updatePayload.position = null;
+    updatePayload.position_manual = false;
+  }
+
   const { data, error } = await supabase
     .from('crm_deals')
     .update(updatePayload)
@@ -689,6 +697,18 @@ async function cloneDealToGeralAsClient(dealId: string): Promise<void> {
   const gStages = (g.crm_pipeline_stages || []).slice().sort((a, b) => a.position - b.position);
   const winStage = gStages.find(s => s.is_win_stage) || gStages[gStages.length - 1];
   if (!winStage) return;
+
+  // Não duplica: re-arrastar pra "Reativou" (ou reentrar na etapa) criava vários
+  // Clientes ganhos no Geral pro mesmo lead, inflando faturamento. Se já existe um
+  // clone deste lead no Geral, não cria de novo.
+  const { data: jaClonado } = await supabase
+    .from('crm_deals')
+    .select('id')
+    .eq('origin_deal_id', dealId)
+    .eq('pipeline_id', g.id)
+    .is('deleted_at', null)
+    .limit(1);
+  if (jaClonado && jaClonado.length > 0) return;
 
   const nowIso = new Date().toISOString();
   const clone: Record<string, unknown> = { ...(orig as Record<string, unknown>) };

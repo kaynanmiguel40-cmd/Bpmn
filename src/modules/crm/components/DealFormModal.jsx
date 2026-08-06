@@ -380,9 +380,12 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
     }
   }, [open, pipelines, deal, defaultPipelineId, defaultStageId, setValue, getValues]);
 
-  // Auto-select first stage when pipeline changes (novo deal)
+  // Reajusta a etapa quando a pipeline muda (novo OU edição). O `stillValid`
+  // protege a etapa atual — só reseta se ela não pertence à pipeline escolhida.
+  // Sem isto, editar e trocar a pipeline salvava o negócio com etapa de OUTRA
+  // pipeline (o <select> ficava vazio mas o valor antigo permanecia no form).
   useEffect(() => {
-    if (selectedPipelineId && !isEdit) {
+    if (selectedPipelineId) {
       const pipelineStages = pipelines?.find(p => p.id === selectedPipelineId)?.stages || [];
       if (pipelineStages.length > 0) {
         const current = getValues('stageId');
@@ -390,7 +393,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
         if (!stillValid) setValue('stageId', pipelineStages[0].id);
       }
     }
-  }, [selectedPipelineId, pipelines, setValue, getValues, isEdit]);
+  }, [selectedPipelineId, pipelines, setValue, getValues]);
 
   const onSubmit = async (data) => {
     let companyId = data.companyId || null;

@@ -27,6 +27,11 @@ const activityFormSchema = crmActivitySchema
     if (!INSTANT_ACTIVITY_TYPES.includes(data.type) && !data.endDate) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'Informe a hora em que a tarefa termina' });
     }
+    // Entrega antes/igual ao Início = duração negativa — vazava pro Google Calendar
+    // como evento invertido.
+    if (data.endDate && data.startDate && new Date(data.endDate) <= new Date(data.startDate)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'A entrega tem que ser depois do início' });
+    }
   });
 import {
   useCrmContacts,

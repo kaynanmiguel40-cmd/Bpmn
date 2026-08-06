@@ -227,12 +227,15 @@ export function useStalledLeads(memberId = null) {
  * Adiar em lote, em duas etapas: `planejar` devolve o plano pra ela CONFERIR,
  * `aplicar` grava. Nunca grava direto — ver planBatchPostpone.
  */
-export function useBatchPostpone() {
+export function useBatchPostpone(visao = null) {
   const qc = useQueryClient();
   const { profile } = useProfile();
+  // Planeja contra o calendário de QUEM ESTÁ SENDO VISTO (não o do admin logado),
+  // igual ao Reorganizar. Sem visão, é a minha.
+  const assignee = visao?.uid || profile?.id || null;
 
   const planejar = useMutation({
-    mutationFn: ({ tasks }) => planBatchPostpone(tasks, profile?.id || null),
+    mutationFn: ({ tasks }) => planBatchPostpone(tasks, assignee),
     onError: (err) => toast(`Não consegui calcular o adiamento: ${err.message}`, 'error'),
   });
 

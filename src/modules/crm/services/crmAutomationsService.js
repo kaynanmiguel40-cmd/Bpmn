@@ -262,7 +262,17 @@ function normalizePhone(raw) {
  * Requer: phone, content, contactId (ou prospectId — automation sempre
  * disparada por deal, então usa contactId).
  */
-async function dispatchWhatsApp({ phone, content, contactId, dealId, automationId }) {
+// A automação guarda só a URL da mídia (sem tipo). Infere o canal pela extensão
+// pra Evolution escolher o endpoint certo (áudio tem endpoint próprio).
+function mediaTypeFromUrl(url) {
+  const ext = (String(url || '').split('?')[0].split('.').pop() || '').toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return 'image';
+  if (['mp4', 'mov', 'webm', 'avi', 'mkv'].includes(ext)) return 'video';
+  if (['mp3', 'm4a', 'ogg', 'wav', 'opus', 'aac'].includes(ext)) return 'audio';
+  return 'document';
+}
+
+async function dispatchWhatsApp({ phone, content, mediaUrl, contactId, dealId, automationId }) {
   if (!phone) return { ok: false, error: 'Destinatário sem telefone cadastrado' };
   if (!contactId) return { ok: false, error: 'Deal sem contato vinculado (necessário pra logar a mensagem)' };
   const normalized = normalizePhone(phone);
@@ -273,6 +283,11 @@ async function dispatchWhatsApp({ phone, content, contactId, dealId, automationI
       body: {
         phone:        normalized,
         content,
+        // Mídia da automação (imagem/vídeo/áudio): sem isto, o dispatch mandava só
+        // texto e a mídia era descartada em silêncio.
+        mediaUrl:     mediaUrl || undefined,
+        mediaType:    mediaUrl ? mediaTypeFromUrl(mediaUrl) : undefined,
+        mediaCaption: mediaUrl ? (content || undefined) : undefined,
         contactId,
         dealId,
         automationId,
@@ -382,6 +397,7 @@ export async function triggerAutomationsForDeal(deal, stageId) {
       result = await dispatchWhatsApp({
         phone:        recipient,
         content:      renderedBody,
+        mediaUrl:     a.media_url || null,
         contactId:    deal.contactId || deal.contact?.id || null,
         dealId:       deal.id,
         automationId: a.id,

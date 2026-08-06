@@ -34,7 +34,11 @@ const DEBT_TYPES = ['call', 'message', 'email', 'follow_up', 'task'];
 
 // Teto do lote de atrasadas. Acima disso a tela nao ajuda mais ninguem — o
 // excedente vira "toques frios" (ver COLD_AFTER_DAYS em utils/stepLabel).
-const OVERDUE_LIMIT = 80;
+// Teto do fetch de atrasadas. É global (o filtro de dono é client-side, por causa
+// da cadência legada), então precisa cobrir a soma de TODOS os vendedores — senão
+// as atrasadas de um vendedor podiam cair fora do teto e sumir sem aviso. 400 dá
+// folga larga pra escala atual (fix idealmente é filtrar por dono no servidor).
+const OVERDUE_LIMIT = 400;
 
 export function startOfToday(now = new Date()) {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());

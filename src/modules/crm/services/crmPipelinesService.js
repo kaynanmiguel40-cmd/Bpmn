@@ -79,9 +79,11 @@ export async function getCrmPipelineWithDeals(pipelineId) {
     .in('status', ['open', 'lost', 'won'])
     .is('deleted_at', null)
     // Lead GERADO a partir de outro (origin_deal_id) nao vira card proprio no
-    // quadro: ele mora DENTRO do lead pai. Aparece na ficha do pai e no historico
-    // compartilhado, e a cadencia dele segue na Fila — so nao polui a pipeline.
-    .is('origin_deal_id', null)
+    // quadro: ele mora DENTRO do lead pai. EXCECAO: o clone de REATIVACAO (Cliente
+    // GANHO no Geral, vindo de um lead da Nurturing) tambem tem origin_deal_id, mas
+    // PRECISA aparecer — senao o cliente reativado some do quadro. Por isso o `won`
+    // passa mesmo com origem.
+    .or('origin_deal_id.is.null,status.eq.won')
     .order('created_at', { ascending: false });
 
   if (dError) {

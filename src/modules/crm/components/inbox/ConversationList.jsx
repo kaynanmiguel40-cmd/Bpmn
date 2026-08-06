@@ -209,11 +209,18 @@ export function ConversationList({ activeKey, onSelect }) {
   // O criterio e ESTAR CONECTADO, nao ter poucas mensagens: numero novo comeca
   // com zero e precisa aparecer no primeiro dia.
   const instanciasVivas = useMemo(() => {
-    const vivas = (instances || []).filter((i) => i.status === 'connected' && i.phoneNumber);
-    // Se nenhuma esta conectada, mostra todas: melhor barra imperfeita que
-    // uma tela sem nenhum jeito de trocar de numero.
+    // Além das conectadas, inclui número DESCONECTADO que ainda tem conversa: se a
+    // instância cai, as mensagens dela não podem sumir da lista sem nenhum jeito de
+    // alcançá-las (o banner de status já avisa que caiu). Ler continua; enviar fica
+    // bloqueado pelo composer.
+    const comConversa = new Set((enriched || []).map((c) => c.instancePhone).filter(Boolean));
+    const vivas = (instances || []).filter(
+      (i) => i.phoneNumber && (i.status === 'connected' || comConversa.has(i.phoneNumber)),
+    );
+    // Se nada casar, mostra todas: melhor barra imperfeita que uma tela sem jeito
+    // de trocar de numero.
     return vivas.length > 0 ? vivas : (instances || []);
-  }, [instances]);
+  }, [instances, enriched]);
   const numbers = useMemo(() => numberIdentity(instanciasVivas), [instanciasVivas]);
   const numberTabs = numbers.order;
 
@@ -255,13 +262,16 @@ export function ConversationList({ activeKey, onSelect }) {
   const numeroValido = filterPhone && numberTabs.some((t) => t.phone === filterPhone);
   const selectedPhone = numeroValido ? filterPhone : numeroPadrao;
 
-  // Recorte por numero, antes dos demais filtros.
+  // Recorte por numero, antes dos demais filtros. BUSCA ignora o recorte: um lead
+  // que só conversou no OUTRO número tem que aparecer na busca, senão volta
+  // "Nenhuma conversa encontrada" mesmo existindo.
+  const buscando = !!debouncedSearch.trim();
   const byNumber = useMemo(() => {
-    if (!selectedPhone) return enriched;
+    if (buscando || !selectedPhone) return enriched;
     // Mantem conversas de instancias ainda sem phone_number sincronizado visiveis
     // em qualquer aba — senao elas somem sem nenhuma UI pra limpar o filtro.
     return enriched.filter((c) => !c.instancePhone || c.instancePhone === selectedPhone);
-  }, [enriched, selectedPhone]);
+  }, [enriched, selectedPhone, buscando]);
 
   const filtered = useMemo(() => {
     let list = byNumber;
