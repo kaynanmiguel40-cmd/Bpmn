@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { QueueTaskRow } from './QueueTaskRow';
 import { NowCard } from './NowCard';
+import { ReassignTaskModal } from './ReassignTaskModal';
 import { useWorkQueue, useStalledLeads, useBatchPostpone, useQueueRebalance } from '../../hooks/useWorkQueue';
 import { useProfile } from '../../../../hooks/useProfile';
 
@@ -60,6 +61,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
   const [showDone, setShowDone] = useState(false);
   const [plano, setPlano] = useState(null); // preview do adiar em lote
   const [rebal, setRebal] = useState(null);  // preview da reorganizacao
+  const [reassigning, setReassigning] = useState(null); // tarefa sendo passada pra outro vendedor
   const batch = useBatchPostpone(visao);
   const rebalance = useQueueRebalance(visao);
   // A cor mora em team_members, nao na atividade — a linha so guarda o nome.
@@ -222,7 +224,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
         <>
           {q.now && (
             <div className="mb-5">
-              <NowCard task={q.now} onExecute={onExecute} onPostpone={onPostpone} onOpenLead={onOpenLead} busy={busy} />
+              <NowCard task={q.now} onExecute={onExecute} onPostpone={onPostpone} onReassign={setReassigning} onOpenLead={onOpenLead} busy={busy} />
             </div>
           )}
 
@@ -310,7 +312,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
                       </div>
                       <div className="space-y-1.5">
                         {tarefas.map(t => (
-                          <QueueTaskRow key={t.id} task={comCor(t)} onExecute={onExecute} onPostpone={onPostpone} showOwner={showOwner} busy={busy} />
+                          <QueueTaskRow key={t.id} task={comCor(t)} onExecute={onExecute} onPostpone={onPostpone} onReassign={setReassigning} showOwner={showOwner} busy={busy} />
                         ))}
                       </div>
                     </div>
@@ -336,7 +338,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
                   </div>
                   <div className="space-y-1.5 mb-3">
                     {q.manha.filter(t => t.id !== nowId).map(t => (
-                      <QueueTaskRow key={t.id} task={comCor(t)} onExecute={onExecute} onPostpone={onPostpone} showTime showOwner={showOwner} busy={busy} />
+                      <QueueTaskRow key={t.id} task={comCor(t)} onExecute={onExecute} onPostpone={onPostpone} onReassign={setReassigning} showTime showOwner={showOwner} busy={busy} />
                     ))}
                   </div>
                 </>
@@ -348,7 +350,7 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
                   </div>
                   <div className="space-y-1.5">
                     {q.tarde.filter(t => t.id !== nowId).map(t => (
-                      <QueueTaskRow key={t.id} task={comCor(t)} onExecute={onExecute} onPostpone={onPostpone} showTime showOwner={showOwner} busy={busy} />
+                      <QueueTaskRow key={t.id} task={comCor(t)} onExecute={onExecute} onPostpone={onPostpone} onReassign={setReassigning} showTime showOwner={showOwner} busy={busy} />
                     ))}
                   </div>
                 </>
@@ -441,6 +443,13 @@ export function WorkQueue({ onExecute, onPostpone, onOpenLead, onGoToCalendar, b
           </span>
         </div>
       )}
+
+      <ReassignTaskModal
+        open={!!reassigning}
+        task={reassigning}
+        membros={membros}
+        onClose={() => setReassigning(null)}
+      />
     </div>
   );
 }

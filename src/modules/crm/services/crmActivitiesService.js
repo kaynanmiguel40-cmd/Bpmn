@@ -578,3 +578,44 @@ export async function completeCrmActivity(id, { input = '', output = '', contact
   const result = dbToCrmActivity(data);
   return result;
 }
+
+/**
+ * Passa UMA tarefa pra outro vendedor. `assigned_to` aponta pro auth_user_id (não
+ * pro team_members.id) — id diferente pra mesma pessoa; usar o errado deixa a
+ * tarefa fora da Agenda de quem recebeu.
+ */
+export async function reassignActivity({ activityId, toAuthUserId, toName }) {
+  if (!activityId || !toAuthUserId) return false;
+  const { error } = await supabase
+    .from('crm_activities')
+    .update({ assigned_to: toAuthUserId, assigned_to_name: toName || null, updated_at: new Date().toISOString() })
+    .eq('id', activityId);
+  if (error) { toast(`Erro ao passar a tarefa: ${error.message}`, 'error'); return false; }
+  return true;
+}
+
+/**
+ * Passa o LEAD inteiro pra outro vendedor: o dono do negócio (crm_deals.owner_id =
+ * team_members.id) E todas as tarefas pendentes dele (crm_activities.assigned_to =
+ * auth_user_id). Evita "dono dividido". Precisa dos DOIS ids da pessoa que recebe.
+ */
+export async function reassignLead({ dealId, toMemberId, toAuthUserId, toName }) {
+  if (!dealId || !toAuthUserId) return false;
+  const nowIso = new Date().toISOString();
+  if (toMemberId) {
+    const { error: e1 } = await supabase
+      .from('crm_deals')
+      .update({ owner_id: toMemberId, updated_at: nowIso })
+      .eq('id', dealId)
+      .is('deleted_at', null);
+    if (e1) { toast(`Erro ao passar o lead: ${e1.message}`, 'error'); return false; }
+  }
+  const { error: e2 } = await supabase
+    .from('crm_activities')
+    .update({ assigned_to: toAuthUserId, assigned_to_name: toName || null, updated_at: nowIso })
+    .eq('deal_id', dealId)
+    .eq('completed', false)
+    .is('deleted_at', null);
+  if (e2) { toast(`Erro ao passar as tarefas do lead: ${e2.message}`, 'error'); return false; }
+  return true;
+}

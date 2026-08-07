@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getOverdueQueue, getTodayQueue, getUpcomingCounts, getStalledLeads, snoozeActivity, getNextStageForDeal, planBatchPostpone, applyBatchPostpone, getNextActivityForLead, getLeadNotes, planQueueRebalance, applyQueueRebalance,
 } from '../services/crmQueueService';
+import { reassignActivity, reassignLead } from '../services/crmActivitiesService';
 import { isCold, COLD_AFTER_DAYS } from '../utils/stepLabel';
 import { namesMatch } from '../../../lib/kpiUtils';
 import { useProfile } from '../../../hooks/useProfile';
@@ -298,5 +299,29 @@ export function useSnoozeActivity() {
       qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
     },
     onError: (err) => toast(`Não consegui adiar: ${err.message}`, 'error'),
+  });
+}
+
+/**
+ * Passar uma tarefa (ou o lead inteiro) pra outro vendedor, da própria Agenda.
+ * `toMember` = { authUserId, id, name } do vendedor que recebe.
+ */
+export function useReassignTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ scope, task, toMember }) =>
+      scope === 'lead' && task?.dealId
+        ? reassignLead({ dealId: task.dealId, toMemberId: toMember.id, toAuthUserId: toMember.authUserId, toName: toMember.name })
+        : reassignActivity({ activityId: task.id, toAuthUserId: toMember.authUserId, toName: toMember.name }),
+    onSuccess: (ok, { scope, toMember }) => {
+      if (!ok) return;
+      qc.invalidateQueries({ queryKey: workQueueKeys.all });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['agendaCrmActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'deals'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      toast(scope === 'lead' ? `Lead passado pra ${toMember.name}` : `Tarefa passada pra ${toMember.name}`, 'success');
+    },
+    onError: (err) => toast(`Não consegui passar: ${err.message}`, 'error'),
   });
 }

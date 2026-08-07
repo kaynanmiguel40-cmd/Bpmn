@@ -7,7 +7,7 @@
  * abrir mais nada.
  */
 
-import { Phone, MessageCircle, Mail, AlertTriangle, ExternalLink, CheckSquare } from 'lucide-react';
+import { Phone, MessageCircle, Mail, AlertTriangle, ExternalLink, CheckSquare, UserCheck } from 'lucide-react';
 import { stepChannel } from '../../services/crmScheduling';
 import { taskHeadline, taskDetail, relativeDayLabel, isOverdue, formatWhen } from '../../utils/stepLabel';
 import { useOpenLeadInbox } from '../../hooks/useOpenLeadInbox';
@@ -30,7 +30,7 @@ function whatsappUrl(val) {
   return `https://wa.me/${c.startsWith('55') && c.length >= 12 ? c : `55${c}`}`;
 }
 
-export function NowCard({ task, onExecute, onPostpone, onOpenLead, busy }) {
+export function NowCard({ task, onExecute, onPostpone, onOpenLead, onReassign, busy }) {
   const { abrir, abrindo } = useOpenLeadInbox();
   if (!task) return null;
   const canal = stepChannel(task.title);
@@ -126,6 +126,17 @@ export function NowCard({ task, onExecute, onPostpone, onOpenLead, busy }) {
           >
             Executar tarefa
           </button>
+          {onReassign && (
+            <button
+              type="button"
+              onClick={() => onReassign(task)}
+              disabled={busy}
+              title="Passar pra outro vendedor"
+              className="shrink-0 min-h-[48px] px-3 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-fyness-primary disabled:opacity-50"
+            >
+              <UserCheck size={18} />
+            </button>
+          )}
           <PostponeMenu disabled={busy} onPick={(d) => onPostpone?.(task, d)} />
         </div>
       </div>

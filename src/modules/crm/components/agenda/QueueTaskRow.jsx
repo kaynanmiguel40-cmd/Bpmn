@@ -6,7 +6,7 @@
  * tudo que se pode fazer esta visivel o tempo todo, inclusive no celular.
  */
 
-import { Phone, MessageCircle, Mail, Users, MapPin, CheckSquare, ArrowRight } from 'lucide-react';
+import { Phone, MessageCircle, Mail, Users, MapPin, CheckSquare, ArrowRight, UserCheck } from 'lucide-react';
 import { stepChannel } from '../../services/crmScheduling';
 import { taskHeadline, taskDetail, relativeDayLabel, isOverdue, formatWhen } from '../../utils/stepLabel';
 import { PostponeMenu } from './PostponeMenu';
@@ -21,7 +21,7 @@ const TONE = {
   email: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
 };
 
-export function QueueTaskRow({ task, onExecute, onPostpone, showTime = false, showOwner = false, busy }) {
+export function QueueTaskRow({ task, onExecute, onPostpone, onReassign, showTime = false, showOwner = false, busy }) {
   const canal = stepChannel(task.title);
   const Icon = ICON[canal] || CheckSquare;
   const tone = TONE[canal] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
@@ -88,6 +88,17 @@ export function QueueTaskRow({ task, onExecute, onPostpone, showTime = false, sh
       >
         Fazer
       </button>
+      {onReassign && (
+        <button
+          type="button"
+          onClick={() => onReassign(task)}
+          disabled={busy}
+          title="Passar pra outro vendedor"
+          className="shrink-0 px-2 min-h-[44px] flex items-center justify-center rounded-lg text-slate-400 hover:text-fyness-primary hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50"
+        >
+          <UserCheck size={16} />
+        </button>
+      )}
       <PostponeMenu compact disabled={busy} onPick={(d) => onPostpone?.(task, d)} />
     </div>
   );
