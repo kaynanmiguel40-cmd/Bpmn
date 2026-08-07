@@ -312,6 +312,24 @@ serve(async (req) => {
   // Re-atribui variavel local de instanceName caso fallback tenha mudado
   const effectiveInstanceName = instance.instance_name || instanceName
 
+  // GUARD anti "chat fake": nao deixa mandar pro PROPRIO numero do CRM. Um contato
+  // com o numero de uma instancia nossa (eco/@lid) fazia a mensagem sair pra si
+  // mesmo — parecia enviada mas nunca chegava num lead. Compara pela regra BR
+  // (DDD + 8 ultimos, ignora o 9o digito) pra pegar as duas variantes do numero.
+  const chaveBR = (raw: string): string => {
+    let d = String(raw || '').replace(/\D/g, '')
+    if (d.startsWith('55') && d.length >= 12) d = d.slice(2)
+    return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d
+  }
+  const destKey = chaveBR(phone)
+  const { data: todasInst } = await supabase
+    .from('crm_whatsapp_instances')
+    .select('phone_number')
+    .is('deleted_at', null)
+  if ((todasInst || []).some((i) => i.phone_number && chaveBR(i.phone_number) === destKey)) {
+    return json({ ok: false, error: 'Esse número é do próprio CRM — não dá pra mandar mensagem pra si mesmo. Confere o telefone do lead.' }, 400)
+  }
+
   // 2) Insere mensagem em 'pending' antes do envio (rastreabilidade)
   const fromPhone = instance.phone_number || ''
   const { data: msgRow, error: msgErr } = await supabase

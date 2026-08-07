@@ -207,6 +207,20 @@ export async function ensureContactForDeal({ dealId = null, phone, name = null }
   if (!raw) return null;
   const e164 = toBrazilE164(raw) || raw; // sempre guardamos/comparamos normalizado
 
+  // Não abre conversa CONSIGO MESMO: se o número é de uma instância do CRM (eco/
+  // @lid do próprio WhatsApp), não cria/vincula contato — senão vira o "chat fake"
+  // que parece enviar mas manda pra si mesmo. Regra BR (DDD+8, ignora o 9).
+  const chaveBR = (r) => {
+    let d = String(r || '').replace(/\D/g, '');
+    if (d.startsWith('55') && d.length >= 12) d = d.slice(2);
+    return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
+  };
+  const { data: insts } = await supabase.from('crm_whatsapp_instances').select('phone_number').is('deleted_at', null);
+  if ((insts || []).some((i) => i.phone_number && chaveBR(i.phone_number) === chaveBR(e164))) {
+    toast('Esse é o número do próprio CRM — confira o telefone do lead.', 'error');
+    return null;
+  }
+
   // 1) Achar contato existente por telefone (qualquer formato) — evita duplicar.
   let contactId = await acharContatoPorTelefone(e164);
 
