@@ -19,7 +19,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   Phone, MessageCircle, CheckCircle2, CornerDownRight, ArrowRight,
-  ExternalLink, Clock, CalendarClock, Check, RotateCcw, Trash2,
+  ExternalLink, Clock, CalendarClock, Check, RotateCcw, Trash2, UserCheck,
 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
@@ -97,6 +97,7 @@ export function ExecuteTaskModal({
   onSubmit,      // ({ input, output, contacted }) => void
   onOpenLead,    // (dealId) => void
   onOpenHistory, // (activity) => void — timeline do lead, sem sair da Agenda
+  onReassign,    // (activity) => void — passar a tarefa/lead pra outro vendedor
   onCorrect,     // () => void — reabre o formulario apos concluir (desfazer)
   advance,       // { current:{name}, next:{id,name} } | null — convite de avancar
   onAdvance,     // (stage) => void
@@ -354,6 +355,11 @@ export function ExecuteTaskModal({
               className={`${BTN_SECONDARY} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
             >
               <Trash2 size={15} /> Excluir
+            </button>
+          )}
+          {onReassign && !isEditing && (
+            <button onClick={() => onReassign(activity)} disabled={isPending} title="Passar pra outro vendedor" className={BTN_SECONDARY}>
+              <UserCheck size={15} /> Passar
             </button>
           )}
           {isEditing && onUncomplete && (

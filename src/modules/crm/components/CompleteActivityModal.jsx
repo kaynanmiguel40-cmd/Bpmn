@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, RotateCcw, Trash2 } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Trash2, UserCheck } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { fieldClass } from './ui/formFieldClass';
 
@@ -34,6 +34,7 @@ export function CompleteActivityModal({
   onOpenHistory,// (activity) => void — opcional; o historico do lead
   onUncomplete, // () => void — opcional; desmarca a tarefa concluida (volta a pendente)
   onDelete,     // () => void — opcional; exclui a tarefa
+  onReassign,   // (activity) => void — opcional; passar a tarefa/lead pra outro vendedor
   isPending,
 }) {
   const isEditing = !!activity?.completed;
@@ -107,6 +108,11 @@ export function CompleteActivityModal({
               className={`${SECONDARY_BTN} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
             >
               <Trash2 size={15} /> Excluir
+            </button>
+          )}
+          {onReassign && !isEditing && (
+            <button onClick={() => onReassign(activity)} disabled={isPending} title="Passar pra outro vendedor" className={SECONDARY_BTN}>
+              <UserCheck size={15} /> Passar
             </button>
           )}
           {isEditing && onUncomplete && (

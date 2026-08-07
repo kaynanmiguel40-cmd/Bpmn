@@ -26,6 +26,7 @@ import { useSnoozeActivity, useNextStage, useNextActivityForLead } from '../hook
 import { toast } from '../../../contexts/ToastContext';
 import { ActivityFormModal } from '../components/ActivityFormModal';
 import { CompleteActivityModal } from '../components/CompleteActivityModal';
+import { ReassignTaskModal } from '../components/agenda/ReassignTaskModal';
 import { ExecuteTaskModal } from '../components/ExecuteTaskModal';
 import { useCrmCalendarActivities, useCompleteCrmActivity, useDeleteCrmActivity, useUpdateCrmActivity, usePlaybookSteps, useMoveCrmDeal } from '../hooks/useCrmQueries';
 import { useGCalEvents, useGCalStatus } from '../../../hooks/queries';
@@ -138,6 +139,7 @@ function MyDayCalendar() {
   const [formInitial, setFormInitial] = useState(null);
   const [editActivity, setEditActivity] = useState(null); // tarefa clicada (abre o form em edição, mostra a descrição)
   const [completingTask, setCompletingTask] = useState(null); // { id, title } — abre o modal de conclusão (input/output)
+  const [reassigning, setReassigning] = useState(null); // tarefa clicada sendo passada pra outro vendedor
   const [justDoneId, setJustDoneId] = useState(null); // tarefa recém-concluída: modal vira a confirmação com o próximo toque
   const [deleteActivityTarget, setDeleteActivityTarget] = useState(null); // atividade a excluir (confirmação)
 
@@ -496,6 +498,7 @@ function MyDayCalendar() {
           open={!!completingTask}
           onClose={closeExecute}
           activity={completingActivity}
+          onReassign={(act) => { setCompletingTask(null); setReassigning(act); }}
           step={completingStep}
           nextActivity={nextActivity}
           justDone={justDoneId === completingActivity.id}
@@ -540,6 +543,7 @@ function MyDayCalendar() {
           open={!!completingTask}
           onClose={() => setCompletingTask(null)}
           activity={completingActivity || completingTask}
+          onReassign={(act) => { setCompletingTask(null); setReassigning(act); }}
           onOpenHistory={(act) => {
             setCompletingTask(null);
             setSelected({ dealId: act.dealId || null, contactId: act.contactId || null });
@@ -571,6 +575,13 @@ function MyDayCalendar() {
           }}
         />
       )}
+
+      <ReassignTaskModal
+        open={!!reassigning}
+        task={reassigning}
+        membros={crmMembers}
+        onClose={() => setReassigning(null)}
+      />
 
       <CrmConfirmDialog
         open={!!deleteActivityTarget}
