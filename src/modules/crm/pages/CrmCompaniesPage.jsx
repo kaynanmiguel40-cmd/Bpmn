@@ -277,6 +277,7 @@ export function CrmCompaniesPage({ embedded = false } = {}) {
         hasFilters={hasAnyFilter}
         onClearFilters={handleClearAllFilters}
         onRowClick={(row) => navigate(`/crm/companies/${row.id}`)}
+        getRowHref={(row) => `/crm/companies/${row.id}`}
         sortConfig={sortConfig}
         onSort={handleSort}
         pagination={{

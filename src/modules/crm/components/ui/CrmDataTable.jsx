@@ -37,6 +37,10 @@ export function CrmDataTable({
   emptyMessage = 'Nenhum registro encontrado',
   emptyIcon: EmptyIcon,
   onRowClick,
+  // getRowHref: (row) => string — quando passado, a linha ganha os gestos
+  // nativos de "abrir em nova aba" (Ctrl/⌘+clique e clique do meio/scroll).
+  // Sem ele, a tabela segue só com o clique normal (onRowClick).
+  getRowHref,
   pagination,
   sortConfig,
   onSort,
@@ -96,10 +100,24 @@ export function CrmDataTable({
                 </td>
               </tr>
             ) : (
-              data.map((row, idx) => (
+              data.map((row, idx) => {
+                const href = getRowHref?.(row);
+                return (
                 <tr
                   key={row.id || idx}
-                  onClick={() => onRowClick?.(row)}
+                  onClick={(e) => {
+                    // Ctrl/⌘+clique abre em nova aba em vez de navegar na mesma.
+                    if (href && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      window.open(href, '_blank', 'noopener');
+                      return;
+                    }
+                    onRowClick?.(row);
+                  }}
+                  // Botão do meio (scroll) → nova aba. onMouseDown evita o
+                  // auto-scroll do navegador nesse clique.
+                  onAuxClick={href ? (e) => { if (e.button === 1) { e.preventDefault(); window.open(href, '_blank', 'noopener'); } } : undefined}
+                  onMouseDown={href ? (e) => { if (e.button === 1) e.preventDefault(); } : undefined}
                   className={`
                     group transition-colors
                     ${onRowClick ? 'cursor-pointer hover:bg-white/60 dark:hover:bg-white/5' : ''}
@@ -111,7 +129,8 @@ export function CrmDataTable({
                     </td>
                   ))}
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

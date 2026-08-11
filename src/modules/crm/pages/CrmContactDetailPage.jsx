@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { CrmAvatar, CrmBadge } from '../components/ui';
 import { useCrmContact, useUpdateCrmContact } from '../hooks/useCrmQueries';
+import { useTabNav } from '../hooks/useTabNav';
 import { ContactFormModal } from '../components/ContactFormModal';
 
 const STATUS_MAP = {
@@ -44,6 +45,7 @@ const TABS = [
 export function CrmContactDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const tabNav = useTabNav();
   const { data: contact, isLoading } = useCrmContact(id);
   const updateMutation = useUpdateCrmContact();
 
@@ -242,7 +244,7 @@ export function CrmContactDetailPage() {
                 {contact.deals.map(deal => {
                   const ds = DEAL_STATUS[deal.status] || DEAL_STATUS.open;
                   return (
-                    <div key={deal.id} className="crm-glass rounded-2xl p-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors cursor-pointer" onClick={() => navigate(`/crm/deals/${deal.id}`)}>
+                    <div key={deal.id} className="crm-glass rounded-2xl p-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors cursor-pointer" {...tabNav(`/crm/deals/${deal.id}`)}>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{deal.title}</span>
                         <CrmBadge variant={ds.variant} dot>{ds.label}</CrmBadge>

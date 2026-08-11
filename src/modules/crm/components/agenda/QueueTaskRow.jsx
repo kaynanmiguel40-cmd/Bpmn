@@ -34,6 +34,12 @@ export function QueueTaskRow({ task, onExecute, onPostpone, onReassign, showTime
   const detalhe = bruto && norm(bruto) !== norm(taskHeadline(task.title, task.leadName)) ? bruto : '';
   const dono = showOwner ? (task.assignedToName || null) : null;
 
+  // Clique normal na manchete EXECUTA a tarefa. Ctrl/⌘+clique ou clique do meio
+  // (scroll) abrem o lead numa aba nova — pra espiar o histórico sem sair da
+  // fila. Só quando há lead/contato pra onde ir.
+  const leadHref = task.dealId ? `/crm/deals/${task.dealId}` : task.contactId ? `/crm/contacts/${task.contactId}` : null;
+  const abrirLeadEmAba = () => window.open(leadHref, '_blank', 'noopener');
+
   return (
     <div
       className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors ${
@@ -48,7 +54,13 @@ export function QueueTaskRow({ task, onExecute, onPostpone, onReassign, showTime
 
       <button
         type="button"
-        onClick={() => onExecute?.(task)}
+        title={leadHref ? 'Clique pra fazer · Ctrl/scroll-clique abre o lead em nova aba' : undefined}
+        onClick={(e) => {
+          if (leadHref && (e.ctrlKey || e.metaKey)) { e.preventDefault(); abrirLeadEmAba(); return; }
+          onExecute?.(task);
+        }}
+        onAuxClick={leadHref ? (e) => { if (e.button === 1) { e.preventDefault(); abrirLeadEmAba(); } } : undefined}
+        onMouseDown={leadHref ? (e) => { if (e.button === 1) e.preventDefault(); } : undefined}
         className="flex-1 min-w-0 text-left"
       >
         <div className="flex items-center gap-1.5 min-w-0">

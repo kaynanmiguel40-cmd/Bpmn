@@ -40,6 +40,10 @@ export function NowCard({ task, onExecute, onPostpone, onOpenLead, onReassign, b
   // Abre o Inbox se houver contato (mesmo sem número de WhatsApp válido) OU um wa.me
   // pra criar contato pelo número.
   const podeInbox = !!(wa || task.contactId);
+  // Clique normal no nome abre o lead na mesma aba; Ctrl/⌘+clique ou clique do
+  // meio (scroll) abrem em aba nova.
+  const leadHref = task.dealId ? `/crm/deals/${task.dealId}` : null;
+  const abrirLeadEmAba = () => window.open(leadHref, '_blank', 'noopener');
   // Lead com contato -> Inbox do CRM; só com telefone -> cria/vincula contato pelo
   // número e abre no CRM; se não der, wa.me externo.
   const abrirInbox = () => abrir(
@@ -74,7 +78,13 @@ export function NowCard({ task, onExecute, onPostpone, onOpenLead, onReassign, b
         <div>
           <button
             type="button"
-            onClick={() => task.dealId && onOpenLead?.(task.dealId)}
+            title={leadHref ? 'Ctrl/scroll-clique abre o lead em nova aba' : undefined}
+            onClick={(e) => {
+              if (leadHref && (e.ctrlKey || e.metaKey)) { e.preventDefault(); abrirLeadEmAba(); return; }
+              if (task.dealId) onOpenLead?.(task.dealId);
+            }}
+            onAuxClick={leadHref ? (e) => { if (e.button === 1) { e.preventDefault(); abrirLeadEmAba(); } } : undefined}
+            onMouseDown={leadHref ? (e) => { if (e.button === 1) e.preventDefault(); } : undefined}
             disabled={!task.dealId}
             className="text-lg font-bold text-slate-900 dark:text-white hover:text-fyness-primary disabled:hover:text-slate-900 disabled:cursor-default inline-flex items-center gap-1.5 text-left"
           >

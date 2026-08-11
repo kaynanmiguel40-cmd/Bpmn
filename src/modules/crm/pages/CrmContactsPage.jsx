@@ -394,6 +394,7 @@ export function CrmContactsPage({ embedded = false } = {}) {
         hasFilters={hasAnyFilter}
         onClearFilters={handleClearAllFilters}
         onRowClick={(row) => navigate(`/crm/contacts/${row.id}`)}
+        getRowHref={(row) => `/crm/contacts/${row.id}`}
         sortConfig={sortConfig}
         onSort={handleSort}
         pagination={{

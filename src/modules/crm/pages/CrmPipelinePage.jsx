@@ -7,6 +7,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useOpenLeadInbox } from '../hooks/useOpenLeadInbox';
+import { useTabNav } from '../hooks/useTabNav';
 import { Kanban, Plus, Search, X, User, Trophy, Trash2, List, XCircle, MessageCircle, Repeat, Ban, Upload, ArrowLeftRight, ChevronUp, ChevronDown, Pencil, ListChecks, UserPlus, BadgeCheck, CalendarCheck, Crown, Filter, TrendingUp } from 'lucide-react';
 import { CrmPageHeader, CrmEmptyState, CrmConfirmDialog, CrmBadge } from '../components/ui';
 import { CrmModal } from '../components/ui/CrmModal';
@@ -60,6 +61,7 @@ function getWhatsappLink(phone) {
 
 function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onMoveStage, onSetPriority }) {
   const navigate = useNavigate();
+  const tabNav = useTabNav();
   const { abrir: abrirInboxLead, abrindo: abrindoInbox } = useOpenLeadInbox();
   const isDragging = useRef(false);
   const [stagePickerOpen, setStagePickerOpen] = useState(false);
@@ -104,9 +106,7 @@ function DealCard({ deal, allStages = [], onDragStart, onMarkLost, onDelete, onM
       onDragEnd={() => {
         setTimeout(() => { isDragging.current = false; }, 100);
       }}
-      onClick={() => {
-        if (!isDragging.current) navigate(`/crm/deals/${deal.id}`);
-      }}
+      {...tabNav(`/crm/deals/${deal.id}`, () => !isDragging.current)}
       className={`rounded-xl border px-3 py-2.5 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-glass hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 group relative ${
         deal.status === 'won'
           ? 'bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-300/60 dark:border-emerald-700/40'
@@ -853,10 +853,10 @@ function StageColumn({ stage, learned, filteredDeals, onDrop, onDragStart, dragO
 // Card enxuto pra coluna "Perdido": mostra em QUAL etapa o lead se perdeu e o
 // motivo. Sem drag (perdido nao volta arrastando) — so abre o deal ou exclui.
 function LostDealCard({ deal, onDelete }) {
-  const navigate = useNavigate();
+  const tabNav = useTabNav();
   return (
     <div
-      onClick={() => navigate(`/crm/deals/${deal.id}`)}
+      {...tabNav(`/crm/deals/${deal.id}`)}
       className="rounded-xl border px-3 py-2.5 cursor-pointer shadow-sm hover:shadow-glass hover:-translate-y-0.5 transition-[transform,box-shadow] duration-200 group relative bg-rose-50/60 dark:bg-rose-900/15 border-rose-200/60 dark:border-rose-800/40"
     >
       <div className="flex items-start justify-between gap-2 mb-1">
@@ -1202,6 +1202,7 @@ const STATUS_BADGE = {
 
 function PipelineListView({ pipelineData, filterDeals, onMarkLost, onDelete }) {
   const navigate = useNavigate();
+  const tabNav = useTabNav();
 
   // Achatar deals de todos os stages e enriquecer com nome/cor do stage.
   // Os perdidos saem da lista por stage (service), entao reentram aqui com a
@@ -1252,7 +1253,7 @@ function PipelineListView({ pipelineData, filterDeals, onMarkLost, onDelete }) {
                 <tr
                   key={deal.id}
                   className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer"
-                  onClick={() => navigate(`/crm/deals/${deal.id}`)}
+                  {...tabNav(`/crm/deals/${deal.id}`)}
                 >
                   <td className="px-4 py-2.5">
                     <div className="font-medium text-slate-800 dark:text-slate-200">{deal.title}</div>

@@ -250,6 +250,7 @@ export function CrmDealsPage() {
         ) : 'Nenhum negocio encontrado'}
         emptyIcon={Target}
         onRowClick={(row) => navigate(`/crm/deals/${row.id}`)}
+        getRowHref={(row) => `/crm/deals/${row.id}`}
         sortConfig={sortConfig}
         onSort={handleSort}
         pagination={{ page, perPage: 25, total: data?.count || 0, onPageChange: setPage }}
