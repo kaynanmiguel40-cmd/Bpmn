@@ -386,7 +386,12 @@ serve(async (req) => {
       // Evolution API (v2) — resposta { key: { id }, ... }
       const result = await evolutionSend(effectiveInstanceName, phone, content, mediaUrl, mediaType, mediaCaption, quotedId, quotedText)
       if (!result.ok) {
-        errorMessage = result.data?.message || `HTTP ${result.status}`
+        // 400 do Evolution = número não é conta de WhatsApp (ou formato recusado).
+        // "HTTP 400" cru não diz nada pro vendedor — a causa real é quase sempre
+        // "esse telefone não tem WhatsApp", então fala isso.
+        errorMessage = result.status === 400
+          ? 'Esse número não está no WhatsApp (ou está incorreto). Confere o telefone do lead.'
+          : (result.data?.message || `HTTP ${result.status}`)
       } else {
         providerMessageId = result.data?.key?.id || result.data?.messageId || null
         success = true
