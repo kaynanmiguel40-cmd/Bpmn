@@ -36,8 +36,11 @@ const SECONDARY_BTN =
 // A inversão é de propósito: no CELULAR os botões empilham em largura cheia
 // (`w-full sm:w-auto`), então lá sobra espaço e o rótulo aparece; quem aperta
 // num botão de linha inteira sem texto não sabe o que vai acontecer.
+// No desktop vira um QUADRADO de 44px sem borda: ação de utilidade, não um botão
+// que disputa a decisão. Com borda, cada ícone virava mais uma caixa competindo
+// com o Concluir; e px-3 num min-h de 44 dava um retângulo em pé, torto.
 const ICON_BTN =
-  'min-h-[44px] px-4 sm:px-3 py-2 text-sm font-medium whitespace-nowrap text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+  'min-h-[44px] px-4 py-2 sm:w-11 sm:h-11 sm:p-0 text-sm font-medium whitespace-nowrap text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
 
 export function CompleteActivityModal({
   open,
@@ -81,7 +84,8 @@ export function CompleteActivityModal({
   }, [open]);
 
   // Concluir uma ligação exige dizer se atendeu (menos em edição, onde o desfecho
-  // já foi decidido). Trava o Concluir E o Pular — o desfecho não é "detalhe".
+  // já foi decidido). O desfecho não é "detalhe" — é o que separa "falei" de
+  // "ninguém atendeu" no placar e no progresso do playbook.
   const faltaDesfecho = isCall && !isEditing && contacted === null;
   const canSubmit = useMemo(() => !isPending && !faltaDesfecho, [isPending, faltaDesfecho]);
 
@@ -97,13 +101,14 @@ export function CompleteActivityModal({
   };
   handleConfirmRef.current = handleConfirm;
 
-  // "Pular" antes so fechava o modal sem concluir a tarefa (agia como
-  // Cancelar disfarcado). Agora pula so o preenchimento do input/output e
-  // ainda conclui a atividade — quem quer desistir de vez usa "Cancelar".
-  const handleSkipDetails = () => {
-    if (!canSubmit) return;
-    onSubmit?.({ input: '', output: outputFinal(), contacted: contactedFinal() });
-  };
+  // O "Pular e concluir" foi REMOVIDO, não escondido: os dois campos são
+  // opcionais, então apertar Concluir com eles vazios já produzia payload
+  // idêntico ao do Pular. A única coisa que ele fazia de diferente era DESCARTAR
+  // o que a pessoa tinha acabado de digitar — que ninguém quer.
+  //
+  // Ele existia pra dizer "pode deixar em branco". Esse recado agora está no
+  // rótulo dos campos ("opcional"), que é onde a dúvida aparece, e não num botão
+  // que disputava a fileira com o Concluir de verdade.
 
   return (
     <CrmModal
@@ -119,7 +124,7 @@ export function CompleteActivityModal({
               disabled={isPending}
               title="Excluir esta tarefa"
               aria-label="Excluir esta tarefa"
-              className={`${ICON_BTN} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
+              className={`${ICON_BTN} sm:mr-auto text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
             >
               <Trash2 size={15} /> <span className="sm:hidden">Excluir</span>
             </button>
@@ -157,16 +162,6 @@ export function CompleteActivityModal({
           >
             Cancelar
           </button>
-          {!isEditing && (
-            <button
-              onClick={handleSkipDetails}
-              disabled={!canSubmit}
-              title="Conclui a tarefa sem preencher o que foi feito/respondido"
-              className={SECONDARY_BTN}
-            >
-              Pular e concluir
-            </button>
-          )}
           <button
             onClick={handleConfirm}
             disabled={!canSubmit}
@@ -248,7 +243,7 @@ export function CompleteActivityModal({
         <>
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-            O que você fez/disse
+            O que você fez/disse <span className="font-normal normal-case tracking-normal text-slate-400 dark:text-slate-500">(opcional)</span>
           </label>
           <textarea
             value={input}
@@ -263,7 +258,7 @@ export function CompleteActivityModal({
         {/* Output embaixo: o que o lead respondeu/reagiu */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-            O que o lead respondeu
+            O que o lead respondeu <span className="font-normal normal-case tracking-normal text-slate-400 dark:text-slate-500">(opcional)</span>
           </label>
           <textarea
             value={output}

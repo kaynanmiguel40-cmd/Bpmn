@@ -73,7 +73,7 @@ const BTN_SECONDARY =
 // Mesma regra do CompleteActivityModal — os dois modais concluem tarefa e ficam
 // lado a lado no dia da vendedora; rodapés diferentes pro mesmo gesto confundem.
 const BTN_ICONE =
-  'min-h-[44px] px-4 sm:px-3 py-2 text-sm font-medium whitespace-nowrap text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+  'min-h-[44px] px-4 py-2 sm:w-11 sm:h-11 sm:p-0 text-sm font-medium whitespace-nowrap text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
 const BTN_FANTASMA =
   'min-h-[44px] px-4 sm:px-3 py-2 text-sm font-medium whitespace-nowrap text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
 // Concluir e VERDE de proposito (verde = concluido em todo o CRM); so a
@@ -360,7 +360,7 @@ export function ExecuteTaskModal({
               disabled={isPending}
               title="Excluir esta tarefa"
               aria-label="Excluir esta tarefa"
-              className={`${BTN_ICONE} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
+              className={`${BTN_ICONE} sm:mr-auto text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
             >
               <Trash2 size={15} /> <span className="sm:hidden">Excluir</span>
             </button>

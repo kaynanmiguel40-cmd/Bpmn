@@ -28,10 +28,13 @@ const btn = (name) => screen.getByRole('button', { name });
 const maybeBtn = (name) => screen.queryByRole('button', { name });
 
 describe('CompleteActivityModal — desfecho da ligacao', () => {
-  it('nao deixa concluir uma ligacao sem dizer se atendeu (trava Concluir e Pular)', () => {
+  it('nao deixa concluir uma ligacao sem dizer se atendeu', () => {
     setup();
     expect(btn(/Concluir/)).toBeDisabled();
-    expect(btn(/Pular e concluir/)).toBeDisabled();
+    // "Pular e concluir" saiu do rodapé: com os dois campos opcionais, ele mandava
+    // exatamente o mesmo payload do Concluir. Se voltar, volta com o mesmo trava —
+    // por isso a asserção de que ele NÃO existe mais fica registrada aqui.
+    expect(maybeBtn(/Pular/)).toBeNull();
   });
 
   it('"Falei com ele" libera e envia contacted true', () => {
