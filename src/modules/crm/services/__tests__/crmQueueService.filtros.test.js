@@ -101,11 +101,16 @@ describe('getOverdueQueue — o que conta como divida atrasada', () => {
   });
 
   it('tem teto: o lote de atrasadas nao pode vir inteiro', async () => {
+    // O teto EXISTE (egress ja estourou uma vez), mas o numero em si e ajustavel:
+    // subiu pra 400 quando o filtro de dono virou client-side — o fetch e global,
+    // entao precisa caber a soma das atrasadas de TODOS os vendedores, senao as
+    // de alguem caem fora do lote e somem sem aviso. O que este teste trava e o
+    // limite ser finito e ainda caber num lote so, nao o valor exato.
     await getOverdueQueue(new Date(2026, 6, 20, 10, 0));
     const rec = q('crm_activities');
     expect(typeof rec.limit).toBe('number');
     expect(rec.limit).toBeGreaterThan(0);
-    expect(rec.limit).toBeLessThanOrEqual(200);
+    expect(rec.limit).toBeLessThanOrEqual(1000);
   });
 
   it('erro estoura mas resultado vazio nao — fila vazia e erro sao coisas diferentes', async () => {

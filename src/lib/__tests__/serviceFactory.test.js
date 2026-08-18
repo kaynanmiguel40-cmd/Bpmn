@@ -79,6 +79,13 @@ describe('createCRUDService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resultQueue.length = 0;
+    // mockReset (nao so clear): `mockResolvedValueOnce` sobrevive ao
+    // clearAllMocks. Um teste que arma um valor "once" e nao chega a consumi-lo
+    // (porque o codigo passou a lancar antes) vaza esse valor pro PROXIMO teste
+    // que chamar o mock — foi assim que uma mudanca em create/update quebrou o
+    // syncPending, que nao tem relacao nenhuma com eles.
+    mockGetOffline.mockReset();
+    mockGetPendingSync.mockReset();
     mockGetOffline.mockResolvedValue([]);
     mockGetPendingSync.mockResolvedValue([]);
 
@@ -213,8 +220,11 @@ describe('createCRUDService', () => {
       expect(mockPutOffline).toHaveBeenCalledWith('test_table', createdItem);
     });
 
-    it('salva localmente e marca pendingSync quando Supabase falha', async () => {
-      queueResult({ data: null, error: { message: 'Network error', code: 'NETWORK' } });
+    // O que separa offline de erro do servidor e o CODIGO do erro: PostgREST
+    // sempre manda um (RLS, constraint, coluna faltando); requisicao que nao
+    // completou (rede) vem sem.
+    it('salva localmente e marca pendingSync quando a REDE falha (erro sem codigo)', async () => {
+      queueResult({ data: null, error: { message: 'Network error' } });
 
       const result = await service.create({ title: 'Offline Item' });
 
@@ -223,6 +233,17 @@ describe('createCRUDService', () => {
       expect(mockPutOffline).toHaveBeenCalled();
       expect(mockMarkPendingSync).toHaveBeenCalledWith('test_table', expect.any(String), 'upsert');
       expect(mockToast).toHaveBeenCalled();
+    });
+
+    it('PROPAGA erro do servidor (com codigo) em vez de fingir "salvo localmente"', async () => {
+      // Mascarar RLS/constraint como offline criava registro fantasma: a UI
+      // tostava sucesso, o item nunca sincronizava e sumia no proximo reload.
+      queueResult({ data: null, error: { message: 'new row violates row-level security', code: '42501' } });
+
+      await expect(service.create({ title: 'Bloqueado' })).rejects.toThrow(
+        'new row violates row-level security',
+      );
+      expect(mockMarkPendingSync).not.toHaveBeenCalled();
     });
 
     it('retorna null quando validacao Zod falha', async () => {
@@ -277,9 +298,9 @@ describe('createCRUDService', () => {
       expect(mockPutOffline).toHaveBeenCalledWith('test_table', updatedItem);
     });
 
-    it('atualiza localmente quando Supabase falha', async () => {
+    it('atualiza localmente quando a REDE falha (erro sem codigo) e ha copia local', async () => {
       const offlineData = [{ id: '1', title: 'Original', status: 'active' }];
-      queueResult({ data: null, error: { message: 'Error', code: 'ERR' } });
+      queueResult({ data: null, error: { message: 'Error' } });
       mockGetOffline.mockResolvedValueOnce(offlineData);
 
       const result = await service.update('1', { status: 'done' });
@@ -287,6 +308,14 @@ describe('createCRUDService', () => {
       expect(result).not.toBeNull();
       expect(mockPutOffline).toHaveBeenCalled();
       expect(mockMarkPendingSync).toHaveBeenCalledWith('test_table', '1', 'upsert');
+    });
+
+    it('PROPAGA erro do servidor (com codigo) sem nem consultar o cache offline', async () => {
+      queueResult({ data: null, error: { message: 'permission denied', code: '42501' } });
+
+      await expect(service.update('1', { status: 'done' })).rejects.toThrow('permission denied');
+      expect(mockGetOffline).not.toHaveBeenCalled();
+      expect(mockMarkPendingSync).not.toHaveBeenCalled();
     });
 
     it('propaga o erro quando item nao existe offline', async () => {

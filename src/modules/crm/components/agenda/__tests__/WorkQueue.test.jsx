@@ -18,11 +18,16 @@ import { WorkQueue } from '../WorkQueue';
 const Wrap = ({ children }) => <MemoryRouter>{children}</MemoryRouter>;
 import { useWorkQueue, useStalledLeads, useBatchPostpone, useQueueRebalance } from '../../../hooks/useWorkQueue';
 
+// O mock precisa cobrir TODO hook que a arvore renderizada consome — nao so os
+// que este arquivo configura. O ReassignTaskModal (dentro da fila) chama
+// useReassignTask; sem ele aqui, o vi.mock estoura "No export is defined" e
+// derruba os 15 testes de uma vez, escondendo a regra que cada um trava.
 vi.mock('../../../hooks/useWorkQueue', () => ({
   useWorkQueue: vi.fn(),
   useStalledLeads: vi.fn(),
   useBatchPostpone: vi.fn(),
   useQueueRebalance: vi.fn(),
+  useReassignTask: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
 
 const VAZIO = 'Fila limpa. Nada pendente.';

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { PostponeMenu, postponeOptions } from '../PostponeMenu';
+import { WORK_START_HOUR, WORK_START_MIN, WORK_END_HOUR } from '../../../services/crmScheduling';
 
 /**
  * PostponeMenu — adiar tem que custar 2 cliques E cair sempre num horario que a
@@ -12,8 +13,11 @@ import { PostponeMenu, postponeOptions } from '../PostponeMenu';
  */
 
 const MIN = (d) => d.getHours() * 60 + d.getMinutes();
-const EXPEDIENTE_INICIO = 9 * 60;   // 9h
-const EXPEDIENTE_FIM = 18 * 60;     // 18h (fim; nada pode COMECAR as 18h)
+// Vem do agendador, nao cravado aqui: o inicio do expediente ja mudou de 9h pra
+// 8:10 e a copia local passou a acusar de "fora do expediente" um horario que o
+// resto do sistema considera valido.
+const EXPEDIENTE_INICIO = WORK_START_MIN;
+const EXPEDIENTE_FIM = WORK_END_HOUR * 60; // fim; nada pode COMECAR as 18h
 const ALMOCO_INICIO = 11 * 60;
 const ALMOCO_FIM = 12 * 60;
 
@@ -38,7 +42,7 @@ describe('postponeOptions — toda opcao cai em horario que existe', () => {
     }
   });
 
-  it('toda opcao comeca dentro do expediente (9h ate antes das 18h)', () => {
+  it('toda opcao comeca dentro do expediente (abertura ate antes das 18h)', () => {
     [
       new Date(2026, 6, 15, 9, 30),
       new Date(2026, 6, 15, 10, 0),
@@ -213,7 +217,8 @@ describe('<PostponeMenu />', () => {
     const data = onPick.mock.calls[0][0];
     expect(data instanceof Date).toBe(true);
     expect(data.getDate()).toBe(16);
-    expect(data.getHours()).toBe(9);
+    // "de manha" = meia hora depois da abertura do expediente (ver postponeOptions).
+    expect(MIN(data)).toBe(WORK_START_HOUR * 60 + 30);
     expect(screen.queryByText('Amanhã de manhã')).not.toBeInTheDocument();
   });
 

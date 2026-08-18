@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { meetingSlots, horarioLembrete } from '../crmScheduling';
+import {
+  meetingSlots, horarioLembrete, WORK_START_MIN, WORK_END_HOUR,
+} from '../crmScheduling';
 import { montarDiasComSlots } from '../../lib/meetingDays';
 
 /**
@@ -8,10 +10,14 @@ import { montarDiasComSlots } from '../../lib/meetingDays';
  * existe na agenda.
  */
 describe('meetingSlots (bloco de reunião)', () => {
-  it('dia vazio: primeiro slot é 9h, último começa 17h (60min cabe até 18h)', () => {
+  // Deriva do expediente em vez de cravar 9h: o inicio ja mudou uma vez (pra
+  // 8:10) e o teste quebrou sem que nada de errado tivesse acontecido. O que
+  // importa aqui e a REGRA — abre no inicio do expediente, fecha a tempo do
+  // bloco terminar as 18h —, nao o numero do dia em que foi escrito.
+  it('dia vazio: abre no inicio do expediente e o ultimo bloco termina as 18h', () => {
     const s = meetingSlots([], 60);
-    expect(s[0]).toBe(9 * 60);        // 09:00
-    expect(s[s.length - 1]).toBe(17 * 60); // 17:00 (termina 18:00)
+    expect(s[0]).toBe(WORK_START_MIN);
+    expect(s[s.length - 1]).toBe(WORK_END_HOUR * 60 - 60);
   });
 
   // Um bloco de 60min começando 10:30 terminaria 11:30 — pega o almoço. E 11:30
