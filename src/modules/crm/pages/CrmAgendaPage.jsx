@@ -28,6 +28,7 @@ import { ActivityFormModal } from '../components/ActivityFormModal';
 import { CompleteActivityModal } from '../components/CompleteActivityModal';
 import { ReassignTaskModal } from '../components/agenda/ReassignTaskModal';
 import { ExecuteTaskModal } from '../components/ExecuteTaskModal';
+import { EditActivityModal } from '../components/EditActivityModal';
 import { useCrmCalendarActivities, useCompleteCrmActivity, useDeleteCrmActivity, useUpdateCrmActivity, usePlaybookSteps, useMoveCrmDeal } from '../hooks/useCrmQueries';
 import { useGCalEvents, useGCalStatus } from '../../../hooks/queries';
 import { connectGCal } from '../../../lib/googleCalendarService';
@@ -142,6 +143,7 @@ function MyDayCalendar() {
   const [reassigning, setReassigning] = useState(null); // tarefa clicada sendo passada pra outro vendedor
   const [justDoneId, setJustDoneId] = useState(null); // tarefa recém-concluída: modal vira a confirmação com o próximo toque
   const [deleteActivityTarget, setDeleteActivityTarget] = useState(null); // atividade a excluir (confirmação)
+  const [editingId, setEditingId] = useState(null); // tarefa sendo EDITADA (carrega a linha inteira pelo id)
 
   const [rangeStart, rangeEnd] = useMemo(() => computeRange(view, currentDate), [view, currentDate]);
   const startISO = rangeStart.toISOString();
@@ -499,6 +501,7 @@ function MyDayCalendar() {
           onClose={closeExecute}
           activity={completingActivity}
           onReassign={(act) => { setCompletingTask(null); setReassigning(act); }}
+          onEdit={(act) => { closeExecute(); setEditingId(act.id); }}
           step={completingStep}
           nextActivity={nextActivity}
           justDone={justDoneId === completingActivity.id}
@@ -544,6 +547,7 @@ function MyDayCalendar() {
           onClose={() => setCompletingTask(null)}
           activity={completingActivity || completingTask}
           onReassign={(act) => { setCompletingTask(null); setReassigning(act); }}
+          onEdit={(act) => { setCompletingTask(null); setEditingId(act.id); }}
           onOpenHistory={(act) => {
             setCompletingTask(null);
             setSelected({ dealId: act.dealId || null, contactId: act.contactId || null });
@@ -583,6 +587,12 @@ function MyDayCalendar() {
         onClose={() => setReassigning(null)}
       />
 
+      <EditActivityModal
+        open={!!editingId}
+        activityId={editingId}
+        onClose={() => setEditingId(null)}
+      />
+
       <CrmConfirmDialog
         open={!!deleteActivityTarget}
         onClose={() => setDeleteActivityTarget(null)}
@@ -613,6 +623,7 @@ function QueueTab() {
   const [executing, setExecuting] = useState(null);   // tarefa da fila em execucao
   const [justDoneId, setJustDoneId] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null); // tarefa da fila sendo EDITADA
   const [advanceOff, setAdvanceOff] = useState(false); // ela disse "continua aqui"
   const [historyLead, setHistoryLead] = useState(null);
   const [lastContacted, setLastContacted] = useState(true);
@@ -725,6 +736,10 @@ function QueueTab() {
           isPending={completeMutation.isPending || updateMutation.isPending}
           onOpenLead={(id) => { close(); navigate(`/crm/deals/${id}`); }}
           onOpenHistory={(act) => setHistoryLead({ dealId: act.dealId || null, contactId: act.contactId || null })}
+          // A tarefa da fila é um objeto ACHATADO (sem description). O
+          // EditActivityModal recarrega a linha inteira pelo id — por isso aqui só
+          // vai o id, e não o objeto que esta tela tem em mãos.
+          onEdit={(act) => { close(); setEditingId(act.id); }}
           onCorrect={() => setJustDoneId(null)}
           // O convite de avancar so faz sentido quando ela FALOU com o lead:
           // depois de "não atendeu" não houve conversa que justifique mover.
@@ -773,6 +788,12 @@ function QueueTab() {
         activity={null}
         defaultAssignedTo={membroVisto?.authUserId || undefined}
         defaultAssignedToName={membroVisto?.name || undefined}
+      />
+
+      <EditActivityModal
+        open={!!editingId}
+        activityId={editingId}
+        onClose={() => setEditingId(null)}
       />
     </div>
   );

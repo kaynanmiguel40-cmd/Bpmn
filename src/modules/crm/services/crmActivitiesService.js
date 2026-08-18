@@ -138,6 +138,34 @@ export async function getCrmActivities(filters = {}) {
   };
 }
 
+/**
+ * Uma atividade INTEIRA, pelo id.
+ *
+ * Existe por causa de um jeito silencioso de perder dado: o formulário de edição
+ * inicializa cada campo com `activity.campo || ''` e depois grava o formulário
+ * todo. Alimentado com um objeto PARCIAL — como o da Fila, que só seleciona as
+ * colunas que a linha desenha e não traz `description` — ele abriria o campo
+ * vazio e salvaria vazio, apagando a descrição sem ninguém pedir.
+ *
+ * Então quem for editar carrega a linha completa por aqui primeiro, em vez de
+ * reaproveitar o objeto que a tela já tinha em mãos.
+ */
+export async function getCrmActivityById(id) {
+  if (!id) return null;
+  const { data, error } = await supabase
+    .from('crm_activities')
+    .select('*, crm_contacts(id, name, avatar_color), crm_deals(id, title, value)')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[getCrmActivityById]', error.message);
+    throw error;
+  }
+  return dbToCrmActivity(data);
+}
+
 // Mapeamento tipo atividade CRM → tipo evento agenda. Toda atividade vira um
 // evento no Google Calendar; só 'meeting' (reunião) ganha Google Meet no sync.
 const ACTIVITY_TO_AGENDA_TYPE = {

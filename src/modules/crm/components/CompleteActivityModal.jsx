@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, RotateCcw, Trash2, UserCheck } from 'lucide-react';
+import { CheckCircle2, Pencil, RotateCcw, Trash2, UserCheck } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { fieldClass } from './ui/formFieldClass';
 
@@ -51,6 +51,7 @@ export function CompleteActivityModal({
   onUncomplete, // () => void — opcional; desmarca a tarefa concluida (volta a pendente)
   onDelete,     // () => void — opcional; exclui a tarefa
   onReassign,   // (activity) => void — opcional; passar a tarefa/lead pra outro vendedor
+  onEdit,       // (activity) => void — opcional; abre o formulario da tarefa pra editar
   isPending,
 }) {
   const isEditing = !!activity?.completed;
@@ -127,6 +128,21 @@ export function CompleteActivityModal({
               className={`${ICON_BTN} sm:mr-auto text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
             >
               <Trash2 size={15} /> <span className="sm:hidden">Excluir</span>
+            </button>
+          )}
+          {/* Editar a TAREFA (título, horário, tipo, descrição) — diferente de
+              registrar o que aconteceu, que é o corpo deste modal. Sem esta porta,
+              toda tarefa ligada a um lead era ineditável: clicar nela abre a
+              execução, e não havia caminho nenhum até o formulário. */}
+          {onEdit && (
+            <button
+              onClick={() => onEdit(activity)}
+              disabled={isPending}
+              title="Editar a tarefa (título, data, tipo…)"
+              aria-label="Editar a tarefa"
+              className={ICON_BTN}
+            >
+              <Pencil size={15} /> <span className="sm:hidden">Editar</span>
             </button>
           )}
           {onReassign && !isEditing && (

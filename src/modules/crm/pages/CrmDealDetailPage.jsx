@@ -29,6 +29,7 @@ import { getDealLeadInfo } from '../services/crmDealsService';
 import { DealFormModal } from '../components/DealFormModal';
 import { ActivityFormModal } from '../components/ActivityFormModal';
 import { CompleteActivityModal } from '../components/CompleteActivityModal';
+import { EditActivityModal } from '../components/EditActivityModal';
 import { LostReasonModal } from '../components/LostReasonModal';
 
 const formatCurrency = (val) =>
@@ -127,6 +128,8 @@ export function CrmDealDetailPage() {
   const [activityFormOpen, setActivityFormOpen] = useState(false);
   const [editActivity, setEditActivity] = useState(null);
   const [completingTask, setCompletingTask] = useState(null);
+  // Edição da tarefa em si (título, data, tipo), a partir do modal de conclusão.
+  const [editingId, setEditingId] = useState(null);
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [notes, setNotes] = useState(null);
   const [notesSaving, setNotesSaving] = useState(false);
@@ -655,12 +658,19 @@ export function CrmDealDetailPage() {
         open={!!completingTask}
         onClose={() => setCompletingTask(null)}
         activity={completingTask}
+        onEdit={(act) => { setCompletingTask(null); setEditingId(act.id); }}
         isPending={completeMutation.isPending}
         onSubmit={({ input, output, contacted }) => {
           completeMutation.mutate({ id: completingTask.id, input, output, contacted }, {
             onSuccess: () => setCompletingTask(null),
           });
         }}
+      />
+
+      <EditActivityModal
+        open={!!editingId}
+        activityId={editingId}
+        onClose={() => setEditingId(null)}
       />
 
       {/* Lost Reason Modal */}

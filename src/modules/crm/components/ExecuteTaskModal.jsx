@@ -19,7 +19,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   Phone, MessageCircle, CheckCircle2, CornerDownRight, ArrowRight,
-  ExternalLink, Clock, CalendarClock, Check, RotateCcw, Trash2, UserCheck,
+  ExternalLink, Clock, CalendarClock, Check, RotateCcw, Trash2, UserCheck, Pencil,
 } from 'lucide-react';
 import { CrmModal } from './ui/CrmModal';
 import { ChannelBadge } from './ui/ChannelBadge';
@@ -105,6 +105,7 @@ export function ExecuteTaskModal({
   onOpenLead,    // (dealId) => void
   onOpenHistory, // (activity) => void — timeline do lead, sem sair da Agenda
   onReassign,    // (activity) => void — passar a tarefa/lead pra outro vendedor
+  onEdit,        // (activity) => void — abre o formulario da tarefa pra editar
   onCorrect,     // () => void — reabre o formulario apos concluir (desfazer)
   advance,       // { current:{name}, next:{id,name} } | null — convite de avancar
   onAdvance,     // (stage) => void
@@ -363,6 +364,13 @@ export function ExecuteTaskModal({
               className={`${BTN_ICONE} sm:mr-auto text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
             >
               <Trash2 size={15} /> <span className="sm:hidden">Excluir</span>
+            </button>
+          )}
+          {/* Editar a TAREFA (título, horário, tipo…) — diferente de registrar o
+              que aconteceu, que é o corpo deste modal. */}
+          {onEdit && (
+            <button onClick={() => onEdit(activity)} disabled={isPending} title="Editar a tarefa (título, data, tipo…)" aria-label="Editar a tarefa" className={BTN_ICONE}>
+              <Pencil size={15} /> <span className="sm:hidden">Editar</span>
             </button>
           )}
           {onReassign && !isEditing && (

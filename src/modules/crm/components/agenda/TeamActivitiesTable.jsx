@@ -16,6 +16,7 @@ import { useCrmActivities, useDeleteCrmActivity, useCompleteCrmActivity } from '
 import { useUrlState, useUrlInt } from '../../../../hooks/useUrlState';
 import { ActivityFormModal } from '../ActivityFormModal';
 import { CompleteActivityModal } from '../CompleteActivityModal';
+import { EditActivityModal } from '../EditActivityModal';
 
 const typeIcons = {
   call: Phone,
@@ -88,6 +89,9 @@ export function TeamActivitiesTable({ range }) {
   const [editActivity, setEditActivity] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [completingTask, setCompletingTask] = useState(null);
+  // Edição vinda do modal de conclusão: carrega a linha inteira pelo id, porque o
+  // objeto que abriu a conclusão pode ser parcial (ver EditActivityModal).
+  const [editingId, setEditingId] = useState(null);
 
   // Nao reseta no mount, senao apaga o atPage vindo da URL (link compartilhado).
   const prevFilters = useRef({ debouncedSearch, typeFilter, statusFilter });
@@ -266,6 +270,12 @@ export function TeamActivitiesTable({ range }) {
         onOpenLeadHistory={(act) => (act?.dealId || act?.contactId) && navigate(`/crm/agenda?dealId=${act.dealId || ''}&contactId=${act.contactId || ''}`)}
       />
 
+      <EditActivityModal
+        open={!!editingId}
+        activityId={editingId}
+        onClose={() => setEditingId(null)}
+      />
+
       <CrmConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -280,6 +290,7 @@ export function TeamActivitiesTable({ range }) {
         open={!!completingTask}
         onClose={() => setCompletingTask(null)}
         activity={completingTask}
+        onEdit={(act) => { setCompletingTask(null); setEditingId(act.id); }}
         isPending={completeMutation.isPending}
         onSubmit={({ input, output, contacted }) => {
           completeMutation.mutate({ id: completingTask.id, input, output, contacted }, {

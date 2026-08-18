@@ -65,3 +65,30 @@ describe('CompleteActivityModal — desfecho da ligacao', () => {
     expect(onSubmit.mock.calls[0][0].contacted).toBeUndefined();
   });
 });
+
+describe('CompleteActivityModal — editar a tarefa', () => {
+  it('sem onEdit, não mostra o lápis (a tela que não sabe editar não promete)', () => {
+    setup();
+    expect(maybeBtn(/Editar a tarefa/)).toBeNull();
+  });
+
+  it('o lápis devolve a atividade pra quem abriu, pra ela carregar a linha inteira', () => {
+    // Só o ID importa aqui: o objeto que abriu a conclusão costuma ser PARCIAL
+    // (a Fila não seleciona `description`), e o formulário grava tudo que carregou.
+    // Quem recebe é que busca a linha completa — ver EditActivityModal.
+    const onEdit = vi.fn();
+    setup({ onEdit });
+    fireEvent.click(btn(/Editar a tarefa/));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onEdit.mock.calls[0][0]).toMatchObject({ id: 'a1' });
+  });
+
+  it('editar não depende de ter dito se atendeu — só o Concluir depende', () => {
+    // O lápis abre outro formulário; travá-lo junto com o Concluir prenderia a
+    // pessoa num modal que ela abriu justamente pra corrigir a tarefa.
+    const onEdit = vi.fn();
+    setup({ onEdit });
+    expect(btn(/Concluir/)).toBeDisabled();
+    expect(btn(/Editar a tarefa/)).toBeEnabled();
+  });
+});

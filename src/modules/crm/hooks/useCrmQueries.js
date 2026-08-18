@@ -7,7 +7,7 @@ import { getCrmCompanies, getCrmCompanyById, createCrmCompany, updateCrmCompany,
 import { getCrmContacts, getCrmContactById, createCrmContact, updateCrmContact, softDeleteCrmContact, importContactsCSV } from '../services/crmContactsService';
 import { getCrmPipelines, getCrmPipelineWithDeals, createCrmPipeline, updateCrmPipeline, deleteCrmPipeline, ensurePartnersPipeline, ensureGeneralPipeline, consolidateSalesPipelinesIntoGeneral, seedCommercialPipelines, seedEarlyStagePipelines } from '../services/crmPipelinesService';
 import { getCrmDeals, getCrmDealById, createCrmDeal, updateCrmDeal, softDeleteCrmDeal, moveDealToStage, markDealAsWon, markDealAsLost, markDealAsChurned, reactivateChurnedDeal, getDealActivities, getDealStageHistory } from '../services/crmDealsService';
-import { getCrmActivities, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal, createRecurringCrmActivities, deleteRecurringSeries } from '../services/crmActivitiesService';
+import { getCrmActivities, getCrmActivityById, createCrmActivity, updateCrmActivity, softDeleteCrmActivity, completeCrmActivity, createCadenceForDeal, cancelCadenceForDeal, createRecurringCrmActivities, deleteRecurringSeries } from '../services/crmActivitiesService';
 import { getCrmDashboardKPIs, getBonificacaoProgress, getSalesFunnel, getFunnelStageDeals, getSalesCycleByStage } from '../services/crmDashboardService';
 import { getPlaybookByPipeline, getStepsByIds, saveStageSteps, saveStageGoal, getDealProgress, toggleDealStep } from '../services/crmPlaybookService';
 import { getTrafficEntries, getTrafficKPIs, getTrafficByChannel, getTrafficOverTime, createTrafficEntry, updateTrafficEntry, softDeleteTrafficEntry } from '../services/crmTrafficService';
@@ -837,6 +837,21 @@ export function useCrmActivities(filters = {}) {
     queryKey: [...crmQueryKeys.activities, filters],
     queryFn: () => getCrmActivities(filters),
     staleTime: 30_000,
+  });
+}
+
+/**
+ * Uma atividade inteira, pelo id — pra ABRIR A EDIÇÃO.
+ *
+ * `staleTime: 0` de propósito: o formulário grava o que carregou, então partir de
+ * um cache velho reescreveria por cima do que outra pessoa acabou de mudar.
+ */
+export function useCrmActivity(id) {
+  return useQuery({
+    queryKey: ['crm', 'activity', id],
+    queryFn: () => getCrmActivityById(id),
+    enabled: !!id,
+    staleTime: 0,
   });
 }
 
