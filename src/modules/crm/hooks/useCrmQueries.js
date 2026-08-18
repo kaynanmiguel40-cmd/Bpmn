@@ -259,6 +259,14 @@ export function useUpdateCrmContact() {
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: crmQueryKeys.contacts });
       qc.invalidateQueries({ queryKey: crmQueryKeys.contact(id) });
+      // O telefone do contato é o que a Fila disca e o que o Kanban mostra: as
+      // duas o buscam por join próprio, e sem invalidar aqui a correção só
+      // apareceria quando o cache delas vencesse (3-5 min). Corrigir o número e
+      // continuar vendo o antigo na tela de execução é como ele acaba discado.
+      qc.invalidateQueries({ queryKey: ['crm', 'workQueue'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'calendarActivities'] });
+      qc.invalidateQueries({ queryKey: ['crm', 'pipelineDeals'] });
+      qc.invalidateQueries({ queryKey: crmQueryKeys.deals });
       toast('Contato atualizado', 'success');
     },
   });

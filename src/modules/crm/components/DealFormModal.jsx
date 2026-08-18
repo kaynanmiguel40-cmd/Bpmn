@@ -16,6 +16,7 @@ import {
   useCrmCompanies,
   useCreateCrmCompany,
   useCreateCrmContact,
+  useUpdateCrmContact,
   useCreateCrmDeal,
   useUpdateCrmDeal,
   useCrmLeadSources,
@@ -282,8 +283,9 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   const updateMutation = useUpdateCrmDeal();
   const createCompanyMutation = useCreateCrmCompany();
   const createContactMutation = useCreateCrmContact();
+  const updateContactMutation = useUpdateCrmContact();
   const createLeadSourceMutation = useCreateCrmLeadSource();
-  const isPending = createMutation.isPending || updateMutation.isPending || createCompanyMutation.isPending || createContactMutation.isPending;
+  const isPending = createMutation.isPending || updateMutation.isPending || createCompanyMutation.isPending || createContactMutation.isPending || updateContactMutation.isPending;
 
   const { data: pipelines = [] } = useCrmPipelines();
   const { data: allMembers = [] } = useTeamMembers();
@@ -291,7 +293,7 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
   const crmMembers = allMembers.filter(m => m.crmRole);
   const SOURCE_OPTIONS = [...leadSources.map(s => s.name), 'Outros'];
 
-  const { register, handleSubmit, control, reset, watch, setValue, getValues, formState: { errors } } = useForm({
+  const { register, handleSubmit, control, reset, watch, setValue, getValues, formState: { errors, dirtyFields } } = useForm({
     resolver: zodResolver(crmDealSchema),
     defaultValues: {
       title: '', value: 0, mrr: 0, probability: 0, segment: '', source: '',
@@ -430,6 +432,33 @@ export function DealFormModal({ open, onClose, deal = null, defaultPipelineId = 
       } catch (_) {
         // toast de erro ja disparado pelo service; aborta submit
         return;
+      }
+    } else if (contactId) {
+      // CONTATO JA VINCULADO: telefone/e-mail editados aqui tem que ir pro
+      // CONTATO, nao so pro negocio.
+      //
+      // O negocio guarda uma copia (contact_phone/contact_email) que serve de
+      // FALLBACK pra quando nao ha contato vinculado — e o `getDealLeadInfo`
+      // codifica a regra: o registro vinculado sempre vence. Gravando so no
+      // negocio, a correcao ia pra um campo que ninguem le: o resumo continuava
+      // mostrando o numero antigo, e — pior — a Fila e o botao de WhatsApp
+      // tambem leem o contato primeiro, entao a vendedora ligava pro numero
+      // velho achando que tinha corrigido.
+      //
+      // `dirtyFields` em vez de comparar valores: so sincroniza o que a pessoa
+      // REALMENTE editou nesta abertura do formulario. Comparar contra o que o
+      // form carregou arriscaria reescrever, com um valor velho da tela, um
+      // contato que outra pessoa atualizou nesse meio-tempo.
+      const doContato = {};
+      if (dirtyFields.contactPhone) doContato.phone = (data.contactPhone || '').trim();
+      if (dirtyFields.contactEmail) doContato.email = (data.contactEmail || '').trim();
+      if (Object.keys(doContato).length > 0) {
+        try {
+          await updateContactMutation.mutateAsync({ id: contactId, updates: doContato });
+        } catch (_) {
+          // toast de erro ja disparado pelo service; aborta submit
+          return;
+        }
       }
     }
 
