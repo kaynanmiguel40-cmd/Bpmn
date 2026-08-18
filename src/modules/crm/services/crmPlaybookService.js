@@ -378,8 +378,12 @@ async function agendarPassos(dealId, stageId) {
 
   const { error } = await supabase.from('crm_activities').insert(rows);
   if (error) {
+    // LANCA em vez de devolver 0: quem chama precisa distinguir "esta etapa nao
+    // tem passo a agendar" (0 legitimo) de "o agendamento falhou". Devolvendo 0
+    // pros dois casos, o moveDealToStage seguia em frente e cancelava a cadencia
+    // da etapa anterior — o lead ficava sem tarefa nenhuma e a tela dizia sucesso.
     console.error('[scheduleStepsForDeal]', error.message);
-    return 0;
+    throw new Error(`Não consegui criar as tarefas da etapa: ${error.message}`);
   }
   return rows.length;
 }

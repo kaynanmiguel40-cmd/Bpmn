@@ -10,11 +10,22 @@ vi.mock('../../../../contexts/ToastContext', () => ({ toast: vi.fn() }));
 vi.mock('../../../../lib/serviceFactory', () => ({
   createCRUDService: vi.fn(() => ({ create: vi.fn(), update: vi.fn(), getAll: vi.fn(), remove: vi.fn() })),
 }));
-vi.mock('../crmAutomationsService', () => ({ triggerAutomationsForDeal: vi.fn() }));
-vi.mock('../crmActivitiesService', () => ({ createCrmActivity: vi.fn() }));
+// Precisa resolver uma Promise: o moveDealToStage encadeia `.catch()` no retorno
+// (fire-and-forget). Um vi.fn() cru devolve undefined e estoura ali.
+vi.mock('../crmAutomationsService', () => ({
+  triggerAutomationsForDeal: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('../../schemas/crmValidation', () => ({ crmDealSchema: {} }));
+// A cadencia e efeito colateral de markDealAsLost, nao o que esta sob teste —
+// mas E parte do contrato (perdido sai da fila; resgatavel entra na cadencia de
+// nutricao), entao fica mockada pra poder ser verificada sem tocar no supabase.
+vi.mock('../crmPlaybookService', () => ({
+  scheduleStepsForDeal: vi.fn().mockResolvedValue(0),
+  cancelPendingStepsForDeal: vi.fn().mockResolvedValue(0),
+}));
 
-import { dbToCrmDeal, markDealAsLost } from '../crmDealsService';
+import { dbToCrmDeal, markDealAsLost, moveDealToStage } from '../crmDealsService';
+import { scheduleStepsForDeal, cancelPendingStepsForDeal } from '../crmPlaybookService';
 import { supabase } from '../../../../lib/supabase';
 
 // Helper: cria um chain mock do supabase. Cada `select/update/insert` retorna
@@ -53,9 +64,10 @@ function makeChain(finalResult) {
 
 beforeEach(() => {
   supabase.from.mockReset();
-  // Workspace settings sao lidos do localStorage por markDealAsLost.
-  // Limpar entre testes evita vazamento de config entre cenarios.
-  localStorage.clear();
+  // mockReset e nao mockClear: `mockRejectedValueOnce` armado num teste sobrevive
+  // ao clear e vaza pro proximo que chamar o mock.
+  vi.mocked(scheduleStepsForDeal).mockReset().mockResolvedValue(0);
+  vi.mocked(cancelPendingStepsForDeal).mockReset().mockResolvedValue(0);
 });
 
 describe('dbToCrmDeal', () => {
@@ -148,344 +160,312 @@ describe('dbToCrmDeal', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // markDealAsLost
+//
+// O ROTEAMENTO MUDOU (migration 083). Antes, todo perdido caia na "Triagem" da
+// Nurturing como `lost` e so virava trabalho se alguem arrastasse — na pratica
+// ninguem arrastava, e a Triagem virou um deposito. Hoje quem decide e a
+// pergunta "da pra resgatar?" feita no modal de perda:
+//
+//   resgatavel === true  -> "Em Nutricao", REABERTO (status 'open'), com a
+//                           cadencia de nutricao agendada. E trabalho de novo.
+//   qualquer outro valor -> "Descarte": perdido, parado, sem cadencia.
+//
+// O destino e sempre a pipeline "Nurturing" (achada por nome). Sem ela, o deal
+// so vira `lost` onde esta. A config por localStorage que existia aqui
+// (lostTargetPipelineId/discardStageId) foi REMOVIDA de proposito: era regra de
+// negocio POR DISPOSITIVO — o mesmo lead ia pra lugares diferentes dependendo do
+// navegador de quem clicou.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('markDealAsLost', () => {
   const NURTURING_ID = 'pipe_nurt';
   const NURTURING_STAGES = [
-    { id: 'st_triagem',  name: 'Triagem', position: 1 },
-    { id: 'st_nutricao', name: 'Em Nutricao', position: 2 },
-    { id: 'st_react30',  name: 'Reativacao D30', position: 3 },
-    { id: 'st_descarte', name: 'Descarte', position: 7 },
+    { id: 'st_nutricao', name: 'Em Nutricao', position: 1 },
+    { id: 'st_react30',  name: 'Reativacao D30', position: 2 },
+    { id: 'st_reativou', name: 'Reativou', position: 3 },
+    { id: 'st_descarte', name: 'Descarte', position: 4 },
   ];
 
-  // Configura a sequencia de mocks por chamada que markDealAsLost faz:
-  //   1) SELECT crm_deals (current pipeline_id, stage_id)
-  //   2) SELECT crm_pipeline_stages (procura estagio "Excluida" na pipeline atual)
-  //   3) SELECT crm_pipelines (Nurturing + stages) — pulada se houve match em (2) ou config
-  //   4) UPDATE crm_deals (resultado final)
-  //   5) INSERT crm_deal_stage_history (transicao) — opcional
-  // Por default discardStage = null, fluxo cai pro caminho legado de Nurturing.
-  function setupMocks({ current, nurturing, updated, discardStage = null }) {
+  /**
+   * Sequencia de `from()` que markDealAsLost faz:
+   *   1) SELECT crm_deals            (pipeline_id, stage_id atuais)
+   *   2) SELECT crm_pipelines        (Nurturing + etapas)
+   *   3) UPDATE crm_deals            (resultado final)
+   *   4) INSERT crm_deal_stage_history (so quando a etapa muda de fato)
+   */
+  function setupMocks({ current, nurturing, updated }) {
     const dealSelect = makeChain({ data: current, error: null });
-    const discardSelect = makeChain({ data: discardStage, error: null });
     const nurturingSelect = makeChain({ data: nurturing, error: null });
     const dealUpdate = makeChain({ data: updated, error: null });
     const historyInsert = makeChain({ data: null, error: null });
 
     supabase.from
       .mockImplementationOnce((t) => { dealSelect.captured.table = t; return dealSelect.chain; })
-      .mockImplementationOnce((t) => { discardSelect.captured.table = t; return discardSelect.chain; })
       .mockImplementationOnce((t) => { nurturingSelect.captured.table = t; return nurturingSelect.chain; })
       .mockImplementationOnce((t) => { dealUpdate.captured.table = t; return dealUpdate.chain; })
       .mockImplementationOnce((t) => { historyInsert.captured.table = t; return historyInsert.chain; });
 
-    return { dealSelect, discardSelect, nurturingSelect, dealUpdate, historyInsert };
+    return { dealSelect, nurturingSelect, dealUpdate, historyInsert };
   }
 
-  it('move deal de outra pipeline pra Nurturing > Triagem (como perdido)', async () => {
+  const nurturingOk = { id: NURTURING_ID, crm_pipeline_stages: NURTURING_STAGES };
+
+  // ─── Resgatavel: volta a ser trabalho ──────────────────────────────────────
+
+  it('resgatavel vai pra "Em Nutricao" REABERTO — nao fica como perdido', async () => {
     const mocks = setupMocks({
-      current: { pipeline_id: 'pipe_vendedor', stage_id: 'st_negociacao' },
-      nurturing: { id: NURTURING_ID, crm_pipeline_stages: NURTURING_STAGES },
+      current: { pipeline_id: 'pipe_geral', stage_id: 'st_negociacao' },
+      nurturing: nurturingOk,
       updated: {
-        id: 'd1', title: 'Deal X', status: 'lost',
-        pipeline_id: NURTURING_ID, stage_id: 'st_triagem',
-        lost_reason: 'preco', closed_at: '2026-05-06T12:00:00Z',
+        id: 'd1', title: 'Deal X', status: 'open',
+        pipeline_id: NURTURING_ID, stage_id: 'st_nutricao', lost_reason: 'sem orcamento agora',
       },
     });
 
-    const result = await markDealAsLost('d1', 'preco');
+    const result = await markDealAsLost('d1', 'sem orcamento agora', true);
 
-    // Entra na Triagem (1a etapa) COMO PERDIDO — so reativa se arrastado depois.
+    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
+    // ABERTO: a cadencia de nutricao so roda em deal aberto. Marcar `lost` aqui
+    // deixaria o lead na etapa certa sem nunca mais ser tocado.
+    expect(updatePayload.status).toBe('open');
+    expect(updatePayload.probability).toBe(10);
+    expect(updatePayload.closed_at).toBeNull();
+    expect(updatePayload.lost_reason).toBe('sem orcamento agora');
+    expect(updatePayload.pipeline_id).toBe(NURTURING_ID);
+    expect(updatePayload.stage_id).toBe('st_nutricao');
+    expect(result._movedTo).toBe('nurturing');
+  });
+
+  it('resgatavel troca a cadencia: cancela a antiga e agenda a de nutricao', async () => {
+    setupMocks({
+      current: { pipeline_id: 'pipe_geral', stage_id: 'st_neg' },
+      nurturing: nurturingOk,
+      updated: { id: 'd1', title: 'X', status: 'open', pipeline_id: NURTURING_ID, stage_id: 'st_nutricao' },
+    });
+
+    await markDealAsLost('d1', 'x', true);
+
+    expect(cancelPendingStepsForDeal).toHaveBeenCalledWith('d1');
+    expect(scheduleStepsForDeal).toHaveBeenCalledWith('d1', 'st_nutricao');
+  });
+
+  it('acha "Em Nutricao" pelo NOME, nao pela posicao (resiliente a reordenacao)', async () => {
+    const embaralhadas = [
+      { id: 'st_descarte', name: 'Descarte', position: 1 },
+      { id: 'st_react90',  name: 'Reativacao D90', position: 2 },
+      { id: 'st_nutricao', name: 'Em Nutricao', position: 9 },
+    ];
+    const mocks = setupMocks({
+      current: { pipeline_id: 'pipe_geral', stage_id: 's1' },
+      nurturing: { id: NURTURING_ID, crm_pipeline_stages: embaralhadas },
+      updated: { id: 'd1', title: 'X', status: 'open', pipeline_id: NURTURING_ID, stage_id: 'st_nutricao' },
+    });
+
+    await markDealAsLost('d1', 'x', true);
+
+    expect(mocks.dealUpdate.captured.updateArgs[0].stage_id).toBe('st_nutricao');
+  });
+
+  // ─── Nao resgatavel: descarte ──────────────────────────────────────────────
+
+  it('NAO resgatavel vai pra "Descarte" como perdido de vez', async () => {
+    const mocks = setupMocks({
+      current: { pipeline_id: 'pipe_geral', stage_id: 'st_neg' },
+      nurturing: nurturingOk,
+      updated: {
+        id: 'd1', title: 'X', status: 'lost',
+        pipeline_id: NURTURING_ID, stage_id: 'st_descarte', lost_reason: 'fora do ICP',
+      },
+    });
+
+    const result = await markDealAsLost('d1', 'fora do ICP', false);
+
     const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
     expect(updatePayload.status).toBe('lost');
     expect(updatePayload.probability).toBe(0);
-    expect(updatePayload.lost_reason).toBe('preco');
     expect(updatePayload.closed_at).toBeTruthy();
-    expect(updatePayload.pipeline_id).toBe(NURTURING_ID);
-    expect(updatePayload.stage_id).toBe('st_triagem');
-
-    // History gravado com transicao pra Triagem
-    expect(mocks.historyInsert.chain.insert).toHaveBeenCalled();
-    const historyRow = mocks.historyInsert.captured.insertArgs[0];
-    expect(historyRow.deal_id).toBe('d1');
-    expect(historyRow.from_stage_id).toBe('st_negociacao');
-    expect(historyRow.to_stage_id).toBe('st_triagem');
-    expect(historyRow.pipeline_id).toBe(NURTURING_ID);
-
-    expect(result._movedTo).toBe('nurturing');
-    expect(result.status).toBe('lost');
-  });
-
-  it('move deal ja no Nurturing pra "Descarte"', async () => {
-    const mocks = setupMocks({
-      // Deal ja esta em Nurturing, stage diferente de Descarte (foi reaberto antes)
-      current: { pipeline_id: NURTURING_ID, stage_id: 'st_react30' },
-      nurturing: { id: NURTURING_ID, crm_pipeline_stages: NURTURING_STAGES },
-      updated: {
-        id: 'd1', title: 'X', status: 'lost',
-        pipeline_id: NURTURING_ID, stage_id: 'st_descarte',
-        lost_reason: 'fora do ICP',
-      },
-    });
-
-    const result = await markDealAsLost('d1', 'fora do ICP');
-
-    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    // Pipeline nao muda (ja era Nurturing) -> NAO entra no payload
-    expect(updatePayload.pipeline_id).toBeUndefined();
     expect(updatePayload.stage_id).toBe('st_descarte');
-    expect(updatePayload.lost_reason).toBe('fora do ICP');
-
-    // Transicao gravada
-    expect(mocks.historyInsert.captured.insertArgs[0].to_stage_id).toBe('st_descarte');
-
     expect(result._movedTo).toBe('descarte');
   });
 
-  it('NAO move quando deal ja esta no Nurturing > Descarte (idempotente)', async () => {
+  it('sem responder "resgatavel?" (null) o destino e o Descarte, nao a Nutricao', async () => {
+    // O default e conservador: entrar na cadencia de nutricao sem alguem ter
+    // dito que vale a pena e voltar a ligar pra quem ja disse nao.
     const mocks = setupMocks({
-      // Deal ja em Descarte — nao tem pra onde ir
-      current: { pipeline_id: NURTURING_ID, stage_id: 'st_descarte' },
-      nurturing: { id: NURTURING_ID, crm_pipeline_stages: NURTURING_STAGES },
-      updated: {
-        id: 'd1', title: 'X', status: 'lost',
-        pipeline_id: NURTURING_ID, stage_id: 'st_descarte',
-      },
+      current: { pipeline_id: 'pipe_geral', stage_id: 'st_neg' },
+      nurturing: nurturingOk,
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_descarte' },
     });
 
-    const result = await markDealAsLost('d1', 'reincidencia');
+    const result = await markDealAsLost('d1', 'nao quis');
 
-    // Update NAO deveria conter pipeline_id/stage_id (porque nao mudou)
-    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    expect(updatePayload.pipeline_id).toBeUndefined();
-    expect(updatePayload.stage_id).toBeUndefined();
-
-    // History NAO foi gravado pois stage nao mudou
-    expect(mocks.historyInsert.chain.insert).not.toHaveBeenCalled();
-
-    // Flag _movedTo deve ser null (sem movimento)
-    expect(result._movedTo).toBeNull();
+    expect(mocks.dealUpdate.captured.updateArgs[0].stage_id).toBe('st_descarte');
+    expect(result._movedTo).toBe('descarte');
   });
 
-  it('mantem fluxo antigo quando pipeline Nurturing nao existe', async () => {
-    const mocks = setupMocks({
-      current: { pipeline_id: 'pipe_vendedor', stage_id: 'st_neg' },
-      nurturing: null, // maybeSingle retorna null
-      updated: {
-        id: 'd1', title: 'X', status: 'lost',
-        pipeline_id: 'pipe_vendedor', stage_id: 'st_neg',
-      },
+  it('descartado sai da fila e NAO recebe cadencia nova', async () => {
+    setupMocks({
+      current: { pipeline_id: 'pipe_geral', stage_id: 'st_neg' },
+      nurturing: nurturingOk,
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_descarte' },
     });
 
-    const result = await markDealAsLost('d1', 'sem dinheiro');
+    await markDealAsLost('d1', 'x', false);
+
+    expect(cancelPendingStepsForDeal).toHaveBeenCalledWith('d1');
+    expect(scheduleStepsForDeal).not.toHaveBeenCalled();
+  });
+
+  it('deal que JA estava na Nurturing nao reescreve pipeline_id', async () => {
+    const mocks = setupMocks({
+      current: { pipeline_id: NURTURING_ID, stage_id: 'st_react30' },
+      nurturing: nurturingOk,
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_descarte' },
+    });
+
+    await markDealAsLost('d1', 'reincidencia', false);
 
     const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    // Nao deve mexer em pipeline_id/stage_id
+    expect(updatePayload.pipeline_id).toBeUndefined();
+    expect(updatePayload.stage_id).toBe('st_descarte');
+  });
+
+  // ─── Historico de etapa ────────────────────────────────────────────────────
+
+  it('grava a transicao com o pipeline_id de DESTINO, nao o de origem', async () => {
+    const mocks = setupMocks({
+      current: { pipeline_id: 'pipe_origem', stage_id: 'st_origem' },
+      nurturing: nurturingOk,
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_descarte' },
+    });
+
+    await markDealAsLost('d1', 'x', false);
+
+    const historyRow = mocks.historyInsert.captured.insertArgs[0];
+    expect(historyRow.deal_id).toBe('d1');
+    expect(historyRow.from_stage_id).toBe('st_origem');
+    expect(historyRow.to_stage_id).toBe('st_descarte');
+    expect(historyRow.pipeline_id).toBe(NURTURING_ID);
+  });
+
+  it('nao grava historico quando o deal ja esta na etapa de destino (idempotente)', async () => {
+    const mocks = setupMocks({
+      current: { pipeline_id: NURTURING_ID, stage_id: 'st_descarte' },
+      nurturing: nurturingOk,
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_descarte' },
+    });
+
+    await markDealAsLost('d1', 'de novo', false);
+
+    expect(mocks.historyInsert.chain.insert).not.toHaveBeenCalled();
+  });
+
+  // ─── Degradacao e erro ─────────────────────────────────────────────────────
+
+  it('sem a pipeline Nurturing, o deal so vira perdido onde esta', async () => {
+    const mocks = setupMocks({
+      current: { pipeline_id: 'pipe_geral', stage_id: 'st_neg' },
+      nurturing: null,
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: 'pipe_geral', stage_id: 'st_neg' },
+    });
+
+    const result = await markDealAsLost('d1', 'sem dinheiro', true);
+
+    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
     expect(updatePayload.pipeline_id).toBeUndefined();
     expect(updatePayload.stage_id).toBeUndefined();
-    // Mas mantem os campos de "perdido"
     expect(updatePayload.status).toBe('lost');
     expect(updatePayload.probability).toBe(0);
     expect(updatePayload.lost_reason).toBe('sem dinheiro');
-
-    // Sem movimento, sem history
     expect(mocks.historyInsert.chain.insert).not.toHaveBeenCalled();
     expect(result._movedTo).toBeNull();
   });
 
   it('aceita reason vazio (default)', async () => {
     const mocks = setupMocks({
-      current: { pipeline_id: 'pipe_v', stage_id: 's1' },
-      nurturing: { id: NURTURING_ID, crm_pipeline_stages: NURTURING_STAGES },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_triagem' },
+      current: { pipeline_id: 'pipe_geral', stage_id: 's1' },
+      nurturing: nurturingOk,
+      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_descarte' },
     });
 
     await markDealAsLost('d1');
 
-    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    expect(updatePayload.lost_reason).toBe('');
+    expect(mocks.dealUpdate.captured.updateArgs[0].lost_reason).toBe('');
   });
 
-  it('throw Error quando update falha', async () => {
+  it('throw Error quando o update falha', async () => {
     const dealSelect = makeChain({ data: { pipeline_id: 'p', stage_id: 's' }, error: null });
-    const discardSelect = makeChain({ data: null, error: null });
     const nurturingSelect = makeChain({ data: null, error: null });
     const dealUpdate = makeChain({ data: null, error: { message: 'permission denied' } });
 
     supabase.from
       .mockImplementationOnce(() => dealSelect.chain)
-      .mockImplementationOnce(() => discardSelect.chain)
       .mockImplementationOnce(() => nurturingSelect.chain)
       .mockImplementationOnce(() => dealUpdate.chain);
 
     await expect(markDealAsLost('d1', 'x')).rejects.toThrow('permission denied');
+    // A cadencia so e mexida DEPOIS do update dar certo: cancelar os toques de um
+    // deal que continua aberto o deixaria vivo na pipeline e mudo na agenda.
+    expect(cancelPendingStepsForDeal).not.toHaveBeenCalled();
   });
+});
 
-  it('escolhe stage por NOME (Triagem), nao por posicao (resiliencia a reordenacao)', async () => {
-    // Stages com posicoes embaralhadas — deve achar "Triagem" pelo nome
-    const stagesEmbaralhadas = [
-      { id: 'st_descarte', name: 'Descarte', position: 1 }, // ate na primeira posicao!
-      { id: 'st_react90',  name: 'Reativacao D90', position: 2 },
-      { id: 'st_triagem',  name: 'Triagem', position: 5 }, // posicao 5
-    ];
+// ─────────────────────────────────────────────────────────────────────────────
+// moveDealToStage — a ORDEM entre criar a cadência nova e apagar a antiga.
+//
+// Regressão do bug da Maria José (08/08): o lead foi movido pra Cadência, a
+// cadência da etapa anterior foi apagada e a da nova nunca nasceu — 2 dias em
+// branco, sem erro em lugar nenhum. As duas operações rodavam soltas e em
+// paralelo; a destrutiva é curta e chegava, a construtiva é longa e se perdia.
+// ─────────────────────────────────────────────────────────────────────────────
 
-    const mocks = setupMocks({
-      current: { pipeline_id: 'pipe_v', stage_id: 's1' },
-      nurturing: { id: NURTURING_ID, crm_pipeline_stages: stagesEmbaralhadas },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_triagem' },
-    });
-
-    await markDealAsLost('d1', 'preco');
-
-    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    // Mesmo que "Triagem" esteja em position 5, achou pelo NOME
-    expect(updatePayload.stage_id).toBe('st_triagem');
-  });
-
-  it('fallback para primeiro stage por posicao se "Triagem" nao existir', async () => {
-    // Pipeline Nurturing nomeado mas com stages diferentes (ex: configuracao customizada)
-    const stagesCustom = [
-      { id: 'st_x', name: 'Stage Custom 1', position: 1 },
-      { id: 'st_y', name: 'Stage Custom 2', position: 2 },
-    ];
-
-    const mocks = setupMocks({
-      current: { pipeline_id: 'pipe_v', stage_id: 's1' },
-      nurturing: { id: NURTURING_ID, crm_pipeline_stages: stagesCustom },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_x' },
-    });
-
-    await markDealAsLost('d1', 'qualquer');
-
-    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    // Cai pro primeiro stage por posicao
-    expect(updatePayload.stage_id).toBe('st_x');
-    expect(updatePayload.pipeline_id).toBe(NURTURING_ID);
-  });
-
-  it('grava transicao no history com pipeline_id correto da NOVA pipeline', async () => {
-    const mocks = setupMocks({
-      current: { pipeline_id: 'pipe_origem', stage_id: 'st_origem' },
-      nurturing: { id: NURTURING_ID, crm_pipeline_stages: NURTURING_STAGES },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: NURTURING_ID, stage_id: 'st_triagem' },
-    });
-
-    await markDealAsLost('d1', 'x');
-
-    const historyRow = mocks.historyInsert.captured.insertArgs[0];
-    // pipeline_id no history deve ser o de DESTINO (Nurturing), nao o de origem
-    expect(historyRow.pipeline_id).toBe(NURTURING_ID);
-    expect(historyRow.from_stage_id).toBe('st_origem');
-    expect(historyRow.to_stage_id).toBe('st_triagem');
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Caminho de config explicita (workspaceSettings em localStorage)
-  // ─────────────────────────────────────────────────────────────────────────
-
-  function setupMocksWithConfig({ current, updated, settings, discardStage = null }) {
-    // Seta config antes do markDealAsLost rodar
-    localStorage.setItem('crm-workspace-config', JSON.stringify(settings));
-
-    const dealSelect = makeChain({ data: current, error: null });
-    const discardSelect = makeChain({ data: discardStage, error: null });
-    const dealUpdate = makeChain({ data: updated, error: null });
+describe('moveDealToStage — cadência da etapa nova antes da antiga', () => {
+  function setupMove() {
+    const dealSelect = makeChain({ data: { stage_id: 'st_leads', pipeline_id: 'p1', status: 'open' }, error: null });
+    const stageSelect = makeChain({ data: { is_win_stage: false, name: 'Cadencia' }, error: null });
+    const dealUpdate = makeChain({ data: { id: 'd1', title: 'Maria José', stage_id: 'st_cad' }, error: null });
     const historyInsert = makeChain({ data: null, error: null });
 
     supabase.from
-      .mockImplementationOnce((t) => { dealSelect.captured.table = t; return dealSelect.chain; })
-      .mockImplementationOnce((t) => { discardSelect.captured.table = t; return discardSelect.chain; })
-      .mockImplementationOnce((t) => { dealUpdate.captured.table = t; return dealUpdate.chain; })
-      .mockImplementationOnce((t) => { historyInsert.captured.table = t; return historyInsert.chain; });
+      .mockImplementationOnce(() => dealSelect.chain)
+      .mockImplementationOnce(() => stageSelect.chain)
+      .mockImplementationOnce(() => dealUpdate.chain)
+      .mockImplementationOnce(() => historyInsert.chain);
 
-    return { dealSelect, discardSelect, dealUpdate, historyInsert };
+    return { dealUpdate };
   }
 
-  it('usa config do workspace quando lostTargetPipelineId esta setado (NAO consulta crm_pipelines)', async () => {
-    const mocks = setupMocksWithConfig({
-      current: { pipeline_id: 'pipe_outro', stage_id: 'st_orig' },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: 'custom_pipe', stage_id: 'custom_entry' },
-      settings: {
-        lostTargetPipelineId: 'custom_pipe',
-        lostTargetStageId: 'custom_entry',
-        discardStageId: 'custom_descarte',
-      },
-    });
+  it('agenda a cadencia da etapa NOVA antes de cancelar a da ANTIGA', async () => {
+    setupMove();
 
-    const result = await markDealAsLost('d1', 'preco');
+    await moveDealToStage('d1', 'st_cad');
 
-    // 5 chamadas a from(): deal SELECT, pipeline_stages (procura Excluida), deal
-    // UPDATE, history INSERT e o cancelamento da cadencia pendente (perdido sai
-    // da fila inteiro — cancelPendingStepsForDeal).
-    // NAO houve select de crm_pipelines (skip por causa da config explicita).
-    expect(supabase.from).toHaveBeenCalledTimes(5);
-
-    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    expect(updatePayload.pipeline_id).toBe('custom_pipe');
-    expect(updatePayload.stage_id).toBe('custom_entry');
-    expect(result._movedTo).toBe('nurturing');
+    expect(scheduleStepsForDeal).toHaveBeenCalledWith('d1', 'st_cad');
+    expect(cancelPendingStepsForDeal).toHaveBeenCalledWith('d1', 'st_leads');
+    // A ordem E o conserto: construtivo primeiro, destrutivo depois.
+    const agendou = vi.mocked(scheduleStepsForDeal).mock.invocationCallOrder[0];
+    const cancelou = vi.mocked(cancelPendingStepsForDeal).mock.invocationCallOrder[0];
+    expect(agendou).toBeLessThan(cancelou);
   });
 
-  it('config explicita: deal ja na pipeline alvo -> stage de descarte configurado', async () => {
-    const mocks = setupMocksWithConfig({
-      current: { pipeline_id: 'custom_pipe', stage_id: 'custom_entry' },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: 'custom_pipe', stage_id: 'custom_descarte' },
-      settings: {
-        lostTargetPipelineId: 'custom_pipe',
-        lostTargetStageId: 'custom_entry',
-        discardStageId: 'custom_descarte',
-      },
-    });
+  it('se o agendamento falha, a cadencia antiga NAO e cancelada', async () => {
+    // O lead fica com a cadência da etapa anterior — fora de contexto, mas
+    // visível. Sem tarefa nenhuma ele some da fila e ninguém descobre.
+    setupMove();
+    vi.mocked(scheduleStepsForDeal).mockRejectedValueOnce(new Error('insert falhou'));
 
-    const result = await markDealAsLost('d1', 'morto');
+    await moveDealToStage('d1', 'st_cad');
 
-    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    expect(updatePayload.stage_id).toBe('custom_descarte');
-    expect(updatePayload.pipeline_id).toBeUndefined(); // mesma pipeline
-    expect(result._movedTo).toBe('descarte');
+    expect(cancelPendingStepsForDeal).not.toHaveBeenCalled();
   });
 
-  it('config explicita sem discardStageId: deal ja na pipeline alvo NAO muda stage', async () => {
-    const mocks = setupMocksWithConfig({
-      current: { pipeline_id: 'custom_pipe', stage_id: 'custom_entry' },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: 'custom_pipe', stage_id: 'custom_entry' },
-      settings: {
-        lostTargetPipelineId: 'custom_pipe',
-        lostTargetStageId: 'custom_entry',
-        discardStageId: null, // admin nao configurou descarte
-      },
-    });
+  it('falha no agendamento nao derruba o move — o lead muda de etapa mesmo assim', async () => {
+    setupMove();
+    vi.mocked(scheduleStepsForDeal).mockRejectedValueOnce(new Error('sem rede'));
 
-    const result = await markDealAsLost('d1', 'x');
+    const result = await moveDealToStage('d1', 'st_cad');
 
-    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    // Sem stage de descarte, deal so vira lost no lugar
-    expect(updatePayload.pipeline_id).toBeUndefined();
-    expect(updatePayload.stage_id).toBeUndefined();
-    expect(result._movedTo).toBeNull();
-    // Mas o status='lost' continua sendo aplicado
-    expect(updatePayload.status).toBe('lost');
-  });
-
-  it('config explicita sem lostTargetStageId: deal de outra pipeline NAO move (sem stage de entrada)', async () => {
-    const mocks = setupMocksWithConfig({
-      current: { pipeline_id: 'pipe_outro', stage_id: 'st_orig' },
-      updated: { id: 'd1', title: 'X', status: 'lost', pipeline_id: 'pipe_outro', stage_id: 'st_orig' },
-      settings: {
-        lostTargetPipelineId: 'custom_pipe',
-        lostTargetStageId: null, // admin esqueceu de selecionar stage
-        discardStageId: 'custom_descarte',
-      },
-    });
-
-    const result = await markDealAsLost('d1', 'x');
-
-    const updatePayload = mocks.dealUpdate.captured.updateArgs[0];
-    // Sem stage de entrada definido, fica no lugar
-    expect(updatePayload.pipeline_id).toBeUndefined();
-    expect(updatePayload.stage_id).toBeUndefined();
-    expect(result._movedTo).toBeNull();
-    expect(updatePayload.status).toBe('lost');
+    expect(result).not.toBeNull();
+    expect(result.id).toBe('d1');
   });
 });

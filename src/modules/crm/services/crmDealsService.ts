@@ -3,9 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmDealSchema } from '../schemas/crmValidation';
 import { triggerAutomationsForDeal } from './crmAutomationsService';
-import { createCrmActivity } from './crmActivitiesService';
 import { scheduleStepsForDeal, cancelPendingStepsForDeal } from './crmPlaybookService';
-import { getCrmWorkspaceSettings } from '../lib/workspaceSettings';
 import { escapeIlike } from '../lib/searchFilters';
 
 // ==================== TIPOS ====================
@@ -507,16 +505,39 @@ export async function moveDealToStage(dealId: string, stageId: string): Promise<
 
   if (cur && cur.stage_id !== stageId && result) {
     triggerAutomationsForDeal(result, stageId).catch(console.warn);
-    // A cadencia da etapa que ficou pra tras sai da fila ANTES de agendar a
-    // nova: o lead que avancou nao deve mais ser tocado pelo script da etapa
-    // anterior. Sem isso a agenda acumula lixo que cresce sozinho todo dia.
-    if (cur.stage_id) {
-      cancelPendingStepsForDeal(dealId, cur.stage_id).catch(console.warn);
+
+    // CONSTRUTIVO ANTES DE DESTRUTIVO — e com await nos dois.
+    //
+    // Antes os dois rodavam soltos (fire-and-forget) e em paralelo, apesar do
+    // comentario que dizia "cancela ANTES de agendar": nenhum dos dois era
+    // esperado, entao a ordem era a da rede. E as duas nao custam igual —
+    // cancelar sao 2 idas ao banco, agendar sao 6. Quando a sequencia era
+    // interrompida no meio (aba fechada, navegacao, rede oscilando), o barato
+    // chegava e o caro nao: o lead perdia a cadencia da etapa antiga E nao
+    // ganhava a da nova, com a tela reportando sucesso e sem deixar rastro.
+    //
+    // Agora a cadencia nova nasce PRIMEIRO. So depois a antiga sai — e so se a
+    // primeira parte deu certo. Se o agendamento falhar, o lead fica com a
+    // cadencia antiga: trabalho fora de contexto e chato, mas visivel e
+    // corrigivel. Lead sem tarefa nenhuma e invisivel, e ninguem descobre.
+    let agendou = true;
+    try {
+      await scheduleStepsForDeal(dealId, stageId);
+    } catch (e) {
+      agendou = false;
+      console.error('[moveDealToStage] agendar a cadencia da nova etapa:', e);
+      toast(
+        'O lead mudou de etapa, mas não consegui criar as tarefas da nova. A cadência anterior foi mantida — tente mover de novo.',
+        'error',
+      );
     }
-    // Agenda as tarefas do processo da etapa nova (9-18h, sem almoco, sem
-    // colidir). Idempotente. Nao pode derrubar o move: se falhar, o lead ja
-    // mudou de etapa e a agenda pode ser gerada depois.
-    scheduleStepsForDeal(dealId, stageId).catch(console.warn);
+    if (agendou && cur.stage_id) {
+      try {
+        await cancelPendingStepsForDeal(dealId, cur.stage_id);
+      } catch (e) {
+        console.warn('[moveDealToStage] cancelar a cadencia da etapa anterior:', e);
+      }
+    }
   }
 
   // Reativacao: arrastar pra etapa "Reativou" (win stage da Nurturing) clona o
