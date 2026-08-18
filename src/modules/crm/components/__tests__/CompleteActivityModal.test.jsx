@@ -31,7 +31,7 @@ describe('CompleteActivityModal — desfecho da ligacao', () => {
   it('nao deixa concluir uma ligacao sem dizer se atendeu (trava Concluir e Pular)', () => {
     setup();
     expect(btn(/Concluir/)).toBeDisabled();
-    expect(btn(/Pular detalhes e concluir/)).toBeDisabled();
+    expect(btn(/Pular e concluir/)).toBeDisabled();
   });
 
   it('"Falei com ele" libera e envia contacted true', () => {

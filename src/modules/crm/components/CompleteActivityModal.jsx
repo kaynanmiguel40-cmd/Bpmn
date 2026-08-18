@@ -22,9 +22,22 @@ import { fieldClass } from './ui/formFieldClass';
 // Botões do rodapé na norma de modal do CRM: alvo de toque de 44px e
 // largura cheia no celular (a casca empilha os botões abaixo do sm).
 const PRIMARY_BTN =
-  'min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
+  'min-h-[44px] px-4 py-2 text-sm font-medium whitespace-nowrap bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
 const SECONDARY_BTN =
-  'min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+  'min-h-[44px] px-4 py-2 text-sm font-medium whitespace-nowrap text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+
+// Ação RARA (excluir, passar, desmarcar): rótulo no celular, só ícone no desktop.
+//
+// O rodapé tem 5 botões e ~470px úteis (modal md). Cinco rótulos não cabem: ou
+// espremem e quebram o texto em 3 linhas, ou saltam pra uma segunda fileira que
+// empurra o "Concluir" pra longe de onde a mão está. Encolher as raras é o que
+// abre espaço pras que importam — e o desktop tem tooltip pra dizer o que fazem.
+//
+// A inversão é de propósito: no CELULAR os botões empilham em largura cheia
+// (`w-full sm:w-auto`), então lá sobra espaço e o rótulo aparece; quem aperta
+// num botão de linha inteira sem texto não sabe o que vai acontecer.
+const ICON_BTN =
+  'min-h-[44px] px-4 sm:px-3 py-2 text-sm font-medium whitespace-nowrap text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
 
 export function CompleteActivityModal({
   open,
@@ -105,14 +118,21 @@ export function CompleteActivityModal({
               onClick={onDelete}
               disabled={isPending}
               title="Excluir esta tarefa"
-              className={`${SECONDARY_BTN} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
+              aria-label="Excluir esta tarefa"
+              className={`${ICON_BTN} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
             >
-              <Trash2 size={15} /> Excluir
+              <Trash2 size={15} /> <span className="sm:hidden">Excluir</span>
             </button>
           )}
           {onReassign && !isEditing && (
-            <button onClick={() => onReassign(activity)} disabled={isPending} title="Passar pra outro vendedor" className={SECONDARY_BTN}>
-              <UserCheck size={15} /> Passar
+            <button
+              onClick={() => onReassign(activity)}
+              disabled={isPending}
+              title="Passar pra outro vendedor"
+              aria-label="Passar pra outro vendedor"
+              className={ICON_BTN}
+            >
+              <UserCheck size={15} /> <span className="sm:hidden">Passar</span>
             </button>
           )}
           {isEditing && onUncomplete && (
@@ -120,15 +140,20 @@ export function CompleteActivityModal({
               onClick={onUncomplete}
               disabled={isPending}
               title="Desmarcar — volta a tarefa pra pendente"
-              className={SECONDARY_BTN}
+              aria-label="Desmarcar — volta a tarefa pra pendente"
+              className={ICON_BTN}
             >
-              <RotateCcw size={15} /> Desmarcar
+              <RotateCcw size={15} /> <span className="sm:hidden">Desmarcar</span>
             </button>
           )}
+          {/* Cancelar SEM borda: ele e o "Pular e concluir" ficam lado a lado e,
+              com a mesma casca, os dois competem pela mesma atenção — sendo que um
+              desiste da tarefa e o outro a conclui. Fantasma também economiza a
+              largura da borda, que é justamente o que falta nesta fileira. */}
           <button
             onClick={onClose}
             disabled={isPending}
-            className={SECONDARY_BTN}
+            className="min-h-[44px] px-4 sm:px-3 py-2 text-sm font-medium whitespace-nowrap text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto"
           >
             Cancelar
           </button>
@@ -139,7 +164,7 @@ export function CompleteActivityModal({
               title="Conclui a tarefa sem preencher o que foi feito/respondido"
               className={SECONDARY_BTN}
             >
-              Pular detalhes e concluir
+              Pular e concluir
             </button>
           )}
           <button

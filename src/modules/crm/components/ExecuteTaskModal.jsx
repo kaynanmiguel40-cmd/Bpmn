@@ -66,13 +66,20 @@ function whatsappUrl(val) {
 // Classes da norma de modal do CRM. Alvo de toque de 44px porque a usuaria
 // principal opera no celular.
 const BTN_PRIMARY =
-  'min-h-[44px] px-4 py-2 text-sm font-medium bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
+  'min-h-[44px] px-4 py-2 text-sm font-medium whitespace-nowrap bg-fyness-primary hover:bg-fyness-secondary text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
 const BTN_SECONDARY =
-  'min-h-[44px] px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+  'min-h-[44px] px-4 py-2 text-sm font-medium whitespace-nowrap text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+// Ação RARA (excluir, passar, desmarcar): rótulo no celular, só ícone no desktop.
+// Mesma regra do CompleteActivityModal — os dois modais concluem tarefa e ficam
+// lado a lado no dia da vendedora; rodapés diferentes pro mesmo gesto confundem.
+const BTN_ICONE =
+  'min-h-[44px] px-4 sm:px-3 py-2 text-sm font-medium whitespace-nowrap text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
+const BTN_FANTASMA =
+  'min-h-[44px] px-4 sm:px-3 py-2 text-sm font-medium whitespace-nowrap text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto';
 // Concluir e VERDE de proposito (verde = concluido em todo o CRM); so a
 // geometria segue o primario da norma.
 const BTN_PRIMARY_DONE =
-  'min-h-[44px] px-4 py-2 text-sm font-medium bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
+  'min-h-[44px] px-4 py-2 text-sm font-medium whitespace-nowrap bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto';
 
 // Este modal nao tem validacao de campo — so o ramo "sem erro" do fieldClass.
 const fieldClass =
@@ -352,22 +359,23 @@ export function ExecuteTaskModal({
               onClick={onDelete}
               disabled={isPending}
               title="Excluir esta tarefa"
-              className={`${BTN_SECONDARY} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
+              aria-label="Excluir esta tarefa"
+              className={`${BTN_ICONE} sm:mr-auto text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20`}
             >
-              <Trash2 size={15} /> Excluir
+              <Trash2 size={15} /> <span className="sm:hidden">Excluir</span>
             </button>
           )}
           {onReassign && !isEditing && (
-            <button onClick={() => onReassign(activity)} disabled={isPending} title="Passar pra outro vendedor" className={BTN_SECONDARY}>
-              <UserCheck size={15} /> Passar
+            <button onClick={() => onReassign(activity)} disabled={isPending} title="Passar pra outro vendedor" aria-label="Passar pra outro vendedor" className={BTN_ICONE}>
+              <UserCheck size={15} /> <span className="sm:hidden">Passar</span>
             </button>
           )}
           {isEditing && onUncomplete && (
-            <button onClick={onUncomplete} disabled={isPending} title="Desmarcar — volta a tarefa pra pendente" className={BTN_SECONDARY}>
-              <RotateCcw size={15} /> Desmarcar
+            <button onClick={onUncomplete} disabled={isPending} title="Desmarcar — volta a tarefa pra pendente" aria-label="Desmarcar — volta a tarefa pra pendente" className={BTN_ICONE}>
+              <RotateCcw size={15} /> <span className="sm:hidden">Desmarcar</span>
             </button>
           )}
-          <button onClick={onClose} disabled={isPending} className={BTN_SECONDARY}>
+          <button onClick={onClose} disabled={isPending} className={BTN_FANTASMA}>
             Cancelar
           </button>
           <button

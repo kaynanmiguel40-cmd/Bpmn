@@ -119,7 +119,7 @@ export function CrmModal({ open, onClose, title, size = 'md', children, footer, 
             Os botoes usam `w-full sm:w-auto`: e o par desta regra, e um so nao
             funciona sem o outro. */}
         {footer && (
-          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 px-5 py-3 border-t border-slate-200/80 dark:border-white/10 rounded-b-2xl shrink-0">
+          <div className="flex flex-col-reverse sm:flex-row sm:flex-wrap sm:items-center sm:justify-end gap-2 px-5 py-3 border-t border-slate-200/80 dark:border-white/10 rounded-b-2xl shrink-0">
             {footer}
           </div>
         )}
