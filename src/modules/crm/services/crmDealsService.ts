@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { toast } from '../../../contexts/ToastContext';
 import { crmDealSchema } from '../schemas/crmValidation';
 import { triggerAutomationsForDeal } from './crmAutomationsService';
-import { scheduleStepsForDeal, cancelPendingStepsForDeal } from './crmPlaybookService';
+import { scheduleStepsForDeal, cancelPendingStepsForDeal, reconcileStepsForDeal } from './crmPlaybookService';
 import { escapeIlike } from '../lib/searchFilters';
 
 // ==================== TIPOS ====================
@@ -405,15 +405,25 @@ export async function updateCrmDeal(id: string, updates: Record<string, unknown>
     next.closedAt = null; // reabrir limpa o fechamento
   }
   const result = await dealService.update(id, next);
+  const stageId = (result as { stageId?: string } | null)?.stageId;
+
   // E-mail preenchido AGORA: reagenda os passos de e-mail da etapa que foram
   // pulados por falta de e-mail (agendarPassos ignora passo de e-mail sem e-mail).
   // scheduleStepsForDeal é idempotente — não duplica os toques já criados. Cobre o
   // caso "liguei, o lead passou o e-mail, salvei" — antes o follow-up por e-mail
   // nunca nascia na Agenda.
   const emailNovo = next.contactEmail as string | undefined;
-  const stageId = (result as { stageId?: string } | null)?.stageId;
   if (result && emailNovo && String(emailNovo).trim() && stageId) {
     scheduleStepsForDeal(id, stageId).catch(console.warn);
+  }
+
+  // ORIGEM salva: refaz o ramo do playbook. A origem quase sempre é preenchida
+  // DEPOIS que a cadência já disparou (o negócio nasce e agenda em menos de um
+  // segundo), e sem ela o lead recebe TODOS os passos de origem — o de indicação
+  // junto com "Anúncio pago — responder em 5 min". Como o reconcile é no-op quando
+  // nada mudou, dá pra chamar em toda gravação que traga `source`.
+  if (result && next.source !== undefined && stageId) {
+    reconcileStepsForDeal(id, stageId).catch(console.warn);
   }
   return result;
 }

@@ -389,6 +389,67 @@ async function agendarPassos(dealId, stageId) {
 }
 
 /**
+ * Reavalia os passos de uma etapa quando a ORIGEM do lead muda.
+ *
+ * O agendador decide o ramo do playbook UMA VEZ, no instante em que o lead entra
+ * na etapa, e nunca mais revisita. Só que a origem quase sempre é preenchida
+ * DEPOIS: o negocio nasce, a cadencia dispara em menos de um segundo, e o vendedor
+ * digita "Indicação de parceiro (Robert)" em seguida. Sem origem, o
+ * filterStepsForDeal cai no conjunto inteiro — e o lead de indicação ganha
+ * "Anúncio pago — responder em 5 min" na fila, junto com os passos de Instagram e
+ * de indicação de cliente.
+ *
+ * Aqui a decisão é refeita: o que deixou de valer sai, o que passou a valer entra.
+ *
+ * Só mexe no PENDENTE. Passo já concluído é história — aconteceu de verdade, com
+ * alguém do outro lado; apagar seria mentir sobre o passado, mesmo que hoje a
+ * gente saiba que era o roteiro errado.
+ *
+ * @returns {Promise<{canceladas:number, criadas:number}>}
+ */
+export async function reconcileStepsForDeal(dealId, stageId) {
+  const vazio = { canceladas: 0, criadas: 0 };
+  if (!dealId || !stageId) return vazio;
+
+  const { data: deal } = await supabase
+    .from('crm_deals').select('source').eq('id', dealId).maybeSingle();
+  if (!deal) return vazio;
+
+  const { data: stepRows } = await supabase
+    .from('crm_stage_steps')
+    .select('id, title, source_tag')
+    .eq('stage_id', stageId);
+
+  const steps = (stepRows || []).map(r => ({
+    id: r.id, title: r.title, sourceTag: r.source_tag || null,
+  }));
+  // Etapa sem passo-por-origem não tem ramo a reavaliar.
+  if (!steps.some(s => s.sourceTag)) return vazio;
+
+  const aplicaveis = new Set(filterStepsForDeal(steps, deal.source).map(s => s.id));
+  const sobrando = steps.filter(s => !aplicaveis.has(s.id)).map(s => s.id);
+
+  let canceladas = 0;
+  if (sobrando.length > 0) {
+    const { data } = await supabase
+      .from('crm_activities')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('deal_id', dealId)
+      .eq('completed', false)
+      .is('deleted_at', null)
+      .in('stage_step_id', sobrando)
+      .select('id');
+    canceladas = data?.length || 0;
+  }
+
+  // Cria o que passou a valer. Idempotente — não duplica o que já existe.
+  let criadas = 0;
+  try { criadas = await scheduleStepsForDeal(dealId, stageId); } catch (e) { console.warn(e); }
+
+  return { canceladas, criadas };
+}
+
+/**
  * Resolve o dono do negocio no par (auth_user_id, nome) que a Agenda entende.
  *
  * PEGADINHA repetida: crm_deals.owner_id -> team_members.id, mas

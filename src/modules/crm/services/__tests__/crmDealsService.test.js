@@ -7,8 +7,11 @@ vi.mock('../../../../lib/supabase', () => ({
   },
 }));
 vi.mock('../../../../contexts/ToastContext', () => ({ toast: vi.fn() }));
+// `update` da factory fica exposto: o updateCrmDeal decide efeitos colaterais
+// (reagendar e-mail, reconciliar origem) a partir do que ela devolve.
+const { factoryUpdate } = vi.hoisted(() => ({ factoryUpdate: vi.fn() }));
 vi.mock('../../../../lib/serviceFactory', () => ({
-  createCRUDService: vi.fn(() => ({ create: vi.fn(), update: vi.fn(), getAll: vi.fn(), remove: vi.fn() })),
+  createCRUDService: vi.fn(() => ({ create: vi.fn(), update: factoryUpdate, getAll: vi.fn(), remove: vi.fn() })),
 }));
 // Precisa resolver uma Promise: o moveDealToStage encadeia `.catch()` no retorno
 // (fire-and-forget). Um vi.fn() cru devolve undefined e estoura ali.
@@ -22,10 +25,11 @@ vi.mock('../../schemas/crmValidation', () => ({ crmDealSchema: {} }));
 vi.mock('../crmPlaybookService', () => ({
   scheduleStepsForDeal: vi.fn().mockResolvedValue(0),
   cancelPendingStepsForDeal: vi.fn().mockResolvedValue(0),
+  reconcileStepsForDeal: vi.fn().mockResolvedValue({ canceladas: 0, criadas: 0 }),
 }));
 
-import { dbToCrmDeal, markDealAsLost, moveDealToStage } from '../crmDealsService';
-import { scheduleStepsForDeal, cancelPendingStepsForDeal } from '../crmPlaybookService';
+import { dbToCrmDeal, markDealAsLost, moveDealToStage, updateCrmDeal } from '../crmDealsService';
+import { scheduleStepsForDeal, cancelPendingStepsForDeal, reconcileStepsForDeal } from '../crmPlaybookService';
 import { supabase } from '../../../../lib/supabase';
 
 // Helper: cria um chain mock do supabase. Cada `select/update/insert` retorna
@@ -68,6 +72,8 @@ beforeEach(() => {
   // ao clear e vaza pro proximo que chamar o mock.
   vi.mocked(scheduleStepsForDeal).mockReset().mockResolvedValue(0);
   vi.mocked(cancelPendingStepsForDeal).mockReset().mockResolvedValue(0);
+  vi.mocked(reconcileStepsForDeal).mockReset().mockResolvedValue({ canceladas: 0, criadas: 0 });
+  factoryUpdate.mockReset().mockResolvedValue(null);
 });
 
 describe('dbToCrmDeal', () => {
@@ -467,5 +473,43 @@ describe('moveDealToStage — cadência da etapa nova antes da antiga', () => {
 
     expect(result).not.toBeNull();
     expect(result.id).toBe('d1');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// updateCrmDeal — salvar a ORIGEM refaz o ramo do playbook.
+//
+// Regressão do "Leadro art letras": o negócio nasceu sem origem, a cadência
+// disparou 0,44s depois e — sem origem pra filtrar — o lead recebeu TODOS os
+// passos de origem da etapa, inclusive "Anúncio pago — responder em 5 min". A
+// origem ("Indicação de parceiro (Robert)") foi digitada em seguida e nada
+// reavaliou o que já tinha sido agendado.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('updateCrmDeal — origem refaz os passos da etapa', () => {
+  it('salvar com `source` dispara a reconciliação dos passos', async () => {
+    factoryUpdate.mockResolvedValueOnce({ id: 'd1', stageId: 'st_leads' });
+
+    await updateCrmDeal('d1', { source: 'Indicação de parceiro (Robert)' });
+
+    expect(reconcileStepsForDeal).toHaveBeenCalledWith('d1', 'st_leads');
+  });
+
+  it('salvar SEM mexer na origem não mexe nos passos', async () => {
+    // Reconciliar em toda gravação seria trabalho à toa: quem edita só o valor
+    // do negócio não mudou o ramo do playbook.
+    factoryUpdate.mockResolvedValueOnce({ id: 'd1', stageId: 'st_leads' });
+
+    await updateCrmDeal('d1', { value: 500 });
+
+    expect(reconcileStepsForDeal).not.toHaveBeenCalled();
+  });
+
+  it('sem etapa resolvida, não tenta reconciliar', async () => {
+    factoryUpdate.mockResolvedValueOnce({ id: 'd1' });
+
+    await updateCrmDeal('d1', { source: 'Indicação de parceiro (Robert)' });
+
+    expect(reconcileStepsForDeal).not.toHaveBeenCalled();
   });
 });
